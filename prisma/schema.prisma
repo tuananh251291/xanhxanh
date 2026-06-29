@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  KY_THUAT
+  CAY_MO
+  KHO_MO
+  KHO_THANH_PHAM
+  SALE
+  MOI_TRUONG
+  DIEU_PHOI
+}
+
+enum WarehouseType {
+  PHONG_TOI
+  KHO_SANG
+  KHO_THANH_PHAM
+}
+
+enum PlantStage {
+  MAU_ME
+  THANH_PHAM
+}
+
+enum LotStatus {
+  ACTIVE
+  TRANSFERRED
+  CONTAMINATED
+  DESTROYED
+  PLANTED
+  SOLD
+}
+
+enum InstructionStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TransferStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum OrderStatus {
+  DRAFT
+  HELD
+  CONFIRMED
+  SHIPPED
+  CANCELLED
+}
+
+enum AlertType {
+  CONTAMINATION_HIGH
+  OUTPUT_DEVIATION
+  ORDER_EXPIRING
+  ORDER_EXPIRED
+  STOCK_LOW
+  LOT_READY_TRANSFER
+  ORDER_PENDING_PACK
+}
+
+enum AlertStatus {
+  UNREAD
+  READ
+  RESOLVED
+}
+
+// ============================================================
+// USERS
+// ============================================================
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole
+  isActive  Boolean  @default(true)
+  holdDays  Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plantingInstructions PlantingInstruction[] @relation("CreatedBy")
+  assignedInstructions PlantingInstruction[] @relation("AssignedTo")
+  dailyRecords         DailyRecord[]
+  transfersFrom        Transfer[]            @relation("TransferFrom")
+  transfersTo          Transfer[]            @relation("TransferTo")
+  orders               Order[]
+  alerts               Alert[]
+
+  @@map("users")
+}
+
+// ============================================================
+// SYSTEM CONFIG
+// ============================================================
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_configs")
+}
+
+// ============================================================
+// PLANT TYPES
+// ============================================================
+
+model PlantType {
+  id                 String   @id @default(cuid())
+  code               String   @unique
+  name               String
+  description        String?
+  lightRoomWeeksMin  Int      @default(4)
+  lightRoomWeeksMax  Int      @default(6)
+  finishedDaysMin    Int      @default(30)
+  finishedDaysMax    Int      @default(45)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  lots                 Lot[]
+  plantingInstructions PlantingInstruction[]
+
+  @@map("plant_types")
+}
+
+// ============================================================
+// MEDIUM TYPES
+// ============================================================
+
+model MediumType {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  plantingInstructions PlantingInstruction[]
+
+  @@map("medium_types")
+}
+
+// ============================================================
+// WAREHOUSES
+// ============================================================
+
+model Warehouse {
+  id          String        @id @default(cuid())
+  code        String        @unique
+  name        String
+  type        WarehouseType
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  shelves      Shelf[]
+  transfersIn  Transfer[] @relation("TransferTo")
+  transfersOut Transfer[] @relation("TransferFrom")
+
+  @@map("warehouses")
+}
+
+// ============================================================
+// SHELVES
+// ============================================================
+
+model Shelf {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  rowNumber   Int?
+  colNumber   Int?
+  capacity    Int?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lots             Lot[]
+  instructionItems PlantingInstructionItem[]
+
+  @@map("shelves")
+}
+
+// ============================================================
+// LOTS
+// ============================================================
+
+model Lot {
+  id              String     @id @default(cuid())
+  code            String     @unique
+  plantTypeId     String
+  plantType       PlantType  @relation(fields: [plantTypeId], references: [id])
+  stage           PlantStage
+  stageCode       String
+
+  shelfId         String?
+  shelf           Shelf?     @relation(fields: [shelfId], references: [id])
+
+  quantity        Int
+  initialQuantity Int
+  status          LotStatus  @default(ACTIVE)
+
+  enteredAt       DateTime   @default(now())
+  expectedMoveAt  DateTime?
+
+  parentLotId     String?
+  parentLot       Lot?       @relation("LotChildren", fields: [parentLotId], references: [id])
+  childLots       Lot[]      @relation("LotChildren")
+
+  instructionId   String?
+  instruction     PlantingInstruction? @relation(fields: [instructionId], references: [id])
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  dailyRecordItems    DailyRecordItem[]
+  transferItems       TransferItem[]
+  orderItems          OrderItem[]
+  contaminations      ContaminationRecord[]
+
+  @@map("lots")
+}
+
+// ============================================================
+// PLANTING INSTRUCTIONS
+// ============================================================
+
+model PlantingInstruction {
+  id            String            @id @default(cuid())
+  code          String            @unique
+  plantTypeId   String
+  plantType     PlantType         @relation(fields: [plantTypeId], references: [id])
+  mediumTypeId  String?
+  mediumType    MediumType?       @relation(fields: [mediumTypeId], references: [id])
+
+  createdById   String
+  createdBy     User              @relation("CreatedBy", fields: [createdById], references: [id])
+  assignedToId  String
+  assignedTo    User              @relation("AssignedTo", fields: [assignedToId], references: [id])
+
+  motherSampleRatio       Float?
+  rootingRatio            Float?
+  inputMotherQuantity     Int
+  expectedMotherOutput    Int?
+  expectedFinishedOutput  Int?
+
+  status      InstructionStatus @default(DRAFT)
+  weekStart   DateTime?
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  items        PlantingInstructionItem[]
+  lots         Lot[]
+  dailyRecords DailyRecord[]
+
+  @@map("planting_instructions")
+}
+
+model PlantingInstructionItem {
+  id            String              @id @default(cuid())
+  instructionId String
+  instruction   PlantingInstruction @relation(fields: [instructionId], references: [id])
+  shelfId       String
+  shelf         Shelf               @relation(fields: [shelfId], references: [id])
+  quantity      Int
+
+  @@map("planting_instruction_items")
+}
+
+// ============================================================
+// DAILY RECORDS
+// ============================================================
+
+model DailyRecord {
+  id            String              @id @default(cuid())
+  instructionId String
+  instruction   PlantingInstruction @relation(fields: [instructionId], references: [id])
+  staffId       String
+  staff         User                @relation(fields: [staffId], references: [id])
+  recordDate    DateTime            @default(now())
+  motherUsed    Int
+  notes         String?
+  createdAt     DateTime            @default(now())
+
+  items DailyRecordItem[]
+
+  @@map("daily_records")
+}
+
+model DailyRecordItem {
+  id              String      @id @default(cuid())
+  dailyRecordId   String
+  dailyRecord     DailyRecord @relation(fields: [dailyRecordId], references: [id])
+  lotId           String
+  lot             Lot         @relation(fields: [lotId], references: [id])
+  stage           PlantStage
+  quantityCreated Int
+
+  @@map("daily_record_items")
+}
+
+// ============================================================
+// CONTAMINATION RECORDS
+// ============================================================
+
+model ContaminationRecord {
+  id            String    @id @default(cuid())
+  lotId         String
+  lot           Lot       @relation(fields: [lotId], references: [id])
+  quantity      Int
+  recordDate    DateTime  @default(now())
+  confirmedAt   DateTime?
+  confirmedById String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+
+  @@map("contamination_records")
+}
+
+// ============================================================
+// TRANSFERS
+// ============================================================
+
+model Transfer {
+  id              String         @id @default(cuid())
+  code            String         @unique
+  fromWarehouseId String?
+  fromWarehouse   Warehouse?     @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouseId   String
+  toWarehouse     Warehouse      @relation("TransferTo", fields: [toWarehouseId], references: [id])
+  fromUserId      String
+  fromUser        User           @relation("TransferFrom", fields: [fromUserId], references: [id])
+  toUserId        String?
+  toUser          User?          @relation("TransferTo", fields: [toUserId], references: [id])
+  status          TransferStatus @default(PENDING)
+  notes           String?
+  transferredAt   DateTime       @default(now())
+  confirmedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items TransferItem[]
+
+  @@map("transfers")
+}
+
+model TransferItem {
+  id         String   @id @default(cuid())
+  transferId String
+  transfer   Transfer @relation(fields: [transferId], references: [id])
+  lotId      String
+  lot        Lot      @relation(fields: [lotId], references: [id])
+  quantity   Int
+  notes      String?
+
+  @@map("transfer_items")
+}
+
+// ============================================================
+// ORDERS
+// ============================================================
+
+model Order {
+  id              String      @id @default(cuid())
+  code            String      @unique
+  saleId          String
+  sale            User        @relation(fields: [saleId], references: [id])
+  customerName    String
+  customerPhone   String?
+  customerAddress String?
+  status          OrderStatus @default(DRAFT)
+  holdUntil       DateTime?
+  confirmedAt     DateTime?
+  shippedAt       DateTime?
+  cancelledAt     DateTime?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  lotId     String
+  lot       Lot     @relation(fields: [lotId], references: [id])
+  quantity  Int
+  unitPrice Float?
+  notes     String?
+
+  @@map("order_items")
+}
+
+// ============================================================
+// ALERTS
+// ============================================================
+
+model Alert {
+  id          String      @id @default(cuid())
+  type        AlertType
+  status      AlertStatus @default(UNREAD)
+  title       String
+  message     String
+  userId      String?
+  targetRole  UserRole?
+  user        User?       @relation(fields: [userId], references: [id])
+  relatedId   String?
+  relatedType String?
+  createdAt   DateTime    @default(now())
+  readAt      DateTime?
+
+  @@map("alerts")
+}
