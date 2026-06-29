@@ -10,11 +10,15 @@ const createSchema = z.object({
   description: z.string().optional(),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { searchParams } = new URL(req.url);
+  const type = searchParams.get("type");
+
   const warehouses = await prisma.warehouse.findMany({
+    where: { isActive: true, ...(type ? { type: type as "PHONG_TOI" | "KHO_SANG" | "KHO_THANH_PHAM" } : {}) },
     include: { shelves: { where: { isActive: true } } },
     orderBy: { type: "asc" },
   });

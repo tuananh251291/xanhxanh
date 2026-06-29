@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import type { UserRole } from "@prisma/client";
 
 // Edge-safe config — không import Prisma, chỉ dùng JWT
 export const authConfig: NextAuthConfig = {
@@ -20,14 +21,14 @@ export const authConfig: NextAuthConfig = {
     },
     jwt({ token, user }) {
       if (user) {
-        token.role = (user as { role: string }).role;
+        token.role = (user as { role: UserRole }).role as UserRole;
         token.id = user.id;
       }
       return token;
     },
     session({ session, token }) {
       if (token) {
-        session.user.role = token.role as string;
+        session.user.role = token.role as import("@prisma/client").UserRole;
         session.user.id = token.id as string;
       }
       return session;

@@ -1,0 +1,51 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+
+export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const stage = searchParams.get("stage");
+  const warehouseType = searchParams.get("warehouseType");
+  const warehouseId = searchParams.get("warehouseId");
+  const status = searchParams.get("status") ?? "ACTIVE";
+  const instructionId = searchParams.get("instructionId");
+  const assignedToId = searchParams.get("assignedToId");
+
+  const where: Record<string, unknown> = {};
+  if (stage) where.stage = stage;
+  if (status) where.status = status;
+  if (instructionId) where.instructionId = instructionId;
+
+  if (warehouseId) {
+    where.shelf = { warehouseId };
+  } else if (warehouseType) {
+    where.shelf = { warehouse: { type: warehouseType } };
+  }
+
+  if (assignedToId) {
+    where.instruction = { assignedToId };
+  }
+
+  // CAY_MO can only see their own lots (from their instructions)
+  const role = session.user.role;
+  if (role === "CAY_MO" && !assignedToId) {
+    where.instruction = { assignedToId: session.user.id };
+  }
+
+  const lots = await prisma.lot.findMany({
+    where,
+    include: {
+      plantType: { select: { code: true, name: true } },
+      shelf: { include: { warehouse: { select: { name: true, type: true } } } },
+      instruction: { select: { code: true, assignedToId: true, assignedTo: { select: { id: true } } } },
+      _count: { select: { contaminations: true } },
+    },
+    orderBy: { enteredAt: "desc" },
+    take: 200,
+  });
+
+  return NextResponse.json(lots);
+}
