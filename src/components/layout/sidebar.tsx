@@ -34,7 +34,7 @@ export default function Sidebar({ user, alertCount = 0 }: SidebarProps) {
 
   return (
     <div className={cn(
-      "flex flex-col bg-gray-900 text-white transition-all duration-300 h-screen sticky top-0",
+      "print:hidden flex flex-col bg-gray-900 text-white transition-all duration-300 h-screen sticky top-0",
       collapsed ? "w-16" : "w-64"
     )}>
       {/* Header */}

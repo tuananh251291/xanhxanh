@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
+import { PrintButton } from "@/components/shared/print-button";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-600",
@@ -57,8 +58,14 @@ export default async function InstructionDetailPage({ params }: { params: Promis
 
   return (
     <div className="space-y-6">
+      {/* Print-only letterhead */}
+      <div className="hidden print:block text-center mb-4">
+        <h1 className="text-xl font-bold">XANH XANH — PHIẾU CHỈ ĐỊNH CẤY</h1>
+        <p className="text-sm">In lúc: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+      </div>
+
       <div className="flex items-center gap-3">
-        <Link href="/instructions">
+        <Link href="/instructions" className="print:hidden">
           <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
         <div className="flex-1">
@@ -68,6 +75,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
           {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
         </Badge>
+        <PrintButton />
       </div>
 
       {/* Info cards */}
@@ -194,6 +202,20 @@ export default async function InstructionDetailPage({ params }: { params: Promis
           </CardContent>
         </Card>
       )}
+
+      {/* Print-only signature block */}
+      <div className="hidden print:grid grid-cols-2 gap-8 mt-10 text-center text-sm">
+        <div>
+          <p className="font-medium">Nhân viên kỹ thuật</p>
+          <p className="text-xs text-gray-500 mb-16">(Ký, ghi rõ họ tên)</p>
+          <p>{inst.createdBy.name}</p>
+        </div>
+        <div>
+          <p className="font-medium">Nhân viên cấy mô</p>
+          <p className="text-xs text-gray-500 mb-16">(Ký, ghi rõ họ tên)</p>
+          <p>{inst.assignedTo.name}</p>
+        </div>
+      </div>
     </div>
   );
 }

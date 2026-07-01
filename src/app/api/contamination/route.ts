@@ -10,6 +10,38 @@ const schema = z.object({
   notes: z.string().optional(),
 });
 
+export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const confirmed = searchParams.get("confirmed");
+  const where: Record<string, unknown> = {};
+  if (confirmed === "false") where.confirmedAt = null;
+  if (confirmed === "true") where.confirmedAt = { not: null };
+
+  const records = await prisma.contaminationRecord.findMany({
+    where,
+    include: {
+      lot: {
+        select: {
+          code: true,
+          stage: true,
+          quantity: true,
+          initialQuantity: true,
+          plantType: { select: { name: true, code: true } },
+          shelf: { select: { name: true, warehouse: { select: { name: true } } } },
+          instruction: { select: { code: true } },
+        },
+      },
+    },
+    orderBy: { recordDate: "desc" },
+    take: 100,
+  });
+
+  return NextResponse.json(records);
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

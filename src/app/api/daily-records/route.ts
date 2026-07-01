@@ -8,10 +8,13 @@ import { addDays, addWeeks } from "date-fns";
 
 const schema = z.object({
   instructionId: z.string(),
+  recordDate: z.string().optional(),
   motherUsed: z.number().int().positive(),
-  motherCreated: z.number().int().min(0),
-  finishedCreated: z.number().int().min(0),
   notes: z.string().optional(),
+  items: z.array(z.object({
+    stage: z.enum(["MAU_ME", "THANH_PHAM"]),
+    quantityCreated: z.number().int().positive(),
+  })).min(1),
 });
 
 export async function POST(req: NextRequest) {
@@ -22,9 +25,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { instructionId, motherUsed, motherCreated, finishedCreated, notes } = parsed.data;
+  const { instructionId, recordDate, motherUsed, notes, items } = parsed.data;
 
   const instruction = await prisma.plantingInstruction.findUnique({
     where: { id: instructionId },
@@ -35,51 +38,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Không phải chỉ định của bạn" }, { status: 403 });
   }
 
-  // Tìm kho phòng tối
-  const darkRoom = await prisma.warehouse.findFirst({ where: { type: "PHONG_TOI" } });
-
   const recordItems = [];
   const lotsCreated = [];
 
-  // Tạo Lot mẫu mẹ mới nếu có
-  if (motherCreated > 0) {
-    const code = await generateLotCode("MAU_ME");
-    const expectedMoveAt = addWeeks(new Date(), instruction.plantType.lightRoomWeeksMin);
+  for (const item of items) {
+    const code = await generateLotCode(item.stage);
+    const expectedMoveAt =
+      item.stage === "MAU_ME"
+        ? addWeeks(new Date(), instruction.plantType.lightRoomWeeksMin)
+        : addDays(new Date(), instruction.plantType.finishedDaysMin);
     const lot = await prisma.lot.create({
       data: {
         code,
         plantTypeId: instruction.plantTypeId,
-        stage: "MAU_ME",
-        stageCode: "M3",
-        quantity: motherCreated,
-        initialQuantity: motherCreated,
+        stage: item.stage,
+        stageCode: item.stage === "MAU_ME" ? "M3" : "T01",
+        quantity: item.quantityCreated,
+        initialQuantity: item.quantityCreated,
         instructionId,
         enteredAt: new Date(),
         expectedMoveAt,
       },
     });
-    recordItems.push({ lotId: lot.id, stage: "MAU_ME" as const, quantityCreated: motherCreated });
-    lotsCreated.push(lot);
-  }
-
-  // Tạo Lot thành phẩm mới nếu có
-  if (finishedCreated > 0) {
-    const code = await generateLotCode("THANH_PHAM");
-    const expectedMoveAt = addDays(new Date(), instruction.plantType.finishedDaysMin);
-    const lot = await prisma.lot.create({
-      data: {
-        code,
-        plantTypeId: instruction.plantTypeId,
-        stage: "THANH_PHAM",
-        stageCode: "T01",
-        quantity: finishedCreated,
-        initialQuantity: finishedCreated,
-        instructionId,
-        enteredAt: new Date(),
-        expectedMoveAt,
-      },
-    });
-    recordItems.push({ lotId: lot.id, stage: "THANH_PHAM" as const, quantityCreated: finishedCreated });
+    recordItems.push({ lotId: lot.id, stage: item.stage, quantityCreated: item.quantityCreated });
     lotsCreated.push(lot);
   }
 
@@ -88,6 +69,7 @@ export async function POST(req: NextRequest) {
     data: {
       instructionId,
       staffId: session.user.id,
+      recordDate: recordDate ? new Date(recordDate) : undefined,
       motherUsed,
       notes,
       items: { create: recordItems },
@@ -98,6 +80,7 @@ export async function POST(req: NextRequest) {
   });
 
   // Kiểm tra lệch output — cảnh báo nếu >20%
+  let alert = false;
   if (instruction.expectedMotherOutput) {
     const totalMotherRecords = await prisma.dailyRecordItem.aggregate({
       where: {
@@ -109,6 +92,7 @@ export async function POST(req: NextRequest) {
     const totalMother = totalMotherRecords._sum.quantityCreated ?? 0;
     const deviation = Math.abs(totalMother - instruction.expectedMotherOutput) / instruction.expectedMotherOutput;
     if (deviation > 0.2) {
+      alert = true;
       await createAlert({
         type: "OUTPUT_DEVIATION",
         title: "Lệch output mẫu mẹ",
@@ -120,7 +104,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ record, lotsCreated }, { status: 201 });
+  return NextResponse.json({ record, lotsCreated, alert }, { status: 201 });
 }
 
 export async function GET(req: NextRequest) {

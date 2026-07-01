@@ -3,7 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Warehouse, Moon, Sun, Package } from "lucide-react";
+import { Warehouse, Moon, Sun, Package, AlertTriangle } from "lucide-react";
+import { differenceInCalendarDays } from "date-fns";
+
+function isNearExpiry(expectedMoveAt: Date | null): boolean {
+  if (!expectedMoveAt) return false;
+  return differenceInCalendarDays(expectedMoveAt, new Date()) <= 3;
+}
 
 const WAREHOUSE_TYPE_ICONS = {
   PHONG_TOI: Moon,
@@ -36,7 +42,7 @@ export default async function AllInventoryPage() {
         include: {
           lots: {
             where: { status: "ACTIVE" },
-            select: { id: true, stage: true, quantity: true, plantTypeId: true, plantType: { select: { name: true, code: true } } },
+            select: { id: true, stage: true, quantity: true, plantTypeId: true, expectedMoveAt: true, plantType: { select: { name: true, code: true } } },
           },
         },
       },
@@ -83,6 +89,7 @@ export default async function AllInventoryPage() {
           const lots = ws.flatMap((w) => w.shelves.flatMap((s) => s.lots));
           const mother = lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
           const finished = lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
+          const nearExpiryCount = lots.filter((l) => isNearExpiry(l.expectedMoveAt)).length;
           const Icon = WAREHOUSE_TYPE_ICONS[type];
           return (
             <Card key={type} className={`border ${WAREHOUSE_TYPE_COLORS[type]}`}>
@@ -96,6 +103,11 @@ export default async function AllInventoryPage() {
                   {mother > 0 && <p>Mẫu mẹ: <strong>{mother.toLocaleString("vi-VN")}</strong></p>}
                   {finished > 0 && <p>Thành phẩm: <strong>{finished.toLocaleString("vi-VN")}</strong></p>}
                   {lots.length === 0 && <p className="text-gray-400">Trống</p>}
+                  {nearExpiryCount > 0 && (
+                    <p className="flex items-center gap-1 text-orange-600 font-medium pt-1">
+                      <AlertTriangle className="w-3.5 h-3.5" /> {nearExpiryCount} lô sắp/quá hạn
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

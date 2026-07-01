@@ -4,9 +4,17 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sun, Layers } from "lucide-react";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { STAGE_LABELS } from "@/types";
+
+function expiryClass(expectedMoveAt: Date | null): string {
+  if (!expectedMoveAt) return "text-gray-400";
+  const daysLeft = differenceInCalendarDays(expectedMoveAt, new Date());
+  if (daysLeft < 0) return "text-red-600 font-semibold";
+  if (daysLeft <= 3) return "text-orange-600 font-semibold";
+  return "text-gray-400";
+}
 
 export default async function KhoSangPage() {
   const session = await auth();
@@ -116,13 +124,26 @@ export default async function KhoSangPage() {
                             {shelfFinished > 0 && <Badge className="bg-green-100 text-green-700">TP: {shelfFinished.toLocaleString("vi-VN")}</Badge>}
                           </div>
                           <div className="space-y-0.5 mt-1">
-                            {shelf.lots.slice(0, 5).map((lot) => (
-                              <div key={lot.id} className="flex items-center justify-between text-xs text-gray-600">
-                                <span className="font-mono">{lot.code}</span>
-                                <span>{lot.quantity.toLocaleString("vi-VN")}</span>
-                                <span className="text-gray-400">{format(lot.enteredAt, "dd/MM", { locale: vi })}</span>
-                              </div>
-                            ))}
+                            {shelf.lots.slice(0, 5).map((lot) => {
+                              const daysLeft = lot.expectedMoveAt
+                                ? differenceInCalendarDays(lot.expectedMoveAt, new Date())
+                                : null;
+                              return (
+                                <div key={lot.id} className="flex items-center justify-between text-xs text-gray-600">
+                                  <span className="font-mono">{lot.code}</span>
+                                  <span>{lot.quantity.toLocaleString("vi-VN")}</span>
+                                  <span className={expiryClass(lot.expectedMoveAt)}>
+                                    {daysLeft === null
+                                      ? format(lot.enteredAt, "dd/MM", { locale: vi })
+                                      : daysLeft < 0
+                                        ? `Quá hạn ${Math.abs(daysLeft)}d`
+                                        : daysLeft <= 3
+                                          ? `Còn ${daysLeft}d`
+                                          : format(lot.enteredAt, "dd/MM", { locale: vi })}
+                                  </span>
+                                </div>
+                              );
+                            })}
                             {shelf.lots.length > 5 && (
                               <p className="text-xs text-gray-400">+{shelf.lots.length - 5} lô khác</p>
                             )}
