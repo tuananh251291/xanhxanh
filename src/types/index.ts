@@ -65,6 +65,22 @@ export const TRANSFER_STATUS_LABELS = {
   REJECTED: "Từ chối",
 } as const;
 
+export const ALERT_TYPE_LABELS = {
+  CONTAMINATION_HIGH: "Tỉ lệ nhiễm cao",
+  OUTPUT_DEVIATION: "Lệch sản lượng",
+  ORDER_EXPIRING: "Đơn sắp hết hạn",
+  ORDER_EXPIRED: "Đơn hết hạn",
+  STOCK_LOW: "Tồn kho thấp",
+  LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
+  ORDER_PENDING_PACK: "Đơn chờ đóng gói",
+} as const;
+
+export const ALERT_STATUS_LABELS = {
+  UNREAD: "Chưa đọc",
+  READ: "Đã đọc",
+  RESOLVED: "Đã xử lý",
+} as const;
+
 // Nav items per role
 export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: string }[]> = {
   ADMIN: [
