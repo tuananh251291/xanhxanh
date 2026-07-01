@@ -3,6 +3,7 @@ import type { UserRole } from "@prisma/client";
 
 // Edge-safe config — không import Prisma, chỉ dùng JWT
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
   pages: { signIn: "/login" },
   session: { strategy: "jwt" },
   providers: [],
