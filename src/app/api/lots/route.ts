@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   const lots = await prisma.lot.findMany({
     where,
     include: {
-      plantType: { select: { code: true, name: true } },
+      plantType: { select: { code: true, name: true, category: { select: { code: true, name: true } } } },
       shelf: {
         include: {
           warehouse: { select: { name: true, type: true } },

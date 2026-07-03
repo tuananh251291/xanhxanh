@@ -16,7 +16,7 @@ type Lot = {
   stageCode: string;
   enteredAt: string;
   expectedMoveAt: string | null;
-  plantType: { code: string; name: string };
+  plantType: { code: string; name: string; category: { code: string; name: string } };
   shelf: { code: string; name: string } | null;
   instruction: { code: string; assignedTo: { name: string } | null } | null;
 };
@@ -113,7 +113,9 @@ export default function MotherReadyBoard() {
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mã lô</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên cây</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mã cây</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Loại cây</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên chi tiết</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Quy cách</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Số lượng</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Kệ</th>
@@ -126,9 +128,9 @@ export default function MotherReadyBoard() {
                   {filtered.map((l) => (
                     <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{l.code}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        <span className="font-mono text-xs text-gray-500 mr-1">{l.plantType.code}</span>{l.plantType.name}
-                      </td>
+                      <td className="px-4 py-3 text-sm font-mono text-gray-700">{l.plantType.code}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{l.plantType.category.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{l.plantType.name}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline">{l.stageCode}</Badge>
                       </td>
