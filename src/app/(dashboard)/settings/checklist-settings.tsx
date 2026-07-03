@@ -130,7 +130,9 @@ export default function ChecklistSettings() {
         <div className="space-y-1 max-w-xs">
           <Label>Vai trò</Label>
           <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue>{(v: UserRole | null) => (v ? ROLE_LABELS[v] : "Chọn vai trò")}</SelectValue>
+            </SelectTrigger>
             <SelectContent>
               {ROLES.map((r) => (
                 <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
