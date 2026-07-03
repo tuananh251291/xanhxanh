@@ -9,6 +9,7 @@ import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, isAdminRole } from
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import TodayChecklist from "@/components/shared/today-checklist";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -88,6 +89,7 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
         <StatCard title="Đơn đang xử lý" value={stats.pendingOrders} icon={ShoppingCart} color="yellow" />
         <StatCard title="Nhân viên" value={stats.totalUsers} icon={Users} color="purple" />
       </div>
+      <TodayChecklist />
       {stats.recentAlerts.length > 0 && (
         <Card>
           <CardHeader>
@@ -128,6 +130,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
         <StatCard title="Tồn khả dụng (TP)" value={stats.availableLots} icon={Package} color="green" subtitle="lô thành phẩm" />
         <StatCard title="Đơn đang hoạt động" value={stats.myOrders.length} icon={ShoppingCart} color="blue" />
       </div>
+      <TodayChecklist />
       {stats.myOrders.length > 0 && (
         <Card>
           <CardHeader>
@@ -168,6 +171,7 @@ function KhoDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getKho
         <StatCard title="Lô mẫu mẹ đang lưu" value={mauMe?._count ?? 0} icon={Sun} color="green" subtitle={`${mauMe?._sum?.quantity ?? 0} bình`} />
         <StatCard title="Lô thành phẩm đang lưu" value={thanhPham?._count ?? 0} icon={Package} color="blue" subtitle={`${thanhPham?._sum?.quantity ?? 0} bình`} />
       </div>
+      <TodayChecklist />
     </div>
   );
 }
@@ -179,6 +183,7 @@ function DefaultDashboard({ role, userName }: { role: UserRole; userName: string
         <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
         <p className="text-gray-500 text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
+      <TodayChecklist />
       <Card>
         <CardContent className="pt-6">
           <div className="text-center py-8 text-gray-500">

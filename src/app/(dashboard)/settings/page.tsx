@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
+import ChecklistSettings from "./checklist-settings";
 
 const CONFIG_META: Record<string, { label: string; description: string; unit: string }> = {
   default_hold_days: { label: "Thời gian giữ đơn mặc định", description: "Số ngày sale giữ đơn trước khi hết hạn", unit: "ngày" },
@@ -85,6 +86,8 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ChecklistSettings />
     </div>
   );
 }

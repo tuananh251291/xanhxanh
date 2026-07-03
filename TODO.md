@@ -135,5 +135,14 @@
 - [ ] Báo cáo hiệu suất NV (xuất Excel) — có biểu đồ trong `/reports` rồi, còn thiếu phần xuất Excel
 - [ ] QR scan bằng camera điện thoại (html5-qrcode)
 - [ ] Realtime alerts (Supabase Realtime)
-- [ ] Checklist đầu việc hàng ngày per role
+- [x] Checklist đầu việc hàng ngày per role (2026-07-03): model `ChecklistTemplate` (Admin soạn sẵn đầu
+      việc cố định theo vai trò, trang `/settings`) + `ChecklistItem` (1 dòng/NV/ngày, sinh tự động —
+      `ensureTodayChecklist` trong `src/lib/checklist.ts`) + `ChecklistThreshold` (ngưỡng % tối thiểu/ngày
+      theo vai trò, Admin cấu hình). Widget "Việc cần làm hôm nay" trên mọi biến thể `/dashboard`, mỗi đầu
+      việc 1 checkbox riêng. Việc chưa hoàn thành **không sinh dòng mới** cho ngày sau — vẫn cùng 1 dòng,
+      tự động hiện tiếp ở checklist "hôm nay" tới khi tích xong (không nhân bản). Báo cáo Admin ở tab
+      "Checklist" trong `/reports` — chọn ngày, xem % hoàn thành từng NV, tô đỏ + badge "Không đạt" nếu
+      dưới ngưỡng vai trò đó. Kiểm thử qua API thật: tạo template + ngưỡng, NV hoàn thành 1/3 việc, báo
+      cáo đúng 33% dưới ngưỡng 90%; giả lập sang ngày mới (backdate `assignedDate`) xác nhận không sinh
+      trùng dòng và báo cáo theo ngày cũ vẫn giữ đúng số liệu ngày đó (0/2, dưới ngưỡng).
 - [ ] In phiếu bàn giao (print CSS)

@@ -130,6 +130,7 @@ model User {
   assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
   mediumHandoversFrom  MediumHandover[]       @relation("MediumHandoverFrom")
   mediumHandoversTo    MediumHandover[]       @relation("MediumHandoverTo")
+  checklistItems       ChecklistItem[]
 
   @@map("users")
 }
@@ -159,6 +160,54 @@ model SystemConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("system_configs")
+}
+
+// ============================================================
+// CHECKLIST — đầu việc hàng ngày theo vai trò
+// ============================================================
+
+// Danh mục đầu việc Admin soạn sẵn cho từng vai trò — mỗi ngày hệ thống tự sinh 1 ChecklistItem
+// cho từng NV thuộc vai trò đó từ các template đang isActive.
+model ChecklistTemplate {
+  id        String   @id @default(cuid())
+  role      UserRole
+  title     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ChecklistItem[]
+
+  @@map("checklist_templates")
+}
+
+// 1 dòng = 1 đầu việc đã giao cho 1 NV vào 1 ngày cụ thể (assignedDate). title chép lại từ template lúc
+// sinh (không đổi ngược nếu sau này Admin sửa template). Việc chưa hoàn thành sẽ tiếp tục hiện ở checklist
+// "hôm nay" của NV cho tới khi tích xong — không sinh thêm dòng mới cho cùng template khi còn dòng cũ
+// đang PENDING, nên xem như tự động "dồn sang ngày hôm sau" mà không nhân bản.
+model ChecklistItem {
+  id           String            @id @default(cuid())
+  templateId   String
+  template     ChecklistTemplate @relation(fields: [templateId], references: [id])
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  title        String
+  assignedDate DateTime // chỉ lấy phần ngày (00:00) — ngày đầu việc được sinh ra, dùng để thống kê theo ngày
+  completed    Boolean           @default(false)
+  completedAt  DateTime?
+  createdAt    DateTime          @default(now())
+
+  @@map("checklist_items")
+}
+
+// Ngưỡng % hoàn thành tối thiểu/ngày theo từng vai trò — Admin cấu hình, dùng để tô cảnh báo trên báo cáo.
+model ChecklistThreshold {
+  role       UserRole @id
+  minPercent Int      @default(80)
+  updatedAt  DateTime @updatedAt
+
+  @@map("checklist_thresholds")
 }
 
 // ============================================================
