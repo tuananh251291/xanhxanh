@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateInstructionCode } from "@/lib/codes";
+import { isAdminRole } from "@/types";
 import { z } from "zod";
 
 const createSchema = z.object({
   plantTypeId: z.string(),
-  mediumTypeId: z.string().optional(),
-  assignedToId: z.string(),
-  inputMotherQuantity: z.number().int().positive(),
+  mediumTypeId: z.string().min(1),
   motherSampleRatio: z.number().positive().optional(),
   rootingRatio: z.number().positive().optional(),
   weekStart: z.string().optional(),
   notes: z.string().optional(),
-  shelfItems: z.array(z.object({ shelfId: z.string(), quantity: z.number().int().positive() })).optional(),
+  // Lô mẫu mẹ nguồn (thay cho nhập số lượng thô) — inputMotherQuantity tự tính = tổng quantity
+  shelfItems: z.array(z.object({ shelfId: z.string(), quantity: z.number().int().positive() })).min(1, "Cần chọn ít nhất 1 lô mẫu mẹ nguồn"),
 });
 
 export async function GET(req: NextRequest) {
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!["ADMIN", "KY_THUAT"].includes(session?.user?.role ?? "")) {
+  if (!isAdminRole(session?.user?.role) && session?.user?.role !== "KY_THUAT") {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
@@ -57,28 +57,34 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { shelfItems, ...data } = parsed.data;
+  const { shelfItems, plantTypeId, mediumTypeId, motherSampleRatio, rootingRatio, weekStart, notes } = parsed.data;
+  const inputMotherQuantity = shelfItems.reduce((sum, item) => sum + item.quantity, 0);
 
   // Tự tính expected output
   let expectedMotherOutput: number | undefined;
   let expectedFinishedOutput: number | undefined;
-  if (data.motherSampleRatio) expectedMotherOutput = Math.floor(data.inputMotherQuantity * data.motherSampleRatio);
-  if (data.rootingRatio && expectedMotherOutput) expectedFinishedOutput = Math.floor(expectedMotherOutput * data.rootingRatio);
+  if (motherSampleRatio) expectedMotherOutput = Math.floor(inputMotherQuantity * motherSampleRatio);
+  if (rootingRatio && expectedMotherOutput) expectedFinishedOutput = Math.floor(expectedMotherOutput * rootingRatio);
 
   const code = await generateInstructionCode();
 
   const instruction = await prisma.plantingInstruction.create({
     data: {
       code,
-      ...data,
-      createdById: session!.user.id,
+      plantType: { connect: { id: plantTypeId } },
+      mediumType: { connect: { id: mediumTypeId } },
+      createdBy: { connect: { id: session!.user.id } },
+      motherSampleRatio,
+      rootingRatio,
+      notes,
+      inputMotherQuantity,
       expectedMotherOutput,
       expectedFinishedOutput,
-      weekStart: data.weekStart ? new Date(data.weekStart) : undefined,
+      weekStart: weekStart ? new Date(weekStart) : undefined,
       status: "ACTIVE",
-      items: shelfItems ? {
+      items: {
         create: shelfItems.map((item) => ({ shelfId: item.shelfId, quantity: item.quantity })),
-      } : undefined,
+      },
     },
     include: {
       plantType: true,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isAdminRole } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -16,7 +17,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const users = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+    select: { id: true, code: true, name: true, email: true, role: true, status: true, isActive: true, createdAt: true },
     orderBy: { name: "asc" },
   });
   return NextResponse.json(users);
@@ -24,7 +25,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") {
+  if (!isAdminRole(session?.user?.role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
@@ -42,9 +43,11 @@ export async function POST(req: NextRequest) {
   }
 
   const hashed = await bcrypt.hash(password, 10);
+  const userCount = await prisma.user.count();
+  const code = `NV${String(userCount + 1).padStart(3, "0")}`;
   const user = await prisma.user.create({
-    data: { name, email, password: hashed, role },
-    select: { id: true, name: true, email: true, role: true },
+    data: { code, name, email, password: hashed, role, status: "APPROVED" },
+    select: { id: true, code: true, name: true, email: true, role: true },
   });
 
   return NextResponse.json(user, { status: 201 });

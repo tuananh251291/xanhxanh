@@ -66,7 +66,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     include: {
       fromWarehouse: true,
-      toWarehouse: true,
+      fromRoom: true,
+      toWarehouse: { include: { shelves: { where: { isActive: true, roomId: null } } } },
+      toRoom: { include: { shelves: { where: { isActive: true } } } },
       fromUser: { select: { name: true } },
       toUser: { select: { name: true } },
       items: {

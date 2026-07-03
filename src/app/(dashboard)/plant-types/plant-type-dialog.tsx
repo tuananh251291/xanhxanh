@@ -55,10 +55,10 @@ export default function PlantTypeDialog({ plant }: { plant?: PlantType }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
+      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-green-600 hover:bg-green-700" />}>
         {isEdit
-          ? <Button variant="ghost" size="sm"><Pencil className="w-4 h-4" /></Button>
-          : <Button className="bg-green-600 hover:bg-green-700"><Plus className="w-4 h-4 mr-2" />Thêm loại cây</Button>
+          ? <Pencil className="w-4 h-4" />
+          : <><Plus className="w-4 h-4 mr-2" />Thêm loại cây</>
         }
       </DialogTrigger>
       <DialogContent className="max-w-lg">

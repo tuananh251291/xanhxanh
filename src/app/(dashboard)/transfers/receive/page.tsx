@@ -23,13 +23,15 @@ type Transfer = {
   status: string;
   fromUser: { name: string };
   fromWarehouse: { name: string; type: string } | null;
+  fromRoom: { name: string; type: string } | null;
+  toWarehouse: { shelves: Shelf[] };
+  toRoom: { shelves: Shelf[] } | null;
   transferredAt: string;
   items: TransferItem[];
 };
 
 export default function TransferReceivePage() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [shelves, setShelves] = useState<Shelf[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [shelfMap, setShelfMap] = useState<Record<string, string>>({});
@@ -38,14 +40,9 @@ export default function TransferReceivePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [tRes, sRes] = await Promise.all([
-        fetch("/api/transfers?status=PENDING"),
-        fetch("/api/warehouses?type=KHO_SANG"),
-      ]);
-      const [tData, wData] = await Promise.all([tRes.json(), sRes.json()]);
+      const tRes = await fetch("/api/transfers?status=PENDING");
+      const tData = await tRes.json();
       setTransfers(Array.isArray(tData) ? tData : []);
-      const allShelves: Shelf[] = (wData ?? []).flatMap((w: { shelves?: Shelf[] }) => w.shelves ?? []);
-      setShelves(allShelves);
     } finally { setLoading(false); }
   }, []);
 
@@ -113,7 +110,11 @@ export default function TransferReceivePage() {
                       <Badge className="bg-yellow-100 text-yellow-700">Chờ xác nhận</Badge>
                     </div>
                     <p className="text-sm text-gray-600">Từ: <strong>{t.fromUser.name}</strong></p>
-                    {t.fromWarehouse && <p className="text-sm text-gray-500">Nguồn: {t.fromWarehouse.name}</p>}
+                    {t.fromWarehouse && (
+                      <p className="text-sm text-gray-500">
+                        Nguồn: {t.fromWarehouse.name}{t.fromRoom ? ` — ${t.fromRoom.name}` : ""}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-400">{format(t.transferredAt, "dd/MM/yyyy HH:mm", { locale: vi })}</p>
                     <p className="text-sm mt-1">{t.items.length} lô · {t.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} mẫu</p>
                   </div>
@@ -129,26 +130,29 @@ export default function TransferReceivePage() {
                 {expanded === t.id && (
                   <div className="mt-4 space-y-3 border-t pt-3">
                     <p className="text-sm font-medium text-gray-700">Phân bổ kệ cho từng lô:</p>
-                    {t.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-3 text-sm">
-                        <div className="flex-1">
-                          <span className="font-mono text-blue-700">{item.lot.code}</span>
-                          <span className="text-gray-500 ml-2">{item.lot.plantType.name}</span>
-                          <Badge variant="secondary" className="ml-2 text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
-                          <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
+                    {t.items.map((item) => {
+                      const destShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
+                      return (
+                        <div key={item.id} className="flex items-center gap-3 text-sm">
+                          <div className="flex-1">
+                            <span className="font-mono text-blue-700">{item.lot.code}</span>
+                            <span className="text-gray-500 ml-2">{item.lot.plantType.name}</span>
+                            <Badge variant="secondary" className="ml-2 text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
+                            <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
+                          </div>
+                          <Select onValueChange={(v) => setShelfMap((prev) => ({ ...prev, [item.lotId]: v as string }))}>
+                            <SelectTrigger className="w-44">
+                              <SelectValue placeholder="Chọn kệ" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {destShelves.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>{s.code} — {s.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <Select onValueChange={(v) => setShelfMap((prev) => ({ ...prev, [item.lotId]: v as string }))}>
-                          <SelectTrigger className="w-44">
-                            <SelectValue placeholder="Chọn kệ" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {shelves.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>{s.code} — {s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div className="flex gap-2 mt-3">
                       <Button
                         variant="outline"

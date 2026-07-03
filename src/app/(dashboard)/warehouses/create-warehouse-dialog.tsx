@@ -17,7 +17,7 @@ import { toast } from "sonner";
 const schema = z.object({
   code: z.string().min(2),
   name: z.string().min(2),
-  type: z.enum(["PHONG_TOI", "KHO_SANG", "KHO_THANH_PHAM"]),
+  type: z.enum(["SAN_XUAT", "THANH_PHAM"]),
   description: z.string().optional(),
 });
 
@@ -56,10 +56,8 @@ export default function CreateWarehouseDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button className="bg-green-600 hover:bg-green-700">
-          <Plus className="w-4 h-4 mr-2" /> Thêm kho
-        </Button>
+      <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
+        <Plus className="w-4 h-4 mr-2" /> Thêm kho
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

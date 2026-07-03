@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ROLE_NAV, ROLE_LABELS, type UserRole } from "@/types";
+import { ROLE_LABELS, type UserRole } from "@/types";
 import { useState } from "react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -24,13 +24,13 @@ const ICON_MAP: Record<string, React.ElementType> = {
 
 interface SidebarProps {
   user: { name: string; email: string; role: UserRole };
+  navItems: { href: string; label: string; icon: string }[];
   alertCount?: number;
 }
 
-export default function Sidebar({ user, alertCount = 0 }: SidebarProps) {
+export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const navItems = ROLE_NAV[user.role] ?? [];
 
   return (
     <div className={cn(

@@ -18,24 +18,25 @@ type Lot = {
   plantType: { name: string; code: string };
   shelf?: { code: string; warehouse: { name: string } } | null;
 };
-type Warehouse = { id: string; code: string; name: string; type: string };
+type Room = { id: string; code: string; name: string; type: string; warehouse: { id: string; name: string } };
 
 export default function TransferFinishedPage() {
   const [lots, setLots] = useState<Lot[]>([]);
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedItems, setSelectedItems] = useState<{ lotId: string; quantity: number }[]>([]);
-  const [toWarehouseId, setToWarehouseId] = useState("");
+  const [toRoomId, setToRoomId] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [lotRes, wRes] = await Promise.all([
-      fetch("/api/lots?warehouseType=KHO_SANG&stage=THANH_PHAM&status=ACTIVE"),
-      fetch("/api/warehouses?type=KHO_THANH_PHAM"),
+    const [lotRes, r1Res, r2Res] = await Promise.all([
+      fetch("/api/lots?roomType=PHONG_SANG&stage=THANH_PHAM&status=ACTIVE"),
+      fetch("/api/rooms?type=PHONG_THEO_DOI"),
+      fetch("/api/rooms?type=PHONG_HAN_TUI"),
     ]);
-    const [lotData, wData] = await Promise.all([lotRes.json(), wRes.json()]);
+    const [lotData, r1Data, r2Data] = await Promise.all([lotRes.json(), r1Res.json(), r2Res.json()]);
     setLots(Array.isArray(lotData) ? lotData : []);
-    setWarehouses(Array.isArray(wData) ? wData : []);
+    setRooms([...(Array.isArray(r1Data) ? r1Data : []), ...(Array.isArray(r2Data) ? r2Data : [])]);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -44,7 +45,7 @@ export default function TransferFinishedPage() {
   const removeItem = (idx: number) => setSelectedItems((prev) => prev.filter((_, i) => i !== idx));
 
   const submit = async () => {
-    if (!toWarehouseId) { toast.error("Chọn kho thành phẩm đích"); return; }
+    if (!toRoomId) { toast.error("Chọn phòng đích"); return; }
     const validItems = selectedItems.filter((i) => i.lotId && i.quantity > 0);
     if (validItems.length === 0) { toast.error("Thêm ít nhất 1 lô"); return; }
     setLoading(true);
@@ -52,11 +53,11 @@ export default function TransferFinishedPage() {
       const res = await fetch("/api/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toWarehouseId, notes, items: validItems }),
+        body: JSON.stringify({ toRoomId, notes, items: validItems }),
       });
       if (!res.ok) { toast.error((await res.json()).message); return; }
       toast.success("Tạo phiếu bàn giao thành phẩm thành công");
-      setSelectedItems([]); setToWarehouseId(""); setNotes("");
+      setSelectedItems([]); setToRoomId(""); setNotes("");
       loadData();
     } finally { setLoading(false); }
   };
@@ -73,15 +74,15 @@ export default function TransferFinishedPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Kho đích</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Phòng đích (kho thành phẩm)</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1">
-            <Label>Kho thành phẩm <span className="text-red-500">*</span></Label>
-            <Select onValueChange={(v) => setToWarehouseId(v as string)}>
-              <SelectTrigger><SelectValue placeholder="Chọn kho TP" /></SelectTrigger>
+            <Label>Phòng đích <span className="text-red-500">*</span></Label>
+            <Select onValueChange={(v) => setToRoomId(v as string)}>
+              <SelectTrigger><SelectValue placeholder="Đạt yêu cầu → Phòng hàn túi, chưa đạt → Phòng theo dõi" /></SelectTrigger>
               <SelectContent>
-                {warehouses.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                {rooms.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

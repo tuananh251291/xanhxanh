@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const stage = searchParams.get("stage");
   const warehouseType = searchParams.get("warehouseType");
+  const roomType = searchParams.get("roomType");
+  const roomId = searchParams.get("roomId");
   const warehouseId = searchParams.get("warehouseId");
   const status = searchParams.get("status") ?? "ACTIVE";
   const instructionId = searchParams.get("instructionId");
@@ -19,8 +21,12 @@ export async function GET(req: NextRequest) {
   if (status) where.status = status;
   if (instructionId) where.instructionId = instructionId;
 
-  if (warehouseId) {
+  if (roomId) {
+    where.shelf = { roomId };
+  } else if (warehouseId) {
     where.shelf = { warehouseId };
+  } else if (roomType) {
+    where.shelf = { room: { type: roomType } };
   } else if (warehouseType) {
     where.shelf = { warehouse: { type: warehouseType } };
   }
@@ -39,7 +45,12 @@ export async function GET(req: NextRequest) {
     where,
     include: {
       plantType: { select: { code: true, name: true } },
-      shelf: { include: { warehouse: { select: { name: true, type: true } } } },
+      shelf: {
+        include: {
+          warehouse: { select: { name: true, type: true } },
+          room: { select: { name: true, type: true } },
+        },
+      },
       instruction: { select: { code: true, assignedToId: true, assignedTo: { select: { id: true } } } },
       _count: { select: { contaminations: true } },
     },

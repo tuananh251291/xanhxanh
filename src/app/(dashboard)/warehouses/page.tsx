@@ -3,35 +3,47 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Plus, QrCode, Package } from "lucide-react";
-import { WAREHOUSE_TYPE_LABELS } from "@/types";
-import type { WarehouseType } from "@prisma/client";
+import { WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS, ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
+import type { WarehouseType, RoomType } from "@prisma/client";
+import { isPageAllowed } from "@/lib/permissions";
 import CreateWarehouseDialog from "./create-warehouse-dialog";
+import AddMarketRoomDialog from "./add-market-room-dialog";
+import RoomAccessDialog from "./room-access-dialog";
 import ShelfList from "./shelf-list";
 
 export default async function WarehousesPage() {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") redirect("/dashboard");
+  if (!(await isPageAllowed(session?.user?.role ?? null, "/warehouses"))) redirect("/dashboard");
 
-  const warehouses = await prisma.warehouse.findMany({
-    include: {
-      shelves: {
-        where: { isActive: true },
-        include: {
-          _count: { select: { lots: { where: { status: "ACTIVE" } } } },
+  const [warehouses, saleUsers] = await Promise.all([
+    prisma.warehouse.findMany({
+      include: {
+        rooms: {
+          where: { isActive: true },
+          orderBy: { type: "asc" },
+          include: {
+            shelves: {
+              where: { isActive: true },
+              include: { _count: { select: { lots: { where: { status: "ACTIVE" } } } } },
+              orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
+            },
+            roomAccess: { select: { userId: true } },
+          },
         },
-        orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
+        shelves: {
+          where: { isActive: true, roomId: null },
+          include: { _count: { select: { lots: { where: { status: "ACTIVE" } } } } },
+          orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
+        },
       },
-    },
-    orderBy: { type: "asc" },
-  });
-
-  const typeColors: Record<WarehouseType, string> = {
-    PHONG_TOI: "bg-gray-800 text-white",
-    KHO_SANG: "bg-yellow-100 text-yellow-800",
-    KHO_THANH_PHAM: "bg-green-100 text-green-800",
-  };
+      orderBy: { type: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { role: "SALE", isActive: true },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -50,21 +62,52 @@ export default async function WarehousesPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <CardTitle className="text-lg">{wh.name}</CardTitle>
-                  <Badge className={typeColors[wh.type as WarehouseType]}>
+                  <Badge className={WAREHOUSE_TYPE_COLORS[wh.type as WarehouseType]}>
                     {WAREHOUSE_TYPE_LABELS[wh.type as WarehouseType]}
                   </Badge>
                   <span className="text-sm text-gray-500">({wh.code})</span>
                 </div>
-                <Button variant="outline" size="sm">
-                  <Plus className="w-4 h-4 mr-1" /> Thêm kệ
-                </Button>
+                {wh.type === "THANH_PHAM" && (
+                  <AddMarketRoomDialog warehouseId={wh.id} warehouseCode={wh.code} />
+                )}
               </div>
             </CardHeader>
-            <CardContent>
-              {wh.shelves.length === 0 ? (
-                <p className="text-gray-400 text-sm text-center py-4">Chưa có giàn kệ nào</p>
-              ) : (
-                <ShelfList shelves={wh.shelves} warehouseId={wh.id} />
+            <CardContent className="space-y-5">
+              {wh.rooms.length === 0 && wh.shelves.length === 0 && (
+                <p className="text-gray-400 text-sm text-center py-4">Chưa có phòng/giàn kệ nào</p>
+              )}
+
+              {wh.rooms.map((room) => (
+                <div key={room.id} className="border-t pt-4 first:border-t-0 first:pt-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-gray-800">{room.name}</h3>
+                      <Badge className={ROOM_TYPE_COLORS[room.type as RoomType]}>
+                        {ROOM_TYPE_LABELS[room.type as RoomType]}
+                      </Badge>
+                      <span className="text-xs text-gray-400">({room.code})</span>
+                    </div>
+                    {room.type === "PHONG_THI_TRUONG" && (
+                      <RoomAccessDialog
+                        roomId={room.id}
+                        roomName={room.name}
+                        saleUsers={saleUsers}
+                        initialUserIds={room.roomAccess.map((a) => a.userId)}
+                      />
+                    )}
+                  </div>
+                  {room.shelves.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-3">Chưa có giàn kệ nào</p>
+                  ) : (
+                    <ShelfList shelves={room.shelves} warehouseId={wh.id} />
+                  )}
+                </div>
+              ))}
+
+              {wh.shelves.length > 0 && (
+                <div className="border-t pt-4 first:border-t-0 first:pt-0">
+                  <ShelfList shelves={wh.shelves} warehouseId={wh.id} />
+                </div>
               )}
             </CardContent>
           </Card>

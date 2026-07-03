@@ -3,11 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { isPageAllowed } from "@/lib/permissions";
 import MediumTypeDialog from "./medium-type-dialog";
 
 export default async function MediumTypesPage() {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") redirect("/dashboard");
+  if (!(await isPageAllowed(session?.user?.role ?? null, "/medium-types"))) redirect("/dashboard");
   const items = await prisma.mediumType.findMany({ orderBy: { code: "asc" } });
 
   return (

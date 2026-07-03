@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isAdminRole } from "@/types";
 
 export async function GET() {
   const session = await auth();
@@ -11,7 +12,7 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   const body = await req.json() as { key: string; value: string }[];
   if (!Array.isArray(body)) return NextResponse.json({ message: "Cần mảng [{key, value}]" }, { status: 400 });
   const updated = await Promise.all(

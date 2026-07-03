@@ -3,71 +3,85 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Warehouse, Moon, Sun, Package, AlertTriangle } from "lucide-react";
-import { differenceInCalendarDays } from "date-fns";
+import { Warehouse, Moon, Sun, Package, PackageCheck, Eye, Globe, AlertTriangle } from "lucide-react";
+import { ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
+import type { RoomType } from "@prisma/client";
+import { isPageAllowed } from "@/lib/permissions";
+import { isNearExpiry } from "@/lib/report-utils";
 
-function isNearExpiry(expectedMoveAt: Date | null): boolean {
-  if (!expectedMoveAt) return false;
-  return differenceInCalendarDays(expectedMoveAt, new Date()) <= 3;
-}
-
-const WAREHOUSE_TYPE_ICONS = {
+const ROOM_TYPE_ICONS: Record<RoomType, typeof Sun> = {
+  PHONG_SANG: Sun,
   PHONG_TOI: Moon,
-  KHO_SANG: Sun,
-  KHO_THANH_PHAM: Package,
+  PHONG_KHA_DUNG: PackageCheck,
+  PHONG_THEO_DOI: Eye,
+  PHONG_HAN_TUI: Package,
+  PHONG_THI_TRUONG: Globe,
 };
 
-const WAREHOUSE_TYPE_LABELS = {
-  PHONG_TOI: "Phòng tối",
-  KHO_SANG: "Kho sáng",
-  KHO_THANH_PHAM: "Kho thành phẩm",
-};
-
-const WAREHOUSE_TYPE_COLORS = {
-  PHONG_TOI: "bg-indigo-50 border-indigo-200",
-  KHO_SANG: "bg-yellow-50 border-yellow-200",
-  KHO_THANH_PHAM: "bg-green-50 border-green-200",
-};
+const ROOM_TYPES_ORDER: RoomType[] = [
+  "PHONG_SANG",
+  "PHONG_TOI",
+  "PHONG_KHA_DUNG",
+  "PHONG_THEO_DOI",
+  "PHONG_HAN_TUI",
+  "PHONG_THI_TRUONG",
+];
 
 export default async function AllInventoryPage() {
   const session = await auth();
-  const role = session?.user?.role;
-  if (!["ADMIN", "DIEU_PHOI"].includes(role ?? "")) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  if (!(await isPageAllowed(role, "/inventory/all"))) redirect("/dashboard");
+
+  const lotSelect = {
+    id: true,
+    stage: true,
+    quantity: true,
+    plantTypeId: true,
+    expectedMoveAt: true,
+    plantType: { select: { name: true, code: true } },
+  } as const;
 
   const warehouses = await prisma.warehouse.findMany({
     where: { isActive: true },
     include: {
-      shelves: {
+      rooms: {
         where: { isActive: true },
         include: {
-          lots: {
-            where: { status: "ACTIVE" },
-            select: { id: true, stage: true, quantity: true, plantTypeId: true, expectedMoveAt: true, plantType: { select: { name: true, code: true } } },
+          shelves: {
+            where: { isActive: true },
+            include: { lots: { where: { status: "ACTIVE" }, select: lotSelect } },
           },
         },
+      },
+      shelves: {
+        where: { isActive: true, roomId: null },
+        include: { lots: { where: { status: "ACTIVE" }, select: lotSelect } },
       },
     },
     orderBy: [{ type: "asc" }, { name: "asc" }],
   });
 
-  const grouped = warehouses.reduce<Record<string, typeof warehouses>>((acc, w) => {
-    if (!acc[w.type]) acc[w.type] = [];
-    acc[w.type].push(w);
+  const rooms = warehouses.flatMap((w) =>
+    w.rooms.map((r) => ({ ...r, warehouseName: w.name }))
+  );
+
+  const groupedByType = rooms.reduce<Record<string, typeof rooms>>((acc, r) => {
+    if (!acc[r.type]) acc[r.type] = [];
+    acc[r.type].push(r);
     return acc;
   }, {});
 
-  const allLots = warehouses.flatMap((w) => w.shelves.flatMap((s) => s.lots));
+  const directShelfLots = warehouses.flatMap((w) => w.shelves.flatMap((s) => s.lots));
+  const roomLots = rooms.flatMap((r) => r.shelves.flatMap((s) => s.lots));
+  const allLots = [...roomLots, ...directShelfLots];
   const totalMother = allLots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
   const totalFinished = allLots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
 
-  const byType = warehouses.reduce<Record<string, { name: string; mother: number; finished: number }>>((acc, w) => {
-    const lots = w.shelves.flatMap((s) => s.lots);
-    for (const lot of lots) {
-      const key = lot.plantTypeId;
-      if (!acc[key]) acc[key] = { name: `${lot.plantType.name} (${lot.plantType.code})`, mother: 0, finished: 0 };
-      if (lot.stage === "MAU_ME") acc[key].mother += lot.quantity;
-      else acc[key].finished += lot.quantity;
-    }
+  const byType = allLots.reduce<Record<string, { name: string; mother: number; finished: number }>>((acc, lot) => {
+    const key = lot.plantTypeId;
+    if (!acc[key]) acc[key] = { name: `${lot.plantType.name} (${lot.plantType.code})`, mother: 0, finished: 0 };
+    if (lot.stage === "MAU_ME") acc[key].mother += lot.quantity;
+    else acc[key].finished += lot.quantity;
     return acc;
   }, {});
 
@@ -82,22 +96,23 @@ export default async function AllInventoryPage() {
         </p>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards theo loại phòng */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {(["PHONG_TOI", "KHO_SANG", "KHO_THANH_PHAM"] as const).map((type) => {
-          const ws = grouped[type] ?? [];
-          const lots = ws.flatMap((w) => w.shelves.flatMap((s) => s.lots));
+        {ROOM_TYPES_ORDER.map((type) => {
+          const rs = groupedByType[type] ?? [];
+          if (rs.length === 0) return null;
+          const lots = rs.flatMap((r) => r.shelves.flatMap((s) => s.lots));
           const mother = lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
           const finished = lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
           const nearExpiryCount = lots.filter((l) => isNearExpiry(l.expectedMoveAt)).length;
-          const Icon = WAREHOUSE_TYPE_ICONS[type];
+          const Icon = ROOM_TYPE_ICONS[type];
           return (
-            <Card key={type} className={`border ${WAREHOUSE_TYPE_COLORS[type]}`}>
+            <Card key={type} className="border">
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Icon className="w-5 h-5" />
-                  <span className="font-semibold">{WAREHOUSE_TYPE_LABELS[type]}</span>
-                  <Badge variant="secondary">{ws.length} kho</Badge>
+                  <span className="font-semibold">{ROOM_TYPE_LABELS[type]}</span>
+                  <Badge className={ROOM_TYPE_COLORS[type]}>{rs.length} phòng</Badge>
                 </div>
                 <div className="space-y-1 text-sm">
                   {mother > 0 && <p>Mẫu mẹ: <strong>{mother.toLocaleString("vi-VN")}</strong></p>}
@@ -113,6 +128,17 @@ export default async function AllInventoryPage() {
             </Card>
           );
         })}
+        {directShelfLots.length > 0 && (
+          <Card className="border">
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Package className="w-5 h-5" />
+                <span className="font-semibold">Kệ gắn thẳng kho (không qua phòng)</span>
+              </div>
+              <p className="text-sm">{directShelfLots.length} lô</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* By plant type */}
@@ -146,25 +172,25 @@ export default async function AllInventoryPage() {
         </Card>
       )}
 
-      {/* Per warehouse detail */}
-      {(["PHONG_TOI", "KHO_SANG", "KHO_THANH_PHAM"] as const).map((type) => {
-        const ws = grouped[type];
-        if (!ws?.length) return null;
+      {/* Per phòng detail */}
+      {ROOM_TYPES_ORDER.map((type) => {
+        const rs = groupedByType[type];
+        if (!rs?.length) return null;
         return (
           <div key={type} className="space-y-3">
-            <h2 className="text-base font-semibold text-gray-700">{WAREHOUSE_TYPE_LABELS[type]}</h2>
+            <h2 className="text-base font-semibold text-gray-700">{ROOM_TYPE_LABELS[type]}</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {ws.map((w) => {
-                const lots = w.shelves.flatMap((s) => s.lots);
+              {rs.map((r) => {
+                const lots = r.shelves.flatMap((s) => s.lots);
                 const mother = lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
                 const finished = lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
                 return (
-                  <Card key={w.id}>
+                  <Card key={r.id}>
                     <CardContent className="py-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-semibold">{w.name}</p>
-                          <p className="text-xs text-gray-400">{w.shelves.length} kệ · {lots.length} lô</p>
+                          <p className="font-semibold">{r.warehouseName} — {r.name}</p>
+                          <p className="text-xs text-gray-400">{r.shelves.length} kệ · {lots.length} lô</p>
                         </div>
                         <div className="text-right text-sm space-y-0.5">
                           {mother > 0 && <p className="text-purple-700">MM: {mother.toLocaleString("vi-VN")}</p>}

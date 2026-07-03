@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Leaf, Loader2 } from "lucide-react";
+import Link from "next/link";
 
 const loginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
@@ -98,6 +99,12 @@ export default function LoginPage() {
               Đăng nhập
             </Button>
           </form>
+          <p className="text-center text-sm text-gray-500 mt-4">
+            Chưa có tài khoản?{" "}
+            <Link href="/register" className="text-green-600 hover:underline font-medium">
+              Đăng ký
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

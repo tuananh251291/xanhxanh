@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -57,7 +57,7 @@ export default async function DashboardPage() {
   const role = session?.user?.role as UserRole;
   const userId = session?.user?.id ?? "";
 
-  if (role === "ADMIN") {
+  if (isAdminRole(role)) {
     const stats = await getAdminStats();
     return <AdminDashboard stats={stats} />;
   }

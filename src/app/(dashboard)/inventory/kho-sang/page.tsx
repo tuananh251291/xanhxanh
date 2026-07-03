@@ -7,6 +7,7 @@ import { Sun, Layers } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { STAGE_LABELS } from "@/types";
+import { isPageAllowed } from "@/lib/permissions";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-gray-400";
@@ -18,12 +19,13 @@ function expiryClass(expectedMoveAt: Date | null): string {
 
 export default async function KhoSangPage() {
   const session = await auth();
-  const role = session?.user?.role;
-  if (!["ADMIN", "KY_THUAT", "KHO_MO", "DIEU_PHOI"].includes(role ?? "")) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  if (!(await isPageAllowed(role, "/inventory/kho-sang"))) redirect("/dashboard");
 
-  const warehouses = await prisma.warehouse.findMany({
-    where: { type: "KHO_SANG", isActive: true },
+  const rooms = await prisma.room.findMany({
+    where: { type: "PHONG_SANG", isActive: true },
     include: {
+      warehouse: { select: { name: true } },
       shelves: {
         where: { isActive: true },
         include: {
@@ -36,10 +38,10 @@ export default async function KhoSangPage() {
         orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
       },
     },
-    orderBy: { name: "asc" },
+    orderBy: [{ warehouse: { name: "asc" } }],
   });
 
-  const totalLots = warehouses.flatMap((w) => w.shelves.flatMap((s) => s.lots));
+  const totalLots = rooms.flatMap((r) => r.shelves.flatMap((s) => s.lots));
   const totalMother = totalLots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
   const totalFinished = totalLots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
 
@@ -85,17 +87,17 @@ export default async function KhoSangPage() {
         </CardContent>
       </Card>
 
-      {/* Per warehouse and shelf */}
-      {warehouses.map((warehouse) => (
-        <div key={warehouse.id} className="space-y-3">
+      {/* Per phòng sáng and shelf */}
+      {rooms.map((room) => (
+        <div key={room.id} className="space-y-3">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Layers className="w-5 h-5 text-yellow-500" /> {warehouse.name}
+            <Layers className="w-5 h-5 text-yellow-500" /> {room.warehouse.name} — {room.name}
           </h2>
-          {warehouse.shelves.length === 0 ? (
+          {room.shelves.length === 0 ? (
             <p className="text-sm text-gray-400 pl-2">Chưa có kệ</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {warehouse.shelves.map((shelf) => {
+              {room.shelves.map((shelf) => {
                 const shelfMother = shelf.lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
                 const shelfFinished = shelf.lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
                 return (
@@ -159,9 +161,9 @@ export default async function KhoSangPage() {
         </div>
       ))}
 
-      {warehouses.length === 0 && (
+      {rooms.length === 0 && (
         <Card><CardContent className="py-12 text-center text-gray-400">
-          Chưa có kho sáng nào
+          Chưa có phòng sáng nào
         </CardContent></Card>
       )}
     </div>

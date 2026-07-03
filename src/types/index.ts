@@ -3,6 +3,7 @@ import type { UserRole } from "@prisma/client";
 export type { UserRole };
 
 export const ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: "Admin cao nhất",
   ADMIN: "Admin",
   KY_THUAT: "Nhân viên kỹ thuật",
   CAY_MO: "Nhân viên nuôi cấy mô",
@@ -14,6 +15,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
+  SUPER_ADMIN: "bg-red-200 text-red-900",
   ADMIN: "bg-red-100 text-red-800",
   KY_THUAT: "bg-purple-100 text-purple-800",
   CAY_MO: "bg-green-100 text-green-800",
@@ -24,10 +26,37 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   DIEU_PHOI: "bg-orange-100 text-orange-800",
 };
 
+// ADMIN và SUPER_ADMIN đều có full quyền trang/tính năng — chỉ khác ở quyền duyệt tài khoản mới (chỉ SUPER_ADMIN).
+export function isAdminRole(role: UserRole | null | undefined): boolean {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
 export const WAREHOUSE_TYPE_LABELS = {
+  SAN_XUAT: "Kho sản xuất",
+  THANH_PHAM: "Kho thành phẩm",
+} as const;
+
+export const WAREHOUSE_TYPE_COLORS = {
+  SAN_XUAT: "bg-blue-100 text-blue-800",
+  THANH_PHAM: "bg-green-100 text-green-800",
+} as const;
+
+export const ROOM_TYPE_LABELS = {
+  PHONG_SANG: "Phòng sáng",
   PHONG_TOI: "Phòng tối",
-  KHO_SANG: "Kho sáng",
-  KHO_THANH_PHAM: "Kho thành phẩm",
+  PHONG_KHA_DUNG: "Phòng khả dụng",
+  PHONG_THEO_DOI: "Phòng theo dõi",
+  PHONG_HAN_TUI: "Phòng hàn túi",
+  PHONG_THI_TRUONG: "Phòng thị trường",
+} as const;
+
+export const ROOM_TYPE_COLORS = {
+  PHONG_SANG: "bg-yellow-100 text-yellow-800",
+  PHONG_TOI: "bg-gray-800 text-white",
+  PHONG_KHA_DUNG: "bg-green-100 text-green-800",
+  PHONG_THEO_DOI: "bg-orange-100 text-orange-800",
+  PHONG_HAN_TUI: "bg-purple-100 text-purple-800",
+  PHONG_THI_TRUONG: "bg-cyan-100 text-cyan-800",
 } as const;
 
 export const STAGE_LABELS = {
@@ -83,6 +112,15 @@ export const ALERT_STATUS_LABELS = {
 
 // Nav items per role
 export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: string }[]> = {
+  SUPER_ADMIN: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/users", label: "Người dùng", icon: "Users" },
+    { href: "/plant-types", label: "Loại cây", icon: "Leaf" },
+    { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
+    { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
+    { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
+    { href: "/settings", label: "Cài đặt", icon: "Settings" },
+  ],
   ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Người dùng", icon: "Users" },
@@ -107,6 +145,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/transfers/receive", label: "Nhận bàn giao", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Kho sáng", icon: "Sun" },
     { href: "/transfers/send", label: "Bàn giao mẫu mẹ", icon: "PackageOpen" },
@@ -115,7 +154,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/transfers/receive-finished", label: "Nhận thành phẩm", icon: "PackageCheck" },
+    { href: "/transfers/receive", label: "Nhận bàn giao", icon: "PackageCheck" },
+    { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/thanh-pham", label: "Tồn kho TP", icon: "Package" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
   ],

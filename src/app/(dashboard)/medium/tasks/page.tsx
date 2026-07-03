@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FlaskConical } from "lucide-react";
 import { startOfWeek, endOfWeek } from "date-fns";
+import { isPageAllowed } from "@/lib/permissions";
 
 export default async function MediumTasksPage() {
   const session = await auth();
-  const role = session?.user?.role;
-  if (!["MOI_TRUONG", "ADMIN"].includes(role ?? "")) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  if (!(await isPageAllowed(role, "/medium/tasks"))) redirect("/dashboard");
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
@@ -80,7 +81,7 @@ export default async function MediumTasksPage() {
                         <span className="text-gray-600 ml-2">{inst.plantType.name}</span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>NV cấy: {inst.assignedTo.name}</span>
+                        <span>NV cấy: {inst.assignedTo?.name ?? "Chưa gán"}</span>
                         <span>Mẫu mẹ: <strong>{inst.inputMotherQuantity.toLocaleString("vi-VN")}</strong></span>
                         <Badge className={inst.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
                           {inst.status === "ACTIVE" ? "Đang thực hiện" : "Nháp"}

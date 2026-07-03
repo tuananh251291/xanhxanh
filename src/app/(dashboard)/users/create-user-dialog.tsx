@@ -60,11 +60,9 @@ export default function CreateUserDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button className="bg-green-600 hover:bg-green-700">
-          <UserPlus className="w-4 h-4 mr-2" />
-          Thêm người dùng
-        </Button>
+      <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
+        <UserPlus className="w-4 h-4 mr-2" />
+        Thêm người dùng
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

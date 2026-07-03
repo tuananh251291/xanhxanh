@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
+import { isPageAllowed } from "@/lib/permissions";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-600",
@@ -20,7 +21,7 @@ const STATUS_COLORS: Record<InstructionStatus, string> = {
 
 export default async function MyInstructionsPage() {
   const session = await auth();
-  if (session?.user?.role !== "CAY_MO") redirect("/dashboard");
+  if (!session?.user || !(await isPageAllowed(session.user.role, "/my-instructions"))) redirect("/dashboard");
 
   const instructions = await prisma.plantingInstruction.findMany({
     where: { assignedToId: session.user.id },

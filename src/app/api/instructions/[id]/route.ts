@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isAdminRole } from "@/types";
+import { z } from "zod";
+
+const patchSchema = z.union([
+  z.object({ status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"]) }),
+  z.object({ assignedToId: z.string().min(1) }),
+]);
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -30,13 +37,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!["ADMIN", "KY_THUAT"].includes(session?.user?.role ?? "")) {
-    return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-  }
-  const { id } = await params;
   const body = await req.json();
-  const { status } = body;
-  if (!status) return NextResponse.json({ message: "Thiếu trường status" }, { status: 400 });
-  const updated = await prisma.plantingInstruction.update({ where: { id }, data: { status } });
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
+
+  const isAssignAction = "assignedToId" in parsed.data;
+  const role = session?.user?.role;
+  const allowed = isAssignAction
+    ? isAdminRole(role) || role === "KHO_MO"
+    : isAdminRole(role) || role === "KY_THUAT";
+  if (!allowed) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+
+  const { id } = await params;
+  const updated = await prisma.plantingInstruction.update({
+    where: { id },
+    data: parsed.data,
+    include: { assignedTo: { select: { name: true } } },
+  });
   return NextResponse.json(updated);
 }

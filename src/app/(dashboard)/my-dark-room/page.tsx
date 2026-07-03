@@ -114,7 +114,7 @@ export default function MyDarkRoomPage() {
   const loadLots = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/lots?warehouseType=PHONG_TOI&status=ACTIVE");
+      const res = await fetch("/api/lots?roomType=PHONG_TOI&status=ACTIVE");
       if (res.ok) {
         const data = await res.json();
         setLots(data);

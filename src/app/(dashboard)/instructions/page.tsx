@@ -8,9 +8,11 @@ import { ClipboardList, Eye } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS } from "@/types";
+import { INSTRUCTION_STATUS_LABELS, isAdminRole } from "@/types";
 import CreateInstructionDialog from "./create-instruction-dialog";
 import type { InstructionStatus } from "@prisma/client";
+import { isPageAllowed } from "@/lib/permissions";
+import AssignStaffCell from "./assign-staff-cell";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-600",
@@ -21,24 +23,29 @@ const STATUS_COLORS: Record<InstructionStatus, string> = {
 
 export default async function InstructionsPage() {
   const session = await auth();
-  const role = session?.user?.role;
-  if (!["ADMIN", "KY_THUAT", "CAY_MO"].includes(role ?? "")) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  if (!(await isPageAllowed(role, "/instructions"))) redirect("/dashboard");
 
   const where: Record<string, unknown> = {};
   if (role === "CAY_MO") where.assignedToId = session!.user.id;
   if (role === "KY_THUAT") where.createdById = session!.user.id;
 
-  const instructions = await prisma.plantingInstruction.findMany({
-    where,
-    include: {
-      plantType: { select: { code: true, name: true } },
-      mediumType: { select: { code: true } },
-      createdBy: { select: { name: true } },
-      assignedTo: { select: { name: true } },
-      _count: { select: { dailyRecords: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const [instructions, caymoStaff] = await Promise.all([
+    prisma.plantingInstruction.findMany({
+      where,
+      include: {
+        plantType: { select: { code: true, name: true } },
+        mediumType: { select: { code: true } },
+        createdBy: { select: { name: true } },
+        assignedTo: { select: { name: true } },
+        _count: { select: { dailyRecords: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    role === "KHO_MO"
+      ? prisma.user.findMany({ where: { role: "CAY_MO", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -47,7 +54,7 @@ export default async function InstructionsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Chỉ định cấy</h1>
           <p className="text-gray-500 text-sm mt-1">{instructions.length} chỉ định</p>
         </div>
-        {["ADMIN", "KY_THUAT"].includes(role ?? "") && <CreateInstructionDialog />}
+        {(isAdminRole(role) || role === "KY_THUAT") && <CreateInstructionDialog />}
       </div>
 
       {instructions.length === 0 ? (
@@ -81,7 +88,15 @@ export default async function InstructionsPage() {
                         <span className="font-medium">{inst.plantType.name}</span>
                         <span className="text-gray-400 text-xs ml-1">({inst.plantType.code})</span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{inst.assignedTo.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {inst.assignedTo ? (
+                          inst.assignedTo.name
+                        ) : role === "KHO_MO" ? (
+                          <AssignStaffCell instructionId={inst.id} staffList={caymoStaff} />
+                        ) : (
+                          <Badge variant="secondary">Chưa gán</Badge>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{inst.inputMotherQuantity.toLocaleString("vi-VN")} mẫu</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {inst.expectedMotherOutput ? `${inst.expectedMotherOutput.toLocaleString("vi-VN")} MM` : "—"}

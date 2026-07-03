@@ -4,11 +4,12 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Leaf } from "lucide-react";
+import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeDialog from "./plant-type-dialog";
 
 export default async function PlantTypesPage() {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") redirect("/dashboard");
+  if (!(await isPageAllowed(session?.user?.role ?? null, "/plant-types"))) redirect("/dashboard");
 
   const plants = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
 

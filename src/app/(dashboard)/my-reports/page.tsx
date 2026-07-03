@@ -7,10 +7,11 @@ import { BarChart3, Leaf, Package, AlertTriangle, ClipboardList } from "lucide-r
 import { startOfMonth } from "date-fns";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { isPageAllowed } from "@/lib/permissions";
 
 export default async function MyReportsPage() {
   const session = await auth();
-  if (session?.user?.role !== "CAY_MO") redirect("/dashboard");
+  if (!session?.user || !(await isPageAllowed(session.user.role, "/my-reports"))) redirect("/dashboard");
   const userId = session.user.id;
   const monthStart = startOfMonth(new Date());
 

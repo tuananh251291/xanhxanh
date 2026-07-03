@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isAdminRole } from "@/types";
 import { z } from "zod";
 
 const createSchema = z.object({
   code: z.string().min(2),
   name: z.string().min(2),
-  type: z.enum(["PHONG_TOI", "KHO_SANG", "KHO_THANH_PHAM"]),
+  type: z.enum(["SAN_XUAT", "THANH_PHAM"]),
   description: z.string().optional(),
 });
 
@@ -18,8 +19,15 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type");
 
   const warehouses = await prisma.warehouse.findMany({
-    where: { isActive: true, ...(type ? { type: type as "PHONG_TOI" | "KHO_SANG" | "KHO_THANH_PHAM" } : {}) },
-    include: { shelves: { where: { isActive: true } } },
+    where: { isActive: true, ...(type ? { type: type as "SAN_XUAT" | "THANH_PHAM" } : {}) },
+    include: {
+      rooms: {
+        where: { isActive: true },
+        orderBy: { type: "asc" },
+        include: { shelves: { where: { isActive: true } } },
+      },
+      shelves: { where: { isActive: true, roomId: null } },
+    },
     orderBy: { type: "asc" },
   });
   return NextResponse.json(warehouses);
@@ -27,7 +35,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "ADMIN") {
+  if (!isAdminRole(session?.user?.role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 

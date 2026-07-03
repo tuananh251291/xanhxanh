@@ -11,6 +11,7 @@ import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { PrintButton } from "@/components/shared/print-button";
+import { isPageAllowed } from "@/lib/permissions";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-600",
@@ -21,8 +22,8 @@ const STATUS_COLORS: Record<InstructionStatus, string> = {
 
 export default async function InstructionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  const role = session?.user?.role;
-  if (!["ADMIN", "KY_THUAT", "CAY_MO"].includes(role ?? "")) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  if (!(await isPageAllowed(role, "/instructions"))) redirect("/dashboard");
 
   const { id } = await params;
 
@@ -90,7 +91,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 text-gray-500 mb-1"><User className="w-4 h-4" /><span className="text-xs">Nhân viên cấy</span></div>
-            <p className="font-semibold">{inst.assignedTo.name}</p>
+            <p className="font-semibold">{inst.assignedTo?.name ?? "Chưa gán"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -213,7 +214,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         <div>
           <p className="font-medium">Nhân viên cấy mô</p>
           <p className="text-xs text-gray-500 mb-16">(Ký, ghi rõ họ tên)</p>
-          <p>{inst.assignedTo.name}</p>
+          <p>{inst.assignedTo?.name ?? "……………………"}</p>
         </div>
       </div>
     </div>

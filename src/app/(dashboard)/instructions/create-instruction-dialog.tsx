@@ -16,9 +16,9 @@ import { toast } from "sonner";
 
 const schema = z.object({
   plantTypeId: z.string().min(1, "Chọn loại cây"),
-  mediumTypeId: z.string().optional(),
-  assignedToId: z.string().min(1, "Chọn nhân viên cấy"),
-  inputMotherQuantity: z.coerce.number().int().positive("Số lượng > 0"),
+  mediumTypeId: z.string().min(1, "Chọn môi trường"),
+  lotId: z.string().min(1, "Chọn lô mẫu mẹ nguồn"),
+  quantityUsed: z.coerce.number().int().positive("Số lượng > 0"),
   motherSampleRatio: z.coerce.number().positive().optional(),
   rootingRatio: z.coerce.number().positive().optional(),
   weekStart: z.string().optional(),
@@ -29,24 +29,32 @@ type FormData = z.infer<typeof schema>;
 
 type PlantType = { id: string; code: string; name: string };
 type MediumType = { id: string; code: string; name: string };
-type User = { id: string; name: string };
+type MotherLot = {
+  id: string;
+  code: string;
+  quantity: number;
+  stageCode: string;
+  shelf?: { id: string; code: string } | null;
+};
 
 export default function CreateInstructionDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
   const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
-  const [staffList, setStaffList] = useState<User[]>([]);
+  const [motherLots, setMotherLots] = useState<MotherLot[]>([]);
   const router = useRouter();
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as Resolver<FormData>,
   });
 
-  const inputQty = watch("inputMotherQuantity");
+  const lotId = watch("lotId");
+  const quantityUsed = watch("quantityUsed");
   const motherRatio = watch("motherSampleRatio");
   const rootingRatio = watch("rootingRatio");
-  const expectedMother = motherRatio && inputQty ? Math.floor(inputQty * motherRatio) : null;
+  const selectedLot = motherLots.find((l) => l.id === lotId);
+  const expectedMother = motherRatio && quantityUsed ? Math.floor(quantityUsed * motherRatio) : null;
   const expectedFinished = rootingRatio && expectedMother ? Math.floor(expectedMother * rootingRatio) : null;
 
   useEffect(() => {
@@ -54,34 +62,40 @@ export default function CreateInstructionDialog() {
     Promise.all([
       fetch("/api/plant-types").then((r) => r.json()),
       fetch("/api/medium-types").then((r) => r.json()),
-      fetch("/api/users").then((r) => r.json()),
-    ]).then(([plants, mediums, users]) => {
+      fetch("/api/lots?roomType=PHONG_SANG&stage=MAU_ME&status=ACTIVE").then((r) => r.json()),
+    ]).then(([plants, mediums, lots]) => {
       setPlantTypes(plants);
       setMediumTypes(mediums);
-      setStaffList(users.filter((u: User & { role: string }) => u.role === "CAY_MO"));
+      setMotherLots(lots);
     });
   }, [open]);
 
   const onSubmit = async (data: FormData): Promise<void> => {
+    if (selectedLot && data.quantityUsed > selectedLot.quantity) {
+      toast.error(`Số lượng dùng không được vượt quá số lượng lô (${selectedLot.quantity})`);
+      return;
+    }
     setLoading(true);
     try {
+      const { lotId, quantityUsed, ...rest } = data;
       const res = await fetch("/api/instructions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...rest,
+          shelfItems: selectedLot?.shelf ? [{ shelfId: selectedLot.shelf.id, quantity: quantityUsed }] : [],
+        }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Tạo chỉ định cấy thành công");
+      toast.success("Tạo chỉ định cấy thành công — chờ Kho mô phân công nhân viên cấy");
       setOpen(false); reset(); router.refresh();
     } finally { setLoading(false); }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button className="bg-green-600 hover:bg-green-700">
-          <Plus className="w-4 h-4 mr-2" /> Tạo chỉ định cấy
-        </Button>
+      <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
+        <Plus className="w-4 h-4 mr-2" /> Tạo chỉ định cấy
       </DialogTrigger>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Tạo chỉ định cấy mới</DialogTitle></DialogHeader>
@@ -101,7 +115,7 @@ export default function CreateInstructionDialog() {
               {errors.plantTypeId && <p className="text-xs text-red-500">{errors.plantTypeId.message}</p>}
             </div>
             <div className="space-y-1">
-              <Label>Môi trường</Label>
+              <Label>Môi trường <span className="text-red-500">*</span></Label>
               <Select onValueChange={(v) => setValue("mediumTypeId", v as string)}>
                 <SelectTrigger><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                 <SelectContent>
@@ -110,27 +124,32 @@ export default function CreateInstructionDialog() {
                   ))}
                 </SelectContent>
               </Select>
+              {errors.mediumTypeId && <p className="text-xs text-red-500">{errors.mediumTypeId.message}</p>}
             </div>
           </div>
 
           <div className="space-y-1">
-            <Label>Nhân viên cấy <span className="text-red-500">*</span></Label>
-            <Select onValueChange={(v) => setValue("assignedToId", v as string)}>
-              <SelectTrigger><SelectValue placeholder="Chọn nhân viên" /></SelectTrigger>
+            <Label>Lô mẫu mẹ nguồn (kệ) <span className="text-red-500">*</span></Label>
+            <Select onValueChange={(v) => setValue("lotId", v as string)}>
+              <SelectTrigger><SelectValue placeholder="Chọn lô mẫu mẹ tại kệ" /></SelectTrigger>
               <SelectContent>
-                {staffList.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                {motherLots.filter((l) => l.shelf).map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.code} · Kệ {l.shelf?.code ?? "—"} · còn {l.quantity.toLocaleString("vi-VN")}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {errors.assignedToId && <p className="text-xs text-red-500">{errors.assignedToId.message}</p>}
+            {errors.lotId && <p className="text-xs text-red-500">{errors.lotId.message}</p>}
+            <p className="text-xs text-gray-400">Sau này sẽ quét QR code kệ để tự chọn đúng lô này</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>Số mẫu mẹ đầu vào <span className="text-red-500">*</span></Label>
-              <Input {...register("inputMotherQuantity")} type="number" min={1} placeholder="100" />
-              {errors.inputMotherQuantity && <p className="text-xs text-red-500">{errors.inputMotherQuantity.message}</p>}
+              <Label>Số mẫu mẹ dùng <span className="text-red-500">*</span></Label>
+              <Input {...register("quantityUsed")} type="number" min={1} max={selectedLot?.quantity} placeholder="100" />
+              {selectedLot && <p className="text-xs text-gray-400">Tối đa {selectedLot.quantity.toLocaleString("vi-VN")}</p>}
+              {errors.quantityUsed && <p className="text-xs text-red-500">{errors.quantityUsed.message}</p>}
             </div>
             <div className="space-y-1">
               <Label>Tuần thực hiện</Label>
