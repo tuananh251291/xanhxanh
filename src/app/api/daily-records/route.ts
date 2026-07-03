@@ -50,24 +50,45 @@ export async function POST(req: NextRequest) {
   const lotsCreated = [];
 
   for (const item of items) {
-    const code = await generateLotCode(item.stage);
-    const expectedMoveAt =
-      item.stage === "MAU_ME"
-        ? addWeeks(new Date(), instruction.plantType.lightRoomWeeksMin)
-        : addDays(new Date(), instruction.plantType.finishedDaysMin);
-    const lot = await prisma.lot.create({
-      data: {
-        code,
-        plantTypeId: instruction.plantTypeId,
-        stage: item.stage,
-        stageCode: item.stageCode,
-        quantity: item.quantityCreated,
-        initialQuantity: item.quantityCreated,
-        instructionId,
-        enteredAt: new Date(),
-        expectedMoveAt,
-      },
+    let lot;
+
+    // Chỉ định cấy phân bổ theo tuần (1 chỉ định = 1 tuần cấy của NV) — sản lượng trả ra trong cùng
+    // tuần này (cùng chỉ định, cùng giai đoạn + quy cách) gộp chung 1 lô thay vì mỗi ngày 1 lô mới,
+    // miễn là lô đó chưa được chuyển đi (còn ACTIVE, chưa xếp kệ) — áp dụng cho cả mẫu mẹ (M3/M5) lẫn
+    // thành phẩm (T01/T05).
+    const existingLot = await prisma.lot.findFirst({
+      where: { instructionId, stage: item.stage, stageCode: item.stageCode, status: "ACTIVE", shelfId: null },
+      orderBy: { createdAt: "desc" },
     });
+
+    if (existingLot) {
+      lot = await prisma.lot.update({
+        where: { id: existingLot.id },
+        data: {
+          quantity: { increment: item.quantityCreated },
+          initialQuantity: { increment: item.quantityCreated },
+        },
+      });
+    } else {
+      const code = await generateLotCode(item.stage);
+      const expectedMoveAt =
+        item.stage === "MAU_ME"
+          ? addWeeks(new Date(), instruction.plantType.lightRoomWeeksMin)
+          : addDays(new Date(), instruction.plantType.finishedDaysMin);
+      lot = await prisma.lot.create({
+        data: {
+          code,
+          plantTypeId: instruction.plantTypeId,
+          stage: item.stage,
+          stageCode: item.stageCode,
+          quantity: item.quantityCreated,
+          initialQuantity: item.quantityCreated,
+          instructionId,
+          enteredAt: new Date(),
+          expectedMoveAt,
+        },
+      });
+    }
     recordItems.push({ lotId: lot.id, stage: item.stage, quantityCreated: item.quantityCreated });
     lotsCreated.push(lot);
   }
