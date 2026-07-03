@@ -126,7 +126,9 @@ export default function MotherReadyBoard() {
                   {filtered.map((l) => (
                     <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{l.code}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{l.plantType.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        <span className="font-mono text-xs text-gray-500 mr-1">{l.plantType.code}</span>{l.plantType.name}
+                      </td>
                       <td className="px-4 py-3">
                         <Badge variant="outline">{l.stageCode}</Badge>
                       </td>
