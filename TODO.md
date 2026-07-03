@@ -66,7 +66,14 @@
 
 ### 2.9 Môi trường (MOI_TRUONG)
 - [x] Trang `/medium/tasks` — tổng hợp mã môi trường theo chỉ định cấy tuần này
-- [ ] Phiếu bàn giao nhận môi trường — _chưa làm, chưa có model riêng cho việc bàn giao môi trường_
+- [x] Phiếu bàn giao nhận môi trường (2026-07-03): model `MediumHandover`/`MediumHandoverItem` riêng
+      (không dùng chung `Transfer` vì môi trường không gắn Lot/kệ/kho). Trên `/medium/tasks`, MOI_TRUONG
+      tick chọn từng dòng nhiệm vụ (chỉ chọn được dòng đã có NV cấy phụ trách) rồi bấm "Tạo phiếu bàn giao"
+      — tự động gộp theo từng NV nếu chọn nhiều NV cùng lúc, tạo 1 phiếu/NV. API
+      `POST /api/medium-handovers` (chỉ MOI_TRUONG), `PATCH /api/medium-handovers/[id]` (confirm/reject,
+      chỉ đúng NV cấy được chỉ định nhận). Trang `/medium/receive` (CAY_MO) xác nhận nhận, gửi kèm
+      `Alert` loại `MEDIUM_HANDOVER_READY`. Kiểm thử qua API thật (login MOI_TRUONG → tạo phiếu → login
+      CAY_MO → thấy phiếu + alert → xác nhận → phiếu chuyển CONFIRMED).
 
 ### 2.10 Chưa có trong nav nhưng thiếu trang (phát hiện khi rà soát ROLE_NAV)
 - [x] `/contamination` (KHO_MO) — trang lọc nhiễm riêng, xác nhận báo cáo nhiễm

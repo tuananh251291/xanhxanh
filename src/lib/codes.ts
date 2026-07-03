@@ -35,6 +35,17 @@ export async function generateLotCode(stage: "MAU_ME" | "THANH_PHAM"): Promise<s
   return `${fullPrefix}-${String(seq).padStart(4, "0")}`;
 }
 
+export async function generateMediumHandoverCode(): Promise<string> {
+  const today = new Date();
+  const prefix = `BGM-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await prisma.mediumHandover.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
 export async function generateOrderCode(): Promise<string> {
   const today = new Date();
   const prefix = `DH-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;

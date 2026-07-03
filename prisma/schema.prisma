@@ -66,6 +66,11 @@ enum TransferStatus {
   REJECTED
 }
 
+enum MediumPurpose {
+  MOTHER // pha để nhân thêm mẫu mẹ
+  FINISHED // pha để ra rễ thành cây thành phẩm
+}
+
 enum OrderStatus {
   DRAFT
   HELD
@@ -82,6 +87,7 @@ enum AlertType {
   STOCK_LOW
   LOT_READY_TRANSFER
   ORDER_PENDING_PACK
+  MEDIUM_HANDOVER_READY
 }
 
 enum AlertStatus {
@@ -122,6 +128,8 @@ model User {
   alerts               Alert[]
   roomAccess           RoomAccess[]
   assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
+  mediumHandoversFrom  MediumHandover[]       @relation("MediumHandoverFrom")
+  mediumHandoversTo    MediumHandover[]       @relation("MediumHandoverTo")
 
   @@map("users")
 }
@@ -194,6 +202,7 @@ model MediumType {
   specsAsFinishedMedium             PlantTypeSpec[]           @relation("SpecFinishedMedium")
   instructionItemsAsMotherMedium    PlantingInstructionItem[] @relation("ItemMotherMedium")
   instructionItemsAsFinishedMedium  PlantingInstructionItem[] @relation("ItemFinishedMedium")
+  handoverItems                     MediumHandoverItem[]
 
   @@map("medium_types")
 }
@@ -393,9 +402,10 @@ model PlantingInstruction {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  items        PlantingInstructionItem[]
-  lots         Lot[]
-  dailyRecords DailyRecord[]
+  items               PlantingInstructionItem[]
+  lots                Lot[]
+  dailyRecords        DailyRecord[]
+  mediumHandoverItems MediumHandoverItem[]
 
   @@map("planting_instructions")
 }
@@ -425,6 +435,45 @@ model PlantingInstructionItem {
   finishedMedium         MediumType? @relation("ItemFinishedMedium", fields: [finishedMediumTypeId], references: [id])
 
   @@map("planting_instruction_items")
+}
+
+// ============================================================
+// MEDIUM HANDOVERS — phiếu bàn giao môi trường đã pha (MOI_TRUONG -> CAY_MO)
+// ============================================================
+
+// Không dùng chung model Transfer vì môi trường không gắn với Lot/kệ/kho — chỉ là số lượng đã pha
+// theo từng mã môi trường, bàn giao trực tiếp cho NV cấy phụ trách chỉ định cần dùng.
+model MediumHandover {
+  id         String         @id @default(cuid())
+  code       String         @unique
+  fromUserId String
+  fromUser   User           @relation("MediumHandoverFrom", fields: [fromUserId], references: [id])
+  toUserId   String
+  toUser     User           @relation("MediumHandoverTo", fields: [toUserId], references: [id])
+  status     TransferStatus @default(PENDING)
+  notes      String?
+  confirmedAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  items MediumHandoverItem[]
+
+  @@map("medium_handovers")
+}
+
+model MediumHandoverItem {
+  id            String              @id @default(cuid())
+  handoverId    String
+  handover      MediumHandover      @relation(fields: [handoverId], references: [id])
+  mediumTypeId  String
+  mediumType    MediumType          @relation(fields: [mediumTypeId], references: [id])
+  // Chỉ định liên quan (nếu có) — để NV cấy đối chiếu đúng phần môi trường của chỉ định nào.
+  instructionId String?
+  instruction   PlantingInstruction? @relation(fields: [instructionId], references: [id])
+  purpose       MediumPurpose
+  quantity      Int
+
+  @@map("medium_handover_items")
 }
 
 // ============================================================

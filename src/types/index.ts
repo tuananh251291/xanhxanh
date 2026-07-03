@@ -136,6 +136,12 @@ export const ALERT_TYPE_LABELS = {
   STOCK_LOW: "Tồn kho thấp",
   LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
+  MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
+} as const;
+
+export const MEDIUM_PURPOSE_LABELS = {
+  MOTHER: "Nhân mẫu mẹ",
+  FINISHED: "Ra rễ (TP)",
 } as const;
 
 export const ALERT_STATUS_LABELS = {
@@ -175,6 +181,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
+    { href: "/medium/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
   ],
   KHO_MO: [
