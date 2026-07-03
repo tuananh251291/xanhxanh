@@ -6,7 +6,7 @@ import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, Users, Leaf, Warehouse, FlaskConical, BarChart3,
   Settings, ClipboardList, Sun, Moon, PenLine, PackageCheck,
-  PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag,
+  PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
   LogOut, Bell, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,7 @@ import { useState } from "react";
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Users, Leaf, Warehouse, FlaskConical, BarChart3,
   Settings, ClipboardList, Sun, Moon, PenLine, PackageCheck,
-  PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag,
+  PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
 };
 
 interface SidebarProps {

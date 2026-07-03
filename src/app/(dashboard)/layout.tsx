@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ROLE_NAV, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
+import { ensureMotherReadyAlerts } from "@/lib/mother-ready";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -17,6 +18,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const role = session.user.role as UserRole;
 
+  if (role === "KY_THUAT") await ensureMotherReadyAlerts();
+
   const alertCount = await prisma.alert.count({
     where: {
       status: "UNREAD",
@@ -24,15 +27,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
     },
   });
 
+  // Fail-open giống isPageAllowed() (src/lib/permissions.ts) — trang mới thêm vào ROLE_NAV hiện ngay trong
+  // menu cho tới khi Admin chủ động tắt qua ma trận phân quyền, thay vì phải bật thủ công mới hiện.
   const roleNavItems = ROLE_NAV[role] ?? [];
   let navItems = roleNavItems;
   if (!isAdminRole(role)) {
-    const enabled = await prisma.rolePermission.findMany({
-      where: { role, enabled: true },
+    const disabled = await prisma.rolePermission.findMany({
+      where: { role, enabled: false },
       select: { href: true },
     });
-    const enabledHrefs = new Set(enabled.map((p) => p.href));
-    navItems = roleNavItems.filter((item) => item.href === "/dashboard" || enabledHrefs.has(item.href));
+    const disabledHrefs = new Set(disabled.map((p) => p.href));
+    navItems = roleNavItems.filter((item) => item.href === "/dashboard" || !disabledHrefs.has(item.href));
   }
 
   return (

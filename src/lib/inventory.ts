@@ -19,7 +19,7 @@ export async function getSystemConfig(key: string, defaultValue: string): Promis
 }
 
 export async function createAlert(data: {
-  type: "CONTAMINATION_HIGH" | "OUTPUT_DEVIATION" | "ORDER_EXPIRING" | "ORDER_EXPIRED" | "STOCK_LOW" | "LOT_READY_TRANSFER" | "ORDER_PENDING_PACK" | "MEDIUM_HANDOVER_READY";
+  type: "CONTAMINATION_HIGH" | "OUTPUT_DEVIATION" | "ORDER_EXPIRING" | "ORDER_EXPIRED" | "STOCK_LOW" | "LOT_READY_TRANSFER" | "ORDER_PENDING_PACK" | "MEDIUM_HANDOVER_READY" | "MOTHER_LOT_READY";
   title: string;
   message: string;
   userId?: string;

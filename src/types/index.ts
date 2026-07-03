@@ -137,6 +137,7 @@ export const ALERT_TYPE_LABELS = {
   LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
+  MOTHER_LOT_READY: "Mẫu mẹ đến tuổi cấy chuyển",
 } as const;
 
 export const MEDIUM_PURPOSE_LABELS = {
@@ -174,6 +175,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/inventory/kho-sang", label: "Kho sáng", icon: "Sun" },
+    { href: "/mother-ready", label: "Mẫu mẹ đến tuổi cấy", icon: "Sprout" },
     { href: "/reports/production", label: "Báo cáo SX", icon: "BarChart3" },
   ],
   CAY_MO: [

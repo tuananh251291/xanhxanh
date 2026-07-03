@@ -43,6 +43,18 @@
   - KY_THUAT nhập kế hoạch phân bổ thành phẩm dự kiến theo quy cách đóng gói T01/T05 (đối chiếu sau này, không bắt buộc khớp tuyệt đối)
 - [x] In phiếu chỉ định cấy (print CSS) — trang chi tiết có thêm bảng "Quy cách nguồn" liệt kê từng dòng M3/M5 đã dùng kèm 2 môi trường
 - [x] API `POST /api/instructions` — tạo chỉ định nhiều dòng quy cách (mỗi dòng 2 môi trường riêng), tự sinh code
+- [x] Trang `/mother-ready` — "Mẫu mẹ đến tuổi cấy chuyển" (2026-07-04): danh sách lô mẫu mẹ trong Kho sáng
+      đã tới hoặc quá `Lot.expectedMoveAt` (tính từ `transferWaitWeeks` của chi tiết loại cây), lọc theo mốc
+      thời gian (đã đến hạn / trong 3 ngày / trong 7 ngày / tất cả). Cảnh báo tự động: `ensureMotherReadyAlerts()`
+      (`src/lib/mother-ready.ts`) tạo `Alert` loại `MOTHER_LOT_READY` cho KY_THUAT khi phát hiện lô mới quá hạn,
+      dedupe theo `(type, relatedId)` — không có cron trong app, hàm này chạy lồng vào
+      `(dashboard)/layout.tsx` mỗi lần KY_THUAT tải trang bất kỳ (checkpoint gần-thời-gian-thực thay vì lịch cố định).
+      **Tiện thể sửa 1 lỗi có sẵn phát hiện khi thêm mục menu này**: `(dashboard)/layout.tsx` lọc menu cho vai trò
+      không phải Admin theo kiểu "phải có dòng `RolePermission.enabled=true` mới hiện" (fail-closed) — trái ngược
+      `isPageAllowed()` (fail-open, mặc định cho phép nếu chưa cấu hình). Hậu quả: mọi trang thêm vào `ROLE_NAV`
+      sau đợt seed ma trận phân quyền ban đầu đều không tự hiện trong menu (kể cả `/medium/receive` thêm hôm
+      trước) cho tới khi Admin bật tay từng ô. Sửa lại theo đúng fail-open (chỉ ẩn khi có dòng `enabled=false`
+      rõ ràng) — khớp với cách `/users` matrix hiển thị mặc định (`state.get(key) ?? true`).
 
 ### 2.1b Quy cách nhân giống theo loại cây (Admin) — ĐÃ BỎ (2026-07-03)
 - [x] ~~Model `PlantTypeSpec` — tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm + 2 môi trường riêng mặc định theo loại cây~~

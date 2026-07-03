@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
           room: { select: { name: true, type: true } },
         },
       },
-      instruction: { select: { code: true, assignedToId: true, assignedTo: { select: { id: true } } } },
+      instruction: { select: { code: true, assignedToId: true, assignedTo: { select: { id: true, name: true } } } },
       _count: { select: { contaminations: true } },
     },
     orderBy: { enteredAt: "desc" },
