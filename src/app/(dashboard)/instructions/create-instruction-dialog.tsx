@@ -195,7 +195,7 @@ export default function CreateInstructionDialog() {
             <Label className="flex items-center gap-1">
               <QrCode className="w-3.5 h-3.5 text-gray-400" /> Giàn kệ nguồn <span className="text-red-500">*</span>
             </Label>
-            <Select onValueChange={onShelfChange} value={shelfId}>
+            <Select onValueChange={(v) => onShelfChange(v as string)} value={shelfId}>
               <SelectTrigger><SelectValue placeholder="Chọn kệ (mỗi kệ 1 loại cây)" /></SelectTrigger>
               <SelectContent>
                 {shelfGroups.map((g) => (
