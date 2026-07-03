@@ -42,7 +42,8 @@ export const WAREHOUSE_TYPE_COLORS = {
 } as const;
 
 export const ROOM_TYPE_LABELS = {
-  PHONG_SANG: "Phòng sáng",
+  PHONG_MAU_ME: "Phòng mẫu mẹ",
+  PHONG_RA_RE: "Phòng ra rễ",
   PHONG_TOI: "Phòng tối",
   PHONG_KHA_DUNG: "Phòng khả dụng",
   PHONG_THEO_DOI: "Phòng theo dõi",
@@ -51,7 +52,8 @@ export const ROOM_TYPE_LABELS = {
 } as const;
 
 export const ROOM_TYPE_COLORS = {
-  PHONG_SANG: "bg-yellow-100 text-yellow-800",
+  PHONG_MAU_ME: "bg-yellow-100 text-yellow-800",
+  PHONG_RA_RE: "bg-lime-100 text-lime-800",
   PHONG_TOI: "bg-gray-800 text-white",
   PHONG_KHA_DUNG: "bg-green-100 text-green-800",
   PHONG_THEO_DOI: "bg-orange-100 text-orange-800",

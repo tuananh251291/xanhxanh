@@ -39,7 +39,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
     const res = await fetch(
       isKhoThanhPham
         ? `/api/lots?roomId=${roomId}&status=ACTIVE`
-        : "/api/lots?roomType=PHONG_SANG&stage=MAU_ME&status=ACTIVE"
+        : "/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE"
     );
     const data = await res.json();
     setLots(Array.isArray(data) ? data : []);

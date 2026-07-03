@@ -148,12 +148,14 @@ async function main() {
   }
   console.log("✅ Warehouses created");
 
-  // Rooms — mỗi kho sản xuất có đúng 1 phòng sáng + 1 phòng tối;
+  // Rooms — mỗi kho sản xuất có "Kho sáng" (chia 2: Phòng mẫu mẹ + Phòng ra rễ) + 1 phòng tối;
   // kho thành phẩm có 3 phòng cố định + phòng thị trường (mở thêm được)
   const roomDefs = [
-    { code: "SXA-PS", name: "Phòng sáng A", type: "PHONG_SANG" as const, warehouseCode: "SX-A" },
+    { code: "SXA-PS", name: "Phòng mẫu mẹ A", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-A" },
+    { code: "SXA-PRR", name: "Phòng ra rễ A", type: "PHONG_RA_RE" as const, warehouseCode: "SX-A" },
     { code: "SXA-PT", name: "Phòng tối A", type: "PHONG_TOI" as const, warehouseCode: "SX-A" },
-    { code: "SXB-PS", name: "Phòng sáng B", type: "PHONG_SANG" as const, warehouseCode: "SX-B" },
+    { code: "SXB-PS", name: "Phòng mẫu mẹ B", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-B" },
+    { code: "SXB-PRR", name: "Phòng ra rễ B", type: "PHONG_RA_RE" as const, warehouseCode: "SX-B" },
     { code: "SXB-PT", name: "Phòng tối B", type: "PHONG_TOI" as const, warehouseCode: "SX-B" },
     { code: "KTPA-KD", name: "Phòng khả dụng", type: "PHONG_KHA_DUNG" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-TD", name: "Phòng theo dõi", type: "PHONG_THEO_DOI" as const, warehouseCode: "KTP-A" },
@@ -166,7 +168,7 @@ async function main() {
   for (const r of roomDefs) {
     const room = await prisma.room.upsert({
       where: { code: r.code },
-      update: {},
+      update: { name: r.name, type: r.type },
       create: {
         code: r.code,
         name: r.name,
@@ -180,6 +182,7 @@ async function main() {
 
   // Shelves for phòng sáng (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (Admin chỉ định), tối đa
   // 360 mẫu/túi. Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
+  const psCaymoStaff = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
   let psShelfSeq = 0;
   const psShelfPlantType: Record<string, string> = {};
   for (const roomCode of ["SXA-PS", "SXB-PS"]) {
@@ -189,11 +192,12 @@ async function main() {
       for (let col = 1; col <= 5; col++) {
         const code = `${roomCode}-R${row}C${col}`;
         const plantType = createdPlantTypes[psShelfSeq % createdPlantTypes.length];
+        const staff = psCaymoStaff.length > 0 ? psCaymoStaff[psShelfSeq % psCaymoStaff.length] : null;
         psShelfSeq += 1;
         psShelfPlantType[code] = plantType.id;
         await prisma.shelf.upsert({
           where: { code },
-          update: { plantTypeId: plantType.id, capacity: 360 },
+          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 360 },
           create: {
             code,
             name: `Kệ R${row}C${col}`,
@@ -203,6 +207,30 @@ async function main() {
             colNumber: col,
             capacity: 360,
             plantTypeId: plantType.id,
+            assignedStaffId: staff?.id,
+          },
+        });
+      }
+    }
+  }
+
+  // Shelves for phòng ra rễ (3x5 lưới mỗi phòng) — không ràng buộc mã cây/nhân viên/capacity.
+  for (const roomCode of ["SXA-PRR", "SXB-PRR"]) {
+    const roomId = createdRooms[roomCode];
+    const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
+    for (let row = 1; row <= 3; row++) {
+      for (let col = 1; col <= 5; col++) {
+        const code = `${roomCode}-R${row}C${col}`;
+        await prisma.shelf.upsert({
+          where: { code },
+          update: {},
+          create: {
+            code,
+            name: `Kệ R${row}C${col}`,
+            warehouseId,
+            roomId,
+            rowNumber: row,
+            colNumber: col,
           },
         });
       }
@@ -274,7 +302,7 @@ async function main() {
   ];
 
   const motherShelves = await prisma.shelf.findMany({
-    where: { room: { type: "PHONG_SANG" } },
+    where: { room: { type: "PHONG_MAU_ME" } },
   });
   const finishedShelves = await prisma.shelf.findMany({
     where: { room: { type: "PHONG_KHA_DUNG" } },

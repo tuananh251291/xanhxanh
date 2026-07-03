@@ -28,8 +28,9 @@ enum WarehouseType {
 }
 
 enum RoomType {
-  // Kho sản xuất
-  PHONG_SANG
+  // Kho sản xuất — "Kho sáng" gồm 2 phòng: mẫu mẹ (kệ gắn mã cây + nhân viên) và ra rễ (không ràng buộc)
+  PHONG_MAU_ME
+  PHONG_RA_RE
   PHONG_TOI
   // Kho thành phẩm
   PHONG_KHA_DUNG
@@ -120,6 +121,7 @@ model User {
   orders               Order[]
   alerts               Alert[]
   roomAccess           RoomAccess[]
+  assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
 
   @@map("users")
 }
@@ -297,12 +299,14 @@ model Shelf {
   room        Room?     @relation(fields: [roomId], references: [id])
   rowNumber   Int?
   colNumber   Int?
-  // Tối đa bao nhiêu (mẫu mẹ/túi) được xếp trên kệ này — kệ Phòng sáng mặc định 360.
+  // Tối đa bao nhiêu (mẫu mẹ/túi) được xếp trên kệ này — kệ Phòng mẫu mẹ mặc định 360.
   capacity    Int?
-  // Admin chỉ định kệ này chuyên xếp loại cây nào — 1 kệ chỉ xếp 1 mã cây (áp dụng chủ yếu cho kệ
-  // Phòng sáng). Để null nếu kệ chưa được chỉ định (chưa ràng buộc loại cây).
+  // Chỉ ràng buộc với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình) — 1 kệ chỉ xếp 1 mã cây và
+  // gắn với 1 nhân viên cấy mô cụ thể. Kệ Phòng ra rễ không dùng 2 field này (luôn null).
   plantTypeId String?
   plantType   PlantType? @relation(fields: [plantTypeId], references: [id])
+  assignedStaffId String?
+  assignedStaff   User?  @relation("ShelfAssignedStaff", fields: [assignedStaffId], references: [id])
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

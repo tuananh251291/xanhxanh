@@ -30,7 +30,7 @@ export default function TransferFinishedPage() {
 
   const loadData = useCallback(async () => {
     const [lotRes, r1Res, r2Res] = await Promise.all([
-      fetch("/api/lots?roomType=PHONG_SANG&stage=THANH_PHAM&status=ACTIVE"),
+      fetch("/api/lots?roomType=PHONG_RA_RE&stage=THANH_PHAM&status=ACTIVE"),
       fetch("/api/rooms?type=PHONG_THEO_DOI"),
       fetch("/api/rooms?type=PHONG_HAN_TUI"),
     ]);

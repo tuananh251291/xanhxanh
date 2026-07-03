@@ -23,7 +23,7 @@ export default async function KhoSangPage() {
   if (!(await isPageAllowed(role, "/inventory/kho-sang"))) redirect("/dashboard");
 
   const rooms = await prisma.room.findMany({
-    where: { type: "PHONG_SANG", isActive: true },
+    where: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] }, isActive: true },
     include: {
       warehouse: { select: { name: true } },
       shelves: {

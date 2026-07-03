@@ -2,17 +2,31 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Package, Leaf } from "lucide-react";
+import { QrCode, Package, Leaf, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import QRCodeDisplay from "@/components/shared/qr-code-display";
+import type { RoomType } from "@prisma/client";
 
 interface PlantType {
   id: string;
   code: string;
   name: string;
+}
+
+interface Staff {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface MoveableRoom {
+  id: string;
+  code: string;
+  name: string;
+  type: RoomType;
 }
 
 interface Shelf {
@@ -23,34 +37,45 @@ interface Shelf {
   colNumber: number | null;
   capacity: number | null;
   plantType: PlantType | null;
+  assignedStaff: Staff | null;
   lots: { quantity: number }[];
 }
 
 export default function ShelfList({
   shelves,
-  warehouseId,
+  currentRoomId,
+  currentRoomType,
   plantTypes = [],
-  canManagePlantType = false,
+  staffOptions = [],
+  canManageStaffAndPlant = false,
+  canMoveRoom = false,
+  moveableRooms = [],
 }: {
   shelves: Shelf[];
-  warehouseId: string;
+  currentRoomId: string | null;
+  currentRoomType: RoomType | null;
   plantTypes?: PlantType[];
-  canManagePlantType?: boolean;
+  staffOptions?: Staff[];
+  canManageStaffAndPlant?: boolean;
+  canMoveRoom?: boolean;
+  moveableRooms?: MoveableRoom[];
 }) {
   const [qrShelf, setQrShelf] = useState<Shelf | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const router = useRouter();
+  const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
+  const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
 
-  const assignPlantType = async (shelfId: string, plantTypeId: string) => {
+  const patchShelf = async (shelfId: string, body: Record<string, unknown>, successMsg: string) => {
     setSavingId(shelfId);
     try {
       const res = await fetch(`/api/shelves/${shelfId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plantTypeId: plantTypeId === "NONE" ? null : plantTypeId }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã cập nhật loại cây cho kệ");
+      toast.success(successMsg);
       router.refresh();
     } finally { setSavingId(null); }
   };
@@ -68,10 +93,18 @@ export default function ShelfList({
                 <QrCode className="w-3.5 h-3.5 text-gray-400" />
               </div>
               <p className="text-xs text-gray-500 truncate mb-1">{shelf.name}</p>
-              <div className="flex items-center gap-1 mb-1">
-                <Leaf className="w-3 h-3 text-emerald-500" />
-                <span className="text-xs text-gray-600 truncate">{shelf.plantType?.code ?? "Chưa gán"}</span>
-              </div>
+              {isMauMeRoom && (
+                <>
+                  <div className="flex items-center gap-1 mb-1">
+                    <Leaf className="w-3 h-3 text-emerald-500" />
+                    <span className="text-xs text-gray-600 truncate">{shelf.plantType?.code ?? "Chưa gán"}</span>
+                  </div>
+                  <div className="flex items-center gap-1 mb-1">
+                    <User className="w-3 h-3 text-blue-500" />
+                    <span className="text-xs text-gray-600 truncate">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
+                  </div>
+                </>
+              )}
               <div className="flex items-center gap-1">
                 <Package className="w-3 h-3 text-green-500" />
                 <span className="text-xs text-gray-600">
@@ -89,18 +122,50 @@ export default function ShelfList({
                   />
                 </div>
               )}
-              {canManagePlantType && (
+              {isMauMeRoom && canManageStaffAndPlant && (
+                <>
+                  <Select
+                    value={shelf.plantType?.id ?? "NONE"}
+                    onValueChange={(v) => patchShelf(shelf.id, { plantTypeId: v === "NONE" ? null : v }, "Đã cập nhật loại cây cho kệ")}
+                  >
+                    <SelectTrigger className="w-full mt-2 h-7 text-xs" disabled={savingId === shelf.id}>
+                      <SelectValue placeholder="Mã cây" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">— Chưa gán mã cây —</SelectItem>
+                      {plantTypes.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={shelf.assignedStaff?.id ?? "NONE"}
+                    onValueChange={(v) => patchShelf(shelf.id, { assignedStaffId: v === "NONE" ? null : v }, "Đã cập nhật nhân viên cho kệ")}
+                  >
+                    <SelectTrigger className="w-full mt-1 h-7 text-xs" disabled={savingId === shelf.id}>
+                      <SelectValue placeholder="Nhân viên" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">— Chưa gán nhân viên —</SelectItem>
+                      {staffOptions.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              {canMoveRoom && otherRooms.length > 0 && (
                 <Select
-                  value={shelf.plantType?.id ?? "NONE"}
-                  onValueChange={(v) => assignPlantType(shelf.id, v as string)}
+                  value="_"
+                  onValueChange={(v) => patchShelf(shelf.id, { roomId: v }, "Đã chuyển kệ sang phòng khác")}
                 >
-                  <SelectTrigger className="w-full mt-2 h-7 text-xs" disabled={savingId === shelf.id}>
-                    <SelectValue />
+                  <SelectTrigger className="w-full mt-1 h-7 text-xs" disabled={savingId === shelf.id}>
+                    <SelectValue placeholder="Chuyển phòng…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NONE">— Chưa gán —</SelectItem>
-                    {plantTypes.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
+                    <SelectItem value="_" disabled>Chuyển sang…</SelectItem>
+                    {otherRooms.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

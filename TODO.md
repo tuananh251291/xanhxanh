@@ -41,7 +41,7 @@
 - [x] Trang `/transfers/receive` — danh sách bàn giao chờ xác nhận
 - [x] Xác nhận nhận cây từ phòng tối
 - [x] Hệ thống gợi ý vị trí kệ trống trong kho sáng — sửa lại 2026-07-03: dropdown chọn kệ giờ tự lọc
-      theo đúng nguyên tắc kệ Phòng sáng (xem 2.13), trước đó chỉ liệt kê tất cả kệ trong phòng không lọc gì
+      theo đúng nguyên tắc kệ Phòng mẫu mẹ (xem 2.13), trước đó chỉ liệt kê tất cả kệ trong phòng không lọc gì
 - [x] API `PATCH /api/transfers/[id]` (action confirm) kiểm tra khớp loại cây + không vượt capacity trước khi cam kết
 - [x] Xác nhận sắp xếp → cập nhật shelfId của Lot, cộng tồn kho sáng
 - [x] API `POST /api/transfers` — tạo phiếu bàn giao
@@ -89,11 +89,15 @@
 - [x] Dialog gán quyền xem theo từng Phòng thị trường cho nhân viên SALE (`room-access-dialog.tsx`) + API `/api/rooms/[id]/access`
 - [ ] Rà soát các trang tồn kho/báo cáo còn lọc theo `Warehouse.type` cũ xem đã cập nhật hết sang Room chưa — _chưa rà soát kỹ, cần kiểm tra riêng_
 
-### 2.13 Nguyên tắc kệ Phòng sáng (Admin)
-- [x] `Shelf.plantTypeId` — 1 kệ chỉ xếp 1 mã cây, Admin chỉ định qua `/warehouses` (dropdown trên từng thẻ kệ, chỉ hiện cho Admin). Không cho đổi loại cây khi kệ đang còn lô ACTIVE của loại cây khác (API trả 409).
-- [x] Sức chứa kệ Phòng sáng mặc định 360 (đơn vị mẫu/túi) — capacity tính theo **tổng số lượng thực** trên kệ, không phải số lô (đã sửa 1 chỗ tính sai kiểu cũ: đếm số dòng lô thay vì cộng dồn quantity, ở cả `/warehouses` và gợi ý kệ khi bàn giao)
-- [x] Chặn cả ở API: `POST /api/instructions` (kệ nguồn phải ở Phòng sáng của Kho sản xuất — xem 2.2), `PATCH /api/shelves/[id]` (đổi loại cây kệ), `PATCH /api/transfers/[id]` action confirm (xếp lô vào kệ Phòng sáng — đúng loại cây + đủ chỗ)
+### 2.13 Nguyên tắc kệ Kho sáng — tách Phòng mẫu mẹ / Phòng ra rễ (Admin, SUPER_ADMIN)
+- [x] Đổi `RoomType`: bỏ `PHONG_SANG` (dùng chung), tách thành `PHONG_MAU_ME` (kệ mẫu mẹ) và `PHONG_RA_RE` (kệ cây ra rễ) — mỗi kho sản xuất có cả 2 phòng này. Migrate dữ liệu cũ (2 phòng "Phòng sáng A/B") sang `PHONG_MAU_ME`, giữ nguyên toàn bộ kệ/lô đã có; tạo mới 2 phòng "Phòng ra rễ A/B" (15 kệ mỗi phòng, trống, không ràng buộc).
+- [x] Kệ Phòng mẫu mẹ: `Shelf.plantTypeId` (1 kệ chỉ xếp 1 mã cây) + `Shelf.assignedStaffId` (1 kệ gắn 1 nhân viên cấy mô — chỉ chọn được user role CAY_MO) + capacity mặc định 360 (tính theo tổng số lượng thực, không phải số lô). **Chỉ SUPER_ADMIN** được cấu hình 2 field này (API `PATCH /api/shelves/[id]` trả 403 nếu không phải SUPER_ADMIN) — Admin thường không thấy 2 ô này trên `/warehouses`. Không cho đổi mã cây khi kệ đang còn lô ACTIVE của loại cây khác (409).
+- [x] Kệ Phòng ra rễ: không ràng buộc gì (không mã cây, không nhân viên, không capacity mặc định).
+- [x] Admin (không cần SUPER_ADMIN) chuyển được 1 kệ giữa Phòng mẫu mẹ ↔ Phòng ra rễ (ô "Chuyển phòng…" trên `/warehouses`, cùng kho) qua `PATCH /api/shelves/[id]` với `roomId` — rời khỏi Phòng mẫu mẹ thì tự xóa mã cây/nhân viên đã gán.
+- [x] **Chỉ định cấy chỉ được chọn kệ thuộc Phòng mẫu mẹ** (trước đây là "Phòng sáng" nói chung) — lọc ở dropdown + chặn cứng ở `POST /api/instructions`.
+- [x] `PATCH /api/transfers/[id]` action confirm vẫn kiểm tra khớp mã cây + đủ chỗ khi xếp lô vào kệ Phòng mẫu mẹ (không áp dụng cho Phòng ra rễ, vì kệ đó không có mã cây để so).
 - [x] Xóa `getSuggestedShelves` (hàm cũ trong `src/lib/inventory.ts`, không được gọi ở đâu, tính capacity sai kiểu số lô) — thay bằng lọc trực tiếp trong `/api/transfers/[id]` GET + `transfers/receive` UI
+- [ ] _Phát hiện khi làm mục này, chưa xử lý:_ chưa có UI nào thực sự tạo được phiếu bàn giao "phòng tối → kho sáng" (chọn đích Phòng mẫu mẹ hay Phòng ra rễ) — `transfers/receive` (xác nhận) và `POST /api/transfers` (tạo phiếu, nhận `toRoomId` bất kỳ) đã sẵn sàng nhận, nhưng không có trang/nút nào gọi tới để khởi tạo chặng này. Cần 1 form gửi mới (tương tự `transfers/send`), có thể ở `/my-dark-room` (CAY_MO) hoặc trang riêng cho KHO_MO.
 
 ---
 

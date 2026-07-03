@@ -73,7 +73,7 @@ export default function CreateInstructionDialog() {
     if (!open) return;
     Promise.all([
       fetch("/api/medium-types").then((r) => r.json()),
-      fetch("/api/lots?roomType=PHONG_SANG&stage=MAU_ME&status=ACTIVE").then((r) => r.json()),
+      fetch("/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE").then((r) => r.json()),
       fetch("/api/plant-type-specs").then((r) => r.json()),
     ]).then(([mediums, lots, specList]) => {
       setMediumTypes(mediums);

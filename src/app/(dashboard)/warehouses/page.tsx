@@ -16,6 +16,7 @@ const shelfInclude = {
   where: { isActive: true },
   include: {
     plantType: { select: { id: true, code: true, name: true } },
+    assignedStaff: { select: { id: true, code: true, name: true } },
     lots: { where: { status: "ACTIVE" as const }, select: { quantity: true } },
   },
   orderBy: [{ rowNumber: "asc" as const }, { colNumber: "asc" as const }],
@@ -25,7 +26,7 @@ export default async function WarehousesPage() {
   const session = await auth();
   if (!(await isPageAllowed(session?.user?.role ?? null, "/warehouses"))) redirect("/dashboard");
 
-  const [warehouses, saleUsers, plantTypes] = await Promise.all([
+  const [warehouses, saleUsers, caymoStaff, plantTypes] = await Promise.all([
     prisma.warehouse.findMany({
       include: {
         rooms: {
@@ -45,9 +46,15 @@ export default async function WarehousesPage() {
       select: { id: true, name: true, email: true },
       orderBy: { name: "asc" },
     }),
+    prisma.user.findMany({
+      where: { role: "CAY_MO", isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
-  const canManagePlantType = isAdminRole(session?.user?.role);
+  const canManageStaffAndPlant = session?.user?.role === "SUPER_ADMIN";
+  const canMoveRoom = isAdminRole(session?.user?.role);
 
   return (
     <div className="space-y-6">
@@ -103,14 +110,32 @@ export default async function WarehousesPage() {
                   {room.shelves.length === 0 ? (
                     <p className="text-gray-400 text-sm text-center py-3">Chưa có giàn kệ nào</p>
                   ) : (
-                    <ShelfList shelves={room.shelves} warehouseId={wh.id} plantTypes={plantTypes} canManagePlantType={canManagePlantType} />
+                    <ShelfList
+                      shelves={room.shelves}
+                      currentRoomId={room.id}
+                      currentRoomType={room.type as RoomType}
+                      plantTypes={plantTypes}
+                      staffOptions={caymoStaff}
+                      canManageStaffAndPlant={canManageStaffAndPlant}
+                      canMoveRoom={canMoveRoom}
+                      moveableRooms={wh.rooms.filter((r) => r.type === "PHONG_MAU_ME" || r.type === "PHONG_RA_RE")}
+                    />
                   )}
                 </div>
               ))}
 
               {wh.shelves.length > 0 && (
                 <div className="border-t pt-4 first:border-t-0 first:pt-0">
-                  <ShelfList shelves={wh.shelves} warehouseId={wh.id} plantTypes={plantTypes} canManagePlantType={canManagePlantType} />
+                  <ShelfList
+                    shelves={wh.shelves}
+                    currentRoomId={null}
+                    currentRoomType={null}
+                    plantTypes={plantTypes}
+                    staffOptions={caymoStaff}
+                    canManageStaffAndPlant={canManageStaffAndPlant}
+                    canMoveRoom={canMoveRoom}
+                    moveableRooms={wh.rooms.filter((r) => r.type === "PHONG_MAU_ME" || r.type === "PHONG_RA_RE")}
+                  />
                 </div>
               )}
             </CardContent>
