@@ -31,10 +31,15 @@ export default async function InstructionDetailPage({ params }: { params: Promis
     where: { id },
     include: {
       plantType: true,
-      mediumType: true,
       createdBy: { select: { name: true } },
       assignedTo: { select: { name: true } },
-      items: { include: { shelf: { include: { warehouse: { select: { name: true } } } } } },
+      items: {
+        include: {
+          shelf: { include: { warehouse: { select: { name: true } } } },
+          motherMedium: { select: { code: true, name: true } },
+          finishedMedium: { select: { code: true, name: true } },
+        },
+      },
       dailyRecords: {
         include: {
           staff: { select: { name: true } },
@@ -80,7 +85,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
       </div>
 
       {/* Info cards */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 text-gray-500 mb-1"><Leaf className="w-4 h-4" /><span className="text-xs">Loại cây</span></div>
@@ -92,12 +97,6 @@ export default async function InstructionDetailPage({ params }: { params: Promis
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 text-gray-500 mb-1"><User className="w-4 h-4" /><span className="text-xs">Nhân viên cấy</span></div>
             <p className="font-semibold">{inst.assignedTo?.name ?? "Chưa gán"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-gray-500 mb-1"><FlaskConical className="w-4 h-4" /><span className="text-xs">Môi trường</span></div>
-            <p className="font-semibold">{inst.mediumType?.name ?? "—"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -146,7 +145,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
       {/* Nguồn theo quy cách */}
       {inst.items.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Quy cách nguồn</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="w-4 h-4" /> Quy cách nguồn</CardTitle>
+          </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -157,6 +158,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Số lượng dùng</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Tỉ lệ nhân MM / ra TP</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Dự kiến MM / TP</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Môi trường nhân MM / ra TP</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -172,6 +174,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                       <td className="px-4 py-2 text-gray-500">×{item.motherSampleRatio ?? "—"} / ×{item.rootingRatio ?? "—"}</td>
                       <td className="px-4 py-2 text-gray-500">
                         {item.expectedMotherOutput?.toLocaleString("vi-VN") ?? "—"} / {item.expectedFinishedOutput?.toLocaleString("vi-VN") ?? "—"}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500">
+                        {item.motherMedium?.name ?? "—"} / {item.finishedMedium?.name ?? "—"}
                       </td>
                     </tr>
                   ))}

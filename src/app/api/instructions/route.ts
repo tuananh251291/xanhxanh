@@ -6,8 +6,9 @@ import { isAdminRole } from "@/types";
 import { z } from "zod";
 
 // Mỗi dòng = 1 quy cách nguồn (M3 hoặc M5) được dùng, lấy từ 1 lô cụ thể trên 1 kệ. Một kệ có thể sinh
-// nhiều dòng nếu kệ đó có cả M3 và M5. Mỗi dòng tự có tỉ lệ riêng — output KHÔNG dây chuyền qua nhau:
-// dự kiến mẫu mẹ = quantity × motherSampleRatio, dự kiến thành phẩm = quantity × rootingRatio (độc lập).
+// nhiều dòng nếu kệ đó có cả M3 và M5. Mỗi dòng tự có tỉ lệ + môi trường riêng — output KHÔNG dây chuyền
+// qua nhau: dự kiến mẫu mẹ = quantity × motherSampleRatio, dự kiến thành phẩm = quantity × rootingRatio
+// (độc lập). Môi trường cũng tách riêng: 1 để nhân mẫu mẹ, 1 để ra rễ thành cây thành phẩm.
 const shelfItemSchema = z.object({
   shelfId: z.string(),
   lotId: z.string(),
@@ -15,11 +16,12 @@ const shelfItemSchema = z.object({
   quantity: z.number().int().positive(),
   motherSampleRatio: z.number().positive(),
   rootingRatio: z.number().positive(),
+  motherMediumTypeId: z.string().min(1),
+  finishedMediumTypeId: z.string().min(1),
 });
 
 const createSchema = z.object({
   plantTypeId: z.string(),
-  mediumTypeId: z.string().min(1),
   weekStart: z.string().optional(),
   notes: z.string().optional(),
   shelfItems: z.array(shelfItemSchema).min(1, "Cần chọn ít nhất 1 dòng quy cách nguồn"),
@@ -48,10 +50,15 @@ export async function GET(req: NextRequest) {
     where,
     include: {
       plantType: { select: { code: true, name: true } },
-      mediumType: { select: { code: true, name: true } },
       createdBy: { select: { name: true } },
       assignedTo: { select: { name: true } },
-      items: { include: { shelf: { select: { code: true, name: true } } } },
+      items: {
+        include: {
+          shelf: { select: { code: true, name: true } },
+          motherMedium: { select: { code: true, name: true } },
+          finishedMedium: { select: { code: true, name: true } },
+        },
+      },
       _count: { select: { dailyRecords: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -70,7 +77,7 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { shelfItems, plantTypeId, mediumTypeId, weekStart, notes, plannedT01Quantity, plannedT05Quantity } = parsed.data;
+  const { shelfItems, plantTypeId, weekStart, notes, plannedT01Quantity, plannedT05Quantity } = parsed.data;
 
   const itemsWithOutput = shelfItems.map((item) => ({
     ...item,
@@ -88,7 +95,6 @@ export async function POST(req: NextRequest) {
     data: {
       code,
       plantType: { connect: { id: plantTypeId } },
-      mediumType: { connect: { id: mediumTypeId } },
       createdBy: { connect: { id: session!.user.id } },
       notes,
       inputMotherQuantity,
@@ -108,13 +114,15 @@ export async function POST(req: NextRequest) {
           rootingRatio: item.rootingRatio,
           expectedMotherOutput: item.expectedMotherOutput,
           expectedFinishedOutput: item.expectedFinishedOutput,
+          motherMediumTypeId: item.motherMediumTypeId,
+          finishedMediumTypeId: item.finishedMediumTypeId,
         })),
       },
     },
     include: {
       plantType: true,
       assignedTo: { select: { name: true } },
-      items: { include: { shelf: true, lot: true } },
+      items: { include: { shelf: true, lot: true, motherMedium: true, finishedMedium: true } },
     },
   });
 

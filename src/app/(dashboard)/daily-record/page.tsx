@@ -22,7 +22,6 @@ type Instruction = {
   id: string;
   code: string;
   plantType: { name: string };
-  mediumType?: { name: string } | null;
   inputMotherQuantity: number;
   expectedMotherOutput?: number | null;
   status: string;
@@ -116,7 +115,6 @@ export default function DailyRecordPage() {
                   {instructions.map((inst) => (
                     <SelectItem key={inst.id} value={inst.id}>
                       {inst.code} — {inst.plantType.name}
-                      {inst.mediumType ? ` (${inst.mediumType.name})` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

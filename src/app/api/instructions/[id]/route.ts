@@ -17,10 +17,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     include: {
       plantType: true,
-      mediumType: true,
       createdBy: { select: { name: true, email: true } },
       assignedTo: { select: { name: true, email: true } },
-      items: { include: { shelf: { include: { warehouse: true } } } },
+      items: {
+        include: {
+          shelf: { include: { warehouse: true } },
+          motherMedium: { select: { code: true, name: true } },
+          finishedMedium: { select: { code: true, name: true } },
+        },
+      },
       dailyRecords: {
         include: {
           staff: { select: { name: true } },

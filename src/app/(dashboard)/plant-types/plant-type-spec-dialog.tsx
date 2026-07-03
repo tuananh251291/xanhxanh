@@ -12,19 +12,17 @@ import { toast } from "sonner";
 import { MOTHER_SPEC_LABELS } from "@/types";
 
 type MediumType = { id: string; code: string; name: string };
-type Spec = { stageCode: string; motherSampleRatio: number; rootingRatio: number; mediumTypeId: string };
-type SpecForm = { motherSampleRatio: string; rootingRatio: string; mediumTypeId: string };
+type Spec = { stageCode: string; motherSampleRatio: number; rootingRatio: number; motherMediumTypeId: string | null; finishedMediumTypeId: string | null };
+type SpecForm = { motherSampleRatio: string; rootingRatio: string; motherMediumTypeId: string; finishedMediumTypeId: string };
 
 const STAGE_CODES = ["M3", "M5"] as const;
+const EMPTY_FORM: SpecForm = { motherSampleRatio: "", rootingRatio: "", motherMediumTypeId: "", finishedMediumTypeId: "" };
 
 export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { plantTypeId: string; plantTypeName: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
-  const [form, setForm] = useState<Record<string, SpecForm>>({
-    M3: { motherSampleRatio: "", rootingRatio: "", mediumTypeId: "" },
-    M5: { motherSampleRatio: "", rootingRatio: "", mediumTypeId: "" },
-  });
+  const [form, setForm] = useState<Record<string, SpecForm>>({ M3: { ...EMPTY_FORM }, M5: { ...EMPTY_FORM } });
   const router = useRouter();
 
   useEffect(() => {
@@ -40,7 +38,8 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
           next[s.stageCode] = {
             motherSampleRatio: String(s.motherSampleRatio),
             rootingRatio: String(s.rootingRatio),
-            mediumTypeId: s.mediumTypeId,
+            motherMediumTypeId: s.motherMediumTypeId ?? "",
+            finishedMediumTypeId: s.finishedMediumTypeId ?? "",
           };
         }
         return next;
@@ -53,16 +52,18 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
   };
 
   const onSubmit = async () => {
-    const changes = STAGE_CODES.filter((sc) => form[sc].motherSampleRatio && form[sc].rootingRatio && form[sc].mediumTypeId)
-      .map((sc) => ({
-        plantTypeId,
-        stageCode: sc,
-        motherSampleRatio: Number(form[sc].motherSampleRatio),
-        rootingRatio: Number(form[sc].rootingRatio),
-        mediumTypeId: form[sc].mediumTypeId,
-      }));
+    const changes = STAGE_CODES.filter((sc) =>
+      form[sc].motherSampleRatio && form[sc].rootingRatio && form[sc].motherMediumTypeId && form[sc].finishedMediumTypeId
+    ).map((sc) => ({
+      plantTypeId,
+      stageCode: sc,
+      motherSampleRatio: Number(form[sc].motherSampleRatio),
+      rootingRatio: Number(form[sc].rootingRatio),
+      motherMediumTypeId: form[sc].motherMediumTypeId,
+      finishedMediumTypeId: form[sc].finishedMediumTypeId,
+    }));
     if (changes.length === 0) {
-      toast.error("Điền đủ tỉ lệ + môi trường cho ít nhất 1 quy cách");
+      toast.error("Điền đủ tỉ lệ + cả 2 môi trường cho ít nhất 1 quy cách");
       return;
     }
     setLoading(true);
@@ -91,6 +92,7 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
         <div className="space-y-4 mt-2">
           <p className="text-xs text-gray-500">
             Tỉ lệ nhân/môi trường mặc định theo quy cách mẫu mẹ — dùng để tự điền khi Kỹ thuật tạo chỉ định cấy.
+            Mỗi quy cách có 2 môi trường riêng: 1 để nhân thêm mẫu mẹ, 1 để ra rễ thành cây thành phẩm.
           </p>
           {STAGE_CODES.map((sc) => (
             <div key={sc} className="border rounded-lg p-3 space-y-3">
@@ -113,16 +115,29 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
                   />
                 </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Môi trường</Label>
-                <Select value={form[sc].mediumTypeId || undefined} onValueChange={(v) => setField(sc, "mediumTypeId", v as string)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Chọn môi trường" /></SelectTrigger>
-                  <SelectContent>
-                    {mediumTypes.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Môi trường nhân mẫu mẹ</Label>
+                  <Select value={form[sc].motherMediumTypeId || undefined} onValueChange={(v) => setField(sc, "motherMediumTypeId", v as string)}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Chọn môi trường" /></SelectTrigger>
+                    <SelectContent>
+                      {mediumTypes.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Môi trường ra rễ (thành phẩm)</Label>
+                  <Select value={form[sc].finishedMediumTypeId || undefined} onValueChange={(v) => setField(sc, "finishedMediumTypeId", v as string)}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Chọn môi trường" /></SelectTrigger>
+                    <SelectContent>
+                      {mediumTypes.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           ))}

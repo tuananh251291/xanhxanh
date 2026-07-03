@@ -12,7 +12,8 @@ const patchSchema = z.object({
     stageCode: z.enum(STAGE_CODES),
     motherSampleRatio: z.coerce.number().positive(),
     rootingRatio: z.coerce.number().positive(),
-    mediumTypeId: z.string().min(1),
+    motherMediumTypeId: z.string().min(1),
+    finishedMediumTypeId: z.string().min(1),
   })),
 });
 
@@ -25,7 +26,10 @@ export async function GET(req: NextRequest) {
 
   const specs = await prisma.plantTypeSpec.findMany({
     where: plantTypeId ? { plantTypeId } : undefined,
-    include: { mediumType: { select: { id: true, code: true, name: true } } },
+    include: {
+      motherMedium: { select: { id: true, code: true, name: true } },
+      finishedMedium: { select: { id: true, code: true, name: true } },
+    },
   });
   return NextResponse.json(specs);
 }
@@ -46,7 +50,12 @@ export async function PATCH(req: NextRequest) {
     parsed.data.changes.map((c) =>
       prisma.plantTypeSpec.upsert({
         where: { plantTypeId_stageCode: { plantTypeId: c.plantTypeId, stageCode: c.stageCode } },
-        update: { motherSampleRatio: c.motherSampleRatio, rootingRatio: c.rootingRatio, mediumTypeId: c.mediumTypeId },
+        update: {
+          motherSampleRatio: c.motherSampleRatio,
+          rootingRatio: c.rootingRatio,
+          motherMediumTypeId: c.motherMediumTypeId,
+          finishedMediumTypeId: c.finishedMediumTypeId,
+        },
         create: c,
       })
     )

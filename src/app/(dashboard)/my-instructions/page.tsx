@@ -27,12 +27,20 @@ export default async function MyInstructionsPage() {
     where: { assignedToId: session.user.id },
     include: {
       plantType: { select: { code: true, name: true } },
-      mediumType: { select: { code: true, name: true } },
       createdBy: { select: { name: true } },
+      items: {
+        include: {
+          motherMedium: { select: { name: true } },
+          finishedMedium: { select: { name: true } },
+        },
+      },
       _count: { select: { dailyRecords: true, lots: true } },
     },
     orderBy: { createdAt: "desc" },
   });
+
+  const mediumNames = (inst: (typeof instructions)[number]) =>
+    Array.from(new Set(inst.items.flatMap((i) => [i.motherMedium?.name, i.finishedMedium?.name]).filter((n): n is string => !!n)));
 
   const active = instructions.filter((i) => i.status === "ACTIVE" || i.status === "DRAFT");
   const done = instructions.filter((i) => i.status === "COMPLETED" || i.status === "CANCELLED");
@@ -60,7 +68,7 @@ export default async function MyInstructionsPage() {
                         </Badge>
                       </div>
                       <p className="font-semibold text-gray-900">{inst.plantType.name}</p>
-                      {inst.mediumType && <p className="text-sm text-gray-500">Môi trường: {inst.mediumType.name}</p>}
+                      {mediumNames(inst).length > 0 && <p className="text-sm text-gray-500">Môi trường: {mediumNames(inst).join(", ")}</p>}
                       <div className="flex gap-4 text-sm text-gray-600 mt-2">
                         <span>Đầu vào: <strong>{inst.inputMotherQuantity.toLocaleString("vi-VN")}</strong> mẫu mẹ</span>
                         {inst.expectedMotherOutput && (

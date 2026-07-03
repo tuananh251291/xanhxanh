@@ -35,7 +35,6 @@ export default async function InstructionsPage() {
       where,
       include: {
         plantType: { select: { code: true, name: true } },
-        mediumType: { select: { code: true } },
         createdBy: { select: { name: true } },
         assignedTo: { select: { name: true } },
         _count: { select: { dailyRecords: true } },

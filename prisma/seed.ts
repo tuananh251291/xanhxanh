@@ -107,22 +107,22 @@ async function main() {
   // Số liệu demo, Admin chỉnh lại theo thực tế qua trang /plant-types.
   const createdPlantTypes = await prisma.plantType.findMany();
   const createdMediumTypes = await prisma.mediumType.findMany({ orderBy: { code: "asc" } });
-  const plantTypeSpecDefs: { stageCode: "M3" | "M5"; motherSampleRatio: number; rootingRatio: number; mediumIdx: number }[] = [
-    { stageCode: "M3", motherSampleRatio: 3.0, rootingRatio: 0.8, mediumIdx: 0 },
-    { stageCode: "M5", motherSampleRatio: 5.0, rootingRatio: 0.7, mediumIdx: 1 },
+  const plantTypeSpecDefs: { stageCode: "M3" | "M5"; motherSampleRatio: number; rootingRatio: number; motherMediumIdx: number; finishedMediumIdx: number }[] = [
+    { stageCode: "M3", motherSampleRatio: 3.0, rootingRatio: 0.8, motherMediumIdx: 0, finishedMediumIdx: 2 },
+    { stageCode: "M5", motherSampleRatio: 5.0, rootingRatio: 0.7, motherMediumIdx: 1, finishedMediumIdx: 2 },
   ];
   for (const pt of createdPlantTypes) {
     for (const spec of plantTypeSpecDefs) {
+      const data = {
+        motherSampleRatio: spec.motherSampleRatio,
+        rootingRatio: spec.rootingRatio,
+        motherMediumTypeId: createdMediumTypes[spec.motherMediumIdx % createdMediumTypes.length].id,
+        finishedMediumTypeId: createdMediumTypes[spec.finishedMediumIdx % createdMediumTypes.length].id,
+      };
       await prisma.plantTypeSpec.upsert({
         where: { plantTypeId_stageCode: { plantTypeId: pt.id, stageCode: spec.stageCode } },
-        update: {},
-        create: {
-          plantTypeId: pt.id,
-          stageCode: spec.stageCode,
-          motherSampleRatio: spec.motherSampleRatio,
-          rootingRatio: spec.rootingRatio,
-          mediumTypeId: createdMediumTypes[spec.mediumIdx % createdMediumTypes.length].id,
-        },
+        update: data,
+        create: { plantTypeId: pt.id, stageCode: spec.stageCode, ...data },
       });
     }
   }

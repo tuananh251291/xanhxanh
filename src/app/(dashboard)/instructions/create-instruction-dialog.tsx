@@ -27,7 +27,8 @@ type PlantTypeSpec = {
   stageCode: string;
   motherSampleRatio: number;
   rootingRatio: number;
-  mediumTypeId: string;
+  motherMediumTypeId: string | null;
+  finishedMediumTypeId: string | null;
 };
 type Row = {
   lotId: string;
@@ -37,6 +38,8 @@ type Row = {
   quantityUsed: string;
   motherSampleRatio: string;
   rootingRatio: string;
+  motherMediumTypeId: string;
+  finishedMediumTypeId: string;
 };
 
 export default function CreateInstructionDialog() {
@@ -47,7 +50,6 @@ export default function CreateInstructionDialog() {
   const [specs, setSpecs] = useState<PlantTypeSpec[]>([]);
   const [shelfId, setShelfId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
-  const [mediumTypeId, setMediumTypeId] = useState("");
   const [weekStart, setWeekStart] = useState("");
   const [notes, setNotes] = useState("");
   const [plannedT01, setPlannedT01] = useState("0");
@@ -96,11 +98,11 @@ export default function CreateInstructionDialog() {
         quantityUsed: String(lot.quantity),
         motherSampleRatio: spec ? String(spec.motherSampleRatio) : "",
         rootingRatio: spec ? String(spec.rootingRatio) : "",
+        motherMediumTypeId: spec?.motherMediumTypeId ?? "",
+        finishedMediumTypeId: spec?.finishedMediumTypeId ?? "",
       };
     });
     setRows(newRows);
-    const firstSpec = group.lots.map((lot) => specs.find((s) => s.plantTypeId === lot.plantTypeId && s.stageCode === lot.stageCode)).find(Boolean);
-    setMediumTypeId(firstSpec?.mediumTypeId ?? "");
     setPlannedTouched(false);
   };
 
@@ -133,7 +135,7 @@ export default function CreateInstructionDialog() {
   const plannedSum = (Number(plannedT01) || 0) + (Number(plannedT05) || 0);
 
   const resetForm = () => {
-    setShelfId(""); setRows([]); setMediumTypeId(""); setWeekStart(""); setNotes("");
+    setShelfId(""); setRows([]); setWeekStart(""); setNotes("");
     setPlannedT01("0"); setPlannedT05("0"); setPlannedTouched(false);
   };
 
@@ -144,8 +146,8 @@ export default function CreateInstructionDialog() {
     for (const r of usedRows) {
       if (r.qty > r.available) { toast.error(`${r.stageCode}: số lượng dùng không được vượt quá ${r.available}`); return; }
       if (!Number(r.motherSampleRatio) || !Number(r.rootingRatio)) { toast.error(`${r.stageCode}: nhập đủ tỉ lệ nhân/ra rễ`); return; }
+      if (!r.motherMediumTypeId || !r.finishedMediumTypeId) { toast.error(`${r.stageCode}: chọn đủ 2 môi trường (nhân mẫu mẹ + ra rễ)`); return; }
     }
-    if (!mediumTypeId) { toast.error("Chọn môi trường"); return; }
 
     setLoading(true);
     try {
@@ -154,7 +156,6 @@ export default function CreateInstructionDialog() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plantTypeId: selectedShelf.plantTypeId,
-          mediumTypeId,
           weekStart: weekStart || undefined,
           notes: notes || undefined,
           shelfItems: usedRows.map((r) => ({
@@ -164,6 +165,8 @@ export default function CreateInstructionDialog() {
             quantity: r.qty,
             motherSampleRatio: Number(r.motherSampleRatio),
             rootingRatio: Number(r.rootingRatio),
+            motherMediumTypeId: r.motherMediumTypeId,
+            finishedMediumTypeId: r.finishedMediumTypeId,
           })),
           plannedT01Quantity: Number(plannedT01) || 0,
           plannedT05Quantity: Number(plannedT05) || 0,
@@ -235,6 +238,30 @@ export default function CreateInstructionDialog() {
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Môi trường nhân MM</Label>
+                      <Select value={r.motherMediumTypeId || undefined} onValueChange={(v) => setRowField(idx, "motherMediumTypeId", v as string)}>
+                        <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
+                        <SelectContent>
+                          {mediumTypes.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Môi trường ra rễ (TP)</Label>
+                      <Select value={r.finishedMediumTypeId || undefined} onValueChange={(v) => setRowField(idx, "finishedMediumTypeId", v as string)}>
+                        <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
+                        <SelectContent>
+                          {mediumTypes.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   {r.qty > 0 && (
                     <p className="text-xs text-gray-500">
                       → Mẫu mẹ dự kiến: <strong>{r.expectedMother.toLocaleString("vi-VN")}</strong> · Thành phẩm dự kiến: <strong>{r.expectedFinished.toLocaleString("vi-VN")}</strong>
@@ -244,18 +271,6 @@ export default function CreateInstructionDialog() {
               ))}
             </div>
           )}
-
-          <div className="space-y-1">
-            <Label>Môi trường <span className="text-red-500">*</span></Label>
-            <Select value={mediumTypeId || undefined} onValueChange={(v) => setMediumTypeId(v as string)}>
-              <SelectTrigger><SelectValue placeholder="Chọn MT" /></SelectTrigger>
-              <SelectContent>
-                {mediumTypes.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
 
           <div className="space-y-1">
             <Label>Tuần thực hiện</Label>
