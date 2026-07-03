@@ -25,6 +25,10 @@ export async function GET(req: NextRequest) {
     where.shelf = { roomId };
   } else if (warehouseId) {
     where.shelf = { warehouseId };
+  } else if (roomType === "PHONG_TOI") {
+    // "Phòng tối" = lô vừa tạo chưa được xếp kệ nào (shelfId null, trạng thái thực tế của lô mới cấy
+    // trước khi bàn giao) HOẶC đã có kệ thật trong 1 phòng tối cụ thể.
+    where.OR = [{ shelfId: null }, { shelf: { room: { type: "PHONG_TOI" } } }];
   } else if (roomType) {
     where.shelf = { room: { type: roomType } };
   } else if (warehouseType) {
