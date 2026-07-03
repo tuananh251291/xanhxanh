@@ -148,6 +148,10 @@ export default function CreateInstructionDialog() {
       if (!Number(r.motherSampleRatio) || !Number(r.rootingRatio)) { toast.error(`${r.stageCode}: nhập đủ tỉ lệ nhân/ra rễ`); return; }
       if (!r.motherMediumTypeId || !r.finishedMediumTypeId) { toast.error(`${r.stageCode}: chọn đủ 2 môi trường (nhân mẫu mẹ + ra rễ)`); return; }
     }
+    if (plannedSum !== totalFinishedOutput) {
+      toast.error(`Tổng phân bổ T01 + T05 (${plannedSum.toLocaleString("vi-VN")}) phải bằng đúng thành phẩm dự kiến (${totalFinishedOutput.toLocaleString("vi-VN")})`);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -191,7 +195,7 @@ export default function CreateInstructionDialog() {
             <Label className="flex items-center gap-1">
               <QrCode className="w-3.5 h-3.5 text-gray-400" /> Giàn kệ nguồn <span className="text-red-500">*</span>
             </Label>
-            <Select onValueChange={onShelfChange} value={shelfId || undefined}>
+            <Select onValueChange={onShelfChange} value={shelfId}>
               <SelectTrigger><SelectValue placeholder="Chọn kệ (mỗi kệ 1 loại cây)" /></SelectTrigger>
               <SelectContent>
                 {shelfGroups.map((g) => (
@@ -241,7 +245,7 @@ export default function CreateInstructionDialog() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Môi trường nhân MM</Label>
-                      <Select value={r.motherMediumTypeId || undefined} onValueChange={(v) => setRowField(idx, "motherMediumTypeId", v as string)}>
+                      <Select value={r.motherMediumTypeId} onValueChange={(v) => setRowField(idx, "motherMediumTypeId", v as string)}>
                         <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                         <SelectContent>
                           {mediumTypes.map((m) => (
@@ -252,7 +256,7 @@ export default function CreateInstructionDialog() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Môi trường ra rễ (TP)</Label>
-                      <Select value={r.finishedMediumTypeId || undefined} onValueChange={(v) => setRowField(idx, "finishedMediumTypeId", v as string)}>
+                      <Select value={r.finishedMediumTypeId} onValueChange={(v) => setRowField(idx, "finishedMediumTypeId", v as string)}>
                         <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                         <SelectContent>
                           {mediumTypes.map((m) => (
@@ -294,7 +298,11 @@ export default function CreateInstructionDialog() {
                     <Input
                       type="number" min={0}
                       value={plannedT01}
-                      onChange={(e) => { setPlannedTouched(true); setPlannedT01(e.target.value); }}
+                      onChange={(e) => {
+                        setPlannedTouched(true);
+                        setPlannedT01(e.target.value);
+                        setPlannedT05(String(Math.max(0, totalFinishedOutput - (Number(e.target.value) || 0))));
+                      }}
                     />
                   </div>
                   <div className="space-y-1">
@@ -308,6 +316,7 @@ export default function CreateInstructionDialog() {
                 </div>
                 <p className={plannedSum === totalFinishedOutput ? "text-xs text-green-600" : "text-xs text-orange-500"}>
                   Đã phân bổ: {plannedSum.toLocaleString("vi-VN")} / {totalFinishedOutput.toLocaleString("vi-VN")}
+                  {plannedSum !== totalFinishedOutput && " — phải khớp đúng mới tạo được chỉ định"}
                 </p>
               </div>
             </div>
@@ -320,7 +329,11 @@ export default function CreateInstructionDialog() {
 
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="button" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading} onClick={onSubmit}>
+            <Button
+              type="button" className="flex-1 bg-green-600 hover:bg-green-700"
+              disabled={loading || plannedSum !== totalFinishedOutput}
+              onClick={onSubmit}
+            >
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Tạo chỉ định
             </Button>

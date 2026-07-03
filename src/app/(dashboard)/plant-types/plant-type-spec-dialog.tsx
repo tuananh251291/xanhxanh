@@ -118,7 +118,7 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Môi trường nhân mẫu mẹ</Label>
-                  <Select value={form[sc].motherMediumTypeId || undefined} onValueChange={(v) => setField(sc, "motherMediumTypeId", v as string)}>
+                  <Select value={form[sc].motherMediumTypeId} onValueChange={(v) => setField(sc, "motherMediumTypeId", v as string)}>
                     <SelectTrigger className="w-full"><SelectValue placeholder="Chọn môi trường" /></SelectTrigger>
                     <SelectContent>
                       {mediumTypes.map((m) => (
@@ -129,7 +129,7 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Môi trường ra rễ (thành phẩm)</Label>
-                  <Select value={form[sc].finishedMediumTypeId || undefined} onValueChange={(v) => setField(sc, "finishedMediumTypeId", v as string)}>
+                  <Select value={form[sc].finishedMediumTypeId} onValueChange={(v) => setField(sc, "finishedMediumTypeId", v as string)}>
                     <SelectTrigger className="w-full"><SelectValue placeholder="Chọn môi trường" /></SelectTrigger>
                     <SelectContent>
                       {mediumTypes.map((m) => (
