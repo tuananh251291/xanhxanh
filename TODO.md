@@ -44,8 +44,11 @@
 - [x] In phiếu chỉ định cấy (print CSS) — trang chi tiết có thêm bảng "Quy cách nguồn" liệt kê từng dòng M3/M5 đã dùng kèm 2 môi trường
 - [x] API `POST /api/instructions` — tạo chỉ định nhiều dòng quy cách (mỗi dòng 2 môi trường riêng), tự sinh code
 - [x] Trang `/mother-ready` — "Mẫu mẹ đến tuổi cấy chuyển" (2026-07-04): danh sách lô mẫu mẹ trong Kho sáng
-      đã tới hoặc quá `Lot.expectedMoveAt` (tính từ `transferWaitWeeks` của chi tiết loại cây), lọc theo mốc
-      thời gian (đã đến hạn / trong 3 ngày / trong 7 ngày / tất cả). Cảnh báo tự động: `ensureMotherReadyAlerts()`
+      đã tới hoặc quá `Lot.expectedMoveAt` (tính từ `transferWaitWeeks` của chi tiết loại cây). Lọc theo
+      **tuần** (khớp lịch tuần làm việc `weekStartsOn: 1` dùng chung toàn app) thay vì mốc số ngày cố định —
+      bộ điều hướng Trước/Sau + nút "Tuần này" đổi ô tuần đang chọn (hiện rõ "từ ngày – đến ngày"), có nút
+      "Lọc" riêng để áp dụng (đổi tuần không tự lọc lại danh sách ngay), mặc định load lần đầu = tuần hiện
+      tại. Cảnh báo tự động: `ensureMotherReadyAlerts()`
       (`src/lib/mother-ready.ts`) tạo `Alert` loại `MOTHER_LOT_READY` cho KY_THUAT khi phát hiện lô mới quá hạn,
       dedupe theo `(type, relatedId)` — không có cron trong app, hàm này chạy lồng vào
       `(dashboard)/layout.tsx` mỗi lần KY_THUAT tải trang bất kỳ (checkpoint gần-thời-gian-thực thay vì lịch cố định).

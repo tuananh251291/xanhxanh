@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sprout, Loader2 } from "lucide-react";
-import { format, differenceInCalendarDays } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Sprout, Loader2, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { format, differenceInCalendarDays, startOfWeek, endOfWeek, addWeeks, isWithinInterval } from "date-fns";
 import { vi } from "date-fns/locale";
 import { MOTHER_SPEC_LABELS } from "@/types";
 
@@ -21,23 +21,21 @@ type Lot = {
   instruction: { code: string; assignedTo: { name: string } | null } | null;
 };
 
-const MILESTONES = [
-  { value: "due", label: "Đã đến hạn" },
-  { value: "3d", label: "Đến hạn trong 3 ngày tới" },
-  { value: "7d", label: "Đến hạn trong 7 ngày tới" },
-  { value: "all", label: "Tất cả (có hạn cấy chuyển)" },
-] as const;
-
 function statusBadge(daysLeft: number) {
   if (daysLeft < 0) return <Badge className="bg-red-100 text-red-700">Quá hạn {Math.abs(daysLeft)} ngày</Badge>;
   if (daysLeft === 0) return <Badge className="bg-orange-100 text-orange-700">Đến hạn hôm nay</Badge>;
   return <Badge className="bg-gray-100 text-gray-600">Còn {daysLeft} ngày</Badge>;
 }
 
+const thisWeekStart = () => startOfWeek(new Date(), { weekStartsOn: 1 });
+
 export default function MotherReadyBoard() {
   const [lots, setLots] = useState<Lot[]>([]);
   const [loading, setLoading] = useState(true);
-  const [milestone, setMilestone] = useState<string>("due");
+  // Tuần đang chọn trên bộ điều hướng (chưa áp dụng) và tuần đã áp dụng để lọc — tách riêng vì trang có
+  // nút "Lọc" tường minh, bấm Trước/Sau chỉ đổi ô hiển thị, chưa lọc lại danh sách ngay.
+  const [pendingWeekStart, setPendingWeekStart] = useState<Date>(thisWeekStart);
+  const [appliedWeekStart, setAppliedWeekStart] = useState<Date>(thisWeekStart);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,18 +50,19 @@ export default function MotherReadyBoard() {
 
   useEffect(() => { load(); }, [load]);
 
+  const appliedWeekEnd = endOfWeek(appliedWeekStart, { weekStartsOn: 1 });
+  const pendingWeekEnd = endOfWeek(pendingWeekStart, { weekStartsOn: 1 });
+
   const filtered = useMemo(() => {
     const today = new Date();
     return lots
       .map((l) => ({ ...l, daysLeft: differenceInCalendarDays(new Date(l.expectedMoveAt!), today) }))
-      .filter((l) => {
-        if (milestone === "due") return l.daysLeft <= 0;
-        if (milestone === "3d") return l.daysLeft <= 3;
-        if (milestone === "7d") return l.daysLeft <= 7;
-        return true;
-      })
+      .filter((l) => isWithinInterval(new Date(l.expectedMoveAt!), { start: appliedWeekStart, end: appliedWeekEnd }))
       .sort((a, b) => a.daysLeft - b.daysLeft);
-  }, [lots, milestone]);
+  }, [lots, appliedWeekStart, appliedWeekEnd]);
+
+  const applyFilter = () => setAppliedWeekStart(pendingWeekStart);
+  const shiftPendingWeek = (delta: number) => setPendingWeekStart((prev) => addWeeks(prev, delta));
 
   return (
     <div className="space-y-6">
@@ -76,16 +75,27 @@ export default function MotherReadyBoard() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Select value={milestone} onValueChange={(v) => setMilestone(v as string)}>
-          <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {MILESTONES.map((m) => (
-              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="text-sm text-gray-500">{filtered.length} lô</span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center border rounded-lg bg-white">
+          <Button type="button" variant="ghost" size="sm" onClick={() => shiftPendingWeek(-1)}>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-sm px-2 whitespace-nowrap">
+            Tuần {format(pendingWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(pendingWeekEnd, "dd/MM/yyyy", { locale: vi })}
+          </span>
+          <Button type="button" variant="ghost" size="sm" onClick={() => shiftPendingWeek(1)}>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => setPendingWeekStart(thisWeekStart())}>
+          Tuần này
+        </Button>
+        <Button type="button" size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={applyFilter}>
+          <Filter className="w-4 h-4 mr-1" /> Lọc
+        </Button>
+        <span className="text-sm text-gray-500">
+          Đang xem tuần {format(appliedWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(appliedWeekEnd, "dd/MM/yyyy", { locale: vi })} · {filtered.length} lô
+        </span>
       </div>
 
       <Card>
@@ -93,7 +103,7 @@ export default function MotherReadyBoard() {
           {loading ? (
             <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-12">Không có lô mẫu mẹ nào khớp mốc thời gian đã chọn</p>
+            <p className="text-sm text-gray-400 text-center py-12">Không có lô mẫu mẹ nào đến hạn cấy chuyển trong tuần đã chọn</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
