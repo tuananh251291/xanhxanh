@@ -23,6 +23,7 @@ type ShelfCandidate = {
   assignedStaffId: string | null;
   roomType: "PHONG_MAU_ME" | "PHONG_RA_RE";
   used: number; // cụm hiện có (chỉ có ý nghĩa với PHONG_MAU_ME)
+  hasActiveLot: boolean; // kệ Kho mẫu mẹ đã chia đang có sẵn 1 lô ACTIVE hay không
 };
 
 export type ShelfPlacement = {
@@ -38,9 +39,12 @@ export type ShelfPlacement = {
  * Nguyên tắc bàn giao Phòng tối → Kho sáng (KHO_MO xác nhận nhận):
  * - Cây ra rễ (THANH_PHAM) → xếp vào kệ Phòng ra rễ (không ràng buộc, chọn kệ đang dùng ít nhất).
  * - Mẫu mẹ (MAU_ME, M3/M5) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
- *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây). Nếu vượt quá
- *   1800 cụm còn trống trên kệ đó, phần dư được xếp sang 1 kệ Phòng mẫu mẹ chưa gán nhân viên
- *   (Kho mẫu mẹ chung) cùng mã cây — hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
+ *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây). Mỗi kệ Kho mẫu mẹ
+ *   đã chia chỉ chứa đúng 1 lô ACTIVE tại 1 thời điểm — nếu kệ của NV đó đã có lô, toàn bộ lô mới
+ *   (không chỉ phần dư) dồn thẳng sang 1 kệ Phòng mẫu mẹ chưa gán nhân viên (Kho mẫu mẹ chung) cùng
+ *   mã cây. Nếu kệ đang trống nhưng bản thân lô mới lớn hơn 1800 cụm, phần vượt vẫn được tách thành
+ *   lô con và đưa sang Kho mẫu mẹ chung — kệ gốc vẫn chỉ giữ đúng 1 lô (đã giảm số lượng). Hệ thống
+ *   tự chọn kệ, không cần KHO_MO chọn tay.
  */
 export async function planShelfAssignments(
   transferItems: { lotId: string; lot: LotForAssign }[],
@@ -62,8 +66,10 @@ export async function planShelfAssignments(
     assignedStaffId: s.assignedStaffId,
     roomType: s.room!.type as "PHONG_MAU_ME" | "PHONG_RA_RE",
     used: s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0),
+    hasActiveLot: s.lots.length > 0,
   }));
   const usedById = new Map(candidates.map((c) => [c.id, c.used]));
+  const hasActiveLotById = new Map(candidates.map((c) => [c.id, c.hasActiveLot]));
 
   const placements: ShelfPlacement[] = [];
 
@@ -86,13 +92,15 @@ export async function planShelfAssignments(
       const owned = candidates.find(
         (c) => c.roomType === "PHONG_MAU_ME" && c.assignedStaffId === ownerStaffId && c.plantTypeId === lot.plantTypeId
       );
-      if (owned) {
+      // Kệ đã chia chỉ nhận lô mới khi đang trống — mỗi kệ tối đa 1 lô ACTIVE.
+      if (owned && !hasActiveLotById.get(owned.id)) {
         const capLeft = (owned.capacity ?? Infinity) - (usedById.get(owned.id) ?? 0);
         const bagsFit = Math.max(0, Math.floor(capLeft / bagSize));
         const placeBags = Math.min(bagsFit, remainingBags);
         if (placeBags > 0) {
           placements.push({ lotId, lot, shelfId: owned.id, shelfCode: owned.code, quantity: placeBags, pool: "OWNED" });
           usedById.set(owned.id, (usedById.get(owned.id) ?? 0) + placeBags * bagSize);
+          hasActiveLotById.set(owned.id, true);
           remainingBags -= placeBags;
         }
       }

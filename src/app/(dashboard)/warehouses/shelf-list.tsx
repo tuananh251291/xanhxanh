@@ -101,6 +101,15 @@ export default function ShelfList({
               <User className="w-3 h-3 text-blue-500" />
               <span className="text-xs text-gray-600 truncate">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
             </div>
+            {shelf.assignedStaff && (
+              <span
+                className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mb-1 ${
+                  shelf.lots.length > 0 ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"
+                }`}
+              >
+                {shelf.lots.length > 0 ? "Đã có lô" : "Trống"}
+              </span>
+            )}
           </>
         )}
         <div className="flex items-center gap-1">

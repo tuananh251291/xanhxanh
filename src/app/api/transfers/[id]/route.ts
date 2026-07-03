@@ -121,6 +121,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     const shelfById = new Map(shelves.map((s) => [s.id, s]));
     const batchQtyByShelf = new Map<string, number>();
+    const claimedAssignedShelves = new Set<string>();
 
     for (const a of shelfAssignments) {
       const item = transfer.items.find((i) => i.lotId === a.lotId);
@@ -128,6 +129,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!item || !shelf) return NextResponse.json({ message: "Dữ liệu kệ/lô không hợp lệ" }, { status: 400 });
       if (shelf.plantTypeId && shelf.plantTypeId !== item.lot.plantTypeId) {
         return NextResponse.json({ message: `Kệ ${shelf.code} đã gán cho loại cây khác — không thể xếp lô ${item.lot.code}` }, { status: 409 });
+      }
+      // Kệ Kho mẫu mẹ đã chia (có assignedStaffId) chỉ chứa đúng 1 lô ACTIVE — kể cả trong cùng đợt xác nhận này.
+      if (shelf.assignedStaffId) {
+        if (shelf.lots.length > 0 || claimedAssignedShelves.has(shelf.id)) {
+          return NextResponse.json({ message: `Kệ ${shelf.code} (Kho mẫu mẹ đã chia) đã có lô — mỗi kệ chỉ xếp 1 lô` }, { status: 409 });
+        }
+        claimedAssignedShelves.add(shelf.id);
       }
       const addUnits = motherClusterUnits(item.lot.stageCode, item.lot.quantity);
       batchQtyByShelf.set(a.shelfId, (batchQtyByShelf.get(a.shelfId) ?? 0) + addUnits);

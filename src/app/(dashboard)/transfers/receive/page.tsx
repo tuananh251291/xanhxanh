@@ -17,6 +17,7 @@ type Shelf = {
   name: string;
   warehouseId: string;
   capacity: number | null;
+  assignedStaffId?: string | null;
   plantType: { id: string; code: string; name: string } | null;
   lots: { quantity: number; stageCode: string }[];
 };
@@ -175,7 +176,9 @@ export default function TransferReceivePage() {
                             const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
                             const matchesPlantType = !s.plantType || s.plantType.id === item.lot.plantTypeId;
                             const hasRoom = !s.capacity || used + itemUnits <= s.capacity;
-                            return matchesPlantType && hasRoom;
+                            // Kệ Kho mẫu mẹ đã chia chỉ nhận khi đang trống — mỗi kệ tối đa 1 lô.
+                            const notOccupiedAssigned = !s.assignedStaffId || s.lots.length === 0;
+                            return matchesPlantType && hasRoom && notOccupiedAssigned;
                           });
                           return (
                             <div key={item.id} className="flex items-center gap-3 text-sm">
