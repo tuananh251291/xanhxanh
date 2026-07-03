@@ -81,101 +81,137 @@ export default function ShelfList({
     } finally { setSavingId(null); }
   };
 
+  const renderShelf = (shelf: Shelf) => {
+    const used = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
+    const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
+    return (
+      <div key={shelf.id} className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow">
+        <div className="flex items-center justify-between mb-2 cursor-pointer" onClick={() => setQrShelf(shelf)}>
+          <span className="text-xs font-bold text-gray-700">{shelf.code}</span>
+          <QrCode className="w-3.5 h-3.5 text-gray-400" />
+        </div>
+        <p className="text-xs text-gray-500 truncate mb-1">{shelf.name}</p>
+        {isMauMeRoom && (
+          <>
+            <div className="flex items-center gap-1 mb-1">
+              <Leaf className="w-3 h-3 text-emerald-500" />
+              <span className="text-xs text-gray-600 truncate">{shelf.plantType?.code ?? "Chưa gán"}</span>
+            </div>
+            <div className="flex items-center gap-1 mb-1">
+              <User className="w-3 h-3 text-blue-500" />
+              <span className="text-xs text-gray-600 truncate">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
+            </div>
+          </>
+        )}
+        <div className="flex items-center gap-1">
+          <Package className="w-3 h-3 text-green-500" />
+          <span className="text-xs text-gray-600">
+            {used.toLocaleString("vi-VN")}
+            {shelf.capacity ? `/${shelf.capacity}` : ""}
+            {isMauMeRoom && " cụm"}
+          </span>
+        </div>
+        {usage !== null && (
+          <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                usage > 90 ? "bg-red-500" : usage > 70 ? "bg-yellow-500" : "bg-green-500"
+              }`}
+              style={{ width: `${Math.min(usage, 100)}%` }}
+            />
+          </div>
+        )}
+        {isMauMeRoom && canManageStaffAndPlant && (
+          <>
+            <Select
+              value={shelf.plantType?.id ?? "NONE"}
+              onValueChange={(v) => patchShelf(shelf.id, { plantTypeId: v === "NONE" ? null : v }, "Đã cập nhật loại cây cho kệ")}
+            >
+              <SelectTrigger className="w-full mt-2 h-7 text-xs" disabled={savingId === shelf.id}>
+                <SelectValue placeholder="Mã cây" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NONE">— Chưa gán mã cây —</SelectItem>
+                {plantTypes.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={shelf.assignedStaff?.id ?? "NONE"}
+              onValueChange={(v) => patchShelf(shelf.id, { assignedStaffId: v === "NONE" ? null : v }, "Đã cập nhật nhân viên cho kệ")}
+            >
+              <SelectTrigger className="w-full mt-1 h-7 text-xs" disabled={savingId === shelf.id}>
+                <SelectValue placeholder="Nhân viên" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NONE">— Chưa gán nhân viên —</SelectItem>
+                {staffOptions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+        {canMoveRoom && otherRooms.length > 0 && (
+          <Select
+            value="_"
+            onValueChange={(v) => patchShelf(shelf.id, { roomId: v }, "Đã chuyển kệ sang phòng khác")}
+          >
+            <SelectTrigger className="w-full mt-1 h-7 text-xs" disabled={savingId === shelf.id}>
+              <SelectValue placeholder="Chuyển phòng…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_" disabled>Chuyển sang…</SelectItem>
+              {otherRooms.map((r) => (
+                <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+    );
+  };
+
+  // Phòng mẫu mẹ tự chia làm 2 nhóm hiển thị theo việc đã gán nhân viên hay chưa (SUPER_ADMIN
+  // cấu hình nhân viên ở trên) — không phải 1 Room riêng, chỉ là phân nhóm theo assignedStaff.
+  const assignedShelves = isMauMeRoom ? shelves.filter((s) => s.assignedStaff) : [];
+  const unassignedShelves = isMauMeRoom ? shelves.filter((s) => !s.assignedStaff) : [];
+
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {shelves.map((shelf) => {
-          const used = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
-          const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
-          return (
-            <div key={shelf.id} className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-2 cursor-pointer" onClick={() => setQrShelf(shelf)}>
-                <span className="text-xs font-bold text-gray-700">{shelf.code}</span>
-                <QrCode className="w-3.5 h-3.5 text-gray-400" />
+      {isMauMeRoom ? (
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">
+              Kho mẫu mẹ đã chia <span className="font-normal text-gray-400">({assignedShelves.length} kệ)</span>
+            </p>
+            {assignedShelves.length === 0 ? (
+              <p className="text-xs text-gray-400 pl-1">Chưa có kệ nào được gán nhân viên</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {assignedShelves.map(renderShelf)}
               </div>
-              <p className="text-xs text-gray-500 truncate mb-1">{shelf.name}</p>
-              {isMauMeRoom && (
-                <>
-                  <div className="flex items-center gap-1 mb-1">
-                    <Leaf className="w-3 h-3 text-emerald-500" />
-                    <span className="text-xs text-gray-600 truncate">{shelf.plantType?.code ?? "Chưa gán"}</span>
-                  </div>
-                  <div className="flex items-center gap-1 mb-1">
-                    <User className="w-3 h-3 text-blue-500" />
-                    <span className="text-xs text-gray-600 truncate">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
-                  </div>
-                </>
-              )}
-              <div className="flex items-center gap-1">
-                <Package className="w-3 h-3 text-green-500" />
-                <span className="text-xs text-gray-600">
-                  {used.toLocaleString("vi-VN")}
-                  {shelf.capacity ? `/${shelf.capacity}` : ""}
-                  {isMauMeRoom && " cụm"}
-                </span>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">
+              Kho mẫu mẹ chung <span className="font-normal text-gray-400">({unassignedShelves.length} kệ)</span>
+            </p>
+            {unassignedShelves.length === 0 ? (
+              <p className="text-xs text-gray-400 pl-1">Không còn kệ nào chưa gán nhân viên</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {unassignedShelves.map(renderShelf)}
               </div>
-              {usage !== null && (
-                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      usage > 90 ? "bg-red-500" : usage > 70 ? "bg-yellow-500" : "bg-green-500"
-                    }`}
-                    style={{ width: `${Math.min(usage, 100)}%` }}
-                  />
-                </div>
-              )}
-              {isMauMeRoom && canManageStaffAndPlant && (
-                <>
-                  <Select
-                    value={shelf.plantType?.id ?? "NONE"}
-                    onValueChange={(v) => patchShelf(shelf.id, { plantTypeId: v === "NONE" ? null : v }, "Đã cập nhật loại cây cho kệ")}
-                  >
-                    <SelectTrigger className="w-full mt-2 h-7 text-xs" disabled={savingId === shelf.id}>
-                      <SelectValue placeholder="Mã cây" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">— Chưa gán mã cây —</SelectItem>
-                      {plantTypes.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={shelf.assignedStaff?.id ?? "NONE"}
-                    onValueChange={(v) => patchShelf(shelf.id, { assignedStaffId: v === "NONE" ? null : v }, "Đã cập nhật nhân viên cho kệ")}
-                  >
-                    <SelectTrigger className="w-full mt-1 h-7 text-xs" disabled={savingId === shelf.id}>
-                      <SelectValue placeholder="Nhân viên" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">— Chưa gán nhân viên —</SelectItem>
-                      {staffOptions.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              {canMoveRoom && otherRooms.length > 0 && (
-                <Select
-                  value="_"
-                  onValueChange={(v) => patchShelf(shelf.id, { roomId: v }, "Đã chuyển kệ sang phòng khác")}
-                >
-                  <SelectTrigger className="w-full mt-1 h-7 text-xs" disabled={savingId === shelf.id}>
-                    <SelectValue placeholder="Chuyển phòng…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_" disabled>Chuyển sang…</SelectItem>
-                    {otherRooms.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {shelves.map(renderShelf)}
+        </div>
+      )}
 
       <Dialog open={!!qrShelf} onOpenChange={() => setQrShelf(null)}>
         <DialogContent className="max-w-sm">
