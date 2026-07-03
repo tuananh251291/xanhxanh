@@ -68,17 +68,66 @@ async function main() {
   }
   console.log("✅ Demo users created");
 
-  // Plant categories (Loại cây, mã 2 ký tự) — mỗi loại cây có 1 chi tiết loại cây demo (seq=1, VD "MT001").
-  // Admin thêm chi tiết loại cây khác (MT002, MT003...) qua trang /plant-types sau này.
+  // Plant categories (Loại cây, mã 2 ký tự) — mỗi loại cây có 1 chi tiết demo mặc định (seq=1, tên trùng
+  // Loại cây, VD "MT001" = "Monstera") cộng thêm nhiều giống cụ thể khác (varieties) trong cùng chi đó.
+  // Admin thêm/sửa chi tiết loại cây qua trang /plant-types sau này.
   const plantCategories = [
-    { code: "AL", name: "Alocasia", transferWaitWeeks: 4, rootingWeeks: 5 },
-    { code: "MT", name: "Monstera", transferWaitWeeks: 5, rootingWeeks: 6 },
-    { code: "PD", name: "Philodendron", transferWaitWeeks: 4, rootingWeeks: 5 },
-    { code: "AT", name: "Anthurium", transferWaitWeeks: 6, rootingWeeks: 6 },
-    { code: "HM", name: "Homa", transferWaitWeeks: 4, rootingWeeks: 5 },
-    { code: "EP", name: "Epi", transferWaitWeeks: 4, rootingWeeks: 5 },
-    { code: "MS", name: "Musa", transferWaitWeeks: 5, rootingWeeks: 5 },
-    { code: "RH", name: "Raphidophora", transferWaitWeeks: 4, rootingWeeks: 5 },
+    {
+      code: "AL", name: "Alocasia", transferWaitWeeks: 4, rootingWeeks: 5,
+      varieties: [
+        "Alocasia Amazonica", "Alocasia Polly", "Alocasia Frydek", "Alocasia Silver Dragon",
+        "Alocasia Black Velvet", "Alocasia Cuprea", "Alocasia Zebrina",
+      ],
+    },
+    {
+      code: "MT", name: "Monstera", transferWaitWeeks: 5, rootingWeeks: 6,
+      varieties: [
+        "Monstera Deliciosa", "Monstera Adansonii", "Monstera Albo Variegata", "Monstera Thai Constellation",
+        "Monstera Peru", "Monstera Obliqua", "Monstera Standleyana",
+      ],
+    },
+    {
+      code: "PD", name: "Philodendron", transferWaitWeeks: 4, rootingWeeks: 5,
+      varieties: [
+        "Philodendron Birkin", "Philodendron Pink Princess", "Philodendron Selloum", "Philodendron Melanochrysum",
+        "Philodendron Micans", "Philodendron Florida Ghost", "Philodendron White Knight",
+      ],
+    },
+    {
+      code: "AT", name: "Anthurium", transferWaitWeeks: 6, rootingWeeks: 6,
+      varieties: [
+        "Anthurium Crystallinum", "Anthurium Clarinervium", "Anthurium Warocqueanum", "Anthurium Veitchii",
+        "Anthurium Andraeanum", "Anthurium Magnificum",
+      ],
+    },
+    {
+      code: "HM", name: "Homa", transferWaitWeeks: 4, rootingWeeks: 5,
+      varieties: [
+        "Homalomena Rubescens", "Homalomena Emerald Gem", "Homalomena Selby", "Homalomena Maggy",
+        "Homalomena Pink Diamond", "Homalomena Cordata",
+      ],
+    },
+    {
+      code: "EP", name: "Epi", transferWaitWeeks: 4, rootingWeeks: 5,
+      varieties: [
+        "Epipremnum Aureum", "Epipremnum Marble Queen", "Epipremnum N'Joy", "Epipremnum Pinnatum",
+        "Epipremnum Cebu Blue", "Epipremnum Manjula",
+      ],
+    },
+    {
+      code: "MS", name: "Musa", transferWaitWeeks: 5, rootingWeeks: 5,
+      varieties: [
+        "Musa Basjoo", "Musa Velutina", "Musa Ornata", "Musa Siam Ruby",
+        "Musa Zebrina", "Musa Thai Black",
+      ],
+    },
+    {
+      code: "RH", name: "Raphidophora", transferWaitWeeks: 4, rootingWeeks: 5,
+      varieties: [
+        "Raphidophora Tetrasperma", "Raphidophora Decursiva", "Raphidophora Korthalsii", "Raphidophora Hayi",
+        "Raphidophora Pachyphylla", "Raphidophora Cryptantha",
+      ],
+    },
   ];
   for (const pc of plantCategories) {
     const category = await prisma.plantCategory.upsert({
@@ -86,18 +135,23 @@ async function main() {
       update: {},
       create: { code: pc.code, name: pc.name },
     });
-    await prisma.plantType.upsert({
-      where: { code: `${pc.code}001` },
-      update: {},
-      create: {
-        categoryId: category.id,
-        seq: 1,
-        code: `${pc.code}001`,
-        name: pc.name,
-        transferWaitWeeks: pc.transferWaitWeeks,
-        rootingWeeks: pc.rootingWeeks,
-      },
-    });
+    const names = [pc.name, ...pc.varieties];
+    for (let i = 0; i < names.length; i++) {
+      const seq = i + 1;
+      const code = `${pc.code}${String(seq).padStart(3, "0")}`;
+      await prisma.plantType.upsert({
+        where: { code },
+        update: {},
+        create: {
+          categoryId: category.id,
+          seq,
+          code,
+          name: names[i],
+          transferWaitWeeks: pc.transferWaitWeeks,
+          rootingWeeks: pc.rootingWeeks,
+        },
+      });
+    }
   }
   console.log("✅ Plant categories + plant types created");
 

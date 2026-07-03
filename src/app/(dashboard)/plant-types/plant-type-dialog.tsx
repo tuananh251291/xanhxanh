@@ -10,10 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const schema = z.object({
+  categoryId: z.string().optional(),
   name: z.string().min(2),
   description: z.string().optional(),
   transferWaitWeeks: z.coerce.number().int().min(1),
@@ -21,17 +23,18 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
+type Category = { id: string; code: string; name: string };
 type PlantType = FormData & { id: string; code: string; isActive: boolean };
 
 export default function PlantTypeDialog({
-  categoryId, categoryCode, plant,
+  categories, plant,
 }: {
-  categoryId: string;
-  categoryCode: string;
+  categories: Category[];
   plant?: PlantType;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [categoryId, setCategoryId] = useState("");
   const router = useRouter();
   const isEdit = !!plant;
 
@@ -41,6 +44,7 @@ export default function PlantTypeDialog({
   });
 
   const onSubmit = async (data: FormData) => {
+    if (!isEdit && !categoryId) { toast.error("Chọn loại cây"); return; }
     setLoading(true);
     try {
       const res = await fetch("/api/plant-types", {
@@ -52,27 +56,45 @@ export default function PlantTypeDialog({
       toast.success(isEdit ? "Cập nhật thành công" : "Thêm chi tiết loại cây thành công");
       setOpen(false);
       reset();
+      setCategoryId("");
       router.refresh();
     } finally { setLoading(false); }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button size="sm" className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-green-600 hover:bg-green-700" />}>
         {isEdit
           ? <Pencil className="w-4 h-4" />
-          : <><Plus className="w-4 h-4 mr-1" />Thêm chi tiết</>
+          : <><Plus className="w-4 h-4 mr-2" />Thêm chi tiết loại cây</>
         }
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `Sửa chi tiết loại cây ${plant.code}` : `Thêm chi tiết loại cây mới (${categoryCode}...)`}</DialogTitle>
+          <DialogTitle>{isEdit ? `Sửa chi tiết loại cây ${plant.code}` : "Thêm chi tiết loại cây mới"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit as Parameters<typeof handleSubmit>[0])} className="space-y-4 mt-2">
-          {isEdit && (
+          {isEdit ? (
             <div className="space-y-1">
               <Label>Mã chi tiết</Label>
               <Input value={plant.code} disabled />
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <Label>Loại cây</Label>
+              <Select value={categoryId} onValueChange={(v) => setCategoryId(v as string)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{(v: string | null) => {
+                    const c = categories.find((x) => x.id === v);
+                    return c ? `${c.code} — ${c.name}` : "Chọn loại cây";
+                  }}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
           <div className="space-y-1">
