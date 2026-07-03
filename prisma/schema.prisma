@@ -242,10 +242,9 @@ model PlantType {
   code               String   @unique // category.code + seq (3 chữ số), VD: "MT001"
   name               String
   description        String?
-  lightRoomWeeksMin  Int      @default(4)
-  lightRoomWeeksMax  Int      @default(6)
-  finishedDaysMin    Int      @default(30)
-  finishedDaysMax    Int      @default(45)
+  // Số tuần cố định (không phải khoảng min-max) do Admin cài đặt cho từng chi tiết loại cây.
+  transferWaitWeeks  Int      @default(5) // Thời gian đợi cấy chuyển (mẫu mẹ) — dùng tính Lot.expectedMoveAt khi stage = MAU_ME
+  rootingWeeks       Int      @default(5) // Thời gian ra rễ (thành phẩm) — dùng tính Lot.expectedMoveAt khi stage = THANH_PHAM
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

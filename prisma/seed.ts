@@ -71,14 +71,14 @@ async function main() {
   // Plant categories (Loại cây, mã 2 ký tự) — mỗi loại cây có 1 chi tiết loại cây demo (seq=1, VD "MT001").
   // Admin thêm chi tiết loại cây khác (MT002, MT003...) qua trang /plant-types sau này.
   const plantCategories = [
-    { code: "AL", name: "Alocasia", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
-    { code: "MT", name: "Monstera", lightRoomWeeksMin: 5, lightRoomWeeksMax: 7 },
-    { code: "PD", name: "Philodendron", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
-    { code: "AT", name: "Anthurium", lightRoomWeeksMin: 6, lightRoomWeeksMax: 8 },
-    { code: "HM", name: "Homa", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
-    { code: "EP", name: "Epi", lightRoomWeeksMin: 4, lightRoomWeeksMax: 5 },
-    { code: "MS", name: "Musa", lightRoomWeeksMin: 5, lightRoomWeeksMax: 6 },
-    { code: "RH", name: "Raphidophora", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
+    { code: "AL", name: "Alocasia", transferWaitWeeks: 4, rootingWeeks: 5 },
+    { code: "MT", name: "Monstera", transferWaitWeeks: 5, rootingWeeks: 6 },
+    { code: "PD", name: "Philodendron", transferWaitWeeks: 4, rootingWeeks: 5 },
+    { code: "AT", name: "Anthurium", transferWaitWeeks: 6, rootingWeeks: 6 },
+    { code: "HM", name: "Homa", transferWaitWeeks: 4, rootingWeeks: 5 },
+    { code: "EP", name: "Epi", transferWaitWeeks: 4, rootingWeeks: 5 },
+    { code: "MS", name: "Musa", transferWaitWeeks: 5, rootingWeeks: 5 },
+    { code: "RH", name: "Raphidophora", transferWaitWeeks: 4, rootingWeeks: 5 },
   ];
   for (const pc of plantCategories) {
     const category = await prisma.plantCategory.upsert({
@@ -94,8 +94,8 @@ async function main() {
         seq: 1,
         code: `${pc.code}001`,
         name: pc.name,
-        lightRoomWeeksMin: pc.lightRoomWeeksMin,
-        lightRoomWeeksMax: pc.lightRoomWeeksMax,
+        transferWaitWeeks: pc.transferWaitWeeks,
+        rootingWeeks: pc.rootingWeeks,
       },
     });
   }

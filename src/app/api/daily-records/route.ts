@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { generateLotCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
-import { addDays, addWeeks } from "date-fns";
+import { addWeeks } from "date-fns";
 
 const schema = z.object({
   instructionId: z.string(),
@@ -73,8 +73,8 @@ export async function POST(req: NextRequest) {
       const code = await generateLotCode(item.stage);
       const expectedMoveAt =
         item.stage === "MAU_ME"
-          ? addWeeks(new Date(), instruction.plantType.lightRoomWeeksMin)
-          : addDays(new Date(), instruction.plantType.finishedDaysMin);
+          ? addWeeks(new Date(), instruction.plantType.transferWaitWeeks)
+          : addWeeks(new Date(), instruction.plantType.rootingWeeks);
       lot = await prisma.lot.create({
         data: {
           code,

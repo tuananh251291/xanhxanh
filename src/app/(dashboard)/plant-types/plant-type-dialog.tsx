@@ -16,10 +16,8 @@ import { toast } from "sonner";
 const schema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
-  lightRoomWeeksMin: z.coerce.number().int().min(1),
-  lightRoomWeeksMax: z.coerce.number().int().min(1),
-  finishedDaysMin: z.coerce.number().int().min(1),
-  finishedDaysMax: z.coerce.number().int().min(1),
+  transferWaitWeeks: z.coerce.number().int().min(1),
+  rootingWeeks: z.coerce.number().int().min(1),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -39,7 +37,7 @@ export default function PlantTypeDialog({
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as Resolver<FormData>,
-    defaultValues: plant ?? { lightRoomWeeksMin: 4, lightRoomWeeksMax: 6, finishedDaysMin: 30, finishedDaysMax: 45 },
+    defaultValues: plant ?? { transferWaitWeeks: 5, rootingWeeks: 5 },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -86,30 +84,16 @@ export default function PlantTypeDialog({
             <Label>Mô tả (tùy chọn)</Label>
             <Input {...register("description")} placeholder="Ghi chú thêm..." />
           </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Thời gian lưu kho sáng (tuần)</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Tối thiểu</Label>
-                <Input {...register("lightRoomWeeksMin")} type="number" min={1} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Tối đa</Label>
-                <Input {...register("lightRoomWeeksMax")} type="number" min={1} />
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Thời gian đợi cấy chuyển (tuần)</Label>
+              <Input {...register("transferWaitWeeks")} type="number" min={1} />
+              {errors.transferWaitWeeks && <p className="text-xs text-red-500">{errors.transferWaitWeeks.message}</p>}
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Thời gian lưu kho thành phẩm (ngày)</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Tối thiểu</Label>
-                <Input {...register("finishedDaysMin")} type="number" min={1} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-500">Tối đa</Label>
-                <Input {...register("finishedDaysMax")} type="number" min={1} />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Thời gian ra rễ (tuần)</Label>
+              <Input {...register("rootingWeeks")} type="number" min={1} />
+              {errors.rootingWeeks && <p className="text-xs text-red-500">{errors.rootingWeeks.message}</p>}
             </div>
           </div>
           <div className="flex gap-2 pt-2">

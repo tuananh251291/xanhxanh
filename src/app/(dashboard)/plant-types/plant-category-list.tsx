@@ -12,10 +12,8 @@ type PlantType = {
   code: string;
   name: string;
   description: string | null;
-  lightRoomWeeksMin: number;
-  lightRoomWeeksMax: number;
-  finishedDaysMin: number;
-  finishedDaysMax: number;
+  transferWaitWeeks: number;
+  rootingWeeks: number;
   isActive: boolean;
 };
 
@@ -72,8 +70,8 @@ export default function PlantCategoryList({ categories }: { categories: Category
                       <tr className="border-b bg-gray-50">
                         <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">Mã cây</th>
                         <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">Tên chi tiết</th>
-                        <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">TG kho sáng</th>
-                        <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">TG thành phẩm</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">Thời gian đợi cấy chuyển</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">Thời gian ra rễ</th>
                         <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">Trạng thái</th>
                         <th className="text-left px-4 py-2 text-xs font-medium text-gray-600">Thao tác</th>
                       </tr>
@@ -85,8 +83,8 @@ export default function PlantCategoryList({ categories }: { categories: Category
                           <td className="px-4 py-2 text-sm font-medium text-gray-900 flex items-center gap-2">
                             <Leaf className="w-3.5 h-3.5 text-green-500" />{p.name}
                           </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">{p.lightRoomWeeksMin}–{p.lightRoomWeeksMax} tuần</td>
-                          <td className="px-4 py-2 text-sm text-gray-600">{p.finishedDaysMin}–{p.finishedDaysMax} ngày</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{p.transferWaitWeeks} tuần</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{p.rootingWeeks} tuần</td>
                           <td className="px-4 py-2">
                             <Badge className={p.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
                               {p.isActive ? "Hoạt động" : "Vô hiệu"}

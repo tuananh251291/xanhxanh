@@ -19,6 +19,12 @@
       label/enum/zod trong code + migrate dữ liệu cũ trong DB (Lot, PlantingInstructionItem, PlantTypeSpec).
 - [x] Giàn kệ (`/warehouses`) giờ hiện cả mã cây lẫn tên chi tiết loại cây (trước chỉ hiện mã) trên mỗi
       thẻ kệ ở Phòng mẫu mẹ, VD "AL001 — Alocasia".
+- [x] Đổi tên + đơn giản hóa 2 field thời gian trên chi tiết loại cây (2026-07-03): `lightRoomWeeksMin/Max`
+      ("Thời gian kho sáng", khoảng tuần) → `transferWaitWeeks` ("Thời gian đợi cấy chuyển", 1 số tuần cố
+      định); `finishedDaysMin/Max` ("Thời gian thành phẩm", khoảng ngày) → `rootingWeeks` ("Thời gian ra rễ",
+      1 số tuần cố định — đổi luôn đơn vị từ ngày sang tuần). Không còn khái niệm tối thiểu/tối đa, chỉ 1 mức
+      Admin cài cố định. `POST /api/daily-records` tính `Lot.expectedMoveAt` dùng `addWeeks` cho cả 2 giai
+      đoạn (trước đây THANH_PHAM dùng `addDays`).
 
 ### 2.2 Chỉ định cấy (KY_THUAT)
 - [x] Trang `/instructions` — danh sách chỉ định, filter theo tuần/trạng thái
@@ -70,7 +76,7 @@
 
 ### 2.7 Bàn giao thành phẩm → kho thành phẩm (KHO_MO)
 - [x] Trang `/transfers/finished` — danh sách lô thành phẩm đủ tuổi
-- [x] Hệ thống đề xuất lô đến hạn (enteredAt + lightRoomWeeksMax)
+- [x] Hệ thống đề xuất lô đến hạn (dựa trên `Lot.expectedMoveAt`, tính từ `enteredAt` + `rootingWeeks` của chi tiết loại cây lúc lô được tạo)
 - [x] Tạo phiếu bàn giao sang kho thành phẩm
 - [x] API cập nhật Lot status → TRANSFERRED, chuyển warehouse
 

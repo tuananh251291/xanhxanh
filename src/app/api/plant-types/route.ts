@@ -8,20 +8,16 @@ const createSchema = z.object({
   categoryId: z.string().min(1, "Cần chọn loại cây"),
   name: z.string().min(2),
   description: z.string().optional(),
-  lightRoomWeeksMin: z.number().int().min(1).default(4),
-  lightRoomWeeksMax: z.number().int().min(1).default(6),
-  finishedDaysMin: z.number().int().min(1).default(30),
-  finishedDaysMax: z.number().int().min(1).default(45),
+  transferWaitWeeks: z.number().int().min(1).default(5),
+  rootingWeeks: z.number().int().min(1).default(5),
 });
 
 const updateSchema = z.object({
   id: z.string(),
   name: z.string().min(2).optional(),
   description: z.string().optional(),
-  lightRoomWeeksMin: z.number().int().min(1).optional(),
-  lightRoomWeeksMax: z.number().int().min(1).optional(),
-  finishedDaysMin: z.number().int().min(1).optional(),
-  finishedDaysMax: z.number().int().min(1).optional(),
+  transferWaitWeeks: z.number().int().min(1).optional(),
+  rootingWeeks: z.number().int().min(1).optional(),
   isActive: z.boolean().optional(),
 });
 
