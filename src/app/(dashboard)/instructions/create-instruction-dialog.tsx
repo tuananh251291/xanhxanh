@@ -22,14 +22,6 @@ type MotherLot = {
   plantType: { code: string; name: string };
   shelf: { id: string; code: string } | null;
 };
-type PlantTypeSpec = {
-  plantTypeId: string;
-  stageCode: string;
-  motherSampleRatio: number;
-  rootingRatio: number;
-  motherMediumTypeId: string | null;
-  finishedMediumTypeId: string | null;
-};
 type Row = {
   lotId: string;
   lotCode: string;
@@ -47,7 +39,6 @@ export default function CreateInstructionDialog() {
   const [loading, setLoading] = useState(false);
   const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
   const [motherLots, setMotherLots] = useState<MotherLot[]>([]);
-  const [specs, setSpecs] = useState<PlantTypeSpec[]>([]);
   const [shelfId, setShelfId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [weekStart, setWeekStart] = useState("");
@@ -74,34 +65,30 @@ export default function CreateInstructionDialog() {
     Promise.all([
       fetch("/api/medium-types").then((r) => r.json()),
       fetch("/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE").then((r) => r.json()),
-      fetch("/api/plant-type-specs").then((r) => r.json()),
-    ]).then(([mediums, lots, specList]) => {
+    ]).then(([mediums, lots]) => {
       setMediumTypes(mediums);
       setMotherLots(lots);
-      setSpecs(specList);
     });
   }, [open]);
 
-  // Chọn giàn kệ → hiện tất cả các dòng quy cách (M03/M05) đang có trên kệ đó, mỗi dòng tự điền
-  // tỉ lệ/môi trường theo cấu hình quy cách của loại cây, mặc định lấy toàn bộ số lượng còn lại.
+  // Chọn giàn kệ → hiện tất cả các dòng quy cách (M03/M05) đang có trên kệ đó, mặc định lấy toàn bộ số
+  // lượng còn lại. Tỉ lệ nhân/ra rễ + môi trường để trống — KY_THUAT tự nhập theo tình trạng thực tế
+  // kiểm tra lô đó, không có sẵn gợi ý theo loại cây.
   const onShelfChange = (v: string) => {
     setShelfId(v);
     const group = shelfGroups.find((s) => s.shelfId === v);
     if (!group) { setRows([]); return; }
-    const newRows: Row[] = group.lots.map((lot) => {
-      const spec = specs.find((s) => s.plantTypeId === lot.plantTypeId && s.stageCode === lot.stageCode);
-      return {
-        lotId: lot.id,
-        lotCode: lot.code,
-        stageCode: lot.stageCode,
-        available: lot.quantity,
-        quantityUsed: String(lot.quantity),
-        motherSampleRatio: spec ? String(spec.motherSampleRatio) : "",
-        rootingRatio: spec ? String(spec.rootingRatio) : "",
-        motherMediumTypeId: spec?.motherMediumTypeId ?? "",
-        finishedMediumTypeId: spec?.finishedMediumTypeId ?? "",
-      };
-    });
+    const newRows: Row[] = group.lots.map((lot) => ({
+      lotId: lot.id,
+      lotCode: lot.code,
+      stageCode: lot.stageCode,
+      available: lot.quantity,
+      quantityUsed: String(lot.quantity),
+      motherSampleRatio: "",
+      rootingRatio: "",
+      motherMediumTypeId: "",
+      finishedMediumTypeId: "",
+    }));
     setRows(newRows);
     setPlannedTouched(false);
   };

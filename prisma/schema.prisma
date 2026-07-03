@@ -231,8 +231,9 @@ model PlantCategory {
 
 // Chi tiết loại cây (giống cây cụ thể) — mã đầy đủ = mã Loại cây (category.code) + số thứ tự 3 chữ số
 // (seq, 001-999) trong danh mục đó, VD: "MT001". Đây là entity thực sự được dùng xuyên suốt hệ thống
-// (Lot, Shelf, PlantingInstruction, PlantTypeSpec) — "Loại cây" (PlantCategory) chỉ là nhóm cha để phân
-// loại và sinh mã tự động.
+// (Lot, Shelf, PlantingInstruction) — "Loại cây" (PlantCategory) chỉ là nhóm cha để phân loại và sinh
+// mã tự động. Tỉ lệ nhân mẫu mẹ/ra rễ + môi trường KHÔNG có cấu hình mặc định ở đây — KY_THUAT tự nhập
+// theo tình trạng thực tế của từng lô khi tạo chỉ định cấy (xem PlantingInstructionItem).
 model PlantType {
   id                 String   @id @default(cuid())
   categoryId         String
@@ -251,7 +252,6 @@ model PlantType {
 
   lots                 Lot[]
   plantingInstructions PlantingInstruction[]
-  specs                PlantTypeSpec[]
   shelves              Shelf[]
 
   @@unique([categoryId, seq])
@@ -270,37 +270,11 @@ model MediumType {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  specsAsMotherMedium               PlantTypeSpec[]           @relation("SpecMotherMedium")
-  specsAsFinishedMedium             PlantTypeSpec[]           @relation("SpecFinishedMedium")
   instructionItemsAsMotherMedium    PlantingInstructionItem[] @relation("ItemMotherMedium")
   instructionItemsAsFinishedMedium  PlantingInstructionItem[] @relation("ItemFinishedMedium")
   handoverItems                     MediumHandoverItem[]
 
   @@map("medium_types")
-}
-
-// Tỉ lệ nhân mẫu mẹ/ra rễ + môi trường mặc định theo từng quy cách mẫu mẹ (M3/M5) của mỗi loại cây.
-// Mỗi quy cách có 2 môi trường riêng: 1 để nhân thêm mẫu mẹ, 1 để ra rễ thành cây thành phẩm — vì 2 giai
-// đoạn này dùng công thức môi trường khác nhau. Dùng để tự động điền khi tạo chỉ định cấy — quét/chọn kệ
-// nguồn ra quy cách (M3/M5) rồi tra bảng này theo (plantTypeId, stageCode).
-model PlantTypeSpec {
-  id                    String     @id @default(cuid())
-  plantTypeId           String
-  plantType             PlantType  @relation(fields: [plantTypeId], references: [id])
-  stageCode             String // "M3" | "M5" — cụm 3 chồi / cụm 5 chồi
-  motherSampleRatio     Float
-  rootingRatio          Float
-  // Optional ở tầng DB để thêm cột mới không phá dữ liệu cũ (16 dòng đã tồn tại) — tầng ứng dụng
-  // (API /api/plant-type-specs, form cấu hình) vẫn bắt buộc nhập cả 2 khi tạo/sửa quy cách.
-  motherMediumTypeId    String?
-  motherMedium          MediumType? @relation("SpecMotherMedium", fields: [motherMediumTypeId], references: [id])
-  finishedMediumTypeId  String?
-  finishedMedium        MediumType? @relation("SpecFinishedMedium", fields: [finishedMediumTypeId], references: [id])
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-
-  @@unique([plantTypeId, stageCode])
-  @@map("plant_type_specs")
 }
 
 // ============================================================

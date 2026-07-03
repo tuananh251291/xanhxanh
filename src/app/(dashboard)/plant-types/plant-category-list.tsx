@@ -6,7 +6,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import PlantCategoryDialog from "./plant-category-dialog";
 import PlantTypeDialog from "./plant-type-dialog";
-import PlantTypeSpecDialog from "./plant-type-spec-dialog";
 
 type PlantType = {
   id: string;
@@ -99,7 +98,6 @@ export default function PlantCategoryList({ categories }: { categories: Category
                               categoryCode={cat.code}
                               plant={{ ...p, description: p.description ?? undefined }}
                             />
-                            <PlantTypeSpecDialog plantTypeId={p.id} plantTypeName={`${p.code} — ${p.name}`} />
                           </td>
                         </tr>
                       ))}

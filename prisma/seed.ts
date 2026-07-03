@@ -116,32 +116,11 @@ async function main() {
   }
   console.log("✅ Medium types created");
 
-  // Tỉ lệ nhân/môi trường mặc định theo quy cách mẫu mẹ (M03/M05) — mỗi loại cây 1 bộ số liệu riêng cho M03 và M05.
-  // Số liệu demo, Admin chỉnh lại theo thực tế qua trang /plant-types.
   // orderBy cố định để thứ tự luôn giống nhau giữa các lần seed — nếu không, việc gán kệ↔loại cây theo
   // vòng lặp bên dưới sẽ lệch mỗi lần chạy lại, trong khi lô cũ (upsert, không đổi shelfId) vẫn ở kệ cũ.
+  // Không seed tỉ lệ nhân/môi trường mặc định (PlantTypeSpec đã bỏ) — KY_THUAT tự nhập theo thực tế khi
+  // tạo chỉ định cấy.
   const createdPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
-  const createdMediumTypes = await prisma.mediumType.findMany({ orderBy: { code: "asc" } });
-  const plantTypeSpecDefs: { stageCode: "M03" | "M05"; motherSampleRatio: number; rootingRatio: number; motherMediumIdx: number; finishedMediumIdx: number }[] = [
-    { stageCode: "M03", motherSampleRatio: 3.0, rootingRatio: 0.8, motherMediumIdx: 0, finishedMediumIdx: 2 },
-    { stageCode: "M05", motherSampleRatio: 5.0, rootingRatio: 0.7, motherMediumIdx: 1, finishedMediumIdx: 2 },
-  ];
-  for (const pt of createdPlantTypes) {
-    for (const spec of plantTypeSpecDefs) {
-      const data = {
-        motherSampleRatio: spec.motherSampleRatio,
-        rootingRatio: spec.rootingRatio,
-        motherMediumTypeId: createdMediumTypes[spec.motherMediumIdx % createdMediumTypes.length].id,
-        finishedMediumTypeId: createdMediumTypes[spec.finishedMediumIdx % createdMediumTypes.length].id,
-      };
-      await prisma.plantTypeSpec.upsert({
-        where: { plantTypeId_stageCode: { plantTypeId: pt.id, stageCode: spec.stageCode } },
-        update: data,
-        create: { plantTypeId: pt.id, stageCode: spec.stageCode, ...data },
-      });
-    }
-  }
-  console.log("✅ Plant type specs (M03/M05) created");
 
   // Warehouses — 2 kho sản xuất (mỗi kho có phòng sáng + phòng tối) + 1 kho thành phẩm
   const warehouses = [

@@ -25,15 +25,18 @@
 - [x] Form tạo chỉ định cấy (thiết kế lại 2026-07-03 — 1 kệ có thể có nhiều quy cách nguồn cùng lúc):
   - Chọn **giàn kệ nguồn** (không chọn loại cây riêng — loại cây tự suy ra từ kệ, vì mỗi kệ chỉ xếp 1 loại cây)
   - Hệ thống tự liệt kê **từng dòng quy cách** (M3/M5) đang có trên kệ đó kèm số lượng còn lại
-  - Mỗi dòng nhập số lượng dùng riêng + tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm riêng + **2 môi trường riêng** (1 để nhân thêm mẫu mẹ, 1 để ra rễ thành cây thành phẩm) — tự điền theo cấu hình quy cách của loại cây (xem 2.1b), sửa tay được. Không còn ô "Môi trường" chung cho cả chỉ định.
+  - Mỗi dòng nhập số lượng dùng riêng + tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm riêng + **2 môi trường riêng** (1 để nhân thêm mẫu mẹ, 1 để ra rễ thành cây thành phẩm) — **KY_THUAT tự nhập tay hoàn toàn theo tình trạng kiểm tra thực tế của từng lô** (2026-07-03: bỏ cơ chế tự điền theo cấu hình mặc định của loại cây, xem 2.1b). Không còn ô "Môi trường" chung cho cả chỉ định.
   - Output tính **độc lập theo từng dòng** (không dây chuyền): mẫu mẹ dự kiến = số dùng × tỉ lệ nhân; thành phẩm dự kiến = số dùng × tỉ lệ ra TP — rồi cộng dồn tất cả các dòng
   - KY_THUAT nhập kế hoạch phân bổ thành phẩm dự kiến theo quy cách đóng gói T01/T05 (đối chiếu sau này, không bắt buộc khớp tuyệt đối)
 - [x] In phiếu chỉ định cấy (print CSS) — trang chi tiết có thêm bảng "Quy cách nguồn" liệt kê từng dòng M3/M5 đã dùng kèm 2 môi trường
 - [x] API `POST /api/instructions` — tạo chỉ định nhiều dòng quy cách (mỗi dòng 2 môi trường riêng), tự sinh code
 
-### 2.1b Quy cách nhân giống theo loại cây (Admin)
-- [x] Model `PlantTypeSpec` — tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm + **2 môi trường riêng** (nhân mẫu mẹ / ra rễ thành phẩm) mặc định, cấu hình riêng cho M3 và M5 của từng loại cây
-- [x] Nút cấu hình trên `/plant-types` (`plant-type-spec-dialog.tsx`) + API `/api/plant-type-specs`
+### 2.1b Quy cách nhân giống theo loại cây (Admin) — ĐÃ BỎ (2026-07-03)
+- [x] ~~Model `PlantTypeSpec` — tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm + 2 môi trường riêng mặc định theo loại cây~~
+      **Đã xóa hoàn toàn** (model, API `/api/plant-type-specs`, nút cấu hình trên `/plant-types`) theo yêu cầu:
+      quy cách nhân giống là quyết định của KY_THUAT dựa trên tình trạng kiểm tra thực tế từng lô, không phải
+      cấu hình mặc định Admin đặt sẵn theo loại cây. Form tạo chỉ định cấy (2.2) giờ để trống tỉ lệ/môi trường,
+      KY_THUAT tự nhập tay từng lần.
 - [x] Trang `/medium/tasks` (MOI_TRUONG) viết lại để gộp nhiệm vụ pha môi trường theo từng dòng quy cách nguồn (không còn theo 1 môi trường chung/chỉ định) — 1 chỉ định có thể sinh nhiệm vụ cho nhiều mã môi trường khác nhau
 
 ### 2.3 Nhập dữ liệu cấy hàng ngày (CAY_MO)
