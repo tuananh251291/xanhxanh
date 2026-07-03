@@ -65,8 +65,23 @@
 ### 2.10 Chưa có trong nav nhưng thiếu trang (phát hiện khi rà soát ROLE_NAV)
 - [x] `/contamination` (KHO_MO) — trang lọc nhiễm riêng, xác nhận báo cáo nhiễm
 - [x] `/my-reports` (CAY_MO) — báo cáo sản lượng & tỉ lệ nhiễm cá nhân
-- [ ] `/reports`, `/reports/production` (ADMIN, KY_THUAT) — chưa có, để dành cho Phase 4 (biểu đồ/báo cáo)
-- [ ] `/alerts` — link cố định ở sidebar cho mọi role nhưng chưa có trang (404), cần trang danh sách cảnh báo cơ bản
+- [x] `/reports` (ADMIN, KY_THUAT) — trang tab gộp 4 báo cáo (sản lượng, tỉ lệ nhiễm, kế hoạch vs thực tế, tồn kho & vòng đời), có biểu đồ. Không tách route riêng `/reports/production` — dùng tab trong cùng 1 trang.
+- [x] `/alerts` — danh sách cảnh báo cơ bản + badge số chưa đọc trên sidebar
+
+### 2.11 Đăng ký & duyệt tài khoản, phân quyền theo vai trò (Admin)
+- [x] Trang `/register` — nhân viên tự đăng ký, tài khoản mới ở trạng thái PENDING (chưa có vai trò)
+- [x] Màn hình chặn truy cập cho tài khoản PENDING/REJECTED (`pending-status-screen.tsx`) — hiện ở mọi trang dashboard cho tới khi được duyệt
+- [x] Danh sách "Tài khoản chờ duyệt" trên `/users` — Admin chọn vai trò rồi Duyệt, hoặc Từ chối
+- [x] API `PATCH /api/users/[id]` — duyệt (gán role) / từ chối, chỉ SUPER_ADMIN được gọi
+- [x] Ma trận phân quyền trên `/users` — Admin bật/tắt quyền truy cập từng trang cho từng vai trò (trừ ADMIN — luôn full quyền)
+- [x] API `/api/permissions` + `src/lib/permissions.ts` (`isPageAllowed`) — kiểm tra quyền theo role+href, mặc định cho phép nếu chưa cấu hình (fail-open)
+- [x] Session tự làm mới role/status/isActive từ DB mỗi request (không cần đăng xuất/đăng nhập lại khi Admin duyệt/đổi quyền/khóa tài khoản)
+
+### 2.12 Cơ cấu Kho → Phòng → Kệ, phân quyền "Phòng thị trường" (Admin)
+- [x] Đổi cấu trúc: `Warehouse` (Sản xuất | Thành phẩm) → `Room` (6 loại: Phòng sáng/Phòng tối cho sản xuất; Phòng khả dụng/Phòng theo dõi/Phòng hạn túi/Phòng thị trường cho thành phẩm) → `Shelf`
+- [x] Dialog thêm "Phòng thị trường" trên `/warehouses` (`add-market-room-dialog.tsx`)
+- [x] Dialog gán quyền xem theo từng Phòng thị trường cho nhân viên SALE (`room-access-dialog.tsx`) + API `/api/rooms/[id]/access`
+- [ ] Rà soát các trang tồn kho/báo cáo còn lọc theo `Warehouse.type` cũ xem đã cập nhật hết sang Room chưa — _chưa rà soát kỹ, cần kiểm tra riêng_
 
 ---
 
@@ -82,9 +97,9 @@
 
 ## Phase 4 — Dashboard nâng cao & tiện ích
 
-- [ ] Biểu đồ sản lượng theo tuần/tháng
-- [ ] Biểu đồ tỉ lệ nhiễm theo NV cấy
-- [ ] Báo cáo hiệu suất NV (xuất Excel)
+- [x] Biểu đồ sản lượng theo tuần/tháng — trong `/reports` tab "Sản lượng"
+- [x] Biểu đồ tỉ lệ nhiễm theo NV cấy — trong `/reports` tab "Tỉ lệ nhiễm"
+- [ ] Báo cáo hiệu suất NV (xuất Excel) — có biểu đồ trong `/reports` rồi, còn thiếu phần xuất Excel
 - [ ] QR scan bằng camera điện thoại (html5-qrcode)
 - [ ] Realtime alerts (Supabase Realtime)
 - [ ] Checklist đầu việc hàng ngày per role
