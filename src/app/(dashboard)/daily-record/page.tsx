@@ -16,7 +16,7 @@ import { PenLine, Loader2, Plus, Trash2, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS } from "@/types";
+import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
 
 type Instruction = {
   id: string;
@@ -198,13 +198,19 @@ export default function DailyRecordPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Input
-                  {...register(`items.${idx}.quantityCreated`)}
-                  type="number"
-                  min={1}
-                  placeholder="Số lượng"
-                  className="flex-1"
-                />
+                <div className="flex-1">
+                  <Input
+                    {...register(`items.${idx}.quantityCreated`)}
+                    type="number"
+                    min={1}
+                    placeholder="Số lượng"
+                  />
+                  {items[idx]?.stageCode === "T05" && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      ≈ {Math.floor((Number(items[idx]?.quantityCreated) || 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi
+                    </p>
+                  )}
+                </div>
                 {fields.length > 1 && (
                   <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>
                     <Trash2 className="w-4 h-4 text-red-400" />

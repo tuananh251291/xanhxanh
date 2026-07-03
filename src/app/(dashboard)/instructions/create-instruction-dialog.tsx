@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Loader2, Calculator, QrCode } from "lucide-react";
 import { toast } from "sonner";
-import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS } from "@/types";
+import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
 
 type MediumType = { id: string; code: string; name: string };
 type MotherLot = {
@@ -312,6 +312,10 @@ export default function CreateInstructionDialog() {
                       value={plannedT05}
                       onChange={(e) => { setPlannedTouched(true); setPlannedT05(e.target.value); }}
                     />
+                    <p className="text-xs text-gray-400">
+                      ≈ {Math.floor((Number(plannedT05) || 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi
+                      {(Number(plannedT05) || 0) % FINISHED_SPEC_BAG_SIZE.T05 > 0 && ` (dư ${(Number(plannedT05) || 0) % FINISHED_SPEC_BAG_SIZE.T05} cây)`}
+                    </p>
                   </div>
                 </div>
                 <p className={plannedSum === totalFinishedOutput ? "text-xs text-green-600" : "text-xs text-orange-500"}>

@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, User, Leaf, FlaskConical } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS } from "@/types";
+import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { PrintButton } from "@/components/shared/print-button";
 import { isPageAllowed } from "@/lib/permissions";
@@ -136,6 +136,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             <p className="mt-3 text-sm text-gray-500 border-t pt-3">
               Kế hoạch phân bổ: {FINISHED_SPEC_LABELS.T01} <strong>{(inst.plannedT01Quantity ?? 0).toLocaleString("vi-VN")}</strong>
               {" · "}{FINISHED_SPEC_LABELS.T05} <strong>{(inst.plannedT05Quantity ?? 0).toLocaleString("vi-VN")}</strong>
+              {" "}(≈ {Math.floor((inst.plannedT05Quantity ?? 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi)
             </p>
           ) : null}
           {inst.notes && <p className="mt-3 text-sm text-gray-500 border-t pt-3">Ghi chú: {inst.notes}</p>}

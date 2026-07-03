@@ -76,6 +76,12 @@ export const FINISHED_SPEC_LABELS = {
   T05: "T05 — túi 5 cây",
 } as const;
 
+// Số cây trong 1 túi theo quy cách — dùng để quy đổi số cây sang số túi (VD: T05 → chia 5)
+export const FINISHED_SPEC_BAG_SIZE = {
+  T01: 1,
+  T05: 5,
+} as const;
+
 export const LOT_STATUS_LABELS = {
   ACTIVE: "Đang lưu",
   TRANSFERRED: "Đã chuyển",
