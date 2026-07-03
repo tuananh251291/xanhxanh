@@ -14,7 +14,6 @@ import { Plus, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const schema = z.object({
-  code: z.string().min(2),
   name: z.string().min(2),
   description: z.string().optional(),
   lightRoomWeeksMin: z.coerce.number().int().min(1),
@@ -24,9 +23,15 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
-type PlantType = FormData & { id: string; isActive: boolean };
+type PlantType = FormData & { id: string; code: string; isActive: boolean };
 
-export default function PlantTypeDialog({ plant }: { plant?: PlantType }) {
+export default function PlantTypeDialog({
+  categoryId, categoryCode, plant,
+}: {
+  categoryId: string;
+  categoryCode: string;
+  plant?: PlantType;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -43,10 +48,10 @@ export default function PlantTypeDialog({ plant }: { plant?: PlantType }) {
       const res = await fetch("/api/plant-types", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isEdit ? { id: plant!.id, ...data } : data),
+        body: JSON.stringify(isEdit ? { id: plant!.id, ...data } : { categoryId, ...data }),
       });
       if (!res.ok) { toast.error((await res.json()).message); return; }
-      toast.success(isEdit ? "Cập nhật thành công" : "Thêm loại cây thành công");
+      toast.success(isEdit ? "Cập nhật thành công" : "Thêm chi tiết loại cây thành công");
       setOpen(false);
       reset();
       router.refresh();
@@ -55,28 +60,27 @@ export default function PlantTypeDialog({ plant }: { plant?: PlantType }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button size="sm" className="bg-green-600 hover:bg-green-700" />}>
         {isEdit
           ? <Pencil className="w-4 h-4" />
-          : <><Plus className="w-4 h-4 mr-2" />Thêm loại cây</>
+          : <><Plus className="w-4 h-4 mr-1" />Thêm chi tiết</>
         }
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Sửa loại cây" : "Thêm loại cây mới"}</DialogTitle>
+          <DialogTitle>{isEdit ? `Sửa chi tiết loại cây ${plant.code}` : `Thêm chi tiết loại cây mới (${categoryCode}...)`}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit as Parameters<typeof handleSubmit>[0])} className="space-y-4 mt-2">
-          <div className="grid grid-cols-2 gap-3">
+          {isEdit && (
             <div className="space-y-1">
-              <Label>Mã cây</Label>
-              <Input {...register("code")} placeholder="CAY001" disabled={isEdit} />
-              {errors.code && <p className="text-xs text-red-500">{errors.code.message}</p>}
+              <Label>Mã chi tiết</Label>
+              <Input value={plant.code} disabled />
             </div>
-            <div className="space-y-1">
-              <Label>Tên cây</Label>
-              <Input {...register("name")} placeholder="Chuối" />
-              {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
-            </div>
+          )}
+          <div className="space-y-1">
+            <Label>Tên chi tiết loại cây</Label>
+            <Input {...register("name")} placeholder="VD: Trầu bà lá xẻ" />
+            {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Mô tả (tùy chọn)</Label>

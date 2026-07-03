@@ -214,9 +214,31 @@ model ChecklistThreshold {
 // PLANT TYPES
 // ============================================================
 
+// Loại cây (nhóm chung) — mã 2 ký tự, VD: MT, AL, PD. Mỗi loại cây có nhiều "chi tiết loại cây"
+// (PlantType) đánh số 001-999 bên trong.
+model PlantCategory {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plantTypes PlantType[]
+
+  @@map("plant_categories")
+}
+
+// Chi tiết loại cây (giống cây cụ thể) — mã đầy đủ = mã Loại cây (category.code) + số thứ tự 3 chữ số
+// (seq, 001-999) trong danh mục đó, VD: "MT001". Đây là entity thực sự được dùng xuyên suốt hệ thống
+// (Lot, Shelf, PlantingInstruction, PlantTypeSpec) — "Loại cây" (PlantCategory) chỉ là nhóm cha để phân
+// loại và sinh mã tự động.
 model PlantType {
   id                 String   @id @default(cuid())
-  code               String   @unique
+  categoryId         String
+  category           PlantCategory @relation(fields: [categoryId], references: [id])
+  seq                Int // số thứ tự trong Loại cây (001-999), dùng để tự sinh code
+  code               String   @unique // category.code + seq (3 chữ số), VD: "MT001"
   name               String
   description        String?
   lightRoomWeeksMin  Int      @default(4)
@@ -232,6 +254,7 @@ model PlantType {
   specs                PlantTypeSpec[]
   shelves              Shelf[]
 
+  @@unique([categoryId, seq])
   @@map("plant_types")
 }
 

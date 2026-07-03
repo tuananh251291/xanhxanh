@@ -13,15 +13,15 @@ const schema = z.object({
   notes: z.string().optional(),
   items: z.array(z.object({
     stage: z.enum(["MAU_ME", "THANH_PHAM"]),
-    stageCode: z.enum(["M3", "M5", "T01", "T05"]),
+    stageCode: z.enum(["M03", "M05", "T01", "T05"]),
     quantityCreated: z.number().int().positive(),
   })).min(1)
     .refine(
       (items) => items.every((i) =>
-        (i.stage === "MAU_ME" && (i.stageCode === "M3" || i.stageCode === "M5")) ||
+        (i.stage === "MAU_ME" && (i.stageCode === "M03" || i.stageCode === "M05")) ||
         (i.stage === "THANH_PHAM" && (i.stageCode === "T01" || i.stageCode === "T05"))
       ),
-      { message: "Quy cách không khớp với giai đoạn (Mẫu mẹ phải là M3/M5, Thành phẩm phải là T01/T05)" }
+      { message: "Quy cách không khớp với giai đoạn (Mẫu mẹ phải là M03/M05, Thành phẩm phải là T01/T05)" }
     ),
 });
 
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     // Chỉ định cấy phân bổ theo tuần (1 chỉ định = 1 tuần cấy của NV) — sản lượng trả ra trong cùng
     // tuần này (cùng chỉ định, cùng giai đoạn + quy cách) gộp chung 1 lô thay vì mỗi ngày 1 lô mới,
-    // miễn là lô đó chưa được chuyển đi (còn ACTIVE, chưa xếp kệ) — áp dụng cho cả mẫu mẹ (M3/M5) lẫn
+    // miễn là lô đó chưa được chuyển đi (còn ACTIVE, chưa xếp kệ) — áp dụng cho cả mẫu mẹ (M03/M05) lẫn
     // thành phẩm (T01/T05).
     const existingLot = await prisma.lot.findFirst({
       where: { instructionId, stage: item.stage, stageCode: item.stageCode, status: "ACTIVE", shelfId: null },

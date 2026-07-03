@@ -93,9 +93,15 @@ export default function ShelfList({
         <p className="text-xs text-gray-500 truncate mb-1">{shelf.name}</p>
         {isMauMeRoom && (
           <>
-            <div className="flex items-center gap-1 mb-1">
-              <Leaf className="w-3 h-3 text-emerald-500" />
-              <span className="text-xs text-gray-600 truncate">{shelf.plantType?.code ?? "Chưa gán"}</span>
+            <div className="flex items-center gap-1 mb-1" title={shelf.plantType ? `${shelf.plantType.code} — ${shelf.plantType.name}` : undefined}>
+              <Leaf className="w-3 h-3 text-emerald-500 shrink-0" />
+              {shelf.plantType ? (
+                <span className="text-xs text-gray-600 truncate">
+                  <span className="font-mono font-medium text-emerald-700">{shelf.plantType.code}</span> — {shelf.plantType.name}
+                </span>
+              ) : (
+                <span className="text-xs text-gray-600 truncate">Chưa gán</span>
+              )}
             </div>
             <div className="flex items-center gap-1 mb-1">
               <User className="w-3 h-3 text-blue-500" />

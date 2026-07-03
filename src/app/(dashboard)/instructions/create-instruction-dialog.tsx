@@ -82,7 +82,7 @@ export default function CreateInstructionDialog() {
     });
   }, [open]);
 
-  // Chọn giàn kệ → hiện tất cả các dòng quy cách (M3/M5) đang có trên kệ đó, mỗi dòng tự điền
+  // Chọn giàn kệ → hiện tất cả các dòng quy cách (M03/M05) đang có trên kệ đó, mỗi dòng tự điền
   // tỉ lệ/môi trường theo cấu hình quy cách của loại cây, mặc định lấy toàn bộ số lượng còn lại.
   const onShelfChange = (v: string) => {
     setShelfId(v);

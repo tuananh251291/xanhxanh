@@ -13,7 +13,7 @@ export default async function MediumTasksPage() {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-  // Mỗi dòng quy cách nguồn (M3/M5) trong 1 chỉ định có thể cần 2 môi trường riêng: 1 để nhân thêm
+  // Mỗi dòng quy cách nguồn (M03/M05) trong 1 chỉ định có thể cần 2 môi trường riêng: 1 để nhân thêm
   // mẫu mẹ (số lượng = quantity đưa vào), 1 để ra rễ thành cây thành phẩm (số lượng = expectedFinishedOutput).
   const items = await prisma.plantingInstructionItem.findMany({
     where: {

@@ -38,7 +38,7 @@ export type ShelfPlacement = {
 /**
  * Nguyên tắc bàn giao Phòng tối → Kho sáng (KHO_MO xác nhận nhận):
  * - Cây ra rễ (THANH_PHAM) → xếp vào kệ Phòng ra rễ (không ràng buộc, chọn kệ đang dùng ít nhất).
- * - Mẫu mẹ (MAU_ME, M3/M5) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
+ * - Mẫu mẹ (MAU_ME, M03/M05) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
  *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây). Mỗi kệ Kho mẫu mẹ
  *   đã chia chỉ chứa đúng 1 lô ACTIVE tại 1 thời điểm — nếu kệ của NV đó đã có lô, toàn bộ lô mới
  *   (không chỉ phần dư) dồn thẳng sang 1 kệ Phòng mẫu mẹ chưa gán nhân viên (Kho mẫu mẹ chung) cùng

@@ -5,14 +5,14 @@ import { generateInstructionCode } from "@/lib/codes";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
 
-// Mỗi dòng = 1 quy cách nguồn (M3 hoặc M5) được dùng, lấy từ 1 lô cụ thể trên 1 kệ. Một kệ có thể sinh
-// nhiều dòng nếu kệ đó có cả M3 và M5. Mỗi dòng tự có tỉ lệ + môi trường riêng — output KHÔNG dây chuyền
+// Mỗi dòng = 1 quy cách nguồn (M03 hoặc M05) được dùng, lấy từ 1 lô cụ thể trên 1 kệ. Một kệ có thể sinh
+// nhiều dòng nếu kệ đó có cả M03 và M05. Mỗi dòng tự có tỉ lệ + môi trường riêng — output KHÔNG dây chuyền
 // qua nhau: dự kiến mẫu mẹ = quantity × motherSampleRatio, dự kiến thành phẩm = quantity × rootingRatio
 // (độc lập). Môi trường cũng tách riêng: 1 để nhân mẫu mẹ, 1 để ra rễ thành cây thành phẩm.
 const shelfItemSchema = z.object({
   shelfId: z.string(),
   lotId: z.string(),
-  stageCode: z.enum(["M3", "M5"]),
+  stageCode: z.enum(["M03", "M05"]),
   quantity: z.number().int().positive(),
   motherSampleRatio: z.number().positive(),
   rootingRatio: z.number().positive(),

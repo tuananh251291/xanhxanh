@@ -68,8 +68,8 @@ export const STAGE_LABELS = {
 
 // Quy cách mẫu mẹ (cụm chồi) — gắn trên Lot.stageCode khi stage = MAU_ME
 export const MOTHER_SPEC_LABELS = {
-  M3: "M3 — cụm 3 chồi",
-  M5: "M5 — cụm 5 chồi",
+  M03: "M03 — cụm 3 chồi",
+  M05: "M05 — cụm 5 chồi",
 } as const;
 
 // Quy cách đóng gói thành phẩm (túi) — gắn trên Lot.stageCode khi stage = THANH_PHAM
@@ -87,12 +87,12 @@ export const FINISHED_SPEC_BAG_SIZE = {
 // Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — dùng để tính sức chứa
 // kệ Phòng mẫu mẹ (giới hạn 1800 cụm/kệ), KHÔNG áp dụng cho quy cách thành phẩm (T01/T05).
 export const MOTHER_SPEC_BAG_SIZE = {
-  M3: 3,
-  M5: 5,
+  M03: 3,
+  M05: 5,
 } as const;
 
 // Quy đổi số lượng (đơn vị túi) của 1 lô mẫu mẹ sang số cụm mẫu mẹ thực tế chiếm chỗ trên kệ.
-// Lô không phải quy cách M3/M5 (VD: T01/T05, hoặc dữ liệu cũ không có stageCode) giữ nguyên quantity.
+// Lô không phải quy cách M03/M05 (VD: T01/T05, hoặc dữ liệu cũ không có stageCode) giữ nguyên quantity.
 export function motherClusterUnits(stageCode: string | null | undefined, quantity: number): number {
   const bagSize = MOTHER_SPEC_BAG_SIZE[stageCode as keyof typeof MOTHER_SPEC_BAG_SIZE];
   return bagSize ? quantity * bagSize : quantity;

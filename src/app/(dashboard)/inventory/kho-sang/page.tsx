@@ -100,7 +100,7 @@ export default async function KhoSangPage() {
               {room.shelves.map((shelf) => {
                 const shelfMother = shelf.lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
                 const shelfFinished = shelf.lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
-                // Sức chứa kệ Phòng mẫu mẹ tính theo cụm (túi M3 × 3, túi M5 × 5) — xem motherClusterUnits.
+                // Sức chứa kệ Phòng mẫu mẹ tính theo cụm (túi M03 × 3, túi M05 × 5) — xem motherClusterUnits.
                 const shelfClusters = shelf.lots
                   .filter((l) => l.stage === "MAU_ME")
                   .reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0) + shelfFinished;

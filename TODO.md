@@ -6,6 +6,19 @@
 - [x] Trang `/plant-types` — danh sách, thêm/sửa loại cây
 - [x] Trang `/medium-types` — danh sách, thêm/sửa môi trường
 - [x] Cài đặt hệ thống `/settings` — dark_room_days, contamination_alert_pct, default_hold_days
+- [x] Tách 2 cấp Loại cây/Chi tiết loại cây (2026-07-03): model mới `PlantCategory` (mã 2-3 chữ cái, VD
+      MT/AL/PD) là nhóm cha; `PlantType` (giữ nguyên tên bảng + toàn bộ FK cũ — Lot/Shelf/PlantingInstruction/
+      PlantTypeSpec không đổi gì) giờ là "chi tiết loại cây" cụ thể, có `categoryId` + `seq` (1-999, tự tăng
+      trong từng Loại cây) + `code` tự sinh = category.code + seq 3 chữ số (VD "MT001"). Trang `/plant-types`
+      viết lại dạng cây mở rộng: bấm vào 1 Loại cây → hiện danh sách Chi tiết loại cây bên trong, thêm mới
+      không cần nhập mã (tự sinh). API mới `/api/plant-categories`; `/api/plant-types` đổi sang nhận
+      `categoryId` thay vì `code` tự nhập. 8 loại cây demo cũ (AL/MT/PD/AT/HM/EP/MS/RH) đã migrate thành
+      8 Loại cây + mỗi Loại cây có sẵn 1 Chi tiết (seq=1, VD "MT001"), giữ nguyên toàn bộ Lot/Shelf/
+      PlantingInstruction đang trỏ tới (không đổi id, chỉ đổi code từ "MT" → "MT001").
+- [x] Đổi mã quy cách mẫu mẹ M3/M5 → M03/M05 (khớp định dạng 3 ký tự với T01/T05) — đổi toàn bộ
+      label/enum/zod trong code + migrate dữ liệu cũ trong DB (Lot, PlantingInstructionItem, PlantTypeSpec).
+- [x] Giàn kệ (`/warehouses`) giờ hiện cả mã cây lẫn tên chi tiết loại cây (trước chỉ hiện mã) trên mỗi
+      thẻ kệ ở Phòng mẫu mẹ, VD "AL001 — Alocasia".
 
 ### 2.2 Chỉ định cấy (KY_THUAT)
 - [x] Trang `/instructions` — danh sách chỉ định, filter theo tuần/trạng thái

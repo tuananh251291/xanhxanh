@@ -68,8 +68,9 @@ async function main() {
   }
   console.log("✅ Demo users created");
 
-  // Plant types
-  const plantTypes = [
+  // Plant categories (Loại cây, mã 2 ký tự) — mỗi loại cây có 1 chi tiết loại cây demo (seq=1, VD "MT001").
+  // Admin thêm chi tiết loại cây khác (MT002, MT003...) qua trang /plant-types sau này.
+  const plantCategories = [
     { code: "AL", name: "Alocasia", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
     { code: "MT", name: "Monstera", lightRoomWeeksMin: 5, lightRoomWeeksMax: 7 },
     { code: "PD", name: "Philodendron", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
@@ -79,14 +80,26 @@ async function main() {
     { code: "MS", name: "Musa", lightRoomWeeksMin: 5, lightRoomWeeksMax: 6 },
     { code: "RH", name: "Raphidophora", lightRoomWeeksMin: 4, lightRoomWeeksMax: 6 },
   ];
-  for (const pt of plantTypes) {
-    await prisma.plantType.upsert({
-      where: { code: pt.code },
+  for (const pc of plantCategories) {
+    const category = await prisma.plantCategory.upsert({
+      where: { code: pc.code },
       update: {},
-      create: pt,
+      create: { code: pc.code, name: pc.name },
+    });
+    await prisma.plantType.upsert({
+      where: { code: `${pc.code}001` },
+      update: {},
+      create: {
+        categoryId: category.id,
+        seq: 1,
+        code: `${pc.code}001`,
+        name: pc.name,
+        lightRoomWeeksMin: pc.lightRoomWeeksMin,
+        lightRoomWeeksMax: pc.lightRoomWeeksMax,
+      },
     });
   }
-  console.log("✅ Plant types created");
+  console.log("✅ Plant categories + plant types created");
 
   // Medium types
   const mediumTypes = [
@@ -103,15 +116,15 @@ async function main() {
   }
   console.log("✅ Medium types created");
 
-  // Tỉ lệ nhân/môi trường mặc định theo quy cách mẫu mẹ (M3/M5) — mỗi loại cây 1 bộ số liệu riêng cho M3 và M5.
+  // Tỉ lệ nhân/môi trường mặc định theo quy cách mẫu mẹ (M03/M05) — mỗi loại cây 1 bộ số liệu riêng cho M03 và M05.
   // Số liệu demo, Admin chỉnh lại theo thực tế qua trang /plant-types.
   // orderBy cố định để thứ tự luôn giống nhau giữa các lần seed — nếu không, việc gán kệ↔loại cây theo
   // vòng lặp bên dưới sẽ lệch mỗi lần chạy lại, trong khi lô cũ (upsert, không đổi shelfId) vẫn ở kệ cũ.
   const createdPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
   const createdMediumTypes = await prisma.mediumType.findMany({ orderBy: { code: "asc" } });
-  const plantTypeSpecDefs: { stageCode: "M3" | "M5"; motherSampleRatio: number; rootingRatio: number; motherMediumIdx: number; finishedMediumIdx: number }[] = [
-    { stageCode: "M3", motherSampleRatio: 3.0, rootingRatio: 0.8, motherMediumIdx: 0, finishedMediumIdx: 2 },
-    { stageCode: "M5", motherSampleRatio: 5.0, rootingRatio: 0.7, motherMediumIdx: 1, finishedMediumIdx: 2 },
+  const plantTypeSpecDefs: { stageCode: "M03" | "M05"; motherSampleRatio: number; rootingRatio: number; motherMediumIdx: number; finishedMediumIdx: number }[] = [
+    { stageCode: "M03", motherSampleRatio: 3.0, rootingRatio: 0.8, motherMediumIdx: 0, finishedMediumIdx: 2 },
+    { stageCode: "M05", motherSampleRatio: 5.0, rootingRatio: 0.7, motherMediumIdx: 1, finishedMediumIdx: 2 },
   ];
   for (const pt of createdPlantTypes) {
     for (const spec of plantTypeSpecDefs) {
@@ -128,7 +141,7 @@ async function main() {
       });
     }
   }
-  console.log("✅ Plant type specs (M3/M5) created");
+  console.log("✅ Plant type specs (M03/M05) created");
 
   // Warehouses — 2 kho sản xuất (mỗi kho có phòng sáng + phòng tối) + 1 kho thành phẩm
   const warehouses = [
@@ -181,7 +194,7 @@ async function main() {
   console.log("✅ Rooms created");
 
   // Shelves for phòng mẫu mẹ (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (SUPER_ADMIN chỉ định), tối đa
-  // 1800 cụm mẫu mẹ (quantity túi × 3 hoặc × 5 tùy quy cách M3/M5 — xem motherClusterUnits trong types/index.ts).
+  // 1800 cụm mẫu mẹ (quantity túi × 3 hoặc × 5 tùy quy cách M03/M05 — xem motherClusterUnits trong types/index.ts).
   // Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
   const psCaymoStaff = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
   let psShelfSeq = 0;
@@ -290,16 +303,13 @@ async function main() {
   }
   console.log("✅ Shelves created");
 
-  // Lots — mã lô cây dạng AABBBCC
-  // AA   = mã loại cây (AL, MT, PD, AT, HM, EP, MS, RH)
-  // BBB  = số thứ tự lô theo loại cây (001, 002, ...)
-  // CC   = T01/T05/T10 (túi 1/5/10 - thành phẩm) hoặc M3/M5 (mẫu mẹ cụm 3/5 chồi)
+  // Lots — mã lô cây dạng <mã chi tiết loại cây><quy cách>, VD "MT001M03" (mã chi tiết loại cây MT001
+  // đã tự mang số thứ tự AABBB, chỉ cần nối thêm CC = quy cách).
   const STAGE_CODES: { code: string; stage: "THANH_PHAM" | "MAU_ME"; qtyRange: [number, number] }[] = [
-    { code: "M3", stage: "MAU_ME", qtyRange: [30, 80] },
-    { code: "M5", stage: "MAU_ME", qtyRange: [20, 60] },
+    { code: "M03", stage: "MAU_ME", qtyRange: [30, 80] },
+    { code: "M05", stage: "MAU_ME", qtyRange: [20, 60] },
     { code: "T01", stage: "THANH_PHAM", qtyRange: [50, 150] },
     { code: "T05", stage: "THANH_PHAM", qtyRange: [20, 60] },
-    { code: "T10", stage: "THANH_PHAM", qtyRange: [10, 30] },
   ];
 
   const motherShelves = await prisma.shelf.findMany({
@@ -316,19 +326,16 @@ async function main() {
 
   const HISTORY_WEEKS = 10;
 
-  let lotSeq = 0;
   for (const pt of allPlantTypes) {
     for (let i = 0; i < STAGE_CODES.length; i++) {
       const sc = STAGE_CODES[i];
-      lotSeq += 1;
-      const bbb = String(lotSeq).padStart(3, "0");
-      const code = `${pt.code}${bbb}${sc.code}`;
+      const code = `${pt.code}${sc.code}`;
       const quantity = randInt(sc.qtyRange[0], sc.qtyRange[1]);
       // Kệ mẫu mẹ (Phòng sáng) chỉ được chọn trong số kệ đã gán đúng loại cây pt — mỗi kệ chỉ xếp 1 mã cây.
       const shelves = sc.stage === "MAU_ME" ? motherShelves.filter((s) => s.plantTypeId === pt.id) : finishedShelves;
       const shelf = shelves[randInt(0, shelves.length - 1)];
       // Rải enteredAt xuyên suốt HISTORY_WEEKS tuần qua (xác định, không random) để báo cáo tồn kho có dữ liệu lịch sử
-      const enteredAt = subDays(new Date(), (lotSeq * 5 + allPlantTypes.indexOf(pt) * 9) % (HISTORY_WEEKS * 7));
+      const enteredAt = subDays(new Date(), (i * 5 + allPlantTypes.indexOf(pt) * 9) % (HISTORY_WEEKS * 7));
 
       await prisma.lot.upsert({
         where: { code },
@@ -346,7 +353,6 @@ async function main() {
         },
       });
     }
-    lotSeq = 0; // reset numbering per plant type (BBB is per-loại-cây)
   }
   console.log("✅ Lots created (mã lô cây AABBBCC)");
 

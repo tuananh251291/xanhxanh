@@ -15,14 +15,14 @@ type MediumType = { id: string; code: string; name: string };
 type Spec = { stageCode: string; motherSampleRatio: number; rootingRatio: number; motherMediumTypeId: string | null; finishedMediumTypeId: string | null };
 type SpecForm = { motherSampleRatio: string; rootingRatio: string; motherMediumTypeId: string; finishedMediumTypeId: string };
 
-const STAGE_CODES = ["M3", "M5"] as const;
+const STAGE_CODES = ["M03", "M05"] as const;
 const EMPTY_FORM: SpecForm = { motherSampleRatio: "", rootingRatio: "", motherMediumTypeId: "", finishedMediumTypeId: "" };
 
 export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { plantTypeId: string; plantTypeName: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
-  const [form, setForm] = useState<Record<string, SpecForm>>({ M3: { ...EMPTY_FORM }, M5: { ...EMPTY_FORM } });
+  const [form, setForm] = useState<Record<string, SpecForm>>({ M03: { ...EMPTY_FORM }, M05: { ...EMPTY_FORM } });
   const router = useRouter();
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function PlantTypeSpecDialog({ plantTypeId, plantTypeName }: { pl
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" title="Cấu hình quy cách M3/M5" />}>
+      <DialogTrigger render={<Button variant="ghost" size="sm" title="Cấu hình quy cách M03/M05" />}>
         <Sliders className="w-4 h-4" />
       </DialogTrigger>
       <DialogContent className="max-w-lg">

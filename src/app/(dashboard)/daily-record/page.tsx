@@ -35,7 +35,7 @@ const schema = z.object({
   notes: z.string().optional(),
   items: z.array(z.object({
     stage: z.enum(["MAU_ME", "THANH_PHAM"]),
-    stageCode: z.enum(["M3", "M5", "T01", "T05"]),
+    stageCode: z.enum(["M03", "M05", "T01", "T05"]),
     quantityCreated: z.coerce.number().int().positive("Số lượng > 0"),
   })).min(1, "Nhập ít nhất 1 dòng sản lượng"),
 });
@@ -51,7 +51,7 @@ export default function DailyRecordPage() {
     resolver: zodResolver(schema) as Resolver<FormData>,
     defaultValues: {
       recordDate: format(new Date(), "yyyy-MM-dd"),
-      items: [{ stage: "MAU_ME", stageCode: "M3", quantityCreated: 0 }],
+      items: [{ stage: "MAU_ME", stageCode: "M03", quantityCreated: 0 }],
     },
   });
 
@@ -66,10 +66,10 @@ export default function DailyRecordPage() {
   const selectedId = watch("instructionId");
   const selectedInst = instructions.find((i) => i.id === selectedId);
   const items = watch("items");
-  // Quy cách mẫu mẹ hợp lệ = đúng những quy cách (M3/M5) chỉ định này đã dùng làm nguồn.
+  // Quy cách mẫu mẹ hợp lệ = đúng những quy cách (M03/M05) chỉ định này đã dùng làm nguồn.
   const motherSpecOptions = selectedInst
     ? Array.from(new Set(selectedInst.items.map((i) => i.stageCode).filter((c): c is string => !!c)))
-    : ["M3", "M5"];
+    : ["M03", "M05"];
   const finishedSpecOptions = ["T01", "T05"] as const;
   const specOptionsFor = (stage: "MAU_ME" | "THANH_PHAM") => (stage === "MAU_ME" ? motherSpecOptions : finishedSpecOptions);
   const totalMother = items.filter((i) => i.stage === "MAU_ME").reduce((s, i) => s + (Number(i.quantityCreated) || 0), 0);
@@ -87,7 +87,7 @@ export default function DailyRecordPage() {
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Lưu nhật ký cấy thành công!");
       if (json.alert) toast.warning("⚠️ Sản lượng lệch >20% so với kỳ vọng — đã gửi cảnh báo cho KY_THUAT");
-      reset({ recordDate: format(new Date(), "yyyy-MM-dd"), items: [{ stage: "MAU_ME", stageCode: "M3", quantityCreated: 0 }] });
+      reset({ recordDate: format(new Date(), "yyyy-MM-dd"), items: [{ stage: "MAU_ME", stageCode: "M03", quantityCreated: 0 }] });
       router.refresh();
     } finally { setLoading(false); }
   };
@@ -156,7 +156,7 @@ export default function DailyRecordPage() {
               <CardTitle className="text-base flex items-center gap-2">
                 <Calculator className="w-4 h-4" /> Sản lượng tạo ra
               </CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => append({ stage: "MAU_ME", stageCode: (motherSpecOptions[0] as "M3" | "M5") ?? "M3", quantityCreated: 0 })}>
+              <Button type="button" variant="outline" size="sm" onClick={() => append({ stage: "MAU_ME", stageCode: (motherSpecOptions[0] as "M03" | "M05") ?? "M03", quantityCreated: 0 })}>
                 <Plus className="w-4 h-4 mr-1" /> Thêm dòng
               </Button>
             </div>
@@ -174,7 +174,7 @@ export default function DailyRecordPage() {
                     const stage = v as "MAU_ME" | "THANH_PHAM";
                     setValue(`items.${idx}.stage`, stage);
                     const opts = specOptionsFor(stage);
-                    setValue(`items.${idx}.stageCode`, (opts[0] as "M3" | "M5" | "T01" | "T05") ?? "M3");
+                    setValue(`items.${idx}.stageCode`, (opts[0] as "M03" | "M05" | "T01" | "T05") ?? "M03");
                   }}
                 >
                   <SelectTrigger className="w-40">
@@ -187,7 +187,7 @@ export default function DailyRecordPage() {
                 </Select>
                 <Select
                   value={items[idx]?.stageCode || undefined}
-                  onValueChange={(v) => setValue(`items.${idx}.stageCode`, v as "M3" | "M5" | "T01" | "T05")}
+                  onValueChange={(v) => setValue(`items.${idx}.stageCode`, v as "M03" | "M05" | "T01" | "T05")}
                 >
                   <SelectTrigger className="w-28">
                     <SelectValue placeholder="Quy cách" />

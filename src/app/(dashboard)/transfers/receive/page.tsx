@@ -151,7 +151,7 @@ export default function TransferReceivePage() {
                     {isAuto ? (
                       <>
                         <p className="text-xs text-gray-500 bg-blue-50 rounded p-2">
-                          Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M3/M5) vào đúng kệ của nhân viên phụ trách
+                          Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M03/M05) vào đúng kệ của nhân viên phụ trách
                           trong Kho mẫu mẹ đã chia (dư quá 1800 cụm sẽ tự chuyển sang Kho mẫu mẹ chung), cây ra rễ vào Phòng ra rễ.
                         </p>
                         <div className="space-y-1">

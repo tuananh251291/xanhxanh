@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
 
-const STAGE_CODES = ["M3", "M5"] as const;
+const STAGE_CODES = ["M03", "M05"] as const;
 
 const patchSchema = z.object({
   changes: z.array(z.object({
