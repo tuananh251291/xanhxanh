@@ -17,7 +17,7 @@ const shelfInclude = {
   include: {
     plantType: { select: { id: true, code: true, name: true } },
     assignedStaff: { select: { id: true, code: true, name: true } },
-    lots: { where: { status: "ACTIVE" as const }, select: { quantity: true } },
+    lots: { where: { status: "ACTIVE" as const }, select: { quantity: true, stageCode: true } },
   },
   orderBy: [{ rowNumber: "asc" as const }, { colNumber: "asc" as const }],
 };

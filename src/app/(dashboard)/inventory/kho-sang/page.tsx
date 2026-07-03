@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sun, Layers } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import { STAGE_LABELS } from "@/types";
+import { STAGE_LABELS, motherClusterUnits } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 
 function expiryClass(expectedMoveAt: Date | null): string {
@@ -100,6 +100,10 @@ export default async function KhoSangPage() {
               {room.shelves.map((shelf) => {
                 const shelfMother = shelf.lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
                 const shelfFinished = shelf.lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
+                // Sức chứa kệ Phòng mẫu mẹ tính theo cụm (túi M3 × 3, túi M5 × 5) — xem motherClusterUnits.
+                const shelfClusters = shelf.lots
+                  .filter((l) => l.stage === "MAU_ME")
+                  .reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0) + shelfFinished;
                 return (
                   <Card key={shelf.id} className={shelf.lots.length === 0 ? "opacity-50" : ""}>
                     <CardHeader className="pb-2">
@@ -111,7 +115,7 @@ export default async function KhoSangPage() {
                         <div className="w-full bg-gray-100 rounded-full h-1.5">
                           <div
                             className="bg-green-500 rounded-full h-1.5"
-                            style={{ width: `${Math.min(100, ((shelfMother + shelfFinished) / shelf.capacity) * 100)}%` }}
+                            style={{ width: `${Math.min(100, (shelfClusters / shelf.capacity) * 100)}%` }}
                           />
                         </div>
                       )}

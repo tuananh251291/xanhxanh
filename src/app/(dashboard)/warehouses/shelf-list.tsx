@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import QRCodeDisplay from "@/components/shared/qr-code-display";
+import { motherClusterUnits } from "@/types";
 import type { RoomType } from "@prisma/client";
 
 interface PlantType {
@@ -38,7 +39,7 @@ interface Shelf {
   capacity: number | null;
   plantType: PlantType | null;
   assignedStaff: Staff | null;
-  lots: { quantity: number }[];
+  lots: { quantity: number; stageCode: string }[];
 }
 
 export default function ShelfList({
@@ -84,7 +85,7 @@ export default function ShelfList({
     <>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {shelves.map((shelf) => {
-          const used = shelf.lots.reduce((s, l) => s + l.quantity, 0);
+          const used = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
           const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
           return (
             <div key={shelf.id} className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow">
@@ -110,6 +111,7 @@ export default function ShelfList({
                 <span className="text-xs text-gray-600">
                   {used.toLocaleString("vi-VN")}
                   {shelf.capacity ? `/${shelf.capacity}` : ""}
+                  {isMauMeRoom && " cụm"}
                 </span>
               </div>
               {usage !== null && (

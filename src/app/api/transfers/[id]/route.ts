@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { motherClusterUnits } from "@/types";
 import { z } from "zod";
 
 const confirmSchema = z.object({
@@ -41,7 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const shelfIds = Array.from(new Set(shelfAssignments.map((a) => a.shelfId)));
     const shelves = await prisma.shelf.findMany({
       where: { id: { in: shelfIds } },
-      include: { lots: { where: { status: "ACTIVE" }, select: { quantity: true } } },
+      include: { lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } } },
     });
     const shelfById = new Map(shelves.map((s) => [s.id, s]));
     const batchQtyByShelf = new Map<string, number>();
@@ -53,12 +54,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (shelf.plantTypeId && shelf.plantTypeId !== item.lot.plantTypeId) {
         return NextResponse.json({ message: `Kệ ${shelf.code} đã gán cho loại cây khác — không thể xếp lô ${item.lot.code}` }, { status: 409 });
       }
-      batchQtyByShelf.set(a.shelfId, (batchQtyByShelf.get(a.shelfId) ?? 0) + item.lot.quantity);
+      const addUnits = motherClusterUnits(item.lot.stageCode, item.lot.quantity);
+      batchQtyByShelf.set(a.shelfId, (batchQtyByShelf.get(a.shelfId) ?? 0) + addUnits);
     }
 
     for (const [shelfId, addQty] of batchQtyByShelf) {
       const shelf = shelfById.get(shelfId)!;
-      const existingQty = shelf.lots.reduce((s, l) => s + l.quantity, 0);
+      const existingQty = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
       if (shelf.capacity && existingQty + addQty > shelf.capacity) {
         return NextResponse.json({ message: `Kệ ${shelf.code} không đủ chỗ (còn trống ${Math.max(0, shelf.capacity - existingQty)}/${shelf.capacity})` }, { status: 409 });
       }
@@ -96,7 +98,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     where: { isActive: true },
     include: {
       plantType: { select: { id: true, code: true, name: true } },
-      lots: { where: { status: "ACTIVE" as const }, select: { quantity: true } },
+      lots: { where: { status: "ACTIVE" as const }, select: { quantity: true, stageCode: true } },
     },
   };
   const transfer = await prisma.transfer.findUnique({

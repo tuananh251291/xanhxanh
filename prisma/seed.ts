@@ -180,8 +180,9 @@ async function main() {
   }
   console.log("✅ Rooms created");
 
-  // Shelves for phòng sáng (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (Admin chỉ định), tối đa
-  // 360 mẫu/túi. Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
+  // Shelves for phòng mẫu mẹ (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (SUPER_ADMIN chỉ định), tối đa
+  // 1800 cụm mẫu mẹ (quantity túi × 3 hoặc × 5 tùy quy cách M3/M5 — xem motherClusterUnits trong types/index.ts).
+  // Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
   const psCaymoStaff = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
   let psShelfSeq = 0;
   const psShelfPlantType: Record<string, string> = {};
@@ -197,7 +198,7 @@ async function main() {
         psShelfPlantType[code] = plantType.id;
         await prisma.shelf.upsert({
           where: { code },
-          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 360 },
+          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 1800 },
           create: {
             code,
             name: `Kệ R${row}C${col}`,
@@ -205,7 +206,7 @@ async function main() {
             roomId,
             rowNumber: row,
             colNumber: col,
-            capacity: 360,
+            capacity: 1800,
             plantTypeId: plantType.id,
             assignedStaffId: staff?.id,
           },

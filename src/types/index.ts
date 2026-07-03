@@ -84,6 +84,20 @@ export const FINISHED_SPEC_BAG_SIZE = {
   T05: 5,
 } as const;
 
+// Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — dùng để tính sức chứa
+// kệ Phòng mẫu mẹ (giới hạn 1800 cụm/kệ), KHÔNG áp dụng cho quy cách thành phẩm (T01/T05).
+export const MOTHER_SPEC_BAG_SIZE = {
+  M3: 3,
+  M5: 5,
+} as const;
+
+// Quy đổi số lượng (đơn vị túi) của 1 lô mẫu mẹ sang số cụm mẫu mẹ thực tế chiếm chỗ trên kệ.
+// Lô không phải quy cách M3/M5 (VD: T01/T05, hoặc dữ liệu cũ không có stageCode) giữ nguyên quantity.
+export function motherClusterUnits(stageCode: string | null | undefined, quantity: number): number {
+  const bagSize = MOTHER_SPEC_BAG_SIZE[stageCode as keyof typeof MOTHER_SPEC_BAG_SIZE];
+  return bagSize ? quantity * bagSize : quantity;
+}
+
 export const LOT_STATUS_LABELS = {
   ACTIVE: "Đang lưu",
   TRANSFERRED: "Đã chuyển",
