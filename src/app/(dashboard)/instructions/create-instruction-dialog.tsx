@@ -249,7 +249,7 @@ export default function CreateInstructionDialog() {
                         <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                         <SelectContent>
                           {mediumTypes.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
+                            <SelectItem key={m.id} value={m.id}>{m.code}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -260,7 +260,7 @@ export default function CreateInstructionDialog() {
                         <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                         <SelectContent>
                           {mediumTypes.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>
+                            <SelectItem key={m.id} value={m.id}>{m.code}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

@@ -177,7 +177,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                         {item.expectedMotherOutput?.toLocaleString("vi-VN") ?? "—"} / {item.expectedFinishedOutput?.toLocaleString("vi-VN") ?? "—"}
                       </td>
                       <td className="px-4 py-2 text-gray-500">
-                        {item.motherMedium?.name ?? "—"} / {item.finishedMedium?.name ?? "—"}
+                        {item.motherMedium?.code ?? "—"} / {item.finishedMedium?.code ?? "—"}
                       </td>
                     </tr>
                   ))}
