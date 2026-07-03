@@ -57,11 +57,10 @@ export default function TransferReceivePage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const confirm = async (transferId: string, items: TransferItem[]) => {
-    const assignments = items.map((item) => ({
-      lotId: item.lotId,
-      shelfId: shelfMap[item.lotId] ?? "",
-    }));
+  const confirm = async (transferId: string, items: TransferItem[], auto: boolean) => {
+    const assignments = auto
+      ? []
+      : items.map((item) => ({ lotId: item.lotId, shelfId: shelfMap[item.lotId] ?? "" }));
     setProcessing(transferId);
     try {
       const res = await fetch(`/api/transfers/${transferId}`, {
@@ -69,8 +68,16 @@ export default function TransferReceivePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "confirm", shelfAssignments: assignments }),
       });
-      if (!res.ok) { toast.error((await res.json()).message); return; }
-      toast.success("Đã xác nhận nhận hàng");
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      if (auto && Array.isArray(json.placements)) {
+        const lines = json.placements.map((p: { lotCode: string; shelfCode: string; quantity: number; pool: string }) =>
+          `${p.lotCode} → ${p.shelfCode} (${p.quantity.toLocaleString("vi-VN")}${p.pool === "SHARED" ? ", dư sang Kho chung" : ""})`
+        );
+        toast.success("Đã xếp kệ tự động", { description: lines.join(" · ") });
+      } else {
+        toast.success("Đã xác nhận nhận hàng");
+      }
       loadData();
     } finally { setProcessing(null); }
   };
@@ -136,46 +143,68 @@ export default function TransferReceivePage() {
                   </Button>
                 </div>
 
-                {expanded === t.id && (
+                {expanded === t.id && (() => {
+                  const isAuto = t.fromRoom?.type === "PHONG_TOI";
+                  return (
                   <div className="mt-4 space-y-3 border-t pt-3">
-                    <p className="text-sm font-medium text-gray-700">Phân bổ kệ cho từng lô:</p>
-                    {t.items.map((item) => {
-                      const allShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
-                      // Đúng nguyên tắc kệ Phòng sáng: chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng
-                      // loại cây của lô này, và còn đủ chỗ trống cho số lượng của lô.
-                      const itemUnits = motherClusterUnits(item.lot.stageCode, item.quantity);
-                      const compatibleShelves = allShelves.filter((s) => {
-                        const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
-                        const matchesPlantType = !s.plantType || s.plantType.id === item.lot.plantTypeId;
-                        const hasRoom = !s.capacity || used + itemUnits <= s.capacity;
-                        return matchesPlantType && hasRoom;
-                      });
-                      return (
-                        <div key={item.id} className="flex items-center gap-3 text-sm">
-                          <div className="flex-1">
-                            <span className="font-mono text-blue-700">{item.lot.code}</span>
-                            <span className="text-gray-500 ml-2">{item.lot.plantType.name}</span>
-                            <Badge variant="secondary" className="ml-2 text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
-                            <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
-                          </div>
-                          <Select onValueChange={(v) => setShelfMap((prev) => ({ ...prev, [item.lotId]: v as string }))}>
-                            <SelectTrigger className="w-52">
-                              <SelectValue placeholder={compatibleShelves.length > 0 ? "Chọn kệ" : "Không có kệ phù hợp"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {compatibleShelves.map((s) => {
-                                const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
-                                return (
-                                  <SelectItem key={s.id} value={s.id}>
-                                    {s.code} — {s.name}{s.capacity ? ` (còn ${(s.capacity - used).toLocaleString("vi-VN")}/${s.capacity})` : ""}
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
+                    {isAuto ? (
+                      <>
+                        <p className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+                          Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M3/M5) vào đúng kệ của nhân viên phụ trách
+                          trong Kho mẫu mẹ đã chia (dư quá 1800 cụm sẽ tự chuyển sang Kho mẫu mẹ chung), cây ra rễ vào Phòng ra rễ.
+                        </p>
+                        <div className="space-y-1">
+                          {t.items.map((item) => (
+                            <div key={item.id} className="flex items-center gap-3 text-sm">
+                              <span className="font-mono text-blue-700">{item.lot.code}</span>
+                              <span className="text-gray-500">{item.lot.plantType.name}</span>
+                              <Badge variant="secondary" className="text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
+                              <span className="font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
+                            </div>
+                          ))}
                         </div>
-                      );
-                    })}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-gray-700">Phân bổ kệ cho từng lô:</p>
+                        {t.items.map((item) => {
+                          const allShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
+                          // Chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng loại cây của lô này, và còn đủ chỗ.
+                          const itemUnits = motherClusterUnits(item.lot.stageCode, item.quantity);
+                          const compatibleShelves = allShelves.filter((s) => {
+                            const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
+                            const matchesPlantType = !s.plantType || s.plantType.id === item.lot.plantTypeId;
+                            const hasRoom = !s.capacity || used + itemUnits <= s.capacity;
+                            return matchesPlantType && hasRoom;
+                          });
+                          return (
+                            <div key={item.id} className="flex items-center gap-3 text-sm">
+                              <div className="flex-1">
+                                <span className="font-mono text-blue-700">{item.lot.code}</span>
+                                <span className="text-gray-500 ml-2">{item.lot.plantType.name}</span>
+                                <Badge variant="secondary" className="ml-2 text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
+                                <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
+                              </div>
+                              <Select onValueChange={(v) => setShelfMap((prev) => ({ ...prev, [item.lotId]: v as string }))}>
+                                <SelectTrigger className="w-52">
+                                  <SelectValue placeholder={compatibleShelves.length > 0 ? "Chọn kệ" : "Không có kệ phù hợp"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {compatibleShelves.map((s) => {
+                                    const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
+                                    return (
+                                      <SelectItem key={s.id} value={s.id}>
+                                        {s.code} — {s.name}{s.capacity ? ` (còn ${(s.capacity - used).toLocaleString("vi-VN")}/${s.capacity})` : ""}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
                     <div className="flex gap-2 mt-3">
                       <Button
                         variant="outline"
@@ -189,7 +218,7 @@ export default function TransferReceivePage() {
                       <Button
                         size="sm"
                         className="bg-green-600 hover:bg-green-700"
-                        onClick={() => confirm(t.id, t.items)}
+                        onClick={() => confirm(t.id, t.items, isAuto)}
                         disabled={processing === t.id}
                       >
                         {processing === t.id ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
@@ -197,7 +226,8 @@ export default function TransferReceivePage() {
                       </Button>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </CardContent>
             </Card>
           ))}

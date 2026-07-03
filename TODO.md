@@ -98,7 +98,16 @@
 - [x] **Chỉ định cấy chỉ được chọn kệ thuộc Phòng mẫu mẹ** (trước đây là "Phòng sáng" nói chung) — lọc ở dropdown + chặn cứng ở `POST /api/instructions`.
 - [x] `PATCH /api/transfers/[id]` action confirm vẫn kiểm tra khớp mã cây + đủ chỗ khi xếp lô vào kệ Phòng mẫu mẹ (không áp dụng cho Phòng ra rễ, vì kệ đó không có mã cây để so).
 - [x] Xóa `getSuggestedShelves` (hàm cũ trong `src/lib/inventory.ts`, không được gọi ở đâu, tính capacity sai kiểu số lô) — thay bằng lọc trực tiếp trong `/api/transfers/[id]` GET + `transfers/receive` UI
-- [ ] _Phát hiện khi làm mục này, chưa xử lý:_ chưa có UI nào thực sự tạo được phiếu bàn giao "phòng tối → kho sáng" (chọn đích Phòng mẫu mẹ hay Phòng ra rễ) — `transfers/receive` (xác nhận) và `POST /api/transfers` (tạo phiếu, nhận `toRoomId` bất kỳ) đã sẵn sàng nhận, nhưng không có trang/nút nào gọi tới để khởi tạo chặng này. Cần 1 form gửi mới (tương tự `transfers/send`), có thể ở `/my-dark-room` (CAY_MO) hoặc trang riêng cho KHO_MO.
+- [ ] _Vẫn chưa có UI tạo phiếu bàn giao "phòng tối → kho sáng"_ — xem 2.14, giờ không còn chặn được việc kiểm thử (test thẳng qua API) vì tầng xác nhận đã tự động hoàn toàn, nhưng người dùng thật vẫn cần 1 nút "Gửi từ phòng tối" ở đâu đó (CAY_MO trên `/my-dark-room`, hoặc trang riêng cho KHO_MO) để tạo phiếu này.
+
+### 2.14 Tự động chỉ định kệ khi KHO_MO nhận bàn giao từ Phòng tối → Kho sáng
+- [x] Trong Phòng mẫu mẹ, UI `/warehouses` tự chia hiển thị 2 nhóm kệ: **Kho mẫu mẹ đã chia** (kệ đã gán `assignedStaffId`) và **Kho mẫu mẹ chung** (kệ chưa gán) — nhóm suy ra từ field có sẵn, không phải Room riêng (`shelf-list.tsx`).
+- [x] `src/lib/shelf-assignment.ts` (`planShelfAssignments`) — khi `PATCH /api/transfers/[id]` action `confirm` phát hiện nguồn là Phòng tối (`fromRoom.type === PHONG_TOI`), hệ thống **tự chỉ định kệ hoàn toàn**, bỏ qua `shelfAssignments` do client gửi (nếu có):
+  - Cây ra rễ (THANH_PHAM) → kệ Phòng ra rễ đang dùng ít nhất trong cùng kho.
+  - Mẫu mẹ (MAU_ME, M3/M5) → đúng kệ của NV phụ trách (Kho mẫu mẹ đã chia: `assignedStaffId` = NV được giao chỉ định cấy tạo ra lô, đúng mã cây). Nếu vượt sức chứa còn lại (1800 cụm) trên kệ đó, phần dư (tính theo túi, không cắt lẻ cụm) được **tách thành 1 lô con mới** (`parentLotId` trỏ về lô gốc) xếp vào kệ Kho mẫu mẹ chung còn nhiều chỗ nhất, cùng mã cây — không cần KHO_MO chọn tay.
+  - Không tìm được kệ phù hợp (VD: NV chưa được SUPER_ADMIN gán kệ, hoặc Kho mẫu mẹ chung không đủ chỗ) → trả lỗi 409 rõ nguyên nhân thay vì âm thầm xếp sai.
+- [x] `transfers/receive` UI: khi phiếu có nguồn là Phòng tối, ẩn hết dropdown chọn kệ thủ công, chỉ hiện ghi chú + danh sách lô, nút "Xác nhận nhận hàng" gọi API không kèm `shelfAssignments`; sau khi xác nhận hiện toast tóm tắt kệ đã xếp cho từng lô (kèm lô nào bị tách do tràn). Các loại phiếu bàn giao khác (không phải từ Phòng tối) vẫn chọn kệ thủ công như cũ, không đổi hành vi.
+- [x] Kiểm thử qua API thật: lô mẫu mẹ 400 túi M5 (kệ NV còn trống 1676 cụm) → tự tách 335 túi vào kệ NV, 65 túi (lô con mới) vào Kho mẫu mẹ chung; lô thành phẩm 50 túi T01 → tự vào kệ Phòng ra rễ đang trống nhất. Xác nhận đúng dữ liệu DB sau khi chạy.
 
 ---
 
