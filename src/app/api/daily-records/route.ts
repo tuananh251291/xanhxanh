@@ -13,8 +13,16 @@ const schema = z.object({
   notes: z.string().optional(),
   items: z.array(z.object({
     stage: z.enum(["MAU_ME", "THANH_PHAM"]),
+    stageCode: z.enum(["M3", "M5", "T01", "T05"]),
     quantityCreated: z.number().int().positive(),
-  })).min(1),
+  })).min(1)
+    .refine(
+      (items) => items.every((i) =>
+        (i.stage === "MAU_ME" && (i.stageCode === "M3" || i.stageCode === "M5")) ||
+        (i.stage === "THANH_PHAM" && (i.stageCode === "T01" || i.stageCode === "T05"))
+      ),
+      { message: "Quy cách không khớp với giai đoạn (Mẫu mẹ phải là M3/M5, Thành phẩm phải là T01/T05)" }
+    ),
 });
 
 export async function POST(req: NextRequest) {
@@ -52,7 +60,7 @@ export async function POST(req: NextRequest) {
         code,
         plantTypeId: instruction.plantTypeId,
         stage: item.stage,
-        stageCode: item.stage === "MAU_ME" ? "M3" : "T01",
+        stageCode: item.stageCode,
         quantity: item.quantityCreated,
         initialQuantity: item.quantityCreated,
         instructionId,

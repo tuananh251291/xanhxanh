@@ -103,6 +103,31 @@ async function main() {
   }
   console.log("✅ Medium types created");
 
+  // Tỉ lệ nhân/môi trường mặc định theo quy cách mẫu mẹ (M3/M5) — mỗi loại cây 1 bộ số liệu riêng cho M3 và M5.
+  // Số liệu demo, Admin chỉnh lại theo thực tế qua trang /plant-types.
+  const createdPlantTypes = await prisma.plantType.findMany();
+  const createdMediumTypes = await prisma.mediumType.findMany({ orderBy: { code: "asc" } });
+  const plantTypeSpecDefs: { stageCode: "M3" | "M5"; motherSampleRatio: number; rootingRatio: number; mediumIdx: number }[] = [
+    { stageCode: "M3", motherSampleRatio: 3.0, rootingRatio: 0.8, mediumIdx: 0 },
+    { stageCode: "M5", motherSampleRatio: 5.0, rootingRatio: 0.7, mediumIdx: 1 },
+  ];
+  for (const pt of createdPlantTypes) {
+    for (const spec of plantTypeSpecDefs) {
+      await prisma.plantTypeSpec.upsert({
+        where: { plantTypeId_stageCode: { plantTypeId: pt.id, stageCode: spec.stageCode } },
+        update: {},
+        create: {
+          plantTypeId: pt.id,
+          stageCode: spec.stageCode,
+          motherSampleRatio: spec.motherSampleRatio,
+          rootingRatio: spec.rootingRatio,
+          mediumTypeId: createdMediumTypes[spec.mediumIdx % createdMediumTypes.length].id,
+        },
+      });
+    }
+  }
+  console.log("✅ Plant type specs (M3/M5) created");
+
   // Warehouses — 2 kho sản xuất (mỗi kho có phòng sáng + phòng tối) + 1 kho thành phẩm
   const warehouses = [
     { code: "SX-A", name: "Kho sản xuất A", type: "SAN_XUAT" as const },

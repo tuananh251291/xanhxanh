@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Leaf } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeDialog from "./plant-type-dialog";
+import PlantTypeSpecDialog from "./plant-type-spec-dialog";
 
 export default async function PlantTypesPage() {
   const session = await auth();
@@ -55,8 +56,9 @@ export default async function PlantTypesPage() {
                         {p.isActive ? "Hoạt động" : "Vô hiệu"}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 flex items-center gap-1">
                       <PlantTypeDialog plant={{ ...p, description: p.description ?? undefined }} />
+                      <PlantTypeSpecDialog plantTypeId={p.id} plantTypeName={p.name} />
                     </td>
                   </tr>
                 ))}

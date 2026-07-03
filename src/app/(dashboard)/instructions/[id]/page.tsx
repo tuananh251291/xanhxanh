@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, User, Leaf, FlaskConical } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS } from "@/types";
+import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { PrintButton } from "@/components/shared/print-button";
 import { isPageAllowed } from "@/lib/permissions";
@@ -120,7 +120,6 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             <div>
               <p className="text-gray-500">Mẫu mẹ dự kiến</p>
               <p className="text-xl font-bold text-purple-700">{inst.expectedMotherOutput?.toLocaleString("vi-VN") ?? "—"}</p>
-              {inst.motherSampleRatio && <p className="text-xs text-gray-400">tỉ lệ ×{inst.motherSampleRatio}</p>}
             </div>
             <div>
               <p className="text-gray-500">Mẫu mẹ thực tế</p>
@@ -134,9 +133,54 @@ export default async function InstructionDetailPage({ params }: { params: Promis
               )}
             </div>
           </div>
+          {(inst.plannedT01Quantity || inst.plannedT05Quantity) ? (
+            <p className="mt-3 text-sm text-gray-500 border-t pt-3">
+              Kế hoạch phân bổ: {FINISHED_SPEC_LABELS.T01} <strong>{(inst.plannedT01Quantity ?? 0).toLocaleString("vi-VN")}</strong>
+              {" · "}{FINISHED_SPEC_LABELS.T05} <strong>{(inst.plannedT05Quantity ?? 0).toLocaleString("vi-VN")}</strong>
+            </p>
+          ) : null}
           {inst.notes && <p className="mt-3 text-sm text-gray-500 border-t pt-3">Ghi chú: {inst.notes}</p>}
         </CardContent>
       </Card>
+
+      {/* Nguồn theo quy cách */}
+      {inst.items.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Quy cách nguồn</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Kệ</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Quy cách</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Số lượng dùng</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Tỉ lệ nhân MM / ra TP</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">Dự kiến MM / TP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inst.items.map((item) => (
+                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-2 text-gray-500">{item.shelf.name ?? item.shelf.code}</td>
+                      <td className="px-4 py-2">
+                        <Badge variant="secondary">
+                          {item.stageCode ? (MOTHER_SPEC_LABELS[item.stageCode as keyof typeof MOTHER_SPEC_LABELS] ?? item.stageCode) : "—"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</td>
+                      <td className="px-4 py-2 text-gray-500">×{item.motherSampleRatio ?? "—"} / ×{item.rootingRatio ?? "—"}</td>
+                      <td className="px-4 py-2 text-gray-500">
+                        {item.expectedMotherOutput?.toLocaleString("vi-VN") ?? "—"} / {item.expectedFinishedOutput?.toLocaleString("vi-VN") ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lots */}
       {inst.lots.length > 0 && (

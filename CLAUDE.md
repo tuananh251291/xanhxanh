@@ -66,13 +66,14 @@ src/
 └── proxy.ts                   # Auth proxy (Edge, dùng auth.config.ts)
 ```
 
-## Database — 18 bảng chính
+## Database — 20 bảng chính
 
 ```
-users, system_configs
-plant_types, medium_types, warehouses, shelves
-lots (đơn vị tồn kho, có stage MAU_ME/THANH_PHAM, parentLotId)
-planting_instructions, planting_instruction_items
+users, role_permissions, system_configs
+plant_types, medium_types, plant_type_specs (tỉ lệ nhân/môi trường mặc định theo quy cách M3/M5 của từng loại cây)
+warehouses, rooms, room_access, shelves
+lots (đơn vị tồn kho, có stage MAU_ME/THANH_PHAM, parentLotId, stageCode = quy cách M3/M5/T01/T05)
+planting_instructions, planting_instruction_items (mỗi dòng = 1 quy cách nguồn dùng trong chỉ định, có ratio + expected riêng)
 daily_records, daily_record_items
 contamination_records
 transfers, transfer_items

@@ -64,6 +64,18 @@ export const STAGE_LABELS = {
   THANH_PHAM: "Thành phẩm",
 } as const;
 
+// Quy cách mẫu mẹ (cụm chồi) — gắn trên Lot.stageCode khi stage = MAU_ME
+export const MOTHER_SPEC_LABELS = {
+  M3: "M3 — cụm 3 chồi",
+  M5: "M5 — cụm 5 chồi",
+} as const;
+
+// Quy cách đóng gói thành phẩm (túi) — gắn trên Lot.stageCode khi stage = THANH_PHAM
+export const FINISHED_SPEC_LABELS = {
+  T01: "T01 — túi 1 cây",
+  T05: "T05 — túi 5 cây",
+} as const;
+
 export const LOT_STATUS_LABELS = {
   ACTIVE: "Đang lưu",
   TRANSFERRED: "Đã chuyển",

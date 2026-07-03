@@ -170,6 +170,7 @@ model PlantType {
 
   lots                 Lot[]
   plantingInstructions PlantingInstruction[]
+  specs                PlantTypeSpec[]
 
   @@map("plant_types")
 }
@@ -187,8 +188,27 @@ model MediumType {
   createdAt   DateTime @default(now())
 
   plantingInstructions PlantingInstruction[]
+  plantTypeSpecs       PlantTypeSpec[]
 
   @@map("medium_types")
+}
+
+// Tỉ lệ nhân mẫu mẹ/ra rễ + môi trường mặc định theo từng quy cách mẫu mẹ (M3/M5) của mỗi loại cây.
+// Dùng để tự động điền khi tạo chỉ định cấy — quét/chọn kệ nguồn ra quy cách (M3/M5) rồi tra bảng này theo (plantTypeId, stageCode).
+model PlantTypeSpec {
+  id                String     @id @default(cuid())
+  plantTypeId       String
+  plantType         PlantType  @relation(fields: [plantTypeId], references: [id])
+  stageCode         String // "M3" | "M5" — cụm 3 chồi / cụm 5 chồi
+  motherSampleRatio Float
+  rootingRatio      Float
+  mediumTypeId      String
+  mediumType        MediumType @relation(fields: [mediumTypeId], references: [id])
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@unique([plantTypeId, stageCode])
+  @@map("plant_type_specs")
 }
 
 // ============================================================
@@ -315,6 +335,7 @@ model Lot {
   transferItems       TransferItem[]
   orderItems          OrderItem[]
   contaminations      ContaminationRecord[]
+  instructionItems    PlantingInstructionItem[]
 
   @@map("lots")
 }
@@ -336,11 +357,17 @@ model PlantingInstruction {
   assignedToId  String?
   assignedTo    User?             @relation("AssignedTo", fields: [assignedToId], references: [id])
 
-  motherSampleRatio       Float?
-  rootingRatio            Float?
+  // Tổng đầu vào/dự kiến cộng dồn từ tất cả các dòng quy cách nguồn (items) — 1 chỉ định có thể dùng nhiều
+  // quy cách nguồn (VD: cùng 1 kệ có cả M3 và M5), mỗi dòng tự có tỉ lệ riêng — xem PlantingInstructionItem.
   inputMotherQuantity     Int
   expectedMotherOutput    Int?
   expectedFinishedOutput  Int?
+
+  // Kế hoạch phân bổ thành phẩm dự kiến theo quy cách đóng gói — KY_THUAT nhập lúc tạo chỉ định,
+  // tổng nên khớp expectedFinishedOutput. Lô thành phẩm thật sự tạo ra khi NV cấy nhập nhật ký hàng ngày
+  // có thể mang quy cách T01 hoặc T05 tùy NV chọn — 2 số này chỉ là kế hoạch để đối chiếu.
+  plannedT01Quantity      Int?
+  plannedT05Quantity      Int?
 
   status      InstructionStatus @default(DRAFT)
   weekStart   DateTime?
@@ -355,13 +382,23 @@ model PlantingInstruction {
   @@map("planting_instructions")
 }
 
+// 1 dòng = 1 quy cách nguồn (M3 hoặc M5) dùng trong chỉ định. 1 kệ có thể sinh nhiều dòng
+// (VD: kệ có cả M3 và M5) vì mỗi quy cách có tỉ lệ nhân/ra rễ riêng.
 model PlantingInstructionItem {
   id            String              @id @default(cuid())
   instructionId String
   instruction   PlantingInstruction @relation(fields: [instructionId], references: [id])
   shelfId       String
   shelf         Shelf               @relation(fields: [shelfId], references: [id])
+  lotId         String?
+  lot           Lot?                @relation(fields: [lotId], references: [id])
+  stageCode     String? // "M3" | "M5"
   quantity      Int
+
+  motherSampleRatio      Float?
+  rootingRatio           Float?
+  expectedMotherOutput   Int?
+  expectedFinishedOutput Int?
 
   @@map("planting_instruction_items")
 }

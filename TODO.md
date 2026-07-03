@@ -9,24 +9,27 @@
 
 ### 2.2 Chỉ định cấy (KY_THUAT)
 - [x] Trang `/instructions` — danh sách chỉ định, filter theo tuần/trạng thái
-- [x] Form tạo chỉ định cấy:
-  - Chọn loại cây, mã môi trường
-  - Chọn NV cấy (role CAY_MO)
-  - Quét/chọn QR kệ nguồn + số lượng mẫu mẹ
-  - Điền tỉ lệ nhân (motherSampleRatio, rootingRatio)
-  - Hệ thống tự tính expectedMotherOutput, expectedFinishedOutput
-- [x] In phiếu chỉ định cấy (print CSS)
-- [x] API `POST /api/instructions` — tạo chỉ định, tự sinh code
+- [x] Form tạo chỉ định cấy (thiết kế lại 2026-07-03 — 1 kệ có thể có nhiều quy cách nguồn cùng lúc):
+  - Chọn **giàn kệ nguồn** (không chọn loại cây riêng — loại cây tự suy ra từ kệ, vì mỗi kệ chỉ xếp 1 loại cây)
+  - Hệ thống tự liệt kê **từng dòng quy cách** (M3/M5) đang có trên kệ đó kèm số lượng còn lại
+  - Mỗi dòng nhập số lượng dùng riêng + tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm riêng (tự điền theo cấu hình quy cách của loại cây — xem 2.1, sửa tay được)
+  - Output tính **độc lập theo từng dòng** (không dây chuyền): mẫu mẹ dự kiến = số dùng × tỉ lệ nhân; thành phẩm dự kiến = số dùng × tỉ lệ ra TP — rồi cộng dồn tất cả các dòng
+  - KY_THUAT nhập kế hoạch phân bổ thành phẩm dự kiến theo quy cách đóng gói T01/T05 (đối chiếu sau này, không bắt buộc khớp tuyệt đối)
+- [x] In phiếu chỉ định cấy (print CSS) — trang chi tiết có thêm bảng "Quy cách nguồn" liệt kê từng dòng M3/M5 đã dùng
+- [x] API `POST /api/instructions` — tạo chỉ định nhiều dòng quy cách, tự sinh code
+
+### 2.1b Quy cách nhân giống theo loại cây (Admin)
+- [x] Model `PlantTypeSpec` — tỉ lệ nhân mẫu mẹ/tỉ lệ ra thành phẩm + môi trường mặc định, cấu hình riêng cho M3 và M5 của từng loại cây
+- [x] Nút cấu hình trên `/plant-types` (`plant-type-spec-dialog.tsx`) + API `/api/plant-type-specs`
 
 ### 2.3 Nhập dữ liệu cấy hàng ngày (CAY_MO)
 - [x] Trang `/my-instructions` — xem chỉ định được giao
-- [x] Trang `/daily-record` — form nhập dữ liệu hàng ngày:
+- [x] Trang `/daily-record` — form nhập dữ liệu hàng ngày (nhiều dòng, mỗi dòng tự chọn quy cách):
   - Số mẫu mẹ đã dùng (motherUsed)
-  - Số mẫu mẹ tạo ra (tạo Lot mới MAU_ME)
-  - Số thành phẩm tạo ra (tạo Lot mới THANH_PHAM)
+  - Mỗi dòng sản lượng chọn giai đoạn (Mẫu mẹ/Thành phẩm) + quy cách tương ứng (M3/M5 cho mẫu mẹ — chỉ hiện quy cách chỉ định đã dùng làm nguồn; T01/T05 cho thành phẩm) + số lượng — lô mới tạo ra mang đúng quy cách NV chọn
   - Tự động trừ tồn mẫu mẹ nguồn — _chưa làm, thiếu field liên kết lô mẫu mẹ nguồn trên DailyRecord/PlantingInstruction, cần thiết kế schema riêng_
 - [x] Cảnh báo lệch output so với chỉ định (>20%)
-- [x] API `POST /api/daily-records` — tạo nhật ký, cập nhật Lot _(fix: payload trước đây không khớp giữa FE/BE — CAY_MO không thể nộp nhật ký)_
+- [x] API `POST /api/daily-records` — tạo nhật ký, nhận quy cách (stageCode) theo từng dòng từ NV thay vì suy từ chỉ định, cập nhật Lot
 
 ### 2.4 Lọc nhiễm (CAY_MO)
 - [x] Trang `/my-dark-room` — xem phòng tối cá nhân
