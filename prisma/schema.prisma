@@ -171,6 +171,7 @@ model PlantType {
   lots                 Lot[]
   plantingInstructions PlantingInstruction[]
   specs                PlantTypeSpec[]
+  shelves              Shelf[]
 
   @@map("plant_types")
 }
@@ -296,7 +297,12 @@ model Shelf {
   room        Room?     @relation(fields: [roomId], references: [id])
   rowNumber   Int?
   colNumber   Int?
+  // Tối đa bao nhiêu (mẫu mẹ/túi) được xếp trên kệ này — kệ Phòng sáng mặc định 360.
   capacity    Int?
+  // Admin chỉ định kệ này chuyên xếp loại cây nào — 1 kệ chỉ xếp 1 mã cây (áp dụng chủ yếu cho kệ
+  // Phòng sáng). Để null nếu kệ chưa được chỉ định (chưa ràng buộc loại cây).
+  plantTypeId String?
+  plantType   PlantType? @relation(fields: [plantTypeId], references: [id])
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

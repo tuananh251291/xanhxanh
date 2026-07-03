@@ -10,12 +10,20 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
-type Shelf = { id: string; code: string; name: string; warehouseId: string };
+type Shelf = {
+  id: string;
+  code: string;
+  name: string;
+  warehouseId: string;
+  capacity: number | null;
+  plantType: { id: string; code: string; name: string } | null;
+  lots: { quantity: number }[];
+};
 type TransferItem = {
   id: string;
   lotId: string;
   quantity: number;
-  lot: { code: string; stage: string; plantType: { name: string } };
+  lot: { code: string; stage: string; plantTypeId: string; plantType: { name: string } };
 };
 type Transfer = {
   id: string;
@@ -131,7 +139,15 @@ export default function TransferReceivePage() {
                   <div className="mt-4 space-y-3 border-t pt-3">
                     <p className="text-sm font-medium text-gray-700">Phân bổ kệ cho từng lô:</p>
                     {t.items.map((item) => {
-                      const destShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
+                      const allShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
+                      // Đúng nguyên tắc kệ Phòng sáng: chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng
+                      // loại cây của lô này, và còn đủ chỗ trống cho số lượng của lô.
+                      const compatibleShelves = allShelves.filter((s) => {
+                        const used = s.lots.reduce((sum, l) => sum + l.quantity, 0);
+                        const matchesPlantType = !s.plantType || s.plantType.id === item.lot.plantTypeId;
+                        const hasRoom = !s.capacity || used + item.quantity <= s.capacity;
+                        return matchesPlantType && hasRoom;
+                      });
                       return (
                         <div key={item.id} className="flex items-center gap-3 text-sm">
                           <div className="flex-1">
@@ -141,13 +157,18 @@ export default function TransferReceivePage() {
                             <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
                           </div>
                           <Select onValueChange={(v) => setShelfMap((prev) => ({ ...prev, [item.lotId]: v as string }))}>
-                            <SelectTrigger className="w-44">
-                              <SelectValue placeholder="Chọn kệ" />
+                            <SelectTrigger className="w-52">
+                              <SelectValue placeholder={compatibleShelves.length > 0 ? "Chọn kệ" : "Không có kệ phù hợp"} />
                             </SelectTrigger>
                             <SelectContent>
-                              {destShelves.map((s) => (
-                                <SelectItem key={s.id} value={s.id}>{s.code} — {s.name}</SelectItem>
-                              ))}
+                              {compatibleShelves.map((s) => {
+                                const used = s.lots.reduce((sum, l) => sum + l.quantity, 0);
+                                return (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.code} — {s.name}{s.capacity ? ` (còn ${(s.capacity - used).toLocaleString("vi-VN")}/${s.capacity})` : ""}
+                                  </SelectItem>
+                                );
+                              })}
                             </SelectContent>
                           </Select>
                         </div>

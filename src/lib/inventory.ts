@@ -18,23 +18,6 @@ export async function getSystemConfig(key: string, defaultValue: string): Promis
   return config?.value ?? defaultValue;
 }
 
-export async function getSuggestedShelves(warehouseId: string, neededQuantity: number) {
-  const shelves = await prisma.shelf.findMany({
-    where: { warehouseId, isActive: true },
-    include: {
-      _count: { select: { lots: { where: { status: "ACTIVE" } } } },
-    },
-    orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
-  });
-
-  return shelves
-    .filter((s) => {
-      if (!s.capacity) return true;
-      return s._count.lots < s.capacity;
-    })
-    .slice(0, 3);
-}
-
 export async function createAlert(data: {
   type: "CONTAMINATION_HIGH" | "OUTPUT_DEVIATION" | "ORDER_EXPIRING" | "ORDER_EXPIRED" | "STOCK_LOW" | "LOT_READY_TRANSFER" | "ORDER_PENDING_PACK";
   title: string;

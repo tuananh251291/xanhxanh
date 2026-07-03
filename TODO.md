@@ -40,7 +40,9 @@
 ### 2.5 Bàn giao phòng tối → kho sáng (KHO_MO)
 - [x] Trang `/transfers/receive` — danh sách bàn giao chờ xác nhận
 - [x] Xác nhận nhận cây từ phòng tối
-- [x] Hệ thống gợi ý vị trí kệ trống trong kho sáng
+- [x] Hệ thống gợi ý vị trí kệ trống trong kho sáng — sửa lại 2026-07-03: dropdown chọn kệ giờ tự lọc
+      theo đúng nguyên tắc kệ Phòng sáng (xem 2.13), trước đó chỉ liệt kê tất cả kệ trong phòng không lọc gì
+- [x] API `PATCH /api/transfers/[id]` (action confirm) kiểm tra khớp loại cây + không vượt capacity trước khi cam kết
 - [x] Xác nhận sắp xếp → cập nhật shelfId của Lot, cộng tồn kho sáng
 - [x] API `POST /api/transfers` — tạo phiếu bàn giao
 - [x] API `PATCH /api/transfers/[id]` — xác nhận/từ chối bàn giao
@@ -86,6 +88,12 @@
 - [x] Dialog thêm "Phòng thị trường" trên `/warehouses` (`add-market-room-dialog.tsx`)
 - [x] Dialog gán quyền xem theo từng Phòng thị trường cho nhân viên SALE (`room-access-dialog.tsx`) + API `/api/rooms/[id]/access`
 - [ ] Rà soát các trang tồn kho/báo cáo còn lọc theo `Warehouse.type` cũ xem đã cập nhật hết sang Room chưa — _chưa rà soát kỹ, cần kiểm tra riêng_
+
+### 2.13 Nguyên tắc kệ Phòng sáng (Admin)
+- [x] `Shelf.plantTypeId` — 1 kệ chỉ xếp 1 mã cây, Admin chỉ định qua `/warehouses` (dropdown trên từng thẻ kệ, chỉ hiện cho Admin). Không cho đổi loại cây khi kệ đang còn lô ACTIVE của loại cây khác (API trả 409).
+- [x] Sức chứa kệ Phòng sáng mặc định 360 (đơn vị mẫu/túi) — capacity tính theo **tổng số lượng thực** trên kệ, không phải số lô (đã sửa 1 chỗ tính sai kiểu cũ: đếm số dòng lô thay vì cộng dồn quantity, ở cả `/warehouses` và gợi ý kệ khi bàn giao)
+- [x] Chặn cả ở API: `POST /api/instructions` (kệ nguồn phải ở Phòng sáng của Kho sản xuất — xem 2.2), `PATCH /api/shelves/[id]` (đổi loại cây kệ), `PATCH /api/transfers/[id]` action confirm (xếp lô vào kệ Phòng sáng — đúng loại cây + đủ chỗ)
+- [x] Xóa `getSuggestedShelves` (hàm cũ trong `src/lib/inventory.ts`, không được gọi ở đâu, tính capacity sai kiểu số lô) — thay bằng lọc trực tiếp trong `/api/transfers/[id]` GET + `transfers/receive` UI
 
 ---
 

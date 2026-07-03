@@ -6,35 +6,37 @@ import { Badge } from "@/components/ui/badge";
 import { WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS, ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
 import type { WarehouseType, RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
+import { isAdminRole } from "@/types";
 import CreateWarehouseDialog from "./create-warehouse-dialog";
 import AddMarketRoomDialog from "./add-market-room-dialog";
 import RoomAccessDialog from "./room-access-dialog";
 import ShelfList from "./shelf-list";
 
+const shelfInclude = {
+  where: { isActive: true },
+  include: {
+    plantType: { select: { id: true, code: true, name: true } },
+    lots: { where: { status: "ACTIVE" as const }, select: { quantity: true } },
+  },
+  orderBy: [{ rowNumber: "asc" as const }, { colNumber: "asc" as const }],
+};
+
 export default async function WarehousesPage() {
   const session = await auth();
   if (!(await isPageAllowed(session?.user?.role ?? null, "/warehouses"))) redirect("/dashboard");
 
-  const [warehouses, saleUsers] = await Promise.all([
+  const [warehouses, saleUsers, plantTypes] = await Promise.all([
     prisma.warehouse.findMany({
       include: {
         rooms: {
           where: { isActive: true },
           orderBy: { type: "asc" },
           include: {
-            shelves: {
-              where: { isActive: true },
-              include: { _count: { select: { lots: { where: { status: "ACTIVE" } } } } },
-              orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
-            },
+            shelves: shelfInclude,
             roomAccess: { select: { userId: true } },
           },
         },
-        shelves: {
-          where: { isActive: true, roomId: null },
-          include: { _count: { select: { lots: { where: { status: "ACTIVE" } } } } },
-          orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
-        },
+        shelves: { ...shelfInclude, where: { isActive: true, roomId: null } },
       },
       orderBy: { type: "asc" },
     }),
@@ -43,7 +45,9 @@ export default async function WarehousesPage() {
       select: { id: true, name: true, email: true },
       orderBy: { name: "asc" },
     }),
+    prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
+  const canManagePlantType = isAdminRole(session?.user?.role);
 
   return (
     <div className="space-y-6">
@@ -99,14 +103,14 @@ export default async function WarehousesPage() {
                   {room.shelves.length === 0 ? (
                     <p className="text-gray-400 text-sm text-center py-3">Chưa có giàn kệ nào</p>
                   ) : (
-                    <ShelfList shelves={room.shelves} warehouseId={wh.id} />
+                    <ShelfList shelves={room.shelves} warehouseId={wh.id} plantTypes={plantTypes} canManagePlantType={canManagePlantType} />
                   )}
                 </div>
               ))}
 
               {wh.shelves.length > 0 && (
                 <div className="border-t pt-4 first:border-t-0 first:pt-0">
-                  <ShelfList shelves={wh.shelves} warehouseId={wh.id} />
+                  <ShelfList shelves={wh.shelves} warehouseId={wh.id} plantTypes={plantTypes} canManagePlantType={canManagePlantType} />
                 </div>
               )}
             </CardContent>

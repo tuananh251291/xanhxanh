@@ -105,7 +105,9 @@ async function main() {
 
   // Tỉ lệ nhân/môi trường mặc định theo quy cách mẫu mẹ (M3/M5) — mỗi loại cây 1 bộ số liệu riêng cho M3 và M5.
   // Số liệu demo, Admin chỉnh lại theo thực tế qua trang /plant-types.
-  const createdPlantTypes = await prisma.plantType.findMany();
+  // orderBy cố định để thứ tự luôn giống nhau giữa các lần seed — nếu không, việc gán kệ↔loại cây theo
+  // vòng lặp bên dưới sẽ lệch mỗi lần chạy lại, trong khi lô cũ (upsert, không đổi shelfId) vẫn ở kệ cũ.
+  const createdPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
   const createdMediumTypes = await prisma.mediumType.findMany({ orderBy: { code: "asc" } });
   const plantTypeSpecDefs: { stageCode: "M3" | "M5"; motherSampleRatio: number; rootingRatio: number; motherMediumIdx: number; finishedMediumIdx: number }[] = [
     { stageCode: "M3", motherSampleRatio: 3.0, rootingRatio: 0.8, motherMediumIdx: 0, finishedMediumIdx: 2 },
@@ -176,16 +178,22 @@ async function main() {
   }
   console.log("✅ Rooms created");
 
-  // Shelves for phòng sáng (3x5 lưới mỗi phòng)
+  // Shelves for phòng sáng (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (Admin chỉ định), tối đa
+  // 360 mẫu/túi. Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
+  let psShelfSeq = 0;
+  const psShelfPlantType: Record<string, string> = {};
   for (const roomCode of ["SXA-PS", "SXB-PS"]) {
     const roomId = createdRooms[roomCode];
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
       for (let col = 1; col <= 5; col++) {
         const code = `${roomCode}-R${row}C${col}`;
+        const plantType = createdPlantTypes[psShelfSeq % createdPlantTypes.length];
+        psShelfSeq += 1;
+        psShelfPlantType[code] = plantType.id;
         await prisma.shelf.upsert({
           where: { code },
-          update: {},
+          update: { plantTypeId: plantType.id, capacity: 360 },
           create: {
             code,
             name: `Kệ R${row}C${col}`,
@@ -193,7 +201,8 @@ async function main() {
             roomId,
             rowNumber: row,
             colNumber: col,
-            capacity: 20,
+            capacity: 360,
+            plantTypeId: plantType.id,
           },
         });
       }
@@ -270,7 +279,7 @@ async function main() {
   const finishedShelves = await prisma.shelf.findMany({
     where: { room: { type: "PHONG_KHA_DUNG" } },
   });
-  const allPlantTypes = await prisma.plantType.findMany();
+  const allPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
 
   function randInt(min: number, max: number) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -286,14 +295,15 @@ async function main() {
       const bbb = String(lotSeq).padStart(3, "0");
       const code = `${pt.code}${bbb}${sc.code}`;
       const quantity = randInt(sc.qtyRange[0], sc.qtyRange[1]);
-      const shelves = sc.stage === "MAU_ME" ? motherShelves : finishedShelves;
+      // Kệ mẫu mẹ (Phòng sáng) chỉ được chọn trong số kệ đã gán đúng loại cây pt — mỗi kệ chỉ xếp 1 mã cây.
+      const shelves = sc.stage === "MAU_ME" ? motherShelves.filter((s) => s.plantTypeId === pt.id) : finishedShelves;
       const shelf = shelves[randInt(0, shelves.length - 1)];
       // Rải enteredAt xuyên suốt HISTORY_WEEKS tuần qua (xác định, không random) để báo cáo tồn kho có dữ liệu lịch sử
       const enteredAt = subDays(new Date(), (lotSeq * 5 + allPlantTypes.indexOf(pt) * 9) % (HISTORY_WEEKS * 7));
 
       await prisma.lot.upsert({
         where: { code },
-        update: { enteredAt },
+        update: { enteredAt, shelfId: shelf?.id },
         create: {
           code,
           plantTypeId: pt.id,
@@ -331,7 +341,6 @@ async function main() {
 
     const caymoStaff = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
     const kyThuat = await prisma.user.findUnique({ where: { email: "kythuat@xanhxanh.vn" } });
-    const allMediumTypes = await prisma.mediumType.findMany();
 
     // Tỉ lệ nhiễm theo từng NV: caymo1 cải thiện dần, caymo2 ổn định, caymo3 có vấn đề
     function contaminationRate(staffIdx: number, weeksAgo: number) {
@@ -347,7 +356,6 @@ async function main() {
         for (let staffIdx = 0; staffIdx < caymoStaff.length; staffIdx++) {
           const staff = caymoStaff[staffIdx];
           const pt = allPlantTypes[(weeksAgo + staffIdx) % allPlantTypes.length];
-          const mt = allMediumTypes[(weeksAgo + staffIdx) % allMediumTypes.length];
 
           const inputMotherQuantity = 100 + ((weeksAgo * 7 + staffIdx * 13) % 60);
           const expectedMotherOutput = Math.round(inputMotherQuantity * 0.75);
@@ -360,10 +368,8 @@ async function main() {
             create: {
               code: instructionCode,
               plantTypeId: pt.id,
-              mediumTypeId: mt.id,
               createdById: kyThuat.id,
               assignedToId: staff.id,
-              motherSampleRatio: 0.75,
               inputMotherQuantity,
               expectedMotherOutput,
               expectedFinishedOutput,
@@ -397,13 +403,15 @@ async function main() {
               },
             });
 
+            // Kệ Phòng sáng chỉ được chọn trong số kệ đã gán đúng loại cây pt (mỗi kệ chỉ xếp 1 mã cây).
+            const ptMotherShelves = motherShelves.filter((s) => s.plantTypeId === pt.id);
             const motherLot = await prisma.lot.create({
               data: {
                 code: `SEED-LOT-${weeksAgo}-${staffIdx}-${recIdx}-MM`,
                 plantTypeId: pt.id,
                 stage: "MAU_ME",
                 stageCode: "SEED",
-                shelfId: motherShelves[(weeksAgo + staffIdx + recIdx) % motherShelves.length]?.id,
+                shelfId: ptMotherShelves[(weeksAgo + staffIdx + recIdx) % ptMotherShelves.length]?.id,
                 quantity: motherQty,
                 initialQuantity: motherQty,
                 status: "ACTIVE",
