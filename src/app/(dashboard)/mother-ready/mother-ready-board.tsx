@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sprout, Loader2, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Sprout, Loader2, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { format, differenceInCalendarDays, startOfWeek, endOfWeek, addWeeks, isWithinInterval } from "date-fns";
 import { vi } from "date-fns/locale";
-import { MOTHER_SPEC_LABELS } from "@/types";
 
 type Lot = {
   id: string;
@@ -75,27 +75,30 @@ export default function MotherReadyBoard() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center border rounded-lg bg-white">
-          <Button type="button" variant="ghost" size="sm" onClick={() => shiftPendingWeek(-1)}>
-            <ChevronLeft className="w-4 h-4" />
+      <div className="space-y-1">
+        <Label className="text-sm font-medium">Chọn thời gian</Label>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center border rounded-lg bg-white">
+            <Button type="button" variant="ghost" size="sm" onClick={() => shiftPendingWeek(-1)}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm px-2 whitespace-nowrap">
+              Tuần {format(pendingWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(pendingWeekEnd, "dd/MM/yyyy", { locale: vi })}
+            </span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => shiftPendingWeek(1)}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setPendingWeekStart(thisWeekStart())}>
+            Tuần này
           </Button>
-          <span className="text-sm px-2 whitespace-nowrap">
-            Tuần {format(pendingWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(pendingWeekEnd, "dd/MM/yyyy", { locale: vi })}
+          <Button type="button" size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={applyFilter}>
+            <Search className="w-4 h-4 mr-1" /> Tìm kiếm
+          </Button>
+          <span className="text-sm text-gray-500">
+            Đang xem tuần {format(appliedWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(appliedWeekEnd, "dd/MM/yyyy", { locale: vi })} · {filtered.length} lô
           </span>
-          <Button type="button" variant="ghost" size="sm" onClick={() => shiftPendingWeek(1)}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => setPendingWeekStart(thisWeekStart())}>
-          Tuần này
-        </Button>
-        <Button type="button" size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={applyFilter}>
-          <Filter className="w-4 h-4 mr-1" /> Lọc
-        </Button>
-        <span className="text-sm text-gray-500">
-          Đang xem tuần {format(appliedWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(appliedWeekEnd, "dd/MM/yyyy", { locale: vi })} · {filtered.length} lô
-        </span>
       </div>
 
       <Card>
@@ -110,7 +113,7 @@ export default function MotherReadyBoard() {
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mã lô</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Loại cây</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên cây</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Quy cách</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Số lượng</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Kệ</th>
@@ -123,11 +126,9 @@ export default function MotherReadyBoard() {
                   {filtered.map((l) => (
                     <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{l.code}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        <span className="font-mono text-xs text-gray-500 mr-1">{l.plantType.code}</span>{l.plantType.name}
-                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{l.plantType.name}</td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline">{MOTHER_SPEC_LABELS[l.stageCode as keyof typeof MOTHER_SPEC_LABELS] ?? l.stageCode}</Badge>
+                        <Badge variant="outline">{l.stageCode}</Badge>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{l.quantity.toLocaleString("vi-VN")}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{l.shelf?.code ?? "—"}</td>
