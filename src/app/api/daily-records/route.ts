@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
   if (instruction.assignedToId !== session.user.id) {
     return NextResponse.json({ message: "Không phải chỉ định của bạn" }, { status: 403 });
   }
+  const staffUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
 
   const recordItems = [];
   const lotsCreated = [];
@@ -70,7 +71,11 @@ export async function POST(req: NextRequest) {
         },
       });
     } else {
-      const code = await generateLotCode(item.stage);
+      const code = await generateLotCode({
+        plantTypeCode: instruction.plantType.code,
+        staffCode: staffUser?.code ?? "000",
+        stageCode: item.stageCode,
+      });
       const expectedMoveAt =
         item.stage === "MAU_ME"
           ? addWeeks(new Date(), instruction.plantType.transferWaitWeeks)

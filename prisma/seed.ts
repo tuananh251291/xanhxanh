@@ -371,7 +371,7 @@ async function main() {
       const enteredAt = subDays(new Date(), (i * 5 + allPlantTypes.indexOf(pt) * 9) % (HISTORY_WEEKS * 7));
 
       await prisma.lot.upsert({
-        where: { code },
+        where: { code_stageCode: { code, stageCode: sc.code } },
         update: { enteredAt, shelfId: shelf?.id },
         create: {
           code,

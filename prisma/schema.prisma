@@ -378,7 +378,10 @@ model Shelf {
 
 model Lot {
   id              String     @id @default(cuid())
-  code            String     @unique
+  // Không unique riêng lẻ — mã lô = mã cây + mã NV cấy + mã tuần/năm (VD "AL001003" + "0726"), NHIỀU lô có
+  // thể dùng chung 1 mã nếu cùng chỉ định/tuần nhưng khác quy cách (M03 và M05 vẫn là 2 dòng Lot riêng,
+  // chỉ đính cùng mã lô để NV nhìn biết chúng thuộc cùng 1 đợt cấy). Duy nhất theo (code, stageCode).
+  code            String
   plantTypeId     String
   plantType       PlantType  @relation(fields: [plantTypeId], references: [id])
   stage           PlantStage
@@ -410,6 +413,7 @@ model Lot {
   contaminations      ContaminationRecord[]
   instructionItems    PlantingInstructionItem[]
 
+  @@unique([code, stageCode])
   @@map("lots")
 }
 

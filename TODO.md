@@ -75,6 +75,18 @@
   - Tự động trừ tồn mẫu mẹ nguồn — _chưa làm, thiếu field liên kết lô mẫu mẹ nguồn trên DailyRecord/PlantingInstruction, cần thiết kế schema riêng_
 - [x] Cảnh báo lệch output so với chỉ định (>20%)
 - [x] API `POST /api/daily-records` — tạo nhật ký, nhận quy cách (stageCode) theo từng dòng từ NV thay vì suy từ chỉ định, cập nhật Lot
+- [x] Đổi định dạng mã lô (2026-07-04): mã lô = **mã chi tiết loại cây** (VD "AL001") + **mã NV cấy 3 số**
+      (3 số cuối `User.code`, VD "NV003" → "003") + **mã tuần/năm 4 số** (VD "2726" = tuần 27 năm 2026,
+      tính theo lịch tuần `weekStartsOn: 1` dùng chung toàn app) — ghép liền không dấu gạch, VD
+      "AL0010032726". **Nhiều dòng Lot khác quy cách (VD M03 và M05 của cùng 1 đợt cấy — cùng loại cây,
+      cùng NV, cùng tuần) dùng chung đúng 1 mã lô này**, vẫn là 2 bản ghi Lot riêng (số lượng/tồn kho tính
+      riêng theo từng quy cách như cũ, không gộp số) — chỉ đính chung mã để NV nhìn biết cùng 1 đợt cấy.
+      `Lot.code` không còn `@unique` riêng lẻ, đổi thành `@@unique([code, stageCode])`; nếu (mã lô, quy
+      cách) đã tồn tại rồi (VD lô cũ cùng tuần đã chuyển kệ, giờ tạo lô mới cùng NV/loại cây/quy cách) thì
+      tự thêm hậu tố "-2", "-3"... để tránh trùng. `generateLotCode()` trong `src/lib/codes.ts` viết lại
+      theo tổ hợp mới; các nơi tạo Lot khác (tách lô do tràn sức chứa kệ ở `PATCH /api/transfers/[id]`,
+      seed demo) cũng cập nhật theo. Kiểm thử qua API thật: 2 lô M03/M05 cùng 1 chỉ định ra đúng 1 mã;
+      DB từ chối đúng khi tạo trùng cả (mã, quy cách).
 
 ### 2.4 Lọc nhiễm (CAY_MO)
 - [x] Trang `/my-dark-room` — xem phòng tối cá nhân

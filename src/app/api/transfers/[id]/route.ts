@@ -79,7 +79,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           },
         });
         for (const part of rest) {
-          const code = await generateLotCode(part.lot.stage);
+          const staffUser = part.lot.instruction?.assignedToId
+            ? await prisma.user.findUnique({ where: { id: part.lot.instruction.assignedToId }, select: { code: true } })
+            : null;
+          const code = await generateLotCode({
+            plantTypeCode: part.lot.plantType.code,
+            staffCode: staffUser?.code ?? "000",
+            stageCode: part.lot.stageCode,
+          });
           await tx.lot.create({
             data: {
               code,
