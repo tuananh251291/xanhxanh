@@ -79,6 +79,17 @@ export async function POST(req: NextRequest) {
 
   const { shelfItems, plantTypeId, weekStart, notes, plannedT01Quantity, plannedT05Quantity } = parsed.data;
 
+  // Chỉ định cấy chỉ được lấy nguồn từ kệ trong Phòng sáng của Kho sản xuất — chặn ở server phòng khi
+  // client gửi thẳng lên (bỏ qua dropdown đã lọc sẵn ở UI).
+  const shelfIds = Array.from(new Set(shelfItems.map((item) => item.shelfId)));
+  const validShelves = await prisma.shelf.findMany({
+    where: { id: { in: shelfIds }, room: { type: "PHONG_SANG", warehouse: { type: "SAN_XUAT" } } },
+    select: { id: true },
+  });
+  if (validShelves.length !== shelfIds.length) {
+    return NextResponse.json({ message: "Chỉ được chọn kệ trong Phòng sáng của Kho sản xuất" }, { status: 400 });
+  }
+
   const itemsWithOutput = shelfItems.map((item) => ({
     ...item,
     expectedMotherOutput: Math.floor(item.quantity * item.motherSampleRatio),
