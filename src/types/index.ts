@@ -156,7 +156,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   SUPER_ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Người dùng", icon: "Users" },
-    { href: "/plant-types", label: "Loại cây", icon: "Leaf" },
+    { href: "/plant-types", label: "Danh sách cây", icon: "Leaf" },
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
@@ -165,7 +165,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Người dùng", icon: "Users" },
-    { href: "/plant-types", label: "Loại cây", icon: "Leaf" },
+    { href: "/plant-types", label: "Danh sách cây", icon: "Leaf" },
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
