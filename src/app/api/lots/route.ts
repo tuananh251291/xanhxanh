@@ -8,7 +8,6 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const stage = searchParams.get("stage");
-  const warehouseType = searchParams.get("warehouseType");
   const roomType = searchParams.get("roomType");
   const roomId = searchParams.get("roomId");
   const warehouseId = searchParams.get("warehouseId");
@@ -31,8 +30,6 @@ export async function GET(req: NextRequest) {
     where.OR = [{ shelfId: null }, { shelf: { room: { type: "PHONG_TOI" } } }];
   } else if (roomType) {
     where.shelf = { room: { type: roomType } };
-  } else if (warehouseType) {
-    where.shelf = { warehouse: { type: warehouseType } };
   }
 
   if (assignedToId) {

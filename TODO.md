@@ -150,7 +150,14 @@
 - [x] Đổi cấu trúc: `Warehouse` (Sản xuất | Thành phẩm) → `Room` (6 loại: Phòng sáng/Phòng tối cho sản xuất; Phòng khả dụng/Phòng theo dõi/Phòng hạn túi/Phòng thị trường cho thành phẩm) → `Shelf`
 - [x] Dialog thêm "Phòng thị trường" trên `/warehouses` (`add-market-room-dialog.tsx`)
 - [x] Dialog gán quyền xem theo từng Phòng thị trường cho nhân viên SALE (`room-access-dialog.tsx`) + API `/api/rooms/[id]/access`
-- [ ] Rà soát các trang tồn kho/báo cáo còn lọc theo `Warehouse.type` cũ xem đã cập nhật hết sang Room chưa — _chưa rà soát kỹ, cần kiểm tra riêng_
+- [x] Rà soát các trang tồn kho/báo cáo còn lọc theo `Warehouse.type` cũ (2026-07-05): các trang
+      `/warehouses`, `/transfers/*`, `/instructions`, `shelf-assignment.ts` đều đã đúng, lọc theo
+      `Room.type` chi tiết chứ không dừng ở `Warehouse.type` thô. Phát hiện 1 lỗi thật: **trang
+      `/inventory/thanh-pham` được liệt kê trong menu KHO_THANH_PHAM (và TODO đánh dấu xong từ trước)
+      nhưng chưa từng được tạo — bấm vào ra lỗi 404.** Đã viết trang này (theo đúng mẫu `/inventory/kho-sang`,
+      liệt kê tồn theo từng Phòng khả dụng/theo dõi/hạn túi/thị trường + tổng hợp theo loại cây). Cũng xóa
+      luôn tham số `warehouseType` chết trong `GET /api/lots` (không còn nơi nào gọi, sót lại từ trước khi
+      tách Room — mọi nơi đã chuyển sang dùng `roomType`).
 
 ### 2.13 Nguyên tắc kệ Kho sáng — tách Phòng mẫu mẹ / Phòng ra rễ (Admin, SUPER_ADMIN)
 - [x] Đổi `RoomType`: bỏ `PHONG_SANG` (dùng chung), tách thành `PHONG_MAU_ME` (kệ mẫu mẹ) và `PHONG_RA_RE` (kệ cây ra rễ) — mỗi kho sản xuất có cả 2 phòng này. Migrate dữ liệu cũ (2 phòng "Phòng sáng A/B") sang `PHONG_MAU_ME`, giữ nguyên toàn bộ kệ/lô đã có; tạo mới 2 phòng "Phòng ra rễ A/B" (15 kệ mỗi phòng, trống, không ràng buộc).
