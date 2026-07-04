@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
 const patchSchema = z.object({
   id: z.string(),
   status: z.enum(["READ", "RESOLVED"]),
+  cause: z.enum(["KY_THUAT_SAI", "CAY_MO_SAI"]).optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -37,7 +38,7 @@ export async function PATCH(req: NextRequest) {
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const { id, status } = parsed.data;
+  const { id, status, cause } = parsed.data;
 
   const alert = await prisma.alert.findUnique({ where: { id } });
   if (!alert) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
@@ -45,9 +46,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
+  // Alert lệch sản lượng bắt buộc chọn 1 trong 2 nguyên nhân trước khi được đánh dấu Đã xử lý.
+  if (status === "RESOLVED" && alert.type === "OUTPUT_DEVIATION" && !cause) {
+    return NextResponse.json({ message: "Cần chọn nguyên nhân trước khi xử lý" }, { status: 400 });
+  }
+
   const updated = await prisma.alert.update({
     where: { id },
-    data: { status, readAt: alert.readAt ?? new Date() },
+    data: {
+      status,
+      readAt: alert.readAt ?? new Date(),
+      ...(cause ? { cause } : {}),
+    },
   });
 
   return NextResponse.json(updated);

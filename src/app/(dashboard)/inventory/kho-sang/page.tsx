@@ -9,6 +9,7 @@ import { vi } from "date-fns/locale";
 import { STAGE_LABELS, motherClusterUnits } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import CollapsibleRoom from "./collapsible-room";
+import SummaryByType from "./summary-by-type";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-gray-400";
@@ -64,35 +65,16 @@ export default async function KhoSangPage() {
       </div>
 
       {/* Summary by plant type */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Tổng hợp theo loại cây</CardTitle></CardHeader>
-        <CardContent>
-          {(() => {
-            const byType: Record<string, { name: string; mother: number; finished: number }> = {};
-            for (const lot of totalLots) {
-              const key = lot.plantTypeId;
-              if (!byType[key]) byType[key] = { name: `${lot.plantType.name} (${lot.plantType.code})`, mother: 0, finished: 0 };
-              if (lot.stage === "MAU_ME") byType[key].mother += lot.quantity;
-              else byType[key].finished += lot.quantity;
-            }
-            const entries = Object.values(byType);
-            if (entries.length === 0) return <p className="text-gray-400 text-sm">Kho trống</p>;
-            return (
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {entries.map((e) => (
-                  <div key={e.name} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2">
-                    <span className="font-medium text-sm">{e.name}</span>
-                    <div className="flex gap-2 text-xs">
-                      {e.mother > 0 && <Badge className="bg-purple-100 text-purple-700">MM: {e.mother.toLocaleString("vi-VN")}</Badge>}
-                      {e.finished > 0 && <Badge className="bg-green-100 text-green-700">TP: {e.finished.toLocaleString("vi-VN")}</Badge>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </CardContent>
-      </Card>
+      <SummaryByType entries={(() => {
+        const byType: Record<string, { name: string; mother: number; finished: number }> = {};
+        for (const lot of totalLots) {
+          const key = lot.plantTypeId;
+          if (!byType[key]) byType[key] = { name: `${lot.plantType.name} (${lot.plantType.code})`, mother: 0, finished: 0 };
+          if (lot.stage === "MAU_ME") byType[key].mother += lot.quantity;
+          else byType[key].finished += lot.quantity;
+        }
+        return Object.values(byType);
+      })()} />
 
       {/* Per phòng sáng and shelf */}
       {rooms.map((room) => (

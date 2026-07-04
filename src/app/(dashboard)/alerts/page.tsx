@@ -8,7 +8,10 @@ import { Bell, Loader2, Check, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
-import { ALERT_TYPE_LABELS, ALERT_STATUS_LABELS } from "@/types";
+import { ALERT_TYPE_LABELS, ALERT_STATUS_LABELS, DEVIATION_CAUSE_LABELS } from "@/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type DeviationCause = keyof typeof DEVIATION_CAUSE_LABELS;
 
 type Alert = {
   id: string;
@@ -16,6 +19,7 @@ type Alert = {
   status: keyof typeof ALERT_STATUS_LABELS;
   title: string;
   message: string;
+  cause: DeviationCause | null;
   createdAt: string;
   readAt: string | null;
 };
@@ -37,6 +41,7 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("");
   const [processing, setProcessing] = useState<string | null>(null);
+  const [causeSelection, setCauseSelection] = useState<Record<string, DeviationCause>>({});
 
   const load = useCallback(async (status: string) => {
     setLoading(true);
@@ -49,15 +54,15 @@ export default function AlertsPage() {
 
   useEffect(() => { load(filter); }, [filter, load]);
 
-  const updateStatus = async (id: string, status: "READ" | "RESOLVED") => {
+  const updateStatus = async (id: string, status: "READ" | "RESOLVED", cause?: DeviationCause) => {
     setProcessing(id);
     try {
       const res = await fetch("/api/alerts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, ...(cause ? { cause } : {}) }),
       });
-      if (!res.ok) { toast.error("Có lỗi xảy ra"); return; }
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       load(filter);
     } finally { setProcessing(null); }
   };
@@ -107,6 +112,9 @@ export default function AlertsPage() {
                     </div>
                     <p className="text-sm font-medium text-gray-800">{a.title}</p>
                     <p className="text-sm text-gray-500">{a.message}</p>
+                    {a.cause && (
+                      <p className="text-xs font-medium text-indigo-700">Nguyên nhân: {DEVIATION_CAUSE_LABELS[a.cause]}</p>
+                    )}
                     <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(a.createdAt), { addSuffix: true, locale: vi })}</p>
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -115,13 +123,39 @@ export default function AlertsPage() {
                         {processing === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                       </Button>
                     )}
-                    {a.status !== "RESOLVED" && (
+                    {a.status !== "RESOLVED" && a.type !== "OUTPUT_DEVIATION" && (
                       <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(a.id, "RESOLVED")} disabled={processing === a.id}>
                         {processing === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
                       </Button>
                     )}
                   </div>
                 </div>
+                {a.status !== "RESOLVED" && a.type === "OUTPUT_DEVIATION" && (
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                    <Select
+                      value={causeSelection[a.id] ?? ""}
+                      onValueChange={(v) => setCauseSelection((prev) => ({ ...prev, [a.id]: v as DeviationCause }))}
+                    >
+                      <SelectTrigger className="h-8 text-xs w-72">
+                        <SelectValue placeholder="Chọn nguyên nhân..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(DEVIATION_CAUSE_LABELS) as DeviationCause[]).map((c) => (
+                          <SelectItem key={c} value={c}>{DEVIATION_CAUSE_LABELS[c]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      disabled={!causeSelection[a.id] || processing === a.id}
+                      onClick={() => updateStatus(a.id, "RESOLVED", causeSelection[a.id])}
+                    >
+                      {processing === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4 mr-1" />}
+                      Xác nhận đã xử lý
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

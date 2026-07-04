@@ -151,6 +151,12 @@ export const ALERT_STATUS_LABELS = {
   RESOLVED: "Đã xử lý",
 } as const;
 
+// Nguyên nhân KY_THUAT chọn khi xử lý alert lệch sản lượng (OUTPUT_DEVIATION) — bắt buộc chọn 1 trong 2.
+export const DEVIATION_CAUSE_LABELS = {
+  KY_THUAT_SAI: "Do nhân viên kỹ thuật ra chỉ định sai",
+  CAY_MO_SAI: "Do nhân viên cấy sai",
+} as const;
+
 // Nav items per role
 export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: string }[]> = {
   SUPER_ADMIN: [

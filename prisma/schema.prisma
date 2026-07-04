@@ -97,6 +97,12 @@ enum AlertStatus {
   RESOLVED
 }
 
+// Nguyên nhân KY_THUAT chọn khi xử lý alert OUTPUT_DEVIATION — chỉ áp dụng cho loại alert này.
+enum DeviationCause {
+  KY_THUAT_SAI // Do nhân viên kỹ thuật ra chỉ định sai
+  CAY_MO_SAI   // Do nhân viên cấy sai
+}
+
 enum UserStatus {
   PENDING
   APPROVED
@@ -673,6 +679,7 @@ model Alert {
   user        User?       @relation(fields: [userId], references: [id])
   relatedId   String?
   relatedType String?
+  cause       DeviationCause?
   createdAt   DateTime    @default(now())
   readAt      DateTime?
 
