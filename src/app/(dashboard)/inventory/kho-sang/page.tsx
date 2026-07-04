@@ -3,11 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sun, Layers } from "lucide-react";
+import { Sun } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { STAGE_LABELS, motherClusterUnits } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
+import CollapsibleRoom from "./collapsible-room";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-gray-400";
@@ -95,10 +96,7 @@ export default async function KhoSangPage() {
 
       {/* Per phòng sáng and shelf */}
       {rooms.map((room) => (
-        <div key={room.id} className="space-y-3">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Layers className="w-5 h-5 text-yellow-500" /> {room.warehouse.name} — {room.name}
-          </h2>
+        <CollapsibleRoom key={room.id} title={`${room.warehouse.name} — ${room.name}`}>
           {room.shelves.length === 0 ? (
             <p className="text-sm text-gray-400 pl-2">Chưa có kệ</p>
           ) : (
@@ -168,7 +166,7 @@ export default async function KhoSangPage() {
               })}
             </div>
           )}
-        </div>
+        </CollapsibleRoom>
       ))}
 
       {rooms.length === 0 && (
