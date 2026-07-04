@@ -7,6 +7,7 @@ import { z } from "zod";
 const patchSchema = z.union([
   z.object({ status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"]) }),
   z.object({ assignedToId: z.string().min(1) }),
+  z.object({ confirmMotherReceived: z.literal(true) }),
 ]);
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -46,14 +47,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const isAssignAction = "assignedToId" in parsed.data;
+  const { id } = await params;
   const role = session?.user?.role;
+
+  if ("confirmMotherReceived" in parsed.data) {
+    const instruction = await prisma.plantingInstruction.findUnique({ where: { id } });
+    if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    if (instruction.assignedToId !== session?.user?.id) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    const updated = await prisma.plantingInstruction.update({
+      where: { id },
+      data: { motherReceivedAt: instruction.motherReceivedAt ?? new Date() },
+    });
+    return NextResponse.json(updated);
+  }
+
+  const isAssignAction = "assignedToId" in parsed.data;
   const allowed = isAssignAction
     ? isAdminRole(role) || role === "KHO_MO"
     : isAdminRole(role) || role === "KY_THUAT";
   if (!allowed) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
-  const { id } = await params;
   const updated = await prisma.plantingInstruction.update({
     where: { id },
     data: parsed.data,

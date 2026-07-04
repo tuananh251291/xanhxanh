@@ -132,6 +132,29 @@ async function getKyThuatStats(userId: string) {
   return { weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent };
 }
 
+// Việc "Bàn giao mẫu mẹ": KHO_MO xuất mẫu mẹ theo từng chỉ định cấy cho đúng NV cấy mô được giao (assignedTo),
+// NV cấy mô bấm xác nhận đã nhận (motherReceivedAt) thì tính là xong 1 chỉ định. Đây là việc chung của cả
+// phòng kho mô (không phân theo người tạo/người xuất), hạn chót Chủ nhật cuối tuần áp dụng (weekStart).
+async function getKhoMoTaskStats() {
+  const now = new Date();
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+
+  const weekInstructions = await prisma.plantingInstruction.findMany({
+    where: {
+      weekStart: { gte: weekStart, lte: weekEnd },
+      status: { notIn: ["DRAFT", "CANCELLED"] },
+    },
+    select: { motherReceivedAt: true },
+  });
+  const receivedCount = weekInstructions.filter((i) => i.motherReceivedAt !== null).length;
+  const motherHandoverPercent = weekInstructions.length === 0
+    ? 100
+    : Math.round((receivedCount / weekInstructions.length) * 100);
+
+  return { weekStart, weekEnd, motherHandoverPercent };
+}
+
 async function getKhoMoStats() {
   const [pendingTransfers, activeLots] = await Promise.all([
     prisma.transfer.count({ where: { status: "PENDING" } }),
@@ -160,7 +183,12 @@ export default async function DashboardPage() {
     return <SaleDashboard stats={stats} userName={session?.user?.name ?? ""} />;
   }
 
-  if (role === "KHO_MO" || role === "KHO_THANH_PHAM") {
+  if (role === "KHO_MO") {
+    const stats = await getKhoMoTaskStats();
+    return <KhoMoTaskDashboard stats={stats} userName={session?.user?.name ?? ""} />;
+  }
+
+  if (role === "KHO_THANH_PHAM") {
     const stats = await getKhoMoStats();
     return <KhoDashboard stats={stats} role={role} />;
   }
@@ -427,6 +455,42 @@ function WeeklyTaskRow({
         />
       </div>
     </Link>
+  );
+}
+
+// Còn thiếu việc 1 (Nhận bàn giao cây), 3 (Trả cây về kho Thành phẩm), 4 (Kiểm tra vật tư) — sẽ bổ
+// sung khi có mô tả logic cụ thể cho từng việc.
+function KhoMoTaskDashboard({
+  stats, userName,
+}: {
+  stats: Awaited<ReturnType<typeof getKhoMoTaskStats>>;
+  userName: string;
+}) {
+  const weekLabel = `${format(stats.weekStart, "dd/MM", { locale: vi })} — ${format(stats.weekEnd, "dd/MM/yyyy", { locale: vi })}`;
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
+        <p className="text-gray-500 text-sm mt-1">Nhân viên kho mô · Tuần {weekLabel}</p>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Công việc trong tuần</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <WeeklyTaskRow
+            href="/instructions"
+            icon={Send}
+            title="2. Bàn giao mẫu mẹ"
+            deadline={`Giao hết chỉ định cấy tuần này cho NV cấy mô trước Chủ nhật (${format(stats.weekEnd, "dd/MM", { locale: vi })})`}
+            percent={stats.motherHandoverPercent}
+          />
+        </CardContent>
+      </Card>
+
+      <TodayChecklist />
+    </div>
   );
 }
 

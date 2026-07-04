@@ -11,6 +11,7 @@ import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
+import ConfirmMotherReceivedButton from "./confirm-mother-received-button";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-600",
@@ -80,10 +81,20 @@ export default async function MyInstructionsPage() {
                       {inst.weekStart && (
                         <p className="text-xs text-gray-400">Tuần: {format(inst.weekStart, "dd/MM/yyyy", { locale: vi })}</p>
                       )}
+                      {inst.motherReceivedAt && (
+                        <p className="text-xs text-emerald-600 font-medium">
+                          Đã nhận mẫu mẹ lúc {format(inst.motherReceivedAt, "HH:mm dd/MM/yyyy", { locale: vi })}
+                        </p>
+                      )}
                     </div>
-                    <Link href={`/instructions/${inst.id}`}>
-                      <Button variant="outline" size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
-                    </Link>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <Link href={`/instructions/${inst.id}`}>
+                        <Button variant="outline" size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
+                      </Link>
+                      {inst.status === "ACTIVE" && !inst.motherReceivedAt && (
+                        <ConfirmMotherReceivedButton instructionId={inst.id} />
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

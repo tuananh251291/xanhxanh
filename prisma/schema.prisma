@@ -455,6 +455,11 @@ model PlantingInstruction {
   status      InstructionStatus @default(DRAFT)
   weekStart   DateTime?
   notes       String?
+
+  // NV cấy mô (assignedTo) bấm xác nhận sau khi nhận mẫu mẹ do KHO_MO xuất/bàn giao — dùng để
+  // tính % hoàn thành việc "Bàn giao mẫu mẹ" trên dashboard của KHO_MO.
+  motherReceivedAt DateTime?
+
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
