@@ -179,6 +179,31 @@
 - [x] `transfers/receive` UI: khi phiếu có nguồn là Phòng tối, ẩn hết dropdown chọn kệ thủ công, chỉ hiện ghi chú + danh sách lô, nút "Xác nhận nhận hàng" gọi API không kèm `shelfAssignments`; sau khi xác nhận hiện toast tóm tắt kệ đã xếp cho từng lô (kèm lô nào bị tách do tràn). Các loại phiếu bàn giao khác (không phải từ Phòng tối) vẫn chọn kệ thủ công như cũ, không đổi hành vi.
 - [x] Kiểm thử qua API thật: lô mẫu mẹ 400 túi M5 (kệ NV còn trống 1676 cụm) → tự tách 335 túi vào kệ NV, 65 túi (lô con mới) vào Kho mẫu mẹ chung; lô thành phẩm 50 túi T01 → tự vào kệ Phòng ra rễ đang trống nhất. Xác nhận đúng dữ liệu DB sau khi chạy.
 
+### 2.15 Giao diện `/warehouses` dạng cây thu gọn 3 cấp Kho → Phòng → Kệ (Admin, SUPER_ADMIN)
+- [x] Đổi giao diện chính từ hiện hết mọi kho/phòng/kệ 1 lần thành **3 cấp thu gọn**: mặc định chỉ
+      hiện danh sách Kho (Kho sản xuất/Kho thành phẩm), bấm "Xem thêm" mới hiện các Phòng trong kho đó
+      (vẫn thu gọn), bấm tiếp "Xem chi tiết" trên 1 phòng mới hiện bảng kệ của phòng đó. Tách thành
+      `warehouse-board.tsx` (client, quản lý state 2 cấp `expandedWarehouses`/`expandedRooms` bằng
+      `Set<string>`) — `page.tsx` chỉ còn fetch dữ liệu rồi render component này.
+- [x] Đổi hiển thị thông tin kệ từ dạng thẻ lưới (`shelf-list.tsx`, đã xóa) sang **bảng ngang**
+      (`shelf-table.tsx` mới) — giữ nguyên toàn bộ tính năng cũ: nút xem QR + in QR, chọn nhân viên phụ
+      trách, tách 2 bảng "Kho mẫu mẹ đã chia"/"Kho mẫu mẹ chung", thanh tiến trình tồn/sức chứa, dropdown
+      chuyển kệ sang phòng khác.
+- [x] Phát hiện + sửa lỗi hiển thị cũ (đã có từ trước, không phải lỗi mới): 2 dropdown "Loại cây" và
+      "NV phụ trách" hiện ID thô (VD `cmr55uewt00009cvv5wxb1cbf`) thay vì tên, do `SelectValue` không
+      truyền children dạng hàm — cùng nguyên nhân đã sửa ở Checklist settings trước đây.
+- [x] Theo yêu cầu, đổi cột "Loại cây" (dropdown gán `Shelf.plantTypeId`) thành cột chữ **"Tên cây chi
+      tiết"** chỉ hiển thị, không sửa được nữa trên trang này — **vẫn giữ nguyên field
+      `Shelf.plantTypeId` trong DB** (field này là đầu vào bắt buộc của `planShelfAssignments()` trong
+      `shelf-assignment.ts` để tự xếp lô mẫu mẹ vào đúng kệ, không được xóa). Đổi tên cột "NV phụ trách"
+      → "Nhân viên phụ trách", sửa lỗi hiện ID thô ở trên bằng `SelectValue` dạng hàm. Thêm cột mới
+      "Số túi M03/M05" — cộng `quantity` các lô ACTIVE trên kệ theo từng `stageCode`.
+      **Lưu ý:** vì không còn nơi nào trên UI chỉnh `Shelf.plantTypeId` nữa (trước đây chỉ có ở đây), nếu
+      sau này cần đổi mã cây gán cho 1 kệ, phải bổ sung 1 nơi khác để chỉnh (VD: dialog riêng, hoặc màn
+      quản lý nhân viên phụ trách kệ).
+- [x] Kiểm thử qua trình duyệt thật (Playwright, cài tạm rồi gỡ sau khi xong): xác nhận đúng cả 3 cấp
+      thu gọn/mở rộng, bảng kệ hiện đúng cột mới + tên cây/tên nhân viên thay vì ID thô.
+
 ---
 
 ## Phase 3 — Bán hàng & kho thành phẩm
