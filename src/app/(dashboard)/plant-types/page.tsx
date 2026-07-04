@@ -25,7 +25,7 @@ export default async function PlantTypesPage() {
             {categories.length} loại cây · {plantTypes.length} chi tiết loại cây — mã cây đầy đủ = mã loại cây + số thứ tự (VD: MT001)
           </p>
         </div>
-        <PlantTypeDialog categories={categories} />
+        <PlantTypeDialog categories={categories} existingCodes={plantTypes.map((p) => p.code)} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

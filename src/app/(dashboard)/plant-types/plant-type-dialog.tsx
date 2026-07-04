@@ -27,16 +27,22 @@ type Category = { id: string; code: string; name: string };
 type PlantType = FormData & { id: string; code: string; isActive: boolean };
 
 export default function PlantTypeDialog({
-  categories, plant,
+  categories, plant, existingCodes = [],
 }: {
   categories: Category[];
   plant?: PlantType;
+  existingCodes?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [categoryId, setCategoryId] = useState("");
+  const [codeSuffix, setCodeSuffix] = useState("");
   const router = useRouter();
   const isEdit = !!plant;
+
+  const category = categories.find((c) => c.id === categoryId);
+  const fullCode = category ? `${category.code}${codeSuffix.toUpperCase()}` : "";
+  const codeTaken = codeSuffix.length === 3 && existingCodes.includes(fullCode);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as Resolver<FormData>,
@@ -45,18 +51,21 @@ export default function PlantTypeDialog({
 
   const onSubmit = async (data: FormData) => {
     if (!isEdit && !categoryId) { toast.error("Chọn loại cây"); return; }
+    if (!isEdit && !/^[A-Za-z0-9]{3}$/.test(codeSuffix)) { toast.error("Nhập đúng 3 ký tự (chữ/số) cho mã cây"); return; }
+    if (!isEdit && codeTaken) { toast.error(`Mã cây "${fullCode}" đã có sẵn trong hệ thống`); return; }
     setLoading(true);
     try {
       const res = await fetch("/api/plant-types", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isEdit ? { id: plant!.id, ...data } : { categoryId, ...data }),
+        body: JSON.stringify(isEdit ? { id: plant!.id, ...data } : { categoryId, codeSuffix, ...data }),
       });
       if (!res.ok) { toast.error((await res.json()).message); return; }
       toast.success(isEdit ? "Cập nhật thành công" : "Thêm chi tiết loại cây thành công");
       setOpen(false);
       reset();
       setCategoryId("");
+      setCodeSuffix("");
       router.refresh();
     } finally { setLoading(false); }
   };
@@ -97,6 +106,25 @@ export default function PlantTypeDialog({
               </Select>
             </div>
           )}
+          {!isEdit && (
+            <div className="space-y-1">
+              <Label>Mã cây</Label>
+              <div className="flex items-center gap-2">
+                <Input value={category?.code ?? "—"} disabled className="w-16 text-center font-mono" />
+                <span className="text-gray-400">+</span>
+                <Input
+                  value={codeSuffix}
+                  onChange={(e) => setCodeSuffix(e.target.value.toUpperCase().slice(0, 3))}
+                  placeholder="VD: 009"
+                  maxLength={3}
+                  className="w-24 font-mono"
+                />
+                {fullCode && <span className="text-sm text-gray-500">= <span className="font-mono font-bold">{fullCode}</span></span>}
+              </div>
+              <p className="text-xs text-gray-400">2 ký tự đầu tự lấy theo Loại cây đã chọn, nhập tay 3 ký tự còn lại (chữ/số)</p>
+              {codeTaken && <p className="text-xs text-red-500">Mã cây &quot;{fullCode}&quot; đã có sẵn trong hệ thống</p>}
+            </div>
+          )}
           <div className="space-y-1">
             <Label>Tên chi tiết loại cây</Label>
             <Input {...register("name")} placeholder="VD: Trầu bà lá xẻ" />
@@ -120,7 +148,7 @@ export default function PlantTypeDialog({
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading || (!isEdit && codeTaken)}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isEdit ? "Cập nhật" : "Thêm"}
             </Button>

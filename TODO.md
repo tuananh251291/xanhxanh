@@ -229,6 +229,20 @@
       M03/M05/T01/T05 cùng 1 mã đúng như thiết kế; toàn bộ 8 mã "001" hết trùng tên Loại cây; tổng 396 lô,
       59 loại cây (giữ đúng số lượng dòng như trước khi đổi công thức, chỉ đổi giá trị `code`/tên).
 
+### 2.17 Nhập tay mã cây khi thêm chi tiết loại cây (Admin, SUPER_ADMIN)
+- [x] Trước đây mã chi tiết loại cây (VD "AL009") tự sinh hoàn toàn từ số thứ tự lớn nhất hiện có + 1,
+      Admin không nhập được. Đổi thành: 2 ký tự đầu vẫn tự lấy theo Loại cây đã chọn (không đổi được),
+      3 ký tự sau (`codeSuffix`, chữ/số) do Admin **nhập tay** trên dialog "Thêm chi tiết loại cây".
+      `seq` (số thứ tự nội bộ dùng sắp xếp hiển thị trong Loại cây) vẫn tự tăng như cũ, tách rời khỏi mã
+      hiển thị — không còn quyết định `code` nữa.
+- [x] Cảnh báo trùng mã 2 lớp: (1) client — so ngay với danh sách mã đã có (`existingCodes` truyền từ
+      trang `/plant-types`) khi Admin gõ đủ 3 ký tự, hiện chữ đỏ "Mã cây ... đã có sẵn trong hệ thống" +
+      khóa nút "Thêm"; (2) server — `POST /api/plant-types` tự kiểm tra lại bằng `findUnique({code})`
+      trước khi tạo, trả lỗi 409 nếu trùng (chặn cả trường hợp 2 Admin submit cùng lúc bỏ qua được lớp 1).
+- [x] Kiểm thử qua trình duyệt thật (Playwright, cài tạm rồi gỡ) + gọi thẳng API qua curl: nhập trùng
+      "AL001" hiện đúng cảnh báo, nút bị khóa; gọi API thẳng bỏ qua UI vẫn bị chặn (409, đúng thông báo);
+      nhập mã mới "ALXYZ" tạo thành công, hiện đúng trong bảng — đã xóa dữ liệu test sau khi xác nhận.
+
 ---
 
 ## Phase 3 — Bán hàng & kho thành phẩm

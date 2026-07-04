@@ -239,8 +239,8 @@ model PlantType {
   id                 String   @id @default(cuid())
   categoryId         String
   category           PlantCategory @relation(fields: [categoryId], references: [id])
-  seq                Int // số thứ tự trong Loại cây (001-999), dùng để tự sinh code
-  code               String   @unique // category.code + seq (3 chữ số), VD: "MT001"
+  seq                Int // số thứ tự để sắp hiển thị trong Loại cây, không quyết định code
+  code               String   @unique // category.code (2 ký tự, tự lấy theo Loại cây) + 3 ký tự NV nhập tay, VD: "MT001"
   name               String
   description        String?
   // Số tuần cố định (không phải khoảng min-max) do Admin cài đặt cho từng chi tiết loại cây.
