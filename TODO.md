@@ -243,6 +243,16 @@
       "AL001" hiện đúng cảnh báo, nút bị khóa; gọi API thẳng bỏ qua UI vẫn bị chặn (409, đúng thông báo);
       nhập mã mới "ALXYZ" tạo thành công, hiện đúng trong bảng — đã xóa dữ liệu test sau khi xác nhận.
 
+### 2.18 Nhân viên kỹ thuật chỉ xem Phòng mẫu mẹ, không xem toàn bộ Kho sáng
+- [x] Trang `/inventory/kho-sang` trước đây hiện cả Phòng mẫu mẹ lẫn Phòng ra rễ (thành phẩm) cho mọi
+      role được phép truy cập (KY_THUAT, KHO_MO). Theo yêu cầu, KY_THUAT giờ chỉ xem được số liệu Phòng
+      mẫu mẹ — lọc `Room.type` còn `PHONG_MAU_ME` khi `role === "KY_THUAT"` (KHO_MO không đổi, vẫn xem
+      đủ cả 2 loại phòng vì KHO_MO là người quản lý luân chuyển giữa 2 phòng này).
+- [x] Đổi tiêu đề trang + label menu sidebar của KY_THUAT từ "Kho sáng" → "Phòng mẫu mẹ" để khớp đúng
+      phạm vi xem được (KHO_MO vẫn giữ nguyên "Kho sáng" vì xem đủ cả 2 phòng).
+- [x] Kiểm thử qua trình duyệt thật (Playwright, cài tạm rồi gỡ): tài khoản KY_THUAT không còn thấy chữ
+      "Phòng ra rễ" ở đâu trên trang, tài khoản KHO_MO không đổi hành vi (vẫn thấy đủ).
+
 ---
 
 ## Phase 3 — Bán hàng & kho thành phẩm

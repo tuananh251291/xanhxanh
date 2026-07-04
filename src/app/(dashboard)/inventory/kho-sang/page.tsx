@@ -22,8 +22,12 @@ export default async function KhoSangPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/kho-sang"))) redirect("/dashboard");
 
+  // Nhân viên kỹ thuật chỉ xem được số liệu Phòng mẫu mẹ, không xem được toàn bộ Kho sáng
+  // (ẩn Phòng ra rễ — thuộc phạm vi theo dõi của KHO_MO).
+  const onlyMotherRoom = role === "KY_THUAT";
+
   const rooms = await prisma.room.findMany({
-    where: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] }, isActive: true },
+    where: { type: onlyMotherRoom ? "PHONG_MAU_ME" : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] }, isActive: true },
     include: {
       warehouse: { select: { name: true } },
       shelves: {
@@ -49,10 +53,12 @@ export default async function KhoSangPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sun className="w-6 h-6 text-yellow-500" /> Kho sáng
+          <Sun className="w-6 h-6 text-yellow-500" /> {onlyMotherRoom ? "Phòng mẫu mẹ" : "Kho sáng"}
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          Tổng: {totalLots.length} lô · Mẫu mẹ: {totalMother.toLocaleString("vi-VN")} · Thành phẩm: {totalFinished.toLocaleString("vi-VN")}
+          {onlyMotherRoom
+            ? `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")}`
+            : `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")}`}
         </p>
       </div>
 

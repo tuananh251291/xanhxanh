@@ -174,7 +174,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KY_THUAT: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
-    { href: "/inventory/kho-sang", label: "Kho sáng", icon: "Sun" },
+    { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
     { href: "/mother-ready", label: "Mẫu mẹ đến tuổi cấy", icon: "Sprout" },
     { href: "/reports/production", label: "Báo cáo SX", icon: "BarChart3" },
   ],
