@@ -4,10 +4,32 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import "dotenv/config";
 import { ROLE_NAV } from "@/types";
-import { startOfWeek, subWeeks, subDays, addDays } from "date-fns";
+import { startOfWeek, subWeeks, subDays, addDays, getWeek } from "date-fns";
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL! });
 const prisma = new PrismaClient({ adapter });
+
+// Mã lô = mã cây (VD "AL001") + mã NV cấy 3 số + mã tuần/năm 4 số — cùng công thức với
+// generateLotCode() trong src/lib/codes.ts, viết lại ở đây (không import) để seed không cần
+// query trùng lặp tránh trùng mã (tự đảm bảo duy nhất bằng cấu trúc vòng lặp bên dưới).
+function lotCodeBase(plantTypeCode: string, staffCode: string, date: Date): string {
+  const staffNum = (staffCode.match(/\d+/)?.[0] ?? "000").slice(-3).padStart(3, "0");
+  const week = String(getWeek(date, { weekStartsOn: 1 })).padStart(2, "0");
+  const year = String(date.getFullYear()).slice(-2);
+  return `${plantTypeCode}${staffNum}${week}${year}`;
+}
+
+// Cùng (mã cây, NV, tuần) có thể trùng nhau giữa 2 khối dữ liệu nháp khác nhau (tồn hiện tại + lịch sử) —
+// thêm hậu tố "-2"/"-3"... khi (code, stageCode) đã tồn tại, giống generateLotCode() thật.
+async function uniqueLotCode(base: string, stageCode: string): Promise<string> {
+  let candidate = base;
+  let n = 1;
+  while (await prisma.lot.findFirst({ where: { code: candidate, stageCode } })) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
+}
 
 async function main() {
   console.log("🌱 Seeding database...");
@@ -68,63 +90,63 @@ async function main() {
   }
   console.log("✅ Demo users created");
 
-  // Plant categories (Loại cây, mã 2 ký tự) — mỗi loại cây có 1 chi tiết demo mặc định (seq=1, tên trùng
-  // Loại cây, VD "MT001" = "Monstera") cộng thêm nhiều giống cụ thể khác (varieties) trong cùng chi đó.
+  // Plant categories (Loại cây, mã 2 ký tự) — mỗi chi (category) có nhiều giống cụ thể (varieties),
+  // KHÔNG có giống nào trùng tên với Loại cây để tránh nhầm lẫn giữa "Loại cây" và "Tên cây chi tiết".
   // Admin thêm/sửa chi tiết loại cây qua trang /plant-types sau này.
   const plantCategories = [
     {
       code: "AL", name: "Alocasia", transferWaitWeeks: 4, rootingWeeks: 5,
       varieties: [
-        "Alocasia Amazonica", "Alocasia Polly", "Alocasia Frydek", "Alocasia Silver Dragon",
+        "Alocasia Odora", "Alocasia Amazonica", "Alocasia Polly", "Alocasia Frydek", "Alocasia Silver Dragon",
         "Alocasia Black Velvet", "Alocasia Cuprea", "Alocasia Zebrina",
       ],
     },
     {
       code: "MT", name: "Monstera", transferWaitWeeks: 5, rootingWeeks: 6,
       varieties: [
-        "Monstera Deliciosa", "Monstera Adansonii", "Monstera Albo Variegata", "Monstera Thai Constellation",
+        "Monstera Siltepecana", "Monstera Deliciosa", "Monstera Adansonii", "Monstera Albo Variegata", "Monstera Thai Constellation",
         "Monstera Peru", "Monstera Obliqua", "Monstera Standleyana",
       ],
     },
     {
       code: "PD", name: "Philodendron", transferWaitWeeks: 4, rootingWeeks: 5,
       varieties: [
-        "Philodendron Birkin", "Philodendron Pink Princess", "Philodendron Selloum", "Philodendron Melanochrysum",
+        "Philodendron Gloriosum", "Philodendron Birkin", "Philodendron Pink Princess", "Philodendron Selloum", "Philodendron Melanochrysum",
         "Philodendron Micans", "Philodendron Florida Ghost", "Philodendron White Knight",
       ],
     },
     {
       code: "AT", name: "Anthurium", transferWaitWeeks: 6, rootingWeeks: 6,
       varieties: [
-        "Anthurium Crystallinum", "Anthurium Clarinervium", "Anthurium Warocqueanum", "Anthurium Veitchii",
+        "Anthurium Regale", "Anthurium Crystallinum", "Anthurium Clarinervium", "Anthurium Warocqueanum", "Anthurium Veitchii",
         "Anthurium Andraeanum", "Anthurium Magnificum",
       ],
     },
     {
       code: "HM", name: "Homa", transferWaitWeeks: 4, rootingWeeks: 5,
       varieties: [
-        "Homalomena Rubescens", "Homalomena Emerald Gem", "Homalomena Selby", "Homalomena Maggy",
+        "Homalomena Sanderiana", "Homalomena Rubescens", "Homalomena Emerald Gem", "Homalomena Selby", "Homalomena Maggy",
         "Homalomena Pink Diamond", "Homalomena Cordata",
       ],
     },
     {
       code: "EP", name: "Epi", transferWaitWeeks: 4, rootingWeeks: 5,
       varieties: [
-        "Epipremnum Aureum", "Epipremnum Marble Queen", "Epipremnum N'Joy", "Epipremnum Pinnatum",
+        "Epipremnum Global Green", "Epipremnum Aureum", "Epipremnum Marble Queen", "Epipremnum N'Joy", "Epipremnum Pinnatum",
         "Epipremnum Cebu Blue", "Epipremnum Manjula",
       ],
     },
     {
       code: "MS", name: "Musa", transferWaitWeeks: 5, rootingWeeks: 5,
       varieties: [
-        "Musa Basjoo", "Musa Velutina", "Musa Ornata", "Musa Siam Ruby",
+        "Musa Acuminata", "Musa Basjoo", "Musa Velutina", "Musa Ornata", "Musa Siam Ruby",
         "Musa Zebrina", "Musa Thai Black",
       ],
     },
     {
       code: "RH", name: "Raphidophora", transferWaitWeeks: 4, rootingWeeks: 5,
       varieties: [
-        "Raphidophora Tetrasperma", "Raphidophora Decursiva", "Raphidophora Korthalsii", "Raphidophora Hayi",
+        "Raphidophora Foraminifera", "Raphidophora Tetrasperma", "Raphidophora Decursiva", "Raphidophora Korthalsii", "Raphidophora Hayi",
         "Raphidophora Pachyphylla", "Raphidophora Cryptantha",
       ],
     },
@@ -135,13 +157,13 @@ async function main() {
       update: {},
       create: { code: pc.code, name: pc.name },
     });
-    const names = [pc.name, ...pc.varieties];
+    const names = pc.varieties;
     for (let i = 0; i < names.length; i++) {
       const seq = i + 1;
       const code = `${pc.code}${String(seq).padStart(3, "0")}`;
       await prisma.plantType.upsert({
         where: { code },
-        update: {},
+        update: { name: names[i] },
         create: {
           categoryId: category.id,
           seq,
@@ -336,8 +358,9 @@ async function main() {
   }
   console.log("✅ Shelves created");
 
-  // Lots — mã lô cây dạng <mã chi tiết loại cây><quy cách>, VD "MT001M03" (mã chi tiết loại cây MT001
-  // đã tự mang số thứ tự AABBB, chỉ cần nối thêm CC = quy cách).
+  // Lots — mã lô = mã chi tiết loại cây + mã NV cấy 3 số + mã tuần/năm 4 số (lotCodeBase()), 4 quy cách
+  // M03/M05/T01/T05 của cùng 1 lượt demo (cùng cây, cùng NV, cùng tuần) dùng CHUNG 1 mã lô, phân biệt
+  // nhau bằng stageCode (đúng nguyên tắc @@unique([code, stageCode]) của Lot).
   const STAGE_CODES: { code: string; stage: "THANH_PHAM" | "MAU_ME"; qtyRange: [number, number] }[] = [
     { code: "M03", stage: "MAU_ME", qtyRange: [30, 80] },
     { code: "M05", stage: "MAU_ME", qtyRange: [20, 60] },
@@ -352,6 +375,7 @@ async function main() {
     where: { room: { type: "PHONG_KHA_DUNG" } },
   });
   const allPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
+  const caymoStaffForLots = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
 
   function randInt(min: number, max: number) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -359,16 +383,18 @@ async function main() {
 
   const HISTORY_WEEKS = 10;
 
-  for (const pt of allPlantTypes) {
-    for (let i = 0; i < STAGE_CODES.length; i++) {
-      const sc = STAGE_CODES[i];
-      const code = `${pt.code}${sc.code}`;
+  for (let ptIdx = 0; ptIdx < allPlantTypes.length; ptIdx++) {
+    const pt = allPlantTypes[ptIdx];
+    const staff = caymoStaffForLots[ptIdx % caymoStaffForLots.length];
+    // Rải enteredAt xuyên suốt HISTORY_WEEKS tuần qua (xác định, không random) để báo cáo tồn kho có dữ liệu lịch sử
+    const enteredAt = subDays(new Date(), (ptIdx * 9) % (HISTORY_WEEKS * 7));
+    const code = staff ? lotCodeBase(pt.code, staff.code, enteredAt) : pt.code;
+
+    for (const sc of STAGE_CODES) {
       const quantity = randInt(sc.qtyRange[0], sc.qtyRange[1]);
       // Kệ mẫu mẹ (Phòng sáng) chỉ được chọn trong số kệ đã gán đúng loại cây pt — mỗi kệ chỉ xếp 1 mã cây.
       const shelves = sc.stage === "MAU_ME" ? motherShelves.filter((s) => s.plantTypeId === pt.id) : finishedShelves;
       const shelf = shelves[randInt(0, shelves.length - 1)];
-      // Rải enteredAt xuyên suốt HISTORY_WEEKS tuần qua (xác định, không random) để báo cáo tồn kho có dữ liệu lịch sử
-      const enteredAt = subDays(new Date(), (i * 5 + allPlantTypes.indexOf(pt) * 9) % (HISTORY_WEEKS * 7));
 
       await prisma.lot.upsert({
         where: { code_stageCode: { code, stageCode: sc.code } },
@@ -387,7 +413,7 @@ async function main() {
       });
     }
   }
-  console.log("✅ Lots created (mã lô cây AABBBCC)");
+  console.log("✅ Lots created (mã lô = mã cây + mã NV cấy + mã tuần/năm)");
 
   // ============================================================
   // Lịch sử demo cho báo cáo — chỉ định cấy, nhật ký hàng ngày, lô nhiễm
@@ -453,6 +479,12 @@ async function main() {
             : Math.round(expectedMotherOutput * (0.9 + rng() * 0.2));
           const actualFinishedTotal = Math.round(expectedFinishedOutput * (0.9 + rng() * 0.2));
 
+          // Mã lô của cả tuần này (cùng cây, cùng NV, cùng tuần) — M03/M05/T01/T05 dùng chung mã, chỉ
+          // khác stageCode. Nhật ký hàng ngày trong cùng tuần cùng chỉ định gộp vào chung 1 dòng Lot theo
+          // quy cách (không tạo lô mới mỗi ngày) đúng nguyên tắc "chỉ định cấy phân bổ theo tuần".
+          const weekLotCode = lotCodeBase(pt.code, staff.code, weekStart);
+          const lotsByStage: Record<string, { id: string; quantity: number }> = {};
+
           // Chia đều thành 3 nhật ký hàng ngày trong tuần
           const dayOffsets = [0, 2, 4];
           let firstMotherLotId: string | null = null;
@@ -460,6 +492,8 @@ async function main() {
             const recordDate = addDays(weekStart, dayOffsets[recIdx]);
             const motherQty = Math.round(actualMotherTotal / 3);
             const finishedQty = Math.round(actualFinishedTotal / 3);
+            const mmStageCode = recIdx % 2 === 0 ? "M03" : "M05";
+            const tpStageCode = recIdx % 2 === 0 ? "T01" : "T05";
 
             const dailyRecord = await prisma.dailyRecord.create({
               data: {
@@ -473,36 +507,58 @@ async function main() {
 
             // Kệ Phòng sáng chỉ được chọn trong số kệ đã gán đúng loại cây pt (mỗi kệ chỉ xếp 1 mã cây).
             const ptMotherShelves = motherShelves.filter((s) => s.plantTypeId === pt.id);
-            const motherLot = await prisma.lot.create({
-              data: {
-                code: `SEED-LOT-${weeksAgo}-${staffIdx}-${recIdx}-MM`,
-                plantTypeId: pt.id,
-                stage: "MAU_ME",
-                stageCode: recIdx % 2 === 0 ? "M03" : "M05",
-                shelfId: ptMotherShelves[(weeksAgo + staffIdx + recIdx) % ptMotherShelves.length]?.id,
-                quantity: motherQty,
-                initialQuantity: motherQty,
-                status: "ACTIVE",
-                enteredAt: recordDate,
-                instructionId: instruction.id,
-              },
-            });
+            let motherLot = lotsByStage[mmStageCode];
+            if (motherLot) {
+              await prisma.lot.update({
+                where: { id: motherLot.id },
+                data: { quantity: { increment: motherQty }, initialQuantity: { increment: motherQty } },
+              });
+              motherLot = { id: motherLot.id, quantity: motherLot.quantity + motherQty };
+            } else {
+              const created = await prisma.lot.create({
+                data: {
+                  code: await uniqueLotCode(weekLotCode, mmStageCode),
+                  plantTypeId: pt.id,
+                  stage: "MAU_ME",
+                  stageCode: mmStageCode,
+                  shelfId: ptMotherShelves[(weeksAgo + staffIdx + recIdx) % ptMotherShelves.length]?.id,
+                  quantity: motherQty,
+                  initialQuantity: motherQty,
+                  status: "ACTIVE",
+                  enteredAt: recordDate,
+                  instructionId: instruction.id,
+                },
+              });
+              motherLot = { id: created.id, quantity: motherQty };
+            }
+            lotsByStage[mmStageCode] = motherLot;
             if (recIdx === 0) firstMotherLotId = motherLot.id;
 
-            const finishedLot = await prisma.lot.create({
-              data: {
-                code: `SEED-LOT-${weeksAgo}-${staffIdx}-${recIdx}-TP`,
-                plantTypeId: pt.id,
-                stage: "THANH_PHAM",
-                stageCode: recIdx % 2 === 0 ? "T01" : "T05",
-                shelfId: finishedShelves[(weeksAgo + staffIdx + recIdx) % finishedShelves.length]?.id,
-                quantity: finishedQty,
-                initialQuantity: finishedQty,
-                status: "ACTIVE",
-                enteredAt: recordDate,
-                instructionId: instruction.id,
-              },
-            });
+            let finishedLot = lotsByStage[tpStageCode];
+            if (finishedLot) {
+              await prisma.lot.update({
+                where: { id: finishedLot.id },
+                data: { quantity: { increment: finishedQty }, initialQuantity: { increment: finishedQty } },
+              });
+              finishedLot = { id: finishedLot.id, quantity: finishedLot.quantity + finishedQty };
+            } else {
+              const created = await prisma.lot.create({
+                data: {
+                  code: await uniqueLotCode(weekLotCode, tpStageCode),
+                  plantTypeId: pt.id,
+                  stage: "THANH_PHAM",
+                  stageCode: tpStageCode,
+                  shelfId: finishedShelves[(weeksAgo + staffIdx + recIdx) % finishedShelves.length]?.id,
+                  quantity: finishedQty,
+                  initialQuantity: finishedQty,
+                  status: "ACTIVE",
+                  enteredAt: recordDate,
+                  instructionId: instruction.id,
+                },
+              });
+              finishedLot = { id: created.id, quantity: finishedQty };
+            }
+            lotsByStage[tpStageCode] = finishedLot;
 
             await prisma.dailyRecordItem.createMany({
               data: [

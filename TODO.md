@@ -204,6 +204,31 @@
 - [x] Kiểm thử qua trình duyệt thật (Playwright, cài tạm rồi gỡ sau khi xong): xác nhận đúng cả 3 cấp
       thu gọn/mở rộng, bảng kệ hiện đúng cột mới + tên cây/tên nhân viên thay vì ID thô.
 
+### 2.16 Sửa dữ liệu nháp: mã lô đúng định dạng mới + tên cây "001" không trùng Loại cây
+- [x] Phát hiện: `prisma/seed.ts` chưa từng thực sự áp dụng định dạng mã lô mới (mã cây + mã NV cấy +
+      mã tuần/năm) từ lần đổi trước (commit `7514dea`) — chỉ có `where` của upsert đổi sang khóa kép
+      `code_stageCode`, còn giá trị `code` sinh ra vẫn ở dạng cũ (`${pt.code}${sc.code}` VD "AL001M03",
+      hoặc `SEED-LOT-...` ở khối lịch sử demo). Viết lại cả 2 khối tạo lô nháp trong seed.ts theo đúng
+      công thức `lotCodeBase()` (giống `generateLotCode()` thật): mã chi tiết loại cây + 3 số cuối mã NV
+      cấy + mã tuần/năm 4 số. M03/M05/T01/T05 của cùng 1 đợt (cùng cây, cùng NV, cùng tuần) dùng chung
+      1 mã lô, phân biệt bằng `stageCode` — đúng nguyên tắc "chỉ định cấy phân bổ theo tuần" đã làm ở 2.x.
+      Khối lịch sử demo trước đây tạo 3 lô mẫu mẹ + 3 lô thành phẩm riêng biệt mỗi tuần/NV (mỗi ngày 1 lô,
+      trái nguyên tắc gộp theo tuần) — sửa thành gộp theo `stageCode` trong cùng tuần/chỉ định (ngày sau
+      cộng dồn `quantity`/`initialQuantity` vào lô ngày đầu thay vì tạo lô mới), thêm `uniqueLotCode()`
+      tự thêm hậu tố "-2" khi 2 khối dữ liệu nháp (tồn hiện tại + lịch sử) vô tình trùng mã.
+- [x] Phát hiện thêm: 8 mã cây "seq=1" của mỗi Loại cây (VD "AL001") trước đây lấy tên trùng luôn tên
+      Loại cây ("Alocasia") — dễ nhầm giữa cột "Loại cây" (chi) và "Tên cây chi tiết" (giống cụ thể) khi
+      xem `/warehouses`. Đổi tên 8 mã này thành giống cụ thể khác (VD AL001 "Alocasia" → "Alocasia
+      Odora"), giữ nguyên toàn bộ các mã 002-008 khác không đổi. `plantType.upsert` đổi từ `update: {}`
+      (không cập nhật) sang `update: { name: names[i] }` để lần seed lại thực sự đổi tên cho các dòng cũ.
+- [x] Xóa sạch dữ liệu nháp cũ (Lot, DailyRecord/Item, PlantingInstruction, ContaminationRecord, Transfer,
+      Order, MediumHandover, Alert — dùng script tạm `reset-drafts.ts`, đã xóa sau khi chạy xong) rồi seed
+      lại toàn bộ theo yêu cầu — vì mã cũ không khớp khóa mới nên không thể "sửa tại chỗ", phải làm mới.
+      Kho/phòng/kệ/danh sách cây/người dùng giữ nguyên, không bị xóa.
+- [x] Kiểm tra qua script tạm sau khi seed: mã lô mẫu `AL0010032726` (= AL001 + NV003 + tuần 27/2026),
+      M03/M05/T01/T05 cùng 1 mã đúng như thiết kế; toàn bộ 8 mã "001" hết trùng tên Loại cây; tổng 396 lô,
+      59 loại cây (giữ đúng số lượng dòng như trước khi đổi công thức, chỉ đổi giá trị `code`/tên).
+
 ---
 
 ## Phase 3 — Bán hàng & kho thành phẩm

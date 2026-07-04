@@ -167,7 +167,6 @@ export default function WarehouseBoard({
                       shelves={wh.shelves}
                       currentRoomId={null}
                       currentRoomType={null}
-                      plantTypes={plantTypes}
                       staffOptions={caymoStaff}
                       canManageStaffAndPlant={canManageStaffAndPlant}
                       canMoveRoom={canMoveRoom}
