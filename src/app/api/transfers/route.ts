@@ -32,12 +32,19 @@ export async function GET(req: NextRequest) {
   if (status) where.status = status;
   if (role === "CAY_MO") where.fromUserId = session.user.id;
   if (role === "KHO_MO" || role === "KHO_THANH_PHAM") {
-    // Bàn giao từ Phòng tối không chỉ định người nhận cụ thể — bất kỳ KHO_MO nào cũng nhận được,
-    // nên cần hiện cho mọi KHO_MO chứ không chỉ người tạo/người được chỉ định.
+    // Bàn giao từ Phòng tối/Phòng ra rễ không chỉ định người nhận cụ thể — bất kỳ KHO_MO/KHO_THANH_PHAM
+    // nào cũng nhận được, nên cần hiện cho mọi NV chứ không chỉ người tạo/người được chỉ định. NV kho mô
+    // chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc) nên chỉ thấy phiếu từ đúng kho đó.
+    const workplaceWarehouseId = role === "KHO_MO" ? session.user.workplaceWarehouseId : null;
     where.OR = [
       { fromUserId: session.user.id },
       { toUserId: session.user.id },
-      { toUserId: null, fromRoom: { type: "PHONG_TOI" } },
+      {
+        toUserId: null,
+        fromRoom: { type: "PHONG_TOI", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+      },
+      // Bàn giao thành phẩm (Phòng ra rễ → Kho thành phẩm) — KHO_THANH_PHAM cần thấy để xác nhận nhận.
+      { toUserId: null, fromRoom: { type: "PHONG_RA_RE" } },
     ];
   }
 
@@ -46,14 +53,22 @@ export async function GET(req: NextRequest) {
     include: {
       fromWarehouse: { select: { name: true, type: true } },
       fromRoom: { select: { name: true, type: true } },
-      toWarehouse: { select: { name: true, type: true, shelves: { where: { isActive: true, roomId: null } } } },
+      toWarehouse: {
+        select: {
+          name: true,
+          type: true,
+          shelves: { where: { isActive: true, roomId: null } },
+          // Kho thành phẩm — cần 2 phòng này để chia số lượng khi nhận bàn giao thành phẩm từ Phòng ra rễ.
+          rooms: { where: { type: { in: ["PHONG_THEO_DOI", "PHONG_HAN_TUI"] }, isActive: true }, select: { id: true, name: true, type: true } },
+        },
+      },
       toRoom: { select: { name: true, type: true, shelves: { where: { isActive: true } } } },
       fromUser: { select: { name: true } },
       toUser: { select: { name: true } },
       items: {
         include: {
           lot: {
-            select: { code: true, stage: true, quantity: true, plantType: { select: { name: true } } },
+            select: { code: true, stage: true, stageCode: true, quantity: true, plantTypeId: true, plantType: { select: { code: true, name: true } } },
           },
         },
       },
@@ -95,6 +110,7 @@ export async function POST(req: NextRequest) {
   let fromWarehouseId = firstLot?.shelf?.warehouseId ?? null;
   let fromRoomId = firstLot?.shelf?.roomId ?? null;
   let isFromDarkRoom = firstLot?.shelf?.room?.type === "PHONG_TOI";
+  const isFromRootingRoom = firstLot?.shelf?.room?.type === "PHONG_RA_RE";
 
   // Lô chưa được xếp kệ nào (vừa cấy xong, đang "trong phòng tối" theo nghĩa khái niệm, chờ bàn giao) —
   // suy ra kho từ kệ nguồn của chỉ định cấy đã tạo ra lô, rồi lấy Phòng tối của đúng kho đó làm nguồn.
@@ -143,6 +159,18 @@ export async function POST(req: NextRequest) {
       title: "Có phiếu bàn giao từ phòng tối chờ nhận",
       message: `${session.user.name} đã gửi phiếu ${code} — ${items.length} lô từ phòng tối, chờ xác nhận nhập kho`,
       targetRole: "KHO_MO",
+      relatedId: transfer.id,
+      relatedType: "Transfer",
+    });
+  }
+
+  // Bàn giao thành phẩm từ Phòng ra rễ → thông báo cho Kho thành phẩm có phiếu chờ nhận.
+  if (isFromRootingRoom) {
+    await createAlert({
+      type: "LOT_READY_TRANSFER",
+      title: "Có phiếu bàn giao thành phẩm chờ nhận",
+      message: `${session.user.name} đã gửi phiếu ${code} — ${items.length} lô thành phẩm, chờ xác nhận nhập kho`,
+      targetRole: "KHO_THANH_PHAM",
       relatedId: transfer.id,
       relatedType: "Transfer",
     });

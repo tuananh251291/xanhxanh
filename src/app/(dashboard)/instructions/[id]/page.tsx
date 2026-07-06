@@ -5,10 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Calendar, User, Leaf, FlaskConical } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowLeft } from "lucide-react";
+import { format, addDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
+import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, ROLE_LABELS, MEDIUM_ORDER_STATUS_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { PrintButton } from "@/components/shared/print-button";
 import { isPageAllowed } from "@/lib/permissions";
@@ -18,6 +18,7 @@ const STATUS_COLORS: Record<InstructionStatus, string> = {
   ACTIVE: "bg-blue-100 text-blue-700",
   COMPLETED: "bg-green-100 text-green-700",
   CANCELLED: "bg-red-100 text-red-600",
+  ENDED: "bg-slate-200 text-slate-700",
 };
 
 export default async function InstructionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,9 +31,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   const inst = await prisma.plantingInstruction.findUnique({
     where: { id },
     include: {
-      plantType: true,
+      plantType: { include: { category: true } },
       createdBy: { select: { name: true } },
-      assignedTo: { select: { name: true } },
+      assignedTo: { select: { name: true, code: true } },
       items: {
         include: {
           shelf: { include: { warehouse: { select: { name: true } } } },
@@ -51,6 +52,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         include: { shelf: { include: { warehouse: { select: { name: true } } } } },
         orderBy: { createdAt: "desc" },
       },
+      mediumOrder: { select: { id: true, code: true, confirmedAt: true } },
     },
   });
 
@@ -59,18 +61,121 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   // Permission: CAY_MO can only see their own
   if (role === "CAY_MO" && inst.assignedToId !== session!.user.id) redirect("/my-instructions");
 
-  const totalMotherCreated = inst.lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.initialQuantity, 0);
-  const totalFinishedCreated = inst.lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.initialQuantity, 0);
+  // Dữ liệu riêng cho "Phiếu chỉ định sản xuất"
+  const weekEnd = inst.weekStart ? addDays(inst.weekStart, 6) : null;
+  const yearYY = format(inst.weekStart ?? inst.createdAt, "yy");
+  const printRows = inst.items.map((item) => ({
+    id: item.id,
+    maMauMe: `${inst.plantType.category.code}${yearYY}${item.stageCode ?? ""}`,
+    slSach: item.quantity,
+  }));
+  const m03Total = inst.items.filter((i) => i.stageCode === "M03").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
+  const m05Total = inst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
 
   return (
     <div className="space-y-6">
-      {/* Print-only letterhead */}
-      <div className="hidden print:block text-center mb-4">
-        <h1 className="text-xl font-bold">XANH XANH — PHIẾU CHỈ ĐỊNH CẤY</h1>
-        <p className="text-sm">In lúc: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+      {/* Phiếu chỉ định sản xuất — hiển thị luôn trên màn hình, giữ nguyên khi in */}
+      <div className="text-sm border rounded-lg bg-white p-4 print:border-none print:p-0 print:rounded-none">
+        <div className="flex items-start justify-between">
+          <p className="text-xs">
+            <strong>MM</strong>: Mẫu mẹ &nbsp;&nbsp; <strong>NV</strong>: Nhân viên
+            <br />
+            <strong>SL</strong>: Số lượng
+          </p>
+          <h1 className="text-xl font-bold">PHIẾU CHỈ ĐỊNH SẢN XUẤT</h1>
+        </div>
+
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse mt-3 min-w-[480px]">
+          <tbody>
+            <tr>
+              <td className="border px-2 py-1 w-24">Từ ngày:</td>
+              <td className="border px-2 py-1">{inst.weekStart ? format(inst.weekStart, "d/M/yy") : "—"}</td>
+              <td className="border px-2 py-1 w-24">đến ngày:</td>
+              <td className="border px-2 py-1">{weekEnd ? format(weekEnd, "d/M/yy") : "—"}</td>
+            </tr>
+            <tr>
+              <td className="border px-2 py-1" colSpan={4}>Ngày nhận mẫu mẹ: ................./.................</td>
+            </tr>
+            <tr>
+              <td className="border px-2 py-1" colSpan={2}>Họ và tên bên giao: {session!.user.name}</td>
+              <td className="border px-2 py-1" colSpan={2}>Vị trí: {role ? ROLE_LABELS[role] : "—"}</td>
+            </tr>
+            <tr>
+              <td className="border px-2 py-1" colSpan={2}>Họ và tên bên nhận: {inst.assignedTo?.name ?? "………………"}</td>
+              <td className="border px-2 py-1" colSpan={2}>Mã NV: {inst.assignedTo?.code ?? "………………"}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse mt-3 min-w-[520px] text-center">
+          <thead>
+            <tr>
+              <th className="border px-2 py-1">Mã mẫu mẹ</th>
+              <th className="border px-2 py-1">SL MM<br />bàn giao</th>
+              <th className="border px-2 py-1">Mã NV sản xuất<br />MM đầu vào</th>
+              <th className="border px-2 py-1">SL MM<br />nhiễm</th>
+              <th className="border px-2 py-1">SL MM<br />sạch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {printRows.map((r) => (
+              <tr key={r.id}>
+                <td className="border px-2 py-1 font-mono">{r.maMauMe}</td>
+                <td className="border px-2 py-1">&nbsp;</td>
+                <td className="border px-2 py-1">&nbsp;</td>
+                <td className="border px-2 py-1">&nbsp;</td>
+                <td className="border px-2 py-1 bg-yellow-200 font-medium">{r.slSach.toLocaleString("vi-VN")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse mt-3 min-w-[480px]">
+          <tbody>
+            <tr>
+              <td className="border px-2 py-2 align-top w-32 font-medium">*Chỉ định cấy:</td>
+              <td className="border px-2 py-2 whitespace-pre-line" colSpan={4}>{inst.notes || " "}</td>
+            </tr>
+            <tr>
+              <td className="border px-2 py-1 font-medium">Quy cách (Túi)</td>
+              <td className="border px-2 py-1 text-center">SL túi M03</td>
+              <td className="border px-2 py-1 text-center">SL túi M05</td>
+              <td className="border px-2 py-1 text-center">SL túi T01</td>
+              <td className="border px-2 py-1 text-center">SL túi T05</td>
+            </tr>
+            <tr>
+              <td className="border px-2 py-1 font-medium">SL dự kiến trả:</td>
+              <td className="border px-2 py-1 text-center font-bold">{m03Total.toLocaleString("vi-VN")}</td>
+              <td className="border px-2 py-1 text-center font-bold">{m05Total.toLocaleString("vi-VN")}</td>
+              <td className="border px-2 py-1 text-center font-bold">{(inst.plannedT01Quantity ?? 0).toLocaleString("vi-VN")}</td>
+              <td className="border px-2 py-1 text-center font-bold">{(inst.plannedT05Quantity ?? 0).toLocaleString("vi-VN")}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <p className="text-xs italic mt-1">
+          Lưu ý: Nếu số lượng sản phẩm cấy ra không đạt như chỉ định cấy báo cáo ngay cho quản lý trực tiếp để được hỗ trợ xử lý kịp thời trong ngày
+        </p>
+
+        <div className="grid grid-cols-1 gap-8 mt-8 text-center sm:grid-cols-2">
+          <div>
+            <p className="font-medium">Bên giao</p>
+            <p className="text-xs mb-14">(Kí và ghi rõ họ tên)</p>
+          </div>
+          <div>
+            <p className="font-medium">Bên nhận</p>
+            <p className="text-xs mb-14">(Kí và ghi rõ họ tên)</p>
+          </div>
+        </div>
+        <p className="text-xs mt-1">*Tôi xác nhận đã nhận đủ số lượng và hiểu rõ chỉ định cấy.</p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 print:hidden">
         <Link href="/instructions" className="print:hidden">
           <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
@@ -81,116 +186,19 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
           {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
         </Badge>
+        {inst.mediumOrder && (
+          <Link href={`/medium-orders/${inst.mediumOrder.id}`}>
+            <Badge variant="outline" className="cursor-pointer">
+              Đơn MT: {inst.mediumOrder.confirmedAt ? MEDIUM_ORDER_STATUS_LABELS.IN_PROGRESS : MEDIUM_ORDER_STATUS_LABELS.UNCONFIRMED}
+            </Badge>
+          </Link>
+        )}
         <PrintButton />
       </div>
 
-      {/* Info cards */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-gray-500 mb-1"><Leaf className="w-4 h-4" /><span className="text-xs">Loại cây</span></div>
-            <p className="font-semibold">{inst.plantType.name}</p>
-            <p className="text-xs text-gray-400">{inst.plantType.code}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-gray-500 mb-1"><User className="w-4 h-4" /><span className="text-xs">Nhân viên cấy</span></div>
-            <p className="font-semibold">{inst.assignedTo?.name ?? "Chưa gán"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-gray-500 mb-1"><Calendar className="w-4 h-4" /><span className="text-xs">Tuần thực hiện</span></div>
-            <p className="font-semibold">{inst.weekStart ? format(inst.weekStart, "dd/MM/yyyy", { locale: vi }) : "—"}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quantities */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Số lượng</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 text-sm">
-            <div>
-              <p className="text-gray-500">Mẫu mẹ đầu vào</p>
-              <p className="text-xl font-bold text-blue-700">{inst.inputMotherQuantity.toLocaleString("vi-VN")}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Mẫu mẹ dự kiến</p>
-              <p className="text-xl font-bold text-purple-700">{inst.expectedMotherOutput?.toLocaleString("vi-VN") ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Mẫu mẹ thực tế</p>
-              <p className="text-xl font-bold text-green-700">{totalMotherCreated.toLocaleString("vi-VN")}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Thành phẩm thực tế</p>
-              <p className="text-xl font-bold text-emerald-700">{totalFinishedCreated.toLocaleString("vi-VN")}</p>
-              {inst.expectedFinishedOutput && (
-                <p className="text-xs text-gray-400">dự kiến {inst.expectedFinishedOutput.toLocaleString("vi-VN")}</p>
-              )}
-            </div>
-          </div>
-          {(inst.plannedT01Quantity || inst.plannedT05Quantity) ? (
-            <p className="mt-3 text-sm text-gray-500 border-t pt-3">
-              Kế hoạch phân bổ: {FINISHED_SPEC_LABELS.T01} <strong>{(inst.plannedT01Quantity ?? 0).toLocaleString("vi-VN")}</strong>
-              {" · "}{FINISHED_SPEC_LABELS.T05} <strong>{(inst.plannedT05Quantity ?? 0).toLocaleString("vi-VN")}</strong>
-              {" "}(≈ {Math.floor((inst.plannedT05Quantity ?? 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi)
-            </p>
-          ) : null}
-          {inst.notes && <p className="mt-3 text-sm text-gray-500 border-t pt-3">Ghi chú: {inst.notes}</p>}
-        </CardContent>
-      </Card>
-
-      {/* Nguồn theo quy cách */}
-      {inst.items.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="w-4 h-4" /> Quy cách nguồn</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Kệ</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Quy cách</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Số lượng dùng</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Tỉ lệ nhân MM / ra TP</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Dự kiến MM / TP</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Môi trường nhân MM / ra TP</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inst.items.map((item) => (
-                    <tr key={item.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-500">{item.shelf.name ?? item.shelf.code}</td>
-                      <td className="px-4 py-2">
-                        <Badge variant="secondary">
-                          {item.stageCode ? (MOTHER_SPEC_LABELS[item.stageCode as keyof typeof MOTHER_SPEC_LABELS] ?? item.stageCode) : "—"}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</td>
-                      <td className="px-4 py-2 text-gray-500">×{item.motherSampleRatio ?? "—"} / ×{item.rootingRatio ?? "—"}</td>
-                      <td className="px-4 py-2 text-gray-500">
-                        {item.expectedMotherOutput?.toLocaleString("vi-VN") ?? "—"} / {item.expectedFinishedOutput?.toLocaleString("vi-VN") ?? "—"}
-                      </td>
-                      <td className="px-4 py-2 text-gray-500">
-                        {item.motherMedium?.code ?? "—"} / {item.finishedMedium?.code ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Lots */}
       {inst.lots.length > 0 && (
-        <Card>
+        <Card className="print:hidden">
           <CardHeader><CardTitle className="text-base">Lô mô ({inst.lots.length})</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -223,7 +231,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
 
       {/* Daily Records */}
       {inst.dailyRecords.length > 0 && (
-        <Card>
+        <Card className="print:hidden">
           <CardHeader><CardTitle className="text-base">Nhật ký cấy ({inst.dailyRecords.length})</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -254,19 +262,6 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         </Card>
       )}
 
-      {/* Print-only signature block */}
-      <div className="hidden print:grid grid-cols-2 gap-8 mt-10 text-center text-sm">
-        <div>
-          <p className="font-medium">Nhân viên kỹ thuật</p>
-          <p className="text-xs text-gray-500 mb-16">(Ký, ghi rõ họ tên)</p>
-          <p>{inst.createdBy.name}</p>
-        </div>
-        <div>
-          <p className="font-medium">Nhân viên cấy mô</p>
-          <p className="text-xs text-gray-500 mb-16">(Ký, ghi rõ họ tên)</p>
-          <p>{inst.assignedTo?.name ?? "……………………"}</p>
-        </div>
-      </div>
     </div>
   );
 }

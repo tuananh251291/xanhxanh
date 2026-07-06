@@ -47,14 +47,14 @@ function ContaminationForm({ lot, onDone }: { lot: Lot; onDone: () => void }) {
   return (
     <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2 space-y-2">
       <p className="text-sm font-medium text-red-700">Báo cáo nhiễm cho lô {lot.code}</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <Label className="text-xs">Số lượng nhiễm</Label>
-          <Input value={qty} onChange={(e) => setQty(e.target.value)} type="number" min="1" max={lot.quantity} placeholder="0" className="h-8 text-sm" />
+          <Input value={qty} onChange={(e) => setQty(e.target.value)} type="number" min="1" max={lot.quantity} placeholder="0" className="h-11 text-sm md:h-8" />
         </div>
         <div>
           <Label className="text-xs">Ghi chú</Label>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Mô tả..." className="h-8 text-sm" />
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Mô tả..." className="h-11 text-sm md:h-8" />
         </div>
       </div>
       <div className="flex gap-2">
@@ -217,9 +217,9 @@ export default function MyDarkRoomPage() {
       )}
 
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex items-center justify-between z-40">
-          <p className="text-sm text-gray-600">Đã chọn <strong>{selectedIds.length}</strong> lô để bàn giao cho Kho mô</p>
-          <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={submitHandoff} disabled={submitting}>
+        <div className="fixed bottom-0 left-0 right-0 z-40 flex flex-wrap items-center justify-between gap-2 border-t bg-white p-3 shadow-lg">
+          <p className="min-w-0 text-sm text-gray-600">Đã chọn <strong>{selectedIds.length}</strong> lô để bàn giao cho Kho mô</p>
+          <Button className="w-full bg-indigo-600 hover:bg-indigo-700 sm:w-auto" onClick={submitHandoff} disabled={submitting}>
             {submitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
             Bàn giao cho Kho mô
           </Button>

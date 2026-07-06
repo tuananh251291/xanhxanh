@@ -16,14 +16,14 @@ export default function CollapsibleRoom({
   return (
     <div className="space-y-3">
       <div
-        className="flex items-center justify-between cursor-pointer select-none"
+        className="flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
         onClick={() => setExpanded((v) => !v)}
       >
-        <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+        <h2 className="min-w-0 text-lg font-semibold text-gray-800 flex items-center gap-2">
           {expanded ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
-          <Layers className="w-5 h-5 text-yellow-500" /> {title}
+          <Layers className="w-5 h-5 text-yellow-500 shrink-0" /> <span className="break-words">{title}</span>
         </h2>
-        <Button type="button" variant="outline" size="sm" onClick={() => setExpanded((v) => !v)}>
+        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Thu gọn" : "Xem thêm"}
         </Button>
       </div>

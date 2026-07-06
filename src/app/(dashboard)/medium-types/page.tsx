@@ -25,17 +25,17 @@ export default async function MediumTypesPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mã MT</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên môi trường</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mô tả</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Trạng thái</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thao tác</th>
+                <tr className="bg-green-700">
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã MT</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên môi trường</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Mô tả</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((m) => (
-                  <tr key={m.id} className="border-b hover:bg-gray-50">
+                  <tr key={m.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
                     <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{m.code}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{m.name}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{m.description ?? "—"}</td>

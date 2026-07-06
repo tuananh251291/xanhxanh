@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
   if (instructionId) where.instructionId = instructionId;
 
   if (roomId) {
-    where.shelf = { roomId };
+    // Kho thành phẩm không quản lý theo giàn kệ — lô gắn thẳng vào phòng (roomId trực tiếp trên Lot).
+    // Kho sản xuất vẫn gắn qua kệ (shelf.roomId).
+    where.OR = [{ roomId }, { shelf: { roomId } }];
   } else if (warehouseId) {
     where.shelf = { warehouseId };
   } else if (roomType === "PHONG_TOI") {
@@ -53,7 +55,7 @@ export async function GET(req: NextRequest) {
         },
       },
       instruction: { select: { code: true, assignedToId: true, assignedTo: { select: { id: true, name: true } } } },
-      _count: { select: { contaminations: true } },
+      _count: { select: { contaminations: true, instructionItems: true } },
     },
     orderBy: { enteredAt: "desc" },
     take: 200,

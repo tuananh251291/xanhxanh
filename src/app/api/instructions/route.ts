@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateInstructionCode } from "@/lib/codes";
+import { generateInstructionCode, generateMediumOrderCode } from "@/lib/codes";
+import { createAlert } from "@/lib/inventory";
+import { buildInstructionMediumNeeds, aggregateMediumOrderItems, getOrderWeekRange } from "@/lib/medium-orders";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
 
@@ -84,10 +86,32 @@ export async function POST(req: NextRequest) {
   const shelfIds = Array.from(new Set(shelfItems.map((item) => item.shelfId)));
   const validShelves = await prisma.shelf.findMany({
     where: { id: { in: shelfIds }, room: { type: "PHONG_MAU_ME", warehouse: { type: "SAN_XUAT" } } },
-    select: { id: true },
+    select: { id: true, code: true, assignedStaffId: true, warehouse: { select: { code: true } } },
   });
   if (validShelves.length !== shelfIds.length) {
     return NextResponse.json({ message: "Chỉ được chọn kệ trong Phòng mẫu mẹ của Kho sản xuất" }, { status: 400 });
+  }
+
+  // Kệ Phòng mẫu mẹ "đã chia" (gắn sẵn 1 NV cấy mô cụ thể) → tự động gán luôn NV đó cho chỉ định,
+  // Kho mô không cần chọn tay. Kệ "chung" (chưa gắn NV) → để trống, Kho mô tự chọn sau (AssignStaffCell).
+  const distinctStaffIds = new Set(validShelves.map((s) => s.assignedStaffId).filter((id): id is string => !!id));
+  const autoAssignedToId = distinctStaffIds.size === 1 && validShelves.every((s) => s.assignedStaffId)
+    ? [...distinctStaffIds][0]
+    : undefined;
+
+  // NV cấy mô chỉ nhận chỉ định tuần mới sau khi chỉ định hiện tại đã "Kết thúc" — chặn ngay ở bước tạo
+  // để tránh 1 NV cùng lúc gánh 2 chỉ định.
+  if (autoAssignedToId) {
+    const stillActive = await prisma.plantingInstruction.findFirst({
+      where: { assignedToId: autoAssignedToId, status: "ACTIVE" },
+      select: { code: true },
+    });
+    if (stillActive) {
+      return NextResponse.json(
+        { message: `Nhân viên cấy mô này còn chỉ định ${stillActive.code} chưa kết thúc, không thể nhận chỉ định mới` },
+        { status: 400 }
+      );
+    }
   }
 
   const itemsWithOutput = shelfItems.map((item) => ({
@@ -100,13 +124,19 @@ export async function POST(req: NextRequest) {
   const expectedMotherOutput = itemsWithOutput.reduce((sum, item) => sum + item.expectedMotherOutput, 0);
   const expectedFinishedOutput = itemsWithOutput.reduce((sum, item) => sum + item.expectedFinishedOutput, 0);
 
-  const code = await generateInstructionCode();
+  // Mã chỉ định gắn với giàn kệ nguồn — cả nhóm shelfItems chỉ chọn từ 1 kệ duy nhất theo quy trình
+  // tạo chỉ định hiện tại, nên lấy kệ đầu tiên làm căn cứ sinh mã.
+  const code = await generateInstructionCode({
+    warehouseCode: validShelves[0].warehouse.code,
+    shelfCode: validShelves[0].code,
+  });
 
   const instruction = await prisma.plantingInstruction.create({
     data: {
       code,
       plantType: { connect: { id: plantTypeId } },
       createdBy: { connect: { id: session!.user.id } },
+      assignedTo: autoAssignedToId ? { connect: { id: autoAssignedToId } } : undefined,
       notes,
       inputMotherQuantity,
       expectedMotherOutput,
@@ -136,6 +166,63 @@ export async function POST(req: NextRequest) {
       items: { include: { shelf: true, lot: true, motherMedium: true, finishedMedium: true } },
     },
   });
+
+  // Tự động sinh/gộp đơn đặt hàng môi trường cho NV môi trường ngay khi chỉ định được tạo. Nhiều chỉ
+  // định cùng tuần thực hiện (weekStart) — KY_THUAT thường ra nhiều chỉ định trước Thứ 5 tuần này, tất
+  // cả dùng cho tuần sau — gộp chung vào 1 đơn, cộng dồn số lượng theo từng quy cách (xem
+  // lib/medium-orders.ts). Chỉ gộp vào đơn CHƯA xác nhận; nếu đơn của tuần đó đã được MOI_TRUONG xác
+  // nhận rồi, chỉ định muộn sẽ mở 1 đơn mới riêng thay vì âm thầm đổi số liệu đơn đang thực hiện.
+  const instructionNeeds = buildInstructionMediumNeeds(instruction.items, plannedT01Quantity, plannedT05Quantity);
+  if (instructionNeeds.length > 0) {
+    const targetWeekStart = instruction.weekStart ?? instruction.createdAt;
+    const { weekStart: orderWeekStart, weekEnd: orderWeekEnd, days } = getOrderWeekRange(targetWeekStart);
+
+    const existingOrder = await prisma.mediumOrder.findFirst({
+      where: { weekStart: orderWeekStart, confirmedAt: null },
+      include: { instructions: { include: { items: true } } },
+    });
+
+    let order: { id: string; code: string };
+    let isNewOrder = false;
+
+    if (existingOrder) {
+      await prisma.plantingInstruction.update({ where: { id: instruction.id }, data: { mediumOrderId: existingOrder.id } });
+
+      const allNeeds = [
+        ...existingOrder.instructions.map((inst) => buildInstructionMediumNeeds(inst.items, inst.plannedT01Quantity ?? 0, inst.plannedT05Quantity ?? 0)),
+        instructionNeeds,
+      ];
+      await prisma.mediumOrderItem.deleteMany({ where: { orderId: existingOrder.id } });
+      order = await prisma.mediumOrder.update({
+        where: { id: existingOrder.id },
+        data: { items: { create: aggregateMediumOrderItems(allNeeds) } },
+      });
+    } else {
+      const orderCode = await generateMediumOrderCode();
+      order = await prisma.mediumOrder.create({
+        data: {
+          code: orderCode,
+          weekStart: orderWeekStart,
+          weekEnd: orderWeekEnd,
+          instructions: { connect: { id: instruction.id } },
+          items: { create: instructionNeeds },
+          days: { create: days.map((date) => ({ date })) },
+        },
+      });
+      isNewOrder = true;
+    }
+
+    await createAlert({
+      type: "MEDIUM_ORDER_CREATED",
+      title: isNewOrder ? "Có đơn đặt hàng môi trường mới" : "Đơn đặt hàng môi trường đã được cập nhật",
+      message: isNewOrder
+        ? `Chỉ định ${code} cần pha môi trường — xem đơn ${order.code}`
+        : `Chỉ định ${code} vừa được gộp vào đơn ${order.code} — số lượng cần đã cập nhật`,
+      targetRole: "MOI_TRUONG",
+      relatedId: order.id,
+      relatedType: "MediumOrder",
+    });
+  }
 
   return NextResponse.json(instruction, { status: 201 });
 }

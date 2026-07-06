@@ -12,15 +12,22 @@ import { isPageAllowed } from "@/lib/permissions";
 import CreateUserDialog from "./create-user-dialog";
 import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
+import WorkplaceCell from "./workplace-cell";
+
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG"] as const;
 
 export default async function UsersPage() {
   const session = await auth();
   if (!(await isPageAllowed(session?.user?.role ?? null, "/users"))) redirect("/dashboard");
   const canApprove = session?.user?.role === "SUPER_ADMIN";
 
-  const [users, permissions] = await Promise.all([
-    prisma.user.findMany({ orderBy: [{ role: "asc" }, { name: "asc" }] }),
+  const [users, permissions, sanXuatWarehouses] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+      include: { workplaceWarehouse: { select: { code: true, name: true } } },
+    }),
     prisma.rolePermission.findMany(),
+    prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const pendingUsers = users.filter((u) => u.status === "PENDING");
@@ -60,17 +67,18 @@ export default async function UsersPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Email</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Vai trò</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Trạng thái</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thao tác</th>
+                    <tr className="bg-green-700">
+                      <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-white">Email</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-white">Vai trò</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-white">Địa điểm làm việc</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-white">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((user) => (
-                      <tr key={user.id} className="border-b hover:bg-gray-50 transition-colors">
+                      <tr key={user.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100 transition-colors">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{user.name}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                         <td className="px-4 py-3">
@@ -80,6 +88,19 @@ export default async function UsersPage() {
                             </Badge>
                           ) : (
                             <Badge variant="secondary">Chưa gán</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {user.role && WORKPLACE_ROLES.includes(user.role as (typeof WORKPLACE_ROLES)[number]) ? (
+                            canApprove ? (
+                              <WorkplaceCell userId={user.id} currentWarehouseId={user.workplaceWarehouseId} warehouseOptions={sanXuatWarehouses} />
+                            ) : (
+                              <span className="text-xs text-gray-600">
+                                {user.workplaceWarehouse ? `${user.workplaceWarehouse.name} (${user.workplaceWarehouse.code})` : "Chưa gán"}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3">

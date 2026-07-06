@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Warehouse as WarehouseIcon, Layers } from "lucide-react";
+import { ChevronDown, ChevronRight, Warehouse as WarehouseIcon, Layers, Search } from "lucide-react";
 import { WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS, ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
 import type { WarehouseType, RoomType } from "@prisma/client";
 import AddMarketRoomDialog from "./add-market-room-dialog";
@@ -22,6 +22,7 @@ type ShelfData = {
   capacity: number | null;
   plantType: PlantType | null;
   assignedStaff: Staff | null;
+  sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   lots: { quantity: number; stageCode: string }[];
 };
 type RoomData = {
@@ -32,6 +33,9 @@ type RoomData = {
   shelves: ShelfData[];
   roomAccess: { userId: string }[];
 };
+
+// Kho thành phẩm không quản lý theo giàn kệ — các phòng này không có Shelf nào, không cần hiện quản lý kệ.
+const NO_SHELF_ROOM_TYPES = new Set<RoomType>(["PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"]);
 type WarehouseData = {
   id: string;
   code: string;
@@ -83,8 +87,8 @@ export default function WarehouseBoard({
               className="cursor-pointer select-none"
               onClick={() => toggleWarehouse(wh.id)}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
                   {whExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
                   <WarehouseIcon className="w-5 h-5 text-gray-400 shrink-0" />
                   <CardTitle className="text-lg">{wh.name}</CardTitle>
@@ -114,16 +118,18 @@ export default function WarehouseBoard({
                   return (
                     <div key={room.id} className="border rounded-lg">
                       <div
-                        className="flex items-center justify-between px-4 py-3 cursor-pointer select-none hover:bg-gray-50"
+                        className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 cursor-pointer select-none hover:bg-gray-50"
                         onClick={() => toggleRoom(room.id)}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
                           {roomExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
                           <Layers className="w-4 h-4 text-gray-400 shrink-0" />
                           <h3 className="font-medium text-gray-800">{room.name}</h3>
                           <Badge className={ROOM_TYPE_COLORS[room.type]}>{ROOM_TYPE_LABELS[room.type]}</Badge>
                           <span className="text-xs text-gray-400">({room.code})</span>
-                          <span className="text-xs text-gray-400">· {room.shelves.length} kệ</span>
+                          {!NO_SHELF_ROOM_TYPES.has(room.type) && (
+                            <span className="text-xs text-gray-400">· {room.shelves.length} kệ</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           {room.type === "PHONG_THI_TRUONG" && (
@@ -134,14 +140,25 @@ export default function WarehouseBoard({
                               initialUserIds={room.roomAccess.map((a) => a.userId)}
                             />
                           )}
-                          <Button type="button" variant="ghost" size="sm" onClick={() => toggleRoom(room.id)}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className={roomExpanded ? "h-8" : "h-8 bg-green-600 hover:bg-green-700"}
+                            variant={roomExpanded ? "ghost" : "default"}
+                            onClick={() => toggleRoom(room.id)}
+                          >
+                            {!roomExpanded && <Search className="w-3.5 h-3.5 mr-1.5" />}
                             {roomExpanded ? "Thu gọn" : "Xem chi tiết"}
                           </Button>
                         </div>
                       </div>
                       {roomExpanded && (
                         <div className="px-4 pb-4">
-                          {room.shelves.length === 0 ? (
+                          {NO_SHELF_ROOM_TYPES.has(room.type) ? (
+                            <p className="text-gray-400 text-sm text-center py-3">
+                              Kho thành phẩm không quản lý theo giàn kệ — xem tồn kho tại trang Tồn kho thành phẩm
+                            </p>
+                          ) : room.shelves.length === 0 ? (
                             <p className="text-gray-400 text-sm text-center py-3">Chưa có giàn kệ nào</p>
                           ) : (
                             <ShelfTable

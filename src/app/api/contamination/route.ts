@@ -19,6 +19,10 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (confirmed === "false") where.confirmedAt = null;
   if (confirmed === "true") where.confirmedAt = { not: null };
+  // NV kho mô chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc).
+  if (session.user.role === "KHO_MO" && session.user.workplaceWarehouseId) {
+    where.lot = { shelf: { warehouseId: session.user.workplaceWarehouseId } };
+  }
 
   const records = await prisma.contaminationRecord.findMany({
     where,

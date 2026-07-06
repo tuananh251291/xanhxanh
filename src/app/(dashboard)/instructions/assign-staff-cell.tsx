@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 type Staff = { id: string; name: string };
@@ -24,14 +24,18 @@ export default function AssignStaffCell({ instructionId, staffList }: { instruct
         body: JSON.stringify({ assignedToId: staffId }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã phân công nhân viên cấy");
+      toast.success("Đã bàn giao chỉ định cho nhân viên cấy mô");
       router.refresh();
     } finally { setLoading(false); }
   };
 
   return (
     <div className="flex items-center gap-1">
-      <Select onValueChange={(v) => setStaffId(v as string)}>
+      <Select
+        items={staffList.map((s) => ({ value: s.id, label: s.name }))}
+        value={staffId || null}
+        onValueChange={(v) => setStaffId(v as string)}
+      >
         <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Chọn NV cấy" /></SelectTrigger>
         <SelectContent>
           {staffList.map((s) => (
@@ -40,7 +44,8 @@ export default function AssignStaffCell({ instructionId, staffList }: { instruct
         </SelectContent>
       </Select>
       <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700" disabled={loading} onClick={assign}>
-        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+        Bàn giao
       </Button>
     </div>
   );

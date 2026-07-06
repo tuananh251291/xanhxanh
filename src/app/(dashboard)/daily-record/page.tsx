@@ -1,241 +1,405 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useForm, useFieldArray } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import type { Resolver } from "react-hook-form";
-import { z } from "zod";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { PenLine, Loader2, Plus, Trash2, Calculator } from "lucide-react";
+import { PenLine, Loader2, Lock, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
-import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
+import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 
+// Tiến độ cấy tính theo 6 ngày làm việc (Thứ 2 - Thứ 7) — Chủ nhật là ngày làm thêm tùy chọn nên
+// không cộng thêm chỉ tiêu (chặn mức chỉ tiêu ở đúng bằng chỉ tiêu Thứ 7 = tổng dự kiến cả tuần).
+const WORKING_DAYS_PER_WEEK = 6;
+type StageKey = "m03" | "m05" | "t05" | "t01";
+const STAGE_KEYS: StageKey[] = ["m03", "m05", "t05", "t01"];
+
+type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
 type Instruction = {
   id: string;
   code: string;
   plantType: { name: string };
+  weekStart: string | null;
   inputMotherQuantity: number;
-  expectedMotherOutput?: number | null;
-  status: string;
-  items: { stageCode: string | null }[];
+  plannedT01Quantity: number | null;
+  plannedT05Quantity: number | null;
+  items: InstructionItem[];
 };
 
-const schema = z.object({
-  instructionId: z.string().min(1, "Chọn chỉ định cấy"),
-  recordDate: z.string(),
-  motherUsed: z.coerce.number().int().positive("Số mẫu mẹ dùng > 0"),
-  notes: z.string().optional(),
-  items: z.array(z.object({
-    stage: z.enum(["MAU_ME", "THANH_PHAM"]),
-    stageCode: z.enum(["M03", "M05", "T01", "T05"]),
-    quantityCreated: z.coerce.number().int().positive("Số lượng > 0"),
-  })).min(1, "Nhập ít nhất 1 dòng sản lượng"),
-});
+type RecordItem = { stage: "MAU_ME" | "THANH_PHAM"; quantityCreated: number; lot: { stageCode: string } };
+type DailyRecord = {
+  id: string;
+  recordDate: string;
+  motherUsed: number;
+  motherChecked: number;
+  motherContaminated: number;
+  items: RecordItem[];
+};
 
-type FormData = z.infer<typeof schema>;
+const DAY_LABELS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+
+type FormState = {
+  motherChecked: string;
+  motherContaminated: string;
+  motherUsed: string;
+  m03: string;
+  m05: string;
+  t05: string;
+  t01: string;
+};
+
+const emptyForm: FormState = {
+  motherChecked: "0", motherContaminated: "0", motherUsed: "0",
+  m03: "0", m05: "0", t05: "0", t01: "0",
+};
+
+// Chỉ để dạng điền số thuần, ẩn nút bấm tăng/giảm mặc định của trình duyệt.
+const NUMBER_INPUT_CLASS = "w-20 text-right ml-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+const fmt = (n: number | null | undefined) => (n === null || n === undefined ? "—" : n.toLocaleString("vi-VN"));
+const renderPercent = (actual: number, plan: number | null | undefined) => {
+  if (plan === null || plan === undefined || plan === 0) return "—";
+  return `${Math.round((actual / plan) * 100)}%`;
+};
 
 export default function DailyRecordPage() {
   const [instructions, setInstructions] = useState<Instruction[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [records, setRecords] = useState<DailyRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [targetPct, setTargetPct] = useState(80);
 
-  const { register, handleSubmit, control, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema) as Resolver<FormData>,
-    defaultValues: {
-      recordDate: format(new Date(), "yyyy-MM-dd"),
-      items: [{ stage: "MAU_ME", stageCode: "M03", quantityCreated: 0 }],
-    },
-  });
+  const today = useMemo(() => new Date(), []);
+  const currentWeekStart = useMemo(() => startOfWeek(today, { weekStartsOn: 1 }), [today]);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i)), [currentWeekStart]);
 
-  const { fields, append, remove } = useFieldArray({ control, name: "items" });
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data: { key: string; value: string }[]) => {
+        const found = data.find((c) => c.key === "planting_ratio_target_pct");
+        if (found) setTargetPct(parseFloat(found.value) || 80);
+      });
+  }, []);
 
   useEffect(() => {
     fetch("/api/instructions?status=ACTIVE")
       .then((r) => r.json())
-      .then((data) => setInstructions(Array.isArray(data) ? data : []));
-  }, []);
+      .then((data: Instruction[]) => {
+        const list = Array.isArray(data) ? data : [];
+        const inWeek = list.filter(
+          (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
+        );
+        setInstructions(inWeek);
+        setSelectedId((prev) => (prev && inWeek.some((i) => i.id === prev) ? prev : (inWeek[0]?.id ?? "")));
+      });
+  }, [currentWeekStart]);
 
-  const selectedId = watch("instructionId");
-  const selectedInst = instructions.find((i) => i.id === selectedId);
-  const items = watch("items");
-  // Quy cách mẫu mẹ hợp lệ = đúng những quy cách (M03/M05) chỉ định này đã dùng làm nguồn.
-  const motherSpecOptions = selectedInst
-    ? Array.from(new Set(selectedInst.items.map((i) => i.stageCode).filter((c): c is string => !!c)))
-    : ["M03", "M05"];
-  const finishedSpecOptions = ["T01", "T05"] as const;
-  const specOptionsFor = (stage: "MAU_ME" | "THANH_PHAM") => (stage === "MAU_ME" ? motherSpecOptions : finishedSpecOptions);
-  const totalMother = items.filter((i) => i.stage === "MAU_ME").reduce((s, i) => s + (Number(i.quantityCreated) || 0), 0);
-  const totalFinished = items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + (Number(i.quantityCreated) || 0), 0);
-
-  const onSubmit = async (data: FormData) => {
+  useEffect(() => {
+    if (!selectedId) { setRecords([]); return; }
     setLoading(true);
+    fetch(`/api/daily-records?instructionId=${selectedId}`)
+      .then((r) => r.json())
+      .then((data) => setRecords(Array.isArray(data) ? data : []))
+      .finally(() => setLoading(false));
+  }, [selectedId]);
+
+  const selectedInst = instructions.find((i) => i.id === selectedId);
+
+  const recordForDay = (day: Date) => records.find((r) => isSameDay(new Date(r.recordDate), day));
+
+  const rowValues = (rec: DailyRecord) => {
+    const sum = (code: string) => rec.items.filter((i) => i.lot.stageCode === code).reduce((s, i) => s + i.quantityCreated, 0);
+    return {
+      motherChecked: rec.motherChecked,
+      motherContaminated: rec.motherContaminated,
+      motherUsed: rec.motherUsed,
+      m03: sum("M03"),
+      m05: sum("M05"),
+      t05: sum("T05"),
+      t01: sum("T01"),
+    };
+  };
+
+  // Hàng 9: tổng thực tế — chỉ cộng các ngày đã có bản ghi (không thể có ngày tương lai vì mỗi ngày
+  // chỉ nhập được đúng vào dòng của ngày hôm đó), nên đây luôn là tổng tính tới thời điểm hiện tại.
+  const totals = records.reduce(
+    (acc, rec) => {
+      const v = rowValues(rec);
+      acc.motherChecked += v.motherChecked;
+      acc.motherContaminated += v.motherContaminated;
+      acc.motherUsed += v.motherUsed;
+      acc.m03 += v.m03;
+      acc.m05 += v.m05;
+      acc.t05 += v.t05;
+      acc.t01 += v.t01;
+      return acc;
+    },
+    { motherChecked: 0, motherContaminated: 0, motherUsed: 0, m03: 0, m05: 0, t05: 0, t01: 0 }
+  );
+
+  // Hàng 10: số dự kiến của NV kỹ thuật đưa ra theo chỉ định cấy — MM đã kiểm tra/MM mẹ nhiễm không
+  // có số dự kiến tương ứng.
+  const expected = selectedInst
+    ? {
+        motherUsed: selectedInst.inputMotherQuantity,
+        m03: selectedInst.items.filter((i) => i.stageCode === "M03").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0),
+        m05: selectedInst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0),
+        t05: selectedInst.plannedT05Quantity ?? 0,
+        t01: selectedInst.plannedT01Quantity ?? 0,
+      }
+    : null;
+
+  // Tiến độ lũy kế tới hôm nay so với chỉ tiêu trung bình/ngày (dự kiến cả tuần / 6 ngày) — chỉ cần 1
+  // quy cách hụt dưới "Tỉ lệ cấy cần đạt" (targetPct, Admin cấu hình) là coi như cấy lệch chỉ định.
+  const elapsedDays = Math.min(differenceInCalendarDays(today, currentWeekStart) + 1, WORKING_DAYS_PER_WEEK);
+  const expectedToDate = expected
+    ? {
+        motherUsed: (expected.motherUsed / WORKING_DAYS_PER_WEEK) * elapsedDays,
+        m03: (expected.m03 / WORKING_DAYS_PER_WEEK) * elapsedDays,
+        m05: (expected.m05 / WORKING_DAYS_PER_WEEK) * elapsedDays,
+        t05: (expected.t05 / WORKING_DAYS_PER_WEEK) * elapsedDays,
+        t01: (expected.t01 / WORKING_DAYS_PER_WEEK) * elapsedDays,
+      }
+    : null;
+  const behindStages = expected
+    ? STAGE_KEYS.filter((key) => {
+        const target = expected[key];
+        if (!target) return false;
+        return totals[key] / expectedToDate![key] < targetPct / 100;
+      })
+    : [];
+
+  const todayRecord = recordForDay(today);
+
+  const onSubmitToday = async () => {
+    if (!selectedId) return;
+    setSubmitting(true);
     try {
       const res = await fetch("/api/daily-records", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          instructionId: selectedId,
+          motherChecked: Number(form.motherChecked) || 0,
+          motherContaminated: Number(form.motherContaminated) || 0,
+          motherUsed: Number(form.motherUsed) || 0,
+          m03: Number(form.m03) || 0,
+          m05: Number(form.m05) || 0,
+          t05: Number(form.t05) || 0,
+          t01: Number(form.t01) || 0,
+        }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Lưu nhật ký cấy thành công!");
-      if (json.alert) toast.warning("⚠️ Sản lượng lệch >20% so với kỳ vọng — đã gửi cảnh báo cho KY_THUAT");
-      reset({ recordDate: format(new Date(), "yyyy-MM-dd"), items: [{ stage: "MAU_ME", stageCode: "M03", quantityCreated: 0 }] });
-      router.refresh();
-    } finally { setLoading(false); }
+      toast.success("Lưu dữ liệu hôm nay thành công!");
+      if (json.alert) toast.warning("⚠️ Bạn đang cấy lệch tiến độ so với chỉ định — đã gửi cảnh báo cho KY_THUAT");
+      if (json.ended) {
+        toast.info(
+          json.endReason === "MOTHER_USED_UP"
+            ? "🏁 Chỉ định đã kết thúc — đã dùng hết số mẫu mẹ được cấp"
+            : "🏁 Chỉ định đã kết thúc — hết thời gian thực hiện (qua Chủ nhật). Xem 'Chỉ định của tôi' để bàn giao MM dư nếu còn."
+        );
+      }
+      setForm(emptyForm);
+      const [instRes, recRes] = await Promise.all([
+        fetch("/api/instructions?status=ACTIVE"),
+        fetch(`/api/daily-records?instructionId=${selectedId}`),
+      ]);
+      const instData: Instruction[] = await instRes.json();
+      const inWeek = (Array.isArray(instData) ? instData : []).filter(
+        (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
+      );
+      setInstructions(inWeek);
+      setRecords(await recRes.json());
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const setField = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      // MM sử dụng mặc định = MM đã kiểm tra - MM mẹ nhiễm, tự tính lại mỗi khi 1 trong 2 số này đổi.
+      if (key === "motherChecked" || key === "motherContaminated") {
+        const checked = Number(key === "motherChecked" ? value : f.motherChecked) || 0;
+        const contaminated = Number(key === "motherContaminated" ? value : f.motherContaminated) || 0;
+        next.motherUsed = String(Math.max(0, checked - contaminated));
+      }
+      return next;
+    });
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <PenLine className="w-6 h-6 text-green-600" /> Nhập dữ liệu cấy
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Ghi nhận sản lượng hàng ngày</p>
+        <p className="text-gray-500 text-sm mt-1">
+          Ghi nhận sản lượng theo tuần thực tế — mỗi ngày chỉ nhập vào dòng của ngày hôm đó, đã lưu không sửa được
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit as Parameters<typeof handleSubmit>[0])} className="space-y-5">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Thông tin chung</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <Label>Chỉ định cấy <span className="text-red-500">*</span></Label>
-              <Select onValueChange={(v) => setValue("instructionId", v as string)}>
+      <Card>
+        <CardContent className="pt-4">
+          <div className="space-y-1 max-w-md">
+            <label className="text-sm font-medium">Chỉ định cấy (tuần thực tế)</label>
+            {instructions.length === 0 ? (
+              <p className="text-sm text-gray-500">Không có chỉ định cấy nào của bạn trong tuần này.</p>
+            ) : (
+              <Select
+                items={instructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
+                value={selectedId || undefined}
+                onValueChange={(v) => setSelectedId(v as string)}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn chỉ định cấy đang thực hiện" />
+                  <SelectValue placeholder="Chọn chỉ định cấy" />
                 </SelectTrigger>
                 <SelectContent>
                   {instructions.map((inst) => (
-                    <SelectItem key={inst.id} value={inst.id}>
-                      {inst.code} — {inst.plantType.name}
-                    </SelectItem>
+                    <SelectItem key={inst.id} value={inst.id}>{inst.code} — {inst.plantType.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.instructionId && <p className="text-xs text-red-500">{errors.instructionId.message}</p>}
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-              {selectedInst && (
-                <div className="bg-blue-50 rounded p-2 mt-1 text-xs text-blue-700 space-y-0.5">
-                  <p>Đầu vào: {selectedInst.inputMotherQuantity.toLocaleString("vi-VN")} mẫu mẹ</p>
-                  {selectedInst.expectedMotherOutput && (
-                    <p>Dự kiến mẫu mẹ: {selectedInst.expectedMotherOutput.toLocaleString("vi-VN")}</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Ngày ghi nhận</Label>
-                <Input {...register("recordDate")} type="date" />
-              </div>
-              <div className="space-y-1">
-                <Label>Số mẫu mẹ đã dùng <span className="text-red-500">*</span></Label>
-                <Input {...register("motherUsed")} type="number" min={1} placeholder="0" />
-                {errors.motherUsed && <p className="text-xs text-red-500">{errors.motherUsed.message}</p>}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Ghi chú</Label>
-              <Input {...register("notes")} placeholder="Ghi chú thêm..." />
-            </div>
-          </CardContent>
-        </Card>
-
+      {selectedInst && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calculator className="w-4 h-4" /> Sản lượng tạo ra
-              </CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => append({ stage: "MAU_ME", stageCode: (motherSpecOptions[0] as "M03" | "M05") ?? "M03", quantityCreated: 0 })}>
-                <Plus className="w-4 h-4 mr-1" /> Thêm dòng
-              </Button>
-            </div>
+            <CardTitle className="text-base">
+              Bảng nhập liệu tuần ({format(currentWeekStart, "dd/MM")} – {format(addDays(currentWeekStart, 6), "dd/MM")})
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {fields.map((field, idx) => {
-              const rowStage = items[idx]?.stage ?? field.stage;
-              const rowOptions = specOptionsFor(rowStage);
-              const labels = rowStage === "MAU_ME" ? MOTHER_SPEC_LABELS : FINISHED_SPEC_LABELS;
-              return (
-              <div key={field.id} className="flex items-center gap-2">
-                <Select
-                  defaultValue={field.stage}
-                  onValueChange={(v) => {
-                    const stage = v as "MAU_ME" | "THANH_PHAM";
-                    setValue(`items.${idx}.stage`, stage);
-                    const opts = specOptionsFor(stage);
-                    setValue(`items.${idx}.stageCode`, (opts[0] as "M03" | "M05" | "T01" | "T05") ?? "M03");
-                  }}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MAU_ME">Mẫu mẹ (MM)</SelectItem>
-                    <SelectItem value="THANH_PHAM">Thành phẩm (TP)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={items[idx]?.stageCode || undefined}
-                  onValueChange={(v) => setValue(`items.${idx}.stageCode`, v as "M03" | "M05" | "T01" | "T05")}
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue placeholder="Quy cách" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {rowOptions.map((code) => (
-                      <SelectItem key={code} value={code}>{labels[code as keyof typeof labels] ?? code}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex-1">
-                  <Input
-                    {...register(`items.${idx}.quantityCreated`)}
-                    type="number"
-                    min={1}
-                    placeholder="Số lượng"
-                  />
-                  {items[idx]?.stageCode === "T05" && (
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      ≈ {Math.floor((Number(items[idx]?.quantityCreated) || 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi
-                    </p>
-                  )}
-                </div>
-                {fields.length > 1 && (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </Button>
-                )}
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-green-700 text-white">
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Ngày</th>
+                      <th className="px-3 py-2 text-right font-medium">MM đã kiểm tra</th>
+                      <th className="px-3 py-2 text-right font-medium">MM mẹ nhiễm</th>
+                      <th className="px-3 py-2 text-right font-medium">MM sử dụng</th>
+                      <th className="px-3 py-2 text-right font-medium">M03</th>
+                      <th className="px-3 py-2 text-right font-medium">M05</th>
+                      <th className="px-3 py-2 text-right font-medium">T05</th>
+                      <th className="px-3 py-2 text-right font-medium">T01</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {days.map((day, idx) => {
+                      const rec = recordForDay(day);
+                      const values = rec ? rowValues(rec) : null;
+                      const isToday = isSameDay(day, today);
+                      const isEditableRow = isToday && !rec;
+                      return (
+                        <tr key={day.toISOString()} className={`border-b ${isToday ? "bg-green-100" : idx % 2 === 0 ? "bg-green-50/60" : "bg-white"}`}>
+                          <td className="px-3 py-2 font-medium whitespace-nowrap">
+                            {DAY_LABELS[idx]} - {format(day, "dd/MM")}
+                            {isToday && <span className="ml-1 text-xs text-green-600">(hôm nay)</span>}
+                          </td>
+                          {isEditableRow ? (
+                            <>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherChecked} onChange={setField("motherChecked")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherContaminated} onChange={setField("motherContaminated")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherUsed} onChange={setField("motherUsed")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.m03} onChange={setField("m03")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.m05} onChange={setField("m05")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.t05} onChange={setField("t05")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.t01} onChange={setField("t01")} /></td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.motherChecked) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.motherContaminated) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.motherUsed) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.m03) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.m05) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.t05) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-gray-700">{values ? fmt(values.t01) : "—"}</td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-b bg-blue-50 font-semibold">
+                      <td className="px-3 py-2">Tổng thực tế đến thời điểm hiện tại</td>
+                      <td className="px-3 py-2 text-right">{fmt(totals.motherChecked)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(totals.motherContaminated)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(totals.motherUsed)}</td>
+                      <td className={`px-3 py-2 text-right ${behindStages.includes("m03") ? "text-red-600" : ""}`}>{fmt(totals.m03)}</td>
+                      <td className={`px-3 py-2 text-right ${behindStages.includes("m05") ? "text-red-600" : ""}`}>{fmt(totals.m05)}</td>
+                      <td className={`px-3 py-2 text-right ${behindStages.includes("t05") ? "text-red-600" : ""}`}>{fmt(totals.t05)}</td>
+                      <td className={`px-3 py-2 text-right ${behindStages.includes("t01") ? "text-red-600" : ""}`}>{fmt(totals.t01)}</td>
+                    </tr>
+                    <tr className="border-b bg-amber-50 font-semibold">
+                      <td className="px-3 py-2">Tổng dự kiến cần đạt đến thời điểm hiện tại</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.motherUsed)) : "—"}</td>
+                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.m03)) : "—"}</td>
+                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.m05)) : "—"}</td>
+                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.t05)) : "—"}</td>
+                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.t01)) : "—"}</td>
+                    </tr>
+                    {behindStages.length > 0 && (
+                      <tr className="border-b bg-red-50">
+                        <td colSpan={8} className="px-3 py-2 text-sm font-bold text-red-600">
+                          <span className="flex items-center gap-1.5">
+                            <TriangleAlert className="w-4 h-4 shrink-0" />
+                            Bạn đang cấy lệch so với chỉ định cấy — Xem lại phần số màu đỏ
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="border-b bg-gray-50 font-semibold">
+                      <td className="px-3 py-2">Tổng dự kiến cần đạt đến hết tuần</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">{fmt(expected?.motherUsed)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(expected?.m03)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(expected?.m05)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(expected?.t05)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(expected?.t01)}</td>
+                    </tr>
+                    <tr className="font-semibold">
+                      <td className="px-3 py-2">% hoàn thành</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">{renderPercent(totals.motherUsed, expected?.motherUsed)}</td>
+                      <td className="px-3 py-2 text-right">{renderPercent(totals.m03, expected?.m03)}</td>
+                      <td className="px-3 py-2 text-right">{renderPercent(totals.m05, expected?.m05)}</td>
+                      <td className="px-3 py-2 text-right">{renderPercent(totals.t05, expected?.t05)}</td>
+                      <td className="px-3 py-2 text-right">{renderPercent(totals.t01, expected?.t01)}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              );
-            })}
+            )}
 
-            {errors.items && <p className="text-xs text-red-500">{errors.items.message ?? errors.items.root?.message}</p>}
-
-            {(totalMother > 0 || totalFinished > 0) && (
-              <div className="bg-green-50 rounded p-2 text-sm mt-1">
-                {totalMother > 0 && <p>Mẫu mẹ hôm nay: <strong>{totalMother.toLocaleString("vi-VN")}</strong></p>}
-                {totalFinished > 0 && <p>Thành phẩm hôm nay: <strong>{totalFinished.toLocaleString("vi-VN")}</strong></p>}
+            {todayRecord ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded p-3">
+                <Lock className="w-4 h-4" /> Đã nhập dữ liệu cho hôm nay — không thể sửa lại.
               </div>
+            ) : (
+              <Button className="mt-4 w-full bg-green-600 hover:bg-green-700" disabled={submitting || loading} onClick={onSubmitToday}>
+                {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Lưu dữ liệu hôm nay
+              </Button>
             )}
           </CardContent>
         </Card>
-
-        <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={loading}>
-          {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          Lưu nhật ký
-        </Button>
-      </form>
+      )}
     </div>
   );
 }

@@ -1,15 +1,27 @@
 import { prisma } from "@/lib/prisma";
-import { getWeek } from "date-fns";
+import { getWeek, getISODay, format } from "date-fns";
 
-export async function generateInstructionCode(): Promise<string> {
-  const today = new Date();
-  const prefix = `CI-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const last = await prisma.plantingInstruction.findFirst({
-    where: { code: { startsWith: prefix } },
-    orderBy: { code: "desc" },
-  });
-  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
-  return `${prefix}-${String(seq).padStart(4, "0")}`;
+// Mã chỉ định = CD + mã kho sản xuất (1 ký tự, VD "A" từ warehouse.code "SX-A") + mã giàn kệ nguồn
+// (5 ký tự "R{hàng}C{cột 2 số}", VD "R4C05") + ngày tạo "ddMMyy" (6 số, VD 20/10/2026 → "201026").
+// VD đầy đủ: "CDAR4C05201026". Thêm hậu tố "-2", "-3"... nếu trùng (cùng kệ, cùng ngày tạo 2 chỉ định).
+export async function generateInstructionCode(params: {
+  warehouseCode: string;
+  shelfCode: string;
+  date?: Date;
+}): Promise<string> {
+  const { warehouseCode, shelfCode, date = new Date() } = params;
+  const warehouseLetter = warehouseCode.split("-").pop() ?? warehouseCode;
+  const rackCode = shelfCode.split("-").pop() ?? shelfCode;
+  const dateStr = format(date, "ddMMyy");
+  const base = `CD${warehouseLetter}${rackCode}${dateStr}`;
+
+  let candidate = base;
+  let n = 1;
+  while (await prisma.plantingInstruction.findFirst({ where: { code: candidate } })) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
 }
 
 export async function generateTransferCode(): Promise<string> {
@@ -51,10 +63,18 @@ export async function generateLotCode(params: {
   return candidate;
 }
 
-export async function generateMediumHandoverCode(): Promise<string> {
+// Mã "lô sản phẩm" — lô sinh ra khi NV cấy mô nhập dữ liệu cấy hàng ngày, tự động chuyển vào phòng tối
+// cá nhân. Mã = mã chỉ định cấy + 1 ký tự cuối chạy từ 2-8 tương ứng Thứ 2 (2) đến Chủ nhật (8) của
+// ngày nhập — mỗi ngày trong tuần luôn ra 1 mã riêng (không gộp chung nhiều ngày vào 1 lô như trước).
+export function generateProductLotCode(instructionCode: string, date: Date = new Date()): string {
+  const dayDigit = getISODay(date) + 1; // getISODay: Thứ 2 = 1 ... Chủ nhật = 7
+  return `${instructionCode}${dayDigit}`;
+}
+
+export async function generateMediumOrderCode(): Promise<string> {
   const today = new Date();
-  const prefix = `BGM-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const last = await prisma.mediumHandover.findFirst({
+  const prefix = `DHMT-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await prisma.mediumOrder.findFirst({
     where: { code: { startsWith: prefix } },
     orderBy: { code: "desc" },
   });

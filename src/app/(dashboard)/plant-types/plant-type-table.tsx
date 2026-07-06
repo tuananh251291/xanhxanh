@@ -50,14 +50,14 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mã cây</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên chi tiết</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Loại cây</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thời gian đợi cấy chuyển</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thời gian ra rễ</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Trạng thái</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thao tác</th>
+                <tr className="bg-green-700">
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã cây</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên chi tiết</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Loại cây</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thời gian đợi cấy chuyển</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thời gian ra rễ</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -65,7 +65,7 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
                   <tr><td colSpan={7} className="text-center text-sm text-gray-400 py-10">Không tìm thấy chi tiết loại cây nào khớp</td></tr>
                 ) : (
                   filtered.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <tr key={p.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
                       <td className="px-4 py-3 text-sm font-mono font-medium text-green-700">{p.code}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
                         <span className="flex items-center gap-2"><Leaf className="w-3.5 h-3.5 text-green-500 shrink-0" />{p.name}</span>

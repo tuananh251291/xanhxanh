@@ -26,6 +26,8 @@ export const authConfig: NextAuthConfig = {
         token.role = (user as { role: UserRole | null }).role;
         token.status = (user as { status: UserStatus }).status;
         token.id = user.id;
+        token.avatar = (user as { avatar?: string | null }).avatar ?? null;
+        token.workplaceWarehouseId = (user as { workplaceWarehouseId?: string | null }).workplaceWarehouseId ?? null;
       }
       return token;
     },
@@ -34,6 +36,8 @@ export const authConfig: NextAuthConfig = {
         session.user.role = token.role as UserRole | null;
         session.user.status = token.status as UserStatus;
         session.user.id = token.id as string;
+        session.user.avatar = (token.avatar as string | null) ?? null;
+        session.user.workplaceWarehouseId = (token.workplaceWarehouseId as string | null) ?? null;
       }
       return session;
     },

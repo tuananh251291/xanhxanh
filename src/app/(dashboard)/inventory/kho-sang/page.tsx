@@ -27,14 +27,23 @@ export default async function KhoSangPage() {
   // Nhân viên kỹ thuật chỉ xem được số liệu Phòng mẫu mẹ, không xem được toàn bộ Kho sáng
   // (ẩn Phòng ra rễ — thuộc phạm vi theo dõi của KHO_MO).
   const onlyMotherRoom = role === "KY_THUAT";
+  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật không
+  // bị giới hạn, làm việc được ở mọi kho.
+  const workplaceWarehouseId = role !== "KY_THUAT" ? session?.user?.workplaceWarehouseId : null;
 
   const rooms = await prisma.room.findMany({
-    where: { type: onlyMotherRoom ? "PHONG_MAU_ME" : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] }, isActive: true },
+    where: {
+      type: onlyMotherRoom ? "PHONG_MAU_ME" : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] },
+      isActive: true,
+      ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
+    },
     include: {
       warehouse: { select: { name: true } },
       shelves: {
         where: { isActive: true },
         include: {
+          plantType: { select: { name: true } },
+          assignedStaff: { select: { name: true } },
           lots: {
             where: { status: "ACTIVE" },
             include: { plantType: { select: { code: true, name: true } } },
@@ -55,7 +64,7 @@ export default async function KhoSangPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sun className="w-6 h-6 text-yellow-500" /> {onlyMotherRoom ? "Phòng mẫu mẹ" : "Kho sáng"}
+          <Sun className="w-6 h-6 text-yellow-500" /> {onlyMotherRoom ? "Phòng mẫu mẹ" : "Phòng sáng"}
         </h1>
         <p className="text-gray-500 text-sm mt-1">
           {onlyMotherRoom
@@ -81,6 +90,64 @@ export default async function KhoSangPage() {
         <CollapsibleRoom key={room.id} title={`${room.warehouse.name} — ${room.name}`}>
           {room.shelves.length === 0 ? (
             <p className="text-sm text-gray-400 pl-2">Chưa có kệ</p>
+          ) : room.type === "PHONG_MAU_ME" ? (
+            (() => {
+              const renderRow = (shelf: (typeof room.shelves)[number]) => {
+                const bagsByCode = shelf.lots.reduce<Record<string, number>>((acc, l) => {
+                  acc[l.stageCode] = (acc[l.stageCode] ?? 0) + l.quantity;
+                  return acc;
+                }, {});
+                return (
+                  <tr key={shelf.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
+                    <td className="px-3 py-2 text-sm font-bold text-gray-700 whitespace-nowrap">{shelf.code}</td>
+                    <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">{shelf.name}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{shelf.plantType?.name ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{shelf.assignedStaff?.name ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{(bagsByCode["M03"] ?? 0).toLocaleString("vi-VN")}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{(bagsByCode["M05"] ?? 0).toLocaleString("vi-VN")}</td>
+                  </tr>
+                );
+              };
+              const renderTable = (rows: typeof room.shelves) => (
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-green-700">
+                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Mã kệ</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên kệ</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên cây chi tiết</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Nhân viên phụ trách</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-white">M03</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-white">M05</th>
+                      </tr>
+                    </thead>
+                    <tbody>{rows.map(renderRow)}</tbody>
+                  </table>
+                </div>
+              );
+              const assignedShelves = room.shelves.filter((s) => s.assignedStaff);
+              const unassignedShelves = room.shelves.filter((s) => !s.assignedStaff);
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-2">
+                      Kho mẫu mẹ đã chia <span className="font-normal text-gray-400">({assignedShelves.length} kệ)</span>
+                    </p>
+                    {assignedShelves.length === 0 ? (
+                      <p className="text-xs text-gray-400 pl-1">Chưa có kệ nào được gán nhân viên</p>
+                    ) : renderTable(assignedShelves)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-2">
+                      Kho mẫu mẹ chung <span className="font-normal text-gray-400">({unassignedShelves.length} kệ)</span>
+                    </p>
+                    {unassignedShelves.length === 0 ? (
+                      <p className="text-xs text-gray-400 pl-1">Không còn kệ nào chưa gán nhân viên</p>
+                    ) : renderTable(unassignedShelves)}
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               {room.shelves.map((shelf) => {

@@ -9,9 +9,10 @@ import {
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
-import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, format } from "date-fns";
+import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
 import { vi } from "date-fns/locale";
 import TodayChecklist from "@/components/shared/today-checklist";
+import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -48,10 +49,11 @@ async function getCayMoStats(userId: string) {
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
 
-  const [motherTransferToday, dailyRecordToday, handoverToday] = await Promise.all([
-    prisma.transfer.findFirst({
-      where: { toUserId: userId, createdAt: { gte: todayStart, lte: todayEnd } },
-      orderBy: { createdAt: "desc" },
+  const [pendingMotherReceipt, dailyRecordToday, handoverToday] = await Promise.all([
+    // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
+    // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
+    prisma.plantingInstruction.findFirst({
+      where: { assignedToId: userId, handedOverAt: { not: null }, motherReceivedAt: null },
     }),
     prisma.dailyRecord.findFirst({
       where: { staffId: userId, recordDate: { gte: todayStart, lte: todayEnd } },
@@ -66,7 +68,7 @@ async function getCayMoStats(userId: string) {
   ]);
 
   return {
-    motherReceived: motherTransferToday?.status === "CONFIRMED",
+    motherReceived: !pendingMotherReceipt,
     dailyRecordDone: !!dailyRecordToday,
     handoverDone: !!handoverToday,
     contaminationChecked: false, // chưa có cách xác định — sẽ bổ sung khi làm chi tiết việc này
@@ -129,30 +131,38 @@ async function getKyThuatStats(userId: string) {
   const resolvedDeviations = deviationAlerts.filter((a) => a.cause !== null).length;
   const checkPercent = deviationAlerts.length === 0 ? 100 : Math.round((resolvedDeviations / deviationAlerts.length) * 100);
 
-  return { weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent };
+  return {
+    weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent,
+    instructionDone: handledItems.length,
+    instructionTotal: dueLotIds.length,
+  };
 }
 
-// Việc "Bàn giao mẫu mẹ": KHO_MO xuất mẫu mẹ theo từng chỉ định cấy cho đúng NV cấy mô được giao (assignedTo),
-// NV cấy mô bấm xác nhận đã nhận (motherReceivedAt) thì tính là xong 1 chỉ định. Đây là việc chung của cả
-// phòng kho mô (không phân theo người tạo/người xuất), hạn chót Chủ nhật cuối tuần áp dụng (weekStart).
-async function getKhoMoTaskStats() {
+// Việc "Giao mẫu mẹ theo chỉ định cấy": chỉ định cấy do KY_THUAT tạo trước Thứ 5 tuần này phải được
+// Kho mô bàn giao (handedOverAt) cho NV cấy mô trước Thứ 2 tuần sau. Việc chung của cả phòng kho mô
+// (không phân theo người tạo/người bàn giao) — tính cộng dồn, kể cả chỉ định quá hạn từ tuần trước
+// chưa xử lý (không giới hạn theo tuần hiện tại), giống cách tính việc "Tạo chỉ định cấy" của Kỹ thuật.
+// NV kho mô chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc) — công việc chỉ tính trên
+// chỉ định thuộc đúng kho đó.
+async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+  const thursdayDeadline = addDays(weekStart, 3);
+  const nextMondayDeadline = addWeeks(weekStart, 1);
 
-  const weekInstructions = await prisma.plantingInstruction.findMany({
+  const dueInstructions = await prisma.plantingInstruction.findMany({
     where: {
-      weekStart: { gte: weekStart, lte: weekEnd },
-      status: { notIn: ["DRAFT", "CANCELLED"] },
+      createdAt: { lte: thursdayDeadline },
+      ...(workplaceWarehouseId ? { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } : {}),
     },
-    select: { motherReceivedAt: true },
+    select: { handedOverAt: true },
   });
-  const receivedCount = weekInstructions.filter((i) => i.motherReceivedAt !== null).length;
-  const motherHandoverPercent = weekInstructions.length === 0
-    ? 100
-    : Math.round((receivedCount / weekInstructions.length) * 100);
+  const handoverTotal = dueInstructions.length;
+  const handoverDone = dueInstructions.filter((i) => i.handedOverAt !== null).length;
+  const handoverPercent = handoverTotal === 0 ? 100 : Math.round((handoverDone / handoverTotal) * 100);
 
-  return { weekStart, weekEnd, motherHandoverPercent };
+  return { weekStart, weekEnd, nextMondayDeadline, handoverDone, handoverTotal, handoverPercent };
 }
 
 async function getKhoMoStats() {
@@ -184,7 +194,7 @@ export default async function DashboardPage() {
   }
 
   if (role === "KHO_MO") {
-    const stats = await getKhoMoTaskStats();
+    const stats = await getKhoMoWeeklyStats(session?.user?.workplaceWarehouseId ?? null);
     return <KhoMoTaskDashboard stats={stats} userName={session?.user?.name ?? ""} />;
   }
 
@@ -206,6 +216,14 @@ export default async function DashboardPage() {
   return <DefaultDashboard role={role} userName={session?.user?.name ?? ""} />;
 }
 
+function GreetingBanner() {
+  return (
+    <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+      Ngày mới bùng nổ năng lượng và hoàn thành xuất sắc mọi mục tiêu hôm nay nhé mọi người!
+    </p>
+  );
+}
+
 function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminStats>> }) {
   return (
     <div className="space-y-6">
@@ -213,6 +231,7 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
         <h1 className="text-2xl font-bold text-gray-900">Dashboard tổng quan</h1>
         <p className="text-gray-500 text-sm mt-1">Quản trị hệ thống</p>
       </div>
+      <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Lô cây đang lưu" value={stats.activeLots} icon={Leaf} color="green" />
         <StatCard title="Tổng lô cây" value={stats.totalLots} icon={Package} color="blue" />
@@ -256,6 +275,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
         <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
         <p className="text-gray-500 text-sm mt-1">Nhân viên sale</p>
       </div>
+      <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard title="Tồn khả dụng (TP)" value={stats.availableLots} icon={Package} color="green" subtitle="lô thành phẩm" />
         <StatCard title="Đơn đang hoạt động" value={stats.myOrders.length} icon={ShoppingCart} color="blue" />
@@ -300,6 +320,9 @@ function CayMoDashboard({
         <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
         <p className="text-gray-500 text-sm mt-1 capitalize">Nhân viên nuôi cấy mô · {today}</p>
       </div>
+      <GreetingBanner />
+
+      <ProductivityLeaderboard />
 
       <Card>
         <CardHeader className="pb-2">
@@ -307,7 +330,7 @@ function CayMoDashboard({
         </CardHeader>
         <CardContent className="space-y-2">
           <TaskRow
-            href="/transfers/receive"
+            href="/my-instructions"
             icon={PackageCheck}
             title="1. Nhận bàn giao mẫu mẹ"
             description="Xác nhận đã nhận mẫu mẹ từ Kho mô"
@@ -330,7 +353,7 @@ function CayMoDashboard({
           <TaskRow
             href="/my-dark-room"
             icon={Moon}
-            title="4. Kiểm tra nhiễm kho tối"
+            title="4. Kiểm tra nhiễm phòng tối"
             description="Kiểm tra và báo cáo nhiễm các lô trong phòng tối"
             done={stats.contaminationChecked}
           />
@@ -388,6 +411,7 @@ function KyThuatDashboard({
         <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
         <p className="text-gray-500 text-sm mt-1">Nhân viên kỹ thuật · Tuần {weekLabel}</p>
       </div>
+      <GreetingBanner />
 
       <Card>
         <CardHeader className="pb-2">
@@ -395,11 +419,12 @@ function KyThuatDashboard({
         </CardHeader>
         <CardContent className="space-y-3">
           <WeeklyTaskRow
-            href="/instructions"
+            href="/mother-ready"
             icon={ClipboardList}
             title="1. Tạo chỉ định cấy"
             deadline={`Cần hoàn thiện trong ngày Thứ 5 hàng tuần (${format(stats.thursdayDeadline, "dd/MM", { locale: vi })})`}
             percent={stats.instructionPercent}
+            countLabel={`${stats.instructionDone}/${stats.instructionTotal} lô`}
           />
           <WeeklyTaskRow
             href="/alerts"
@@ -417,13 +442,14 @@ function KyThuatDashboard({
 }
 
 function WeeklyTaskRow({
-  href, icon: Icon, title, deadline, percent,
+  href, icon: Icon, title, deadline, percent, countLabel,
 }: {
   href: string;
   icon: LucideIcon;
   title: string;
   deadline: string;
   percent: number;
+  countLabel?: string;
 }) {
   const done = percent >= 100;
   return (
@@ -445,7 +471,9 @@ function WeeklyTaskRow({
           className={`shrink-0 gap-1 ${done ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-red-100 text-red-700 hover:bg-red-100"}`}
         >
           {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-          {done ? "Đã hoàn thành — 100%" : `Chưa hoàn thành — ${percent}%`}
+          {done
+            ? `Đã hoàn thành — ${countLabel ?? "100%"}`
+            : `Chưa hoàn thành — ${countLabel ?? `${percent}%`}`}
         </Badge>
       </div>
       <div className="w-full bg-gray-100 rounded-full h-1.5 mt-3">
@@ -458,33 +486,32 @@ function WeeklyTaskRow({
   );
 }
 
-// Còn thiếu việc 1 (Nhận bàn giao cây), 3 (Trả cây về kho Thành phẩm), 4 (Kiểm tra vật tư) — sẽ bổ
-// sung khi có mô tả logic cụ thể cho từng việc.
 function KhoMoTaskDashboard({
   stats, userName,
 }: {
-  stats: Awaited<ReturnType<typeof getKhoMoTaskStats>>;
+  stats: Awaited<ReturnType<typeof getKhoMoWeeklyStats>>;
   userName: string;
 }) {
-  const weekLabel = `${format(stats.weekStart, "dd/MM", { locale: vi })} — ${format(stats.weekEnd, "dd/MM/yyyy", { locale: vi })}`;
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
-        <p className="text-gray-500 text-sm mt-1">Nhân viên kho mô · Tuần {weekLabel}</p>
+        <p className="text-gray-500 text-sm mt-1">Nhân viên kho mô</p>
       </div>
+      <GreetingBanner />
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Công việc trong tuần</CardTitle>
+          <CardTitle className="text-base">Công việc hàng tuần</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <WeeklyTaskRow
             href="/instructions"
             icon={Send}
-            title="2. Bàn giao mẫu mẹ"
-            deadline={`Giao hết chỉ định cấy tuần này cho NV cấy mô trước Chủ nhật (${format(stats.weekEnd, "dd/MM", { locale: vi })})`}
-            percent={stats.motherHandoverPercent}
+            title="1. Giao mẫu mẹ theo chỉ định cấy"
+            deadline={`Chỉ định tạo trước Thứ 5 tuần này cần bàn giao trước Thứ 2 tuần sau (${format(stats.nextMondayDeadline, "dd/MM", { locale: vi })})`}
+            percent={stats.handoverPercent}
+            countLabel={`${stats.handoverDone}/${stats.handoverTotal} chỉ định`}
           />
         </CardContent>
       </Card>
@@ -503,6 +530,7 @@ function KhoDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getKho
         <h1 className="text-2xl font-bold text-gray-900">Tổng quan kho</h1>
         <p className="text-gray-500 text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
+      <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard title="Bàn giao chờ xác nhận" value={stats.pendingTransfers} icon={AlertTriangle} color="yellow" />
         <StatCard title="Lô mẫu mẹ đang lưu" value={mauMe?._count ?? 0} icon={Sun} color="green" subtitle={`${mauMe?._sum?.quantity ?? 0} bình`} />
@@ -520,6 +548,7 @@ function DefaultDashboard({ role, userName }: { role: UserRole; userName: string
         <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
         <p className="text-gray-500 text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
+      <GreetingBanner />
       <TodayChecklist />
       <Card>
         <CardContent className="pt-6">

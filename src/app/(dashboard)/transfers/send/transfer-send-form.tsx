@@ -118,7 +118,11 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
           {isKhoThanhPham && (
             <div className="space-y-1">
               <Label>Phòng nguồn <span className="text-red-500">*</span></Label>
-              <Select onValueChange={(v) => { setFromRoomId(v as string); setSelectedItems([]); }}>
+              <Select
+                items={sourceRooms.map((r) => ({ value: r.id, label: roomLabel(r) }))}
+                value={fromRoomId || null}
+                onValueChange={(v) => { setFromRoomId(v as string); setSelectedItems([]); }}
+              >
                 <SelectTrigger><SelectValue placeholder="Chọn phòng nguồn" /></SelectTrigger>
                 <SelectContent>
                   {sourceRooms.map((r) => (
@@ -130,7 +134,11 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
           )}
           <div className="space-y-1">
             <Label>Phòng đích <span className="text-red-500">*</span></Label>
-            <Select onValueChange={(v) => setToRoomId(v as string)}>
+            <Select
+              items={destRooms.filter((r) => r.id !== fromRoomId).map((r) => ({ value: r.id, label: roomLabel(r) }))}
+              value={toRoomId || null}
+              onValueChange={(v) => setToRoomId(v as string)}
+            >
               <SelectTrigger><SelectValue placeholder="Chọn phòng đích" /></SelectTrigger>
               <SelectContent>
                 {destRooms.filter((r) => r.id !== fromRoomId).map((r) => (
@@ -142,7 +150,11 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
           {!isKhoThanhPham && (
             <div className="space-y-1">
               <Label>Nhân viên cấy nhận</Label>
-              <Select onValueChange={(v) => setToUserId(v as string)}>
+              <Select
+                items={users.map((u) => ({ value: u.id, label: u.name }))}
+                value={toUserId || null}
+                onValueChange={(v) => setToUserId(v as string)}
+              >
                 <SelectTrigger><SelectValue placeholder="Chọn NV (tuỳ chọn)" /></SelectTrigger>
                 <SelectContent>
                   {users.map((u) => (
@@ -175,9 +187,16 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
             selectedItems.map((item, idx) => {
               const lot = getLot(item.lotId);
               return (
-                <div key={idx} className="flex items-center gap-2">
-                  <Select onValueChange={(v) => setSelectedItems((prev) => prev.map((it, i) => i === idx ? { ...it, lotId: v as string } : it))}>
-                    <SelectTrigger className="flex-1">
+                <div key={idx} className="flex flex-wrap items-center gap-2">
+                  <Select
+                    items={lots.map((l) => ({
+                      value: l.id,
+                      label: `${l.code} — ${l.plantType.name} (${l.quantity.toLocaleString("vi-VN")})${l.shelf ? ` · ${l.shelf.code}` : ""}`,
+                    }))}
+                    value={item.lotId || null}
+                    onValueChange={(v) => setSelectedItems((prev) => prev.map((it, i) => i === idx ? { ...it, lotId: v as string } : it))}
+                  >
+                    <SelectTrigger className="min-w-0 flex-1 basis-full sm:basis-auto">
                       <SelectValue placeholder="Chọn lô" />
                     </SelectTrigger>
                     <SelectContent>

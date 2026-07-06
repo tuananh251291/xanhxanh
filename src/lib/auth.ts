@@ -14,19 +14,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as { role: UserRole | null }).role;
         token.status = (user as { status: string }).status;
         token.id = user.id;
+        token.avatar = (user as { avatar?: string | null }).avatar ?? null;
+        token.workplaceWarehouseId = (user as { workplaceWarehouseId?: string | null }).workplaceWarehouseId ?? null;
         return token;
       }
-      // Làm mới role/status/isActive từ DB mỗi request, để Admin duyệt/đổi vai trò/khóa tài khoản có hiệu lực ngay mà không cần người dùng đăng xuất
+      // Làm mới role/status/isActive/avatar/workplaceWarehouseId từ DB mỗi request, để Admin duyệt/đổi
+      // vai trò/khóa tài khoản/đổi địa điểm làm việc có hiệu lực ngay mà không cần đăng xuất
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { role: true, status: true, isActive: true },
+          select: { role: true, status: true, isActive: true, avatar: true, workplaceWarehouseId: true },
         });
         if (!dbUser || !dbUser.isActive) {
           token.status = "REJECTED";
         } else {
           token.role = dbUser.role;
           token.status = dbUser.status;
+          token.avatar = dbUser.avatar;
+          token.workplaceWarehouseId = dbUser.workplaceWarehouseId;
         }
       }
       return token;
@@ -60,6 +65,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           role: user.role,
           status: user.status,
+          avatar: user.avatar,
+          workplaceWarehouseId: user.workplaceWarehouseId,
         };
       },
     }),

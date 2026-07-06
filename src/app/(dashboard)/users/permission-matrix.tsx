@@ -82,10 +82,10 @@ export default function PermissionMatrix({ permissions }: { permissions: Permiss
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left px-3 py-2 font-medium text-gray-600 sticky left-0 bg-gray-50">Trang</th>
+              <tr className="bg-green-700">
+                <th className="text-left px-3 py-2 font-medium text-white sticky left-0 bg-green-700">Trang</th>
                 {ROLES.map((role) => (
-                  <th key={role} className="text-center px-2 py-2 font-medium text-gray-600 whitespace-nowrap">
+                  <th key={role} className="text-center px-2 py-2 font-medium text-white whitespace-nowrap">
                     {ROLE_LABELS[role]}
                   </th>
                 ))}
@@ -93,8 +93,8 @@ export default function PermissionMatrix({ permissions }: { permissions: Permiss
             </thead>
             <tbody>
               {pages.map((page) => (
-                <tr key={page.href} className="border-b hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white whitespace-nowrap">
+                <tr key={page.href} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
+                  <td className="px-3 py-2 font-medium text-gray-800 sticky left-0 bg-green-50 whitespace-nowrap">
                     {page.label}
                     <span className="text-xs text-gray-400 block">{page.href}</span>
                   </td>

@@ -64,7 +64,7 @@ export default function CreateWarehouseDialog() {
           <DialogTitle>Thêm kho mới</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>Mã kho</Label>
               <Input {...register("code")} placeholder="KHO001" />
@@ -72,7 +72,7 @@ export default function CreateWarehouseDialog() {
             </div>
             <div className="space-y-1">
               <Label>Loại kho</Label>
-              <Select onValueChange={(v) => setValue("type", v as FormData["type"])}>
+              <Select items={WAREHOUSE_TYPE_LABELS} onValueChange={(v) => setValue("type", v as FormData["type"])}>
                 <SelectTrigger><SelectValue placeholder="Chọn loại" /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => (

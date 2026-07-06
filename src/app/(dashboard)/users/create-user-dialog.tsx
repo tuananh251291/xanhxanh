@@ -86,7 +86,7 @@ export default function CreateUserDialog() {
           </div>
           <div className="space-y-1">
             <Label>Vai trò</Label>
-            <Select onValueChange={(v) => setValue("role", v as FormData["role"])}>
+            <Select items={ROLE_LABELS} onValueChange={(v) => setValue("role", v as FormData["role"])}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>

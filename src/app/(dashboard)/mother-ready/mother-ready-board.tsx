@@ -19,6 +19,7 @@ type Lot = {
   plantType: { code: string; name: string; category: { code: string; name: string } };
   shelf: { code: string; name: string } | null;
   instruction: { code: string; assignedTo: { name: string } | null } | null;
+  _count: { instructionItems: number };
 };
 
 function statusBadge(daysLeft: number) {
@@ -42,7 +43,9 @@ export default function MotherReadyBoard() {
     try {
       const res = await fetch("/api/lots?stage=MAU_ME&roomType=PHONG_MAU_ME&status=ACTIVE");
       const data = await res.json();
-      setLots(Array.isArray(data) ? data.filter((l: Lot) => l.expectedMoveAt) : []);
+      // Lô đã được dùng làm nguồn cho 1 chỉ định cấy (bất kể còn dư số lượng hay không) coi như đã xử lý
+      // xong — không hiện lại trong danh sách "chưa chỉ định" này nữa.
+      setLots(Array.isArray(data) ? data.filter((l: Lot) => l.expectedMoveAt && l._count.instructionItems === 0) : []);
     } finally {
       setLoading(false);
     }
@@ -68,10 +71,10 @@ export default function MotherReadyBoard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sprout className="w-6 h-6 text-emerald-600" /> Mẫu mẹ đến tuổi cấy chuyển
+          <Sprout className="w-6 h-6 text-emerald-600" /> Mẫu mẹ đạt chưa chỉ định
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          Danh sách lô mẫu mẹ trong kho sáng theo thời gian đợi cấy chuyển đã cài đặt cho từng loại cây
+          Danh sách lô mẫu mẹ đã đến hạn cấy chuyển nhưng chưa được tạo chỉ định cấy — lô sẽ tự động biến mất khỏi danh sách này sau khi tạo chỉ định
         </p>
       </div>
 
@@ -111,20 +114,20 @@ export default function MotherReadyBoard() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Mã lô</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Tên chi tiết</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Quy cách</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Số lượng</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Kệ</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">NV phụ trách</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Hạn cấy chuyển</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Trạng thái</th>
+                  <tr className="bg-green-700">
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã lô</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên chi tiết</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Quy cách</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Số lượng</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Kệ</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">NV phụ trách</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Hạn cấy chuyển</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((l) => (
-                    <tr key={l.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <tr key={l.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
                       <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{l.code}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{l.plantType.name}</td>
                       <td className="px-4 py-3">

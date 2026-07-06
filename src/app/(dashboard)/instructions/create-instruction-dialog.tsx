@@ -11,6 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Loader2, Calculator, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
+import { startOfWeek, addWeeks, addDays, format } from "date-fns";
+import { vi } from "date-fns/locale";
+
+// Mặc định chỉ định cấy áp dụng cho tuần KẾ TIẾP (không phải tuần hiện tại) — KY_THUAT lên kế hoạch trước.
+function nextWeekStart(): string {
+  return format(startOfWeek(addWeeks(new Date(), 1), { weekStartsOn: 1 }), "yyyy-MM-dd");
+}
 
 type MediumType = { id: string; code: string; name: string };
 type MotherLot = {
@@ -41,7 +48,7 @@ export default function CreateInstructionDialog() {
   const [motherLots, setMotherLots] = useState<MotherLot[]>([]);
   const [shelfId, setShelfId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
-  const [weekStart, setWeekStart] = useState("");
+  const [weekStart, setWeekStart] = useState(nextWeekStart);
   const [notes, setNotes] = useState("");
   const [plannedT01, setPlannedT01] = useState("0");
   const [plannedT05, setPlannedT05] = useState("0");
@@ -122,7 +129,7 @@ export default function CreateInstructionDialog() {
   const plannedSum = (Number(plannedT01) || 0) + (Number(plannedT05) || 0);
 
   const resetForm = () => {
-    setShelfId(""); setRows([]); setWeekStart(""); setNotes("");
+    setShelfId(""); setRows([]); setWeekStart(nextWeekStart()); setNotes("");
     setPlannedT01("0"); setPlannedT05("0"); setPlannedTouched(false);
   };
 
@@ -174,7 +181,7 @@ export default function CreateInstructionDialog() {
       <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
         <Plus className="w-4 h-4 mr-2" /> Tạo chỉ định cấy
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Tạo chỉ định cấy mới</DialogTitle></DialogHeader>
         <div className="space-y-4 mt-2">
 
@@ -183,11 +190,18 @@ export default function CreateInstructionDialog() {
               <QrCode className="w-3.5 h-3.5 text-gray-400" /> Giàn kệ nguồn <span className="text-red-500">*</span>
             </Label>
             <Select onValueChange={(v) => onShelfChange(v as string)} value={shelfId}>
-              <SelectTrigger><SelectValue placeholder="Chọn kệ (mỗi kệ 1 loại cây)" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue>
+                  {(v: string | null) => {
+                    const g = shelfGroups.find((x) => x.shelfId === v);
+                    return g ? `Kệ ${g.shelfCode} · ${g.plantTypeName}` : "Chọn kệ (mỗi kệ 1 loại cây)";
+                  }}
+                </SelectValue>
+              </SelectTrigger>
               <SelectContent>
                 {shelfGroups.map((g) => (
                   <SelectItem key={g.shelfId} value={g.shelfId}>
-                    Kệ {g.shelfCode} · {g.plantTypeName} · {g.lots.map((l) => `${l.stageCode}: còn ${l.quantity.toLocaleString("vi-VN")}`).join(", ")}
+                    Kệ {g.shelfCode} · {g.plantTypeName}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -203,7 +217,7 @@ export default function CreateInstructionDialog() {
                     <Badge variant="outline">{MOTHER_SPEC_LABELS[r.stageCode as keyof typeof MOTHER_SPEC_LABELS] ?? r.stageCode}</Badge>
                     <span className="text-xs text-gray-500">Lô {r.lotCode} · còn {r.available.toLocaleString("vi-VN")}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <div className="space-y-1">
                       <Label className="text-xs">Số lượng dùng</Label>
                       <Input
@@ -229,10 +243,14 @@ export default function CreateInstructionDialog() {
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Môi trường nhân MM</Label>
-                      <Select value={r.motherMediumTypeId} onValueChange={(v) => setRowField(idx, "motherMediumTypeId", v as string)}>
+                      <Select
+                        items={mediumTypes.map((m) => ({ value: m.id, label: m.code }))}
+                        value={r.motherMediumTypeId}
+                        onValueChange={(v) => setRowField(idx, "motherMediumTypeId", v as string)}
+                      >
                         <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                         <SelectContent>
                           {mediumTypes.map((m) => (
@@ -243,7 +261,11 @@ export default function CreateInstructionDialog() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Môi trường ra rễ (TP)</Label>
-                      <Select value={r.finishedMediumTypeId} onValueChange={(v) => setRowField(idx, "finishedMediumTypeId", v as string)}>
+                      <Select
+                        items={mediumTypes.map((m) => ({ value: m.id, label: m.code }))}
+                        value={r.finishedMediumTypeId}
+                        onValueChange={(v) => setRowField(idx, "finishedMediumTypeId", v as string)}
+                      >
                         <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
                         <SelectContent>
                           {mediumTypes.map((m) => (
@@ -266,6 +288,12 @@ export default function CreateInstructionDialog() {
           <div className="space-y-1">
             <Label>Tuần thực hiện</Label>
             <Input type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
+            {weekStart && (
+              <p className="text-xs text-gray-500">
+                Thứ 2, {format(new Date(weekStart), "dd/MM/yyyy", { locale: vi })} – Chủ nhật,{" "}
+                {format(addDays(new Date(weekStart), 6), "dd/MM/yyyy", { locale: vi })}
+              </p>
+            )}
           </div>
 
           {(totalMotherOutput > 0 || totalFinishedOutput > 0) && (
@@ -279,7 +307,7 @@ export default function CreateInstructionDialog() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Phân bổ quy cách thành phẩm dự kiến</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <Label className="text-xs text-gray-500">{FINISHED_SPEC_LABELS.T01}</Label>
                     <Input

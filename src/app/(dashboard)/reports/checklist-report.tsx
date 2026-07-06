@@ -67,7 +67,7 @@ export default function ChecklistReport() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-gray-500">
+                  <tr className="bg-green-700 text-left text-white">
                     <th className="py-2 pr-4">Nhân viên</th>
                     <th className="py-2 pr-4">Vai trò</th>
                     <th className="py-2 pr-4">Hoàn thành</th>
@@ -78,7 +78,7 @@ export default function ChecklistReport() {
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.userId} className={`border-b last:border-0 ${r.belowThreshold ? "bg-red-50" : ""}`}>
+                    <tr key={r.userId} className={`border-b last:border-0 ${r.belowThreshold ? "bg-red-50" : "even:bg-green-50 hover:bg-green-100"}`}>
                       <td className="py-2 pr-4 font-medium">{r.userName}</td>
                       <td className="py-2 pr-4 text-gray-500">{ROLE_LABELS[r.role]}</td>
                       <td className="py-2 pr-4">{r.completed}/{r.total}</td>

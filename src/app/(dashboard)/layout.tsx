@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Sidebar from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import AuthSessionProvider from "@/components/providers/session-provider";
 import { ROLE_NAV, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
@@ -37,26 +38,29 @@ export default async function DashboardLayout({ children }: { children: React.Re
       select: { href: true },
     });
     const disabledHrefs = new Set(disabled.map((p) => p.href));
-    navItems = roleNavItems.filter((item) => item.href === "/dashboard" || !disabledHrefs.has(item.href));
+    navItems = roleNavItems.filter((item) => item.href === "/dashboard" || item.href === "/account" || !disabledHrefs.has(item.href));
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <Sidebar
-        user={{
-          name: session.user.name ?? "",
-          email: session.user.email ?? "",
-          role,
-        }}
-        navItems={navItems}
-        alertCount={alertCount}
-      />
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">
-          {children}
-        </div>
-      </main>
-      <Toaster richColors position="top-right" />
-    </div>
+    <AuthSessionProvider session={session}>
+      <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
+        <Sidebar
+          user={{
+            name: session.user.name ?? "",
+            email: session.user.email ?? "",
+            role,
+            avatar: session.user.avatar,
+          }}
+          navItems={navItems}
+          alertCount={alertCount}
+        />
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+          <div className="p-3 sm:p-4 md:p-6">
+            {children}
+          </div>
+        </main>
+        <Toaster richColors position="top-right" />
+      </div>
+    </AuthSessionProvider>
   );
 }

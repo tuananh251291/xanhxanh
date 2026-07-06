@@ -98,6 +98,11 @@ export function motherClusterUnits(stageCode: string | null | undefined, quantit
   return bagSize ? quantity * bagSize : quantity;
 }
 
+// Đánh dấu Transfer bàn giao "MM dư" (khi chỉ định kết thúc do hết thời gian) — dùng để PATCH
+// /api/transfers/[id] nhận diện và xếp thẳng vào Kho quá hạn (planSurplusPlacement) thay vì thuật
+// toán bàn giao hàng ngày thông thường (planShelfAssignments), và để UI nhận biết hiển thị đúng mô tả.
+export const SURPLUS_TRANSFER_TAG = "SURPLUS_MOTHER_HANDOVER";
+
 export const LOT_STATUS_LABELS = {
   ACTIVE: "Đang lưu",
   TRANSFERRED: "Đã chuyển",
@@ -120,6 +125,7 @@ export const INSTRUCTION_STATUS_LABELS = {
   ACTIVE: "Đang thực hiện",
   COMPLETED: "Hoàn thành",
   CANCELLED: "Đã hủy",
+  ENDED: "Kết thúc",
 } as const;
 
 export const TRANSFER_STATUS_LABELS = {
@@ -138,11 +144,20 @@ export const ALERT_TYPE_LABELS = {
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
   MOTHER_LOT_READY: "Mẫu mẹ đến tuổi cấy chuyển",
+  MEDIUM_ORDER_CREATED: "Có đơn đặt hàng môi trường mới",
 } as const;
 
-export const MEDIUM_PURPOSE_LABELS = {
-  MOTHER: "Nhân mẫu mẹ",
-  FINISHED: "Ra rễ (TP)",
+// Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt (null/có giá trị).
+export const MEDIUM_ORDER_STATUS_LABELS = {
+  UNCONFIRMED: "Chưa xác nhận",
+  IN_PROGRESS: "Đang thực hiện",
+} as const;
+
+// Nhãn trạng thái từng dòng-ngày (MediumOrderDay) — dựa trên handedOverAt/confirmedAt.
+export const MEDIUM_ORDER_DAY_STATUS_LABELS = {
+  NOT_HANDED_OVER: "Chưa bàn giao",
+  HANDED_OVER: "Bàn giao / chưa xác nhận",
+  CONFIRMED: "Bàn giao thành công",
 } as const;
 
 export const ALERT_STATUS_LABELS = {
@@ -167,6 +182,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
@@ -176,30 +192,34 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KY_THUAT: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
-    { href: "/mother-ready", label: "Mẫu mẹ đến tuổi cấy", icon: "Sprout" },
+    { href: "/mother-ready", label: "Mẫu mẹ đạt chưa chỉ định", icon: "Sprout" },
     { href: "/reports/production", label: "Báo cáo SX", icon: "BarChart3" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   CAY_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
-    { href: "/medium/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
+    { href: "/instructions", label: "Chỉ định cấy chưa bàn giao", icon: "ClipboardList" },
     { href: "/transfers/receive", label: "Nhận bàn giao", icon: "PackageCheck" },
-    { href: "/inventory/kho-sang", label: "Kho sáng", icon: "Sun" },
-    { href: "/transfers/send", label: "Bàn giao mẫu mẹ", icon: "PackageOpen" },
+    { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
+    { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },
     { href: "/transfers/finished", label: "BG thành phẩm", icon: "Package" },
     { href: "/contamination", label: "Lọc nhiễm", icon: "AlertTriangle" },
+    { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
@@ -207,19 +227,23 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/thanh-pham", label: "Tồn kho TP", icon: "Package" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   SALE: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/available", label: "Xem tồn khả dụng", icon: "Package" },
     { href: "/orders", label: "Đơn hàng", icon: "ShoppingCart" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   MOI_TRUONG: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/medium/tasks", label: "Nhiệm vụ pha MT", icon: "FlaskConical" },
+    { href: "/medium-orders", label: "Đơn đặt hàng MT", icon: "FlaskConical" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   DIEU_PHOI: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/all", label: "Tồn kho tổng", icon: "Warehouse" },
     { href: "/purchase-orders", label: "Đặt hàng NCC", icon: "ShoppingBag" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

@@ -57,7 +57,7 @@ export default function MediumTypeDialog({ item }: { item?: MediumType }) {
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{isEdit ? "Sửa môi trường" : "Thêm môi trường mới"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>Mã môi trường</Label>
               <Input {...register("code")} placeholder="MT001" disabled={isEdit} />

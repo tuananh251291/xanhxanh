@@ -131,12 +131,13 @@ export default function AlertsPage() {
                   </div>
                 </div>
                 {a.status !== "RESOLVED" && a.type === "OUTPUT_DEVIATION" && (
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                  <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t">
                     <Select
+                      items={DEVIATION_CAUSE_LABELS}
                       value={causeSelection[a.id] ?? ""}
                       onValueChange={(v) => setCauseSelection((prev) => ({ ...prev, [a.id]: v as DeviationCause }))}
                     >
-                      <SelectTrigger className="h-8 text-xs w-72">
+                      <SelectTrigger className="h-11 sm:h-8 text-xs w-full sm:w-72">
                         <SelectValue placeholder="Chọn nguyên nhân..." />
                       </SelectTrigger>
                       <SelectContent>

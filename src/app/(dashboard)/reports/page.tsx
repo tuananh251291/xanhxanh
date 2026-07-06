@@ -23,13 +23,15 @@ export default async function ReportsPage() {
       </div>
 
       <Tabs defaultValue="production">
-        <TabsList>
-          <TabsTrigger value="production">Sản lượng</TabsTrigger>
-          <TabsTrigger value="contamination">Tỉ lệ nhiễm</TabsTrigger>
-          <TabsTrigger value="plan">Kế hoạch vs thực tế</TabsTrigger>
-          <TabsTrigger value="inventory">Tồn kho & vòng đời</TabsTrigger>
-          <TabsTrigger value="checklist">Checklist</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList>
+            <TabsTrigger value="production" className="whitespace-nowrap">Sản lượng</TabsTrigger>
+            <TabsTrigger value="contamination" className="whitespace-nowrap">Tỉ lệ nhiễm</TabsTrigger>
+            <TabsTrigger value="plan" className="whitespace-nowrap">Kế hoạch vs thực tế</TabsTrigger>
+            <TabsTrigger value="inventory" className="whitespace-nowrap">Tồn kho & vòng đời</TabsTrigger>
+            <TabsTrigger value="checklist" className="whitespace-nowrap">Checklist</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="production" className="mt-4">
           <ProductionReport />

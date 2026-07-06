@@ -53,6 +53,8 @@ export default async function AllInventoryPage() {
             where: { isActive: true },
             include: { lots: { where: { status: "ACTIVE" }, select: lotSelect } },
           },
+          // Kho thành phẩm không quản lý theo giàn kệ — lô gắn thẳng vào phòng.
+          lots: { where: { status: "ACTIVE" }, select: lotSelect },
         },
       },
       shelves: {
@@ -73,8 +75,9 @@ export default async function AllInventoryPage() {
     return acc;
   }, {});
 
+  const roomAllLots = (r: (typeof rooms)[number]) => [...r.shelves.flatMap((s) => s.lots), ...r.lots];
   const directShelfLots = warehouses.flatMap((w) => w.shelves.flatMap((s) => s.lots));
-  const roomLots = rooms.flatMap((r) => r.shelves.flatMap((s) => s.lots));
+  const roomLots = rooms.flatMap(roomAllLots);
   const allLots = [...roomLots, ...directShelfLots];
   const totalMother = allLots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
   const totalFinished = allLots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
@@ -103,7 +106,7 @@ export default async function AllInventoryPage() {
         {ROOM_TYPES_ORDER.map((type) => {
           const rs = groupedByType[type] ?? [];
           if (rs.length === 0) return null;
-          const lots = rs.flatMap((r) => r.shelves.flatMap((s) => s.lots));
+          const lots = rs.flatMap(roomAllLots);
           const mother = lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
           const finished = lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
           const nearExpiryCount = lots.filter((l) => isNearExpiry(l.expectedMoveAt)).length;
@@ -151,16 +154,16 @@ export default async function AllInventoryPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 font-medium text-gray-600">Loại cây</th>
-                    <th className="text-right py-2 font-medium text-gray-600">Mẫu mẹ</th>
-                    <th className="text-right py-2 font-medium text-gray-600">Thành phẩm</th>
-                    <th className="text-right py-2 font-medium text-gray-600">Tổng</th>
+                  <tr className="bg-green-700">
+                    <th className="text-left py-2 font-medium text-white">Loại cây</th>
+                    <th className="text-right py-2 font-medium text-white">Mẫu mẹ</th>
+                    <th className="text-right py-2 font-medium text-white">Thành phẩm</th>
+                    <th className="text-right py-2 font-medium text-white">Tổng</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.values(byType).map((entry) => (
-                    <tr key={entry.name} className="border-b hover:bg-gray-50">
+                    <tr key={entry.name} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
                       <td className="py-2 font-medium">{entry.name}</td>
                       <td className="py-2 text-right text-purple-700">{entry.mother > 0 ? entry.mother.toLocaleString("vi-VN") : "—"}</td>
                       <td className="py-2 text-right text-green-700">{entry.finished > 0 ? entry.finished.toLocaleString("vi-VN") : "—"}</td>
@@ -183,7 +186,7 @@ export default async function AllInventoryPage() {
             <h2 className="text-base font-semibold text-gray-700">{ROOM_TYPE_LABELS[type]}</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {rs.map((r) => {
-                const lots = r.shelves.flatMap((s) => s.lots);
+                const lots = roomAllLots(r);
                 const mother = lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
                 const finished = lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
                 return (
@@ -192,7 +195,9 @@ export default async function AllInventoryPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold">{r.warehouseName} — {r.name}</p>
-                          <p className="text-xs text-gray-400">{r.shelves.length} kệ · {lots.length} lô</p>
+                          <p className="text-xs text-gray-400">
+                            {r.shelves.length > 0 ? `${r.shelves.length} kệ · ` : ""}{lots.length} lô
+                          </p>
                         </div>
                         <div className="text-right text-sm space-y-0.5">
                           {mother > 0 && <p className="text-purple-700">MM: {mother.toLocaleString("vi-VN")}</p>}

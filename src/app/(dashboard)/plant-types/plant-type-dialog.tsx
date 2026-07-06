@@ -134,7 +134,7 @@ export default function PlantTypeDialog({
             <Label>Mô tả (tùy chọn)</Label>
             <Input {...register("description")} placeholder="Ghi chú thêm..." />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label className="text-sm font-medium">Thời gian đợi cấy chuyển (tuần)</Label>
               <Input {...register("transferWaitWeeks")} type="number" min={1} />

@@ -91,10 +91,10 @@ export default async function InventoryLifecycleReport() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">Mã lô</th>
-                    <th className="text-left px-3 py-2 font-medium text-gray-600">Loại cây</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-600">Trạng thái</th>
+                  <tr className="bg-green-700">
+                    <th className="text-left px-3 py-2 font-medium text-white">Mã lô</th>
+                    <th className="text-left px-3 py-2 font-medium text-white">Loại cây</th>
+                    <th className="text-right px-3 py-2 font-medium text-white">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -102,7 +102,7 @@ export default async function InventoryLifecycleReport() {
                     const daysLeft = lot.expectedMoveAt ? differenceInCalendarDays(lot.expectedMoveAt, new Date()) : null;
                     const overdue = daysLeft !== null && daysLeft < 0;
                     return (
-                      <tr key={lot.code} className="border-b hover:bg-gray-50">
+                      <tr key={lot.code} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
                         <td className="px-3 py-2 font-mono">{lot.code}</td>
                         <td className="px-3 py-2">{lot.plantType.name}</td>
                         <td className="px-3 py-2 text-right">

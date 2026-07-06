@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 
 type TypeSummary = { name: string; mother: number; finished: number };
 
@@ -16,8 +16,14 @@ export default function SummaryByType({ entries }: { entries: TypeSummary[] }) {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Tổng hợp theo loại cây</CardTitle>
-          <Button type="button" variant="outline" size="sm" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? <ChevronDown className="w-3.5 h-3.5 mr-1" /> : <ChevronRight className="w-3.5 h-3.5 mr-1" />}
+          <Button
+            type="button"
+            size="sm"
+            className={expanded ? "h-8" : "h-8 bg-green-600 hover:bg-green-700"}
+            variant={expanded ? "outline" : "default"}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? <ChevronDown className="w-3.5 h-3.5 mr-1.5" /> : <Search className="w-3.5 h-3.5 mr-1.5" />}
             {expanded ? "Thu gọn" : "Xem chi tiết"}
           </Button>
         </div>

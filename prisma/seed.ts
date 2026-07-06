@@ -200,8 +200,8 @@ async function main() {
 
   // Warehouses — 2 kho sản xuất (mỗi kho có phòng sáng + phòng tối) + 1 kho thành phẩm
   const warehouses = [
-    { code: "SX-A", name: "Kho sản xuất A", type: "SAN_XUAT" as const },
-    { code: "SX-B", name: "Kho sản xuất B", type: "SAN_XUAT" as const },
+    { code: "SX-A", name: "Kho sản xuất Đông Dư", type: "SAN_XUAT" as const },
+    { code: "SX-B", name: "Kho sản xuất Hưng Yên", type: "SAN_XUAT" as const },
     { code: "KTP-A", name: "Kho thành phẩm A", type: "THANH_PHAM" as const },
   ];
 
@@ -259,7 +259,8 @@ async function main() {
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
       for (let col = 1; col <= 5; col++) {
-        const code = `${roomCode}-R${row}C${col}`;
+        const colStr = String(col).padStart(2, "0");
+        const code = `${roomCode}-R${row}C${colStr}`;
         const plantType = createdPlantTypes[psShelfSeq % createdPlantTypes.length];
         const staff = psCaymoStaff.length > 0 ? psCaymoStaff[psShelfSeq % psCaymoStaff.length] : null;
         psShelfSeq += 1;
@@ -269,7 +270,7 @@ async function main() {
           update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 1800 },
           create: {
             code,
-            name: `Kệ R${row}C${col}`,
+            name: `Kệ R${row}C${colStr}`,
             warehouseId,
             roomId,
             rowNumber: row,
@@ -289,13 +290,14 @@ async function main() {
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
       for (let col = 1; col <= 5; col++) {
-        const code = `${roomCode}-R${row}C${col}`;
+        const colStr = String(col).padStart(2, "0");
+        const code = `${roomCode}-R${row}C${colStr}`;
         await prisma.shelf.upsert({
           where: { code },
           update: {},
           create: {
             code,
-            name: `Kệ R${row}C${col}`,
+            name: `Kệ R${row}C${colStr}`,
             warehouseId,
             roomId,
             rowNumber: row,
@@ -328,34 +330,7 @@ async function main() {
     }
   }
 
-  // Shelves for các phòng trong Kho thành phẩm
-  const ktpAId = createdWarehouses["KTP-A"];
-  const ktpRoomShelfCounts: { [roomCode: string]: number } = {
-    "KTPA-KD": 6,
-    "KTPA-TD": 4,
-    "KTPA-HT": 4,
-    "KTPA-TT-SG": 3,
-    "KTPA-TT-RU": 3,
-  };
-  for (const [roomCode, count] of Object.entries(ktpRoomShelfCounts)) {
-    const roomId = createdRooms[roomCode];
-    for (let i = 1; i <= count; i++) {
-      const code = `${roomCode}-K${String(i).padStart(2, "0")}`;
-      await prisma.shelf.upsert({
-        where: { code },
-        update: {},
-        create: {
-          code,
-          name: `Kệ ${String(i).padStart(2, "0")}`,
-          warehouseId: ktpAId,
-          roomId,
-          rowNumber: 1,
-          colNumber: i,
-          capacity: 50,
-        },
-      });
-    }
-  }
+  // Kho thành phẩm KHÔNG quản lý theo giàn kệ — lô gắn thẳng vào Phòng (Lot.roomId), không tạo Shelf.
   console.log("✅ Shelves created");
 
   // Lots — mã lô = mã chi tiết loại cây + mã NV cấy 3 số + mã tuần/năm 4 số (lotCodeBase()), 4 quy cách
@@ -371,9 +346,8 @@ async function main() {
   const motherShelves = await prisma.shelf.findMany({
     where: { room: { type: "PHONG_MAU_ME" } },
   });
-  const finishedShelves = await prisma.shelf.findMany({
-    where: { room: { type: "PHONG_KHA_DUNG" } },
-  });
+  // Kho thành phẩm không quản lý theo giàn kệ — lô thành phẩm gắn thẳng vào Phòng khả dụng.
+  const khaDungRoomId = createdRooms["KTPA-KD"];
   const allPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
   const caymoStaffForLots = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
 
@@ -393,18 +367,22 @@ async function main() {
     for (const sc of STAGE_CODES) {
       const quantity = randInt(sc.qtyRange[0], sc.qtyRange[1]);
       // Kệ mẫu mẹ (Phòng sáng) chỉ được chọn trong số kệ đã gán đúng loại cây pt — mỗi kệ chỉ xếp 1 mã cây.
-      const shelves = sc.stage === "MAU_ME" ? motherShelves.filter((s) => s.plantTypeId === pt.id) : finishedShelves;
-      const shelf = shelves[randInt(0, shelves.length - 1)];
+      // Thành phẩm không dùng kệ — gắn thẳng vào Phòng khả dụng qua roomId.
+      const shelf = sc.stage === "MAU_ME"
+        ? motherShelves.filter((s) => s.plantTypeId === pt.id)[randInt(0, motherShelves.filter((s) => s.plantTypeId === pt.id).length - 1)]
+        : undefined;
+      const roomId = sc.stage === "THANH_PHAM" ? khaDungRoomId : undefined;
 
       await prisma.lot.upsert({
         where: { code_stageCode: { code, stageCode: sc.code } },
-        update: { enteredAt, shelfId: shelf?.id },
+        update: { enteredAt, shelfId: shelf?.id ?? null, roomId: roomId ?? null },
         create: {
           code,
           plantTypeId: pt.id,
           stage: sc.stage,
           stageCode: sc.code,
           shelfId: shelf?.id,
+          roomId,
           quantity,
           initialQuantity: quantity,
           status: "ACTIVE",
@@ -548,7 +526,7 @@ async function main() {
                   plantTypeId: pt.id,
                   stage: "THANH_PHAM",
                   stageCode: tpStageCode,
-                  shelfId: finishedShelves[(weeksAgo + staffIdx + recIdx) % finishedShelves.length]?.id,
+                  roomId: khaDungRoomId,
                   quantity: finishedQty,
                   initialQuantity: finishedQty,
                   status: "ACTIVE",

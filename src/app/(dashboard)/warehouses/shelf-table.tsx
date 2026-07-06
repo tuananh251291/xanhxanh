@@ -39,8 +39,11 @@ interface Shelf {
   capacity: number | null;
   plantType: PlantType | null;
   assignedStaff: Staff | null;
+  sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   lots: { quantity: number; stageCode: string }[];
 }
+
+const POOL_LABELS: Record<string, string> = { QUA_HAN: "Kho quá hạn", DUNG_HAN: "Kho đúng hạn" };
 
 export default function ShelfTable({
   shelves,
@@ -79,7 +82,7 @@ export default function ShelfTable({
     } finally { setSavingId(null); }
   };
 
-  const renderRow = (shelf: Shelf) => {
+  const renderRow = (shelf: Shelf, showPoolColumn: boolean) => {
     const used = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
     const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
     const bagsBySpec = shelf.lots.reduce<Record<string, number>>((acc, l) => {
@@ -87,7 +90,7 @@ export default function ShelfTable({
       return acc;
     }, {});
     return (
-      <tr key={shelf.id} className="border-b last:border-0 hover:bg-gray-50">
+      <tr key={shelf.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
         <td className="px-3 py-2 whitespace-nowrap">
           <button
             className="flex items-center gap-1.5 text-left"
@@ -150,6 +153,29 @@ export default function ShelfTable({
                     .map(([spec, qty]) => `${spec}: ${qty} túi`)
                     .join(" · ")}
             </td>
+            {showPoolColumn && (
+              <td className="px-3 py-2 min-w-[140px]">
+                {canManageStaffAndPlant ? (
+                  <Select
+                    value={shelf.sharedMotherPool ?? "NONE"}
+                    onValueChange={(v) =>
+                      patchShelf(shelf.id, { sharedMotherPool: v === "NONE" ? null : v }, "Đã cập nhật phân loại kho cho kệ")
+                    }
+                  >
+                    <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
+                      <SelectValue>{() => (shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "— Chưa phân loại —")}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">— Chưa phân loại —</SelectItem>
+                      <SelectItem value="QUA_HAN">Kho quá hạn</SelectItem>
+                      <SelectItem value="DUNG_HAN">Kho đúng hạn</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className="text-xs text-gray-600">{shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "—"}</span>
+                )}
+              </td>
+            )}
           </>
         )}
         <td className="px-3 py-2 min-w-[140px]">
@@ -178,7 +204,7 @@ export default function ShelfTable({
                 onValueChange={(v) => patchShelf(shelf.id, { roomId: v }, "Đã chuyển kệ sang phòng khác")}
               >
                 <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
-                  <SelectValue placeholder="Chuyển phòng…" />
+                  <SelectValue>{() => "Chuyển phòng…"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_" disabled>Chuyển sang…</SelectItem>
@@ -196,26 +222,27 @@ export default function ShelfTable({
     );
   };
 
-  const renderTable = (rows: Shelf[]) => (
+  const renderTable = (rows: Shelf[], showPoolColumn: boolean) => (
     <div className="overflow-x-auto border rounded-lg">
       <table className="w-full">
         <thead>
-          <tr className="border-b bg-gray-50">
-            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Mã kệ</th>
-            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Tên kệ</th>
+          <tr className="bg-green-700">
+            <th className="text-left px-3 py-2 text-xs font-medium text-white">Mã kệ</th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên kệ</th>
             {isMauMeRoom && (
               <>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Tên cây chi tiết</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Nhân viên phụ trách</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Trạng thái</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Số túi M03/M05</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên cây chi tiết</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-white">Nhân viên phụ trách</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-white">Trạng thái</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-white">Số túi M03/M05</th>
+                {showPoolColumn && <th className="text-left px-3 py-2 text-xs font-medium text-white">Kho quá hạn/đúng hạn</th>}
               </>
             )}
-            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Tồn / Sức chứa</th>
-            {canMoveRoom && <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Chuyển phòng</th>}
+            <th className="text-left px-3 py-2 text-xs font-medium text-white">Tồn / Sức chứa</th>
+            {canMoveRoom && <th className="text-left px-3 py-2 text-xs font-medium text-white">Chuyển phòng</th>}
           </tr>
         </thead>
-        <tbody>{rows.map(renderRow)}</tbody>
+        <tbody>{rows.map((s) => renderRow(s, showPoolColumn))}</tbody>
       </table>
     </div>
   );
@@ -235,7 +262,7 @@ export default function ShelfTable({
             </p>
             {assignedShelves.length === 0 ? (
               <p className="text-xs text-gray-400 pl-1">Chưa có kệ nào được gán nhân viên</p>
-            ) : renderTable(assignedShelves)}
+            ) : renderTable(assignedShelves, false)}
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-2">
@@ -243,11 +270,11 @@ export default function ShelfTable({
             </p>
             {unassignedShelves.length === 0 ? (
               <p className="text-xs text-gray-400 pl-1">Không còn kệ nào chưa gán nhân viên</p>
-            ) : renderTable(unassignedShelves)}
+            ) : renderTable(unassignedShelves, true)}
           </div>
         </div>
       ) : (
-        renderTable(shelves)
+        renderTable(shelves, false)
       )}
 
       <Dialog open={!!qrShelf} onOpenChange={() => setQrShelf(null)}>

@@ -58,17 +58,28 @@ enum InstructionStatus {
   ACTIVE
   COMPLETED
   CANCELLED
+  ENDED // Kết thúc — tự động chuyển khi hết thời gian (qua Chủ nhật tuần chỉ định) hoặc dùng hết mẫu mẹ
+}
+
+// Lý do 1 chỉ định chuyển sang ENDED — chỉ TIME_UP mới có "MM dư" để bàn giao (MOTHER_USED_UP nghĩa là
+// dùng hết mẫu mẹ được cấp, không còn dư).
+enum InstructionEndReason {
+  TIME_UP
+  MOTHER_USED_UP
+}
+
+// Phân loại các kệ "chung" (chưa gán NV, assignedStaffId null) trong Phòng mẫu mẹ — dùng để tách nơi
+// nhận hàng dư sản xuất hàng ngày (Kho đúng hạn) khỏi nơi nhận MM dư khi chỉ định kết thúc do hết thời
+// gian (Kho quá hạn). Không áp dụng cho kệ "đã chia" (luôn null).
+enum SharedMotherPool {
+  QUA_HAN
+  DUNG_HAN
 }
 
 enum TransferStatus {
   PENDING
   CONFIRMED
   REJECTED
-}
-
-enum MediumPurpose {
-  MOTHER // pha để nhân thêm mẫu mẹ
-  FINISHED // pha để ra rễ thành cây thành phẩm
 }
 
 enum OrderStatus {
@@ -89,6 +100,7 @@ enum AlertType {
   ORDER_PENDING_PACK
   MEDIUM_HANDOVER_READY
   MOTHER_LOT_READY
+  MEDIUM_ORDER_CREATED
 }
 
 enum AlertStatus {
@@ -119,10 +131,16 @@ model User {
   name      String
   email     String     @unique
   password  String
+  avatar    String?    @db.Text
   role      UserRole?
   status    UserStatus @default(PENDING)
   isActive  Boolean    @default(true)
   holdDays  Int?
+  // Địa điểm làm việc — chỉ áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG, ràng buộc mỗi NV chỉ làm việc với
+  // đúng 1 kho sản xuất (SAN_XUAT). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho.
+  // Chỉ SUPER_ADMIN được sửa field này.
+  workplaceWarehouseId String?
+  workplaceWarehouse    Warehouse? @relation(fields: [workplaceWarehouseId], references: [id])
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -135,8 +153,8 @@ model User {
   alerts               Alert[]
   roomAccess           RoomAccess[]
   assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
-  mediumHandoversFrom  MediumHandover[]       @relation("MediumHandoverFrom")
-  mediumHandoversTo    MediumHandover[]       @relation("MediumHandoverTo")
+  mediumOrdersConfirmed    MediumOrder[]      @relation("MediumOrderConfirmedBy")
+  mediumOrderDaysConfirmed MediumOrderDay[]   @relation("MediumOrderDayConfirmedBy")
   checklistItems       ChecklistItem[]
 
   @@map("users")
@@ -278,7 +296,7 @@ model MediumType {
 
   instructionItemsAsMotherMedium    PlantingInstructionItem[] @relation("ItemMotherMedium")
   instructionItemsAsFinishedMedium  PlantingInstructionItem[] @relation("ItemFinishedMedium")
-  handoverItems                     MediumHandoverItem[]
+  orderItems                        MediumOrderItem[]
 
   @@map("medium_types")
 }
@@ -301,6 +319,7 @@ model Warehouse {
   shelves      Shelf[]
   transfersIn  Transfer[] @relation("TransferTo")
   transfersOut Transfer[] @relation("TransferFrom")
+  staff        User[]
 
   @@map("warehouses")
 }
@@ -322,6 +341,7 @@ model Room {
   updatedAt   DateTime @updatedAt
 
   shelves           Shelf[]
+  lots              Lot[]      @relation("LotDirectRoom")
   transfersFromRoom Transfer[] @relation("TransferFromRoom")
   transfersToRoom   Transfer[] @relation("TransferToRoom")
   roomAccess        RoomAccess[]
@@ -368,6 +388,9 @@ model Shelf {
   plantType   PlantType? @relation(fields: [plantTypeId], references: [id])
   assignedStaffId String?
   assignedStaff   User?  @relation("ShelfAssignedStaff", fields: [assignedStaffId], references: [id])
+  // Chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ — phân nhóm Kho quá hạn/đúng
+  // hạn trong "Kho mẫu mẹ chung" (không phải Room riêng, chỉ là cờ trên kệ). Kệ "đã chia" luôn null.
+  sharedMotherPool SharedMotherPool?
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -395,6 +418,10 @@ model Lot {
 
   shelfId         String?
   shelf           Shelf?     @relation(fields: [shelfId], references: [id])
+  // Chỉ dùng cho Kho thành phẩm (không quản lý theo giàn kệ) — lô gắn thẳng vào Phòng (Khả dụng/Theo
+  // dõi/Hàn túi/Thị trường), không qua Shelf. Kho sản xuất luôn dùng shelfId ở trên, roomId luôn null.
+  roomId          String?
+  room            Room?      @relation("LotDirectRoom", fields: [roomId], references: [id])
 
   quantity        Int
   initialQuantity Int
@@ -456,9 +483,22 @@ model PlantingInstruction {
   weekStart   DateTime?
   notes       String?
 
+  // Kho mô bấm nút "Bàn giao" thì mới coi là ĐÃ bàn giao — khác với việc assignedToId đã có giá trị
+  // (kệ "đã chia" tự động điền sẵn NV mặc định lúc tạo chỉ định, nhưng CHƯA phải đã bàn giao thật).
+  // null = "Chưa bàn giao" dù assignedToId có thể đã có sẵn.
+  handedOverAt DateTime?
+
   // NV cấy mô (assignedTo) bấm xác nhận sau khi nhận mẫu mẹ do KHO_MO xuất/bàn giao — dùng để
   // tính % hoàn thành việc "Bàn giao mẫu mẹ" trên dashboard của KHO_MO.
   motherReceivedAt DateTime?
+
+  // Lý do chuyển ENDED — chỉ có giá trị khi status = ENDED. TIME_UP: hết ngày Chủ nhật của tuần chỉ
+  // định (kiểm tra ngay khi NV cấy mô bấm "Lưu dữ liệu hôm nay"). MOTHER_USED_UP: tổng "MM sử dụng"
+  // đã đạt/vượt inputMotherQuantity.
+  endReason        InstructionEndReason?
+  // NV cấy mô bấm "Bàn giao MM dư" (chỉ áp dụng khi endReason = TIME_UP và còn dư) — set khi đã tạo
+  // Transfer bàn giao phần mẫu mẹ dư cho Kho mô, tránh bàn giao lặp lại.
+  surplusHandedOverAt DateTime?
 
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -466,7 +506,11 @@ model PlantingInstruction {
   items               PlantingInstructionItem[]
   lots                Lot[]
   dailyRecords        DailyRecord[]
-  mediumHandoverItems MediumHandoverItem[]
+
+  // Nhiều chỉ định cùng tuần thực hiện (weekStart) gộp chung vào 1 đơn đặt hàng môi trường — xem
+  // MediumOrder. null nếu chỉ định không cần môi trường nào (hiếm).
+  mediumOrderId String?
+  mediumOrder   MediumOrder? @relation(fields: [mediumOrderId], references: [id])
 
   @@map("planting_instructions")
 }
@@ -499,42 +543,73 @@ model PlantingInstructionItem {
 }
 
 // ============================================================
-// MEDIUM HANDOVERS — phiếu bàn giao môi trường đã pha (MOI_TRUONG -> CAY_MO)
+// MEDIUM ORDERS — đơn đặt hàng môi trường tự động sinh khi KY_THUAT tạo chỉ định cấy
+// (KY_THUAT tạo chỉ định -> tự sinh đơn cho MOI_TRUONG -> MOI_TRUONG xác nhận + pha theo
+// từng ngày trong tuần -> bàn giao từng ngày -> KHO_MO xác nhận nhận).
 // ============================================================
 
-// Không dùng chung model Transfer vì môi trường không gắn với Lot/kệ/kho — chỉ là số lượng đã pha
-// theo từng mã môi trường, bàn giao trực tiếp cho NV cấy phụ trách chỉ định cần dùng.
-model MediumHandover {
-  id         String         @id @default(cuid())
-  code       String         @unique
-  fromUserId String
-  fromUser   User           @relation("MediumHandoverFrom", fields: [fromUserId], references: [id])
-  toUserId   String
-  toUser     User           @relation("MediumHandoverTo", fields: [toUserId], references: [id])
-  status     TransferStatus @default(PENDING)
-  notes      String?
-  confirmedAt DateTime?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+model MediumOrder {
+  id String @id @default(cuid())
+  code String @unique
 
-  items MediumHandoverItem[]
+  // Nhiều chỉ định cùng tuần thực hiện (PlantingInstruction.weekStart) được gộp vào 1 đơn — KY_THUAT
+  // thường ra nhiều chỉ định trước Thứ 5 tuần này, tất cả dùng cho tuần sau, nên chỉ cần 1 đơn chung.
+  instructions PlantingInstruction[]
 
-  @@map("medium_handovers")
+  // Khung tuần pha môi trường: weekStart = Thứ 6 của tuần TẠO chỉ định (3 ngày trước tuần thực hiện),
+  // weekEnd = Thứ 6 của tuần thực hiện (weekStart + 7). VD: chỉ định dùng cho tuần thực hiện bắt đầu Thứ
+  // 2 tới -> weekStart = Thứ 6 tuần này, weekEnd = Thứ 6 tuần sau. Sinh sẵn 8 dòng MediumOrderDay.
+  weekStart DateTime
+  weekEnd   DateTime
+
+  // MOI_TRUONG bấm "Xác nhận" mới coi là ĐÃ nhận đơn — null = "Chưa xác nhận", có giá trị = "Đang thực hiện".
+  confirmedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?     @relation("MediumOrderConfirmedBy", fields: [confirmedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  items MediumOrderItem[]
+  days  MediumOrderDay[]
+
+  @@map("medium_orders")
 }
 
-model MediumHandoverItem {
-  id            String              @id @default(cuid())
-  handoverId    String
-  handover      MediumHandover      @relation(fields: [handoverId], references: [id])
-  mediumTypeId  String
-  mediumType    MediumType          @relation(fields: [mediumTypeId], references: [id])
-  // Chỉ định liên quan (nếu có) — để NV cấy đối chiếu đúng phần môi trường của chỉ định nào.
-  instructionId String?
-  instruction   PlantingInstruction? @relation(fields: [instructionId], references: [id])
-  purpose       MediumPurpose
-  quantity      Int
+// 1 dòng = 1 quy cách (M03/M05/T01/T05) cần pha cho đơn này, kèm mã môi trường tương ứng — hiển thị
+// ở đầu trang chi tiết đơn để MOI_TRUONG biết cần pha bao nhiêu, loại nào.
+model MediumOrderItem {
+  id           String      @id @default(cuid())
+  orderId      String
+  order        MediumOrder @relation(fields: [orderId], references: [id])
+  stageCode    String // "M03" | "M05" | "T01" | "T05"
+  mediumTypeId String
+  mediumType   MediumType  @relation(fields: [mediumTypeId], references: [id])
+  quantity     Int
 
-  @@map("medium_handover_items")
+  @@map("medium_order_items")
+}
+
+// 1 dòng = 1 ngày trong tuần pha (8 dòng/đơn, xem MediumOrder.weekStart/weekEnd). MOI_TRUONG điền số
+// đã pha mỗi ngày rồi bấm "Bàn giao" (handedOverAt) — khoá không sửa số được nữa; KHO_MO xác nhận
+// (confirmedAt) mới coi là "Bàn giao thành công".
+model MediumOrderDay {
+  id      String      @id @default(cuid())
+  orderId String
+  order   MediumOrder @relation(fields: [orderId], references: [id])
+  date    DateTime
+
+  m03 Int @default(0)
+  m05 Int @default(0)
+  t01 Int @default(0)
+  t05 Int @default(0)
+
+  handedOverAt  DateTime?
+  confirmedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?     @relation("MediumOrderDayConfirmedBy", fields: [confirmedById], references: [id])
+
+  @@unique([orderId, date])
+  @@map("medium_order_days")
 }
 
 // ============================================================
@@ -549,6 +624,10 @@ model DailyRecord {
   staff         User                @relation(fields: [staffId], references: [id])
   recordDate    DateTime            @default(now())
   motherUsed    Int
+  // "MM đã kiểm tra" / "MM mẹ nhiễm" trên bảng nhập liệu tuần của NV cấy mô — nhập tay mỗi ngày,
+  // không suy ra được từ ContaminationRecord (model đó theo dõi nhiễm ở cấp Lot, khác cấp/khác lúc).
+  motherChecked      Int            @default(0)
+  motherContaminated Int            @default(0)
   notes         String?
   createdAt     DateTime            @default(now())
 

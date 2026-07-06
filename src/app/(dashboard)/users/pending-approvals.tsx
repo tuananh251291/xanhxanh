@@ -56,13 +56,13 @@ export default function PendingApprovals({ users }: { users: PendingUser[] }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {users.map((u) => (
-          <div key={u.id} className="flex items-center gap-3 border rounded-lg p-3">
-            <div className="flex-1">
+          <div key={u.id} className="flex flex-wrap items-center gap-3 border rounded-lg p-3">
+            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
               <p className="font-medium text-sm">{u.name}</p>
               <p className="text-xs text-gray-500">{u.email} · {u.code}</p>
             </div>
-            <Select onValueChange={(v) => setRoleMap((prev) => ({ ...prev, [u.id]: v as UserRole }))}>
-              <SelectTrigger className="w-48">
+            <Select items={ROLE_LABELS} onValueChange={(v) => setRoleMap((prev) => ({ ...prev, [u.id]: v as UserRole }))}>
+              <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>
               <SelectContent>
