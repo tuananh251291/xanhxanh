@@ -19,7 +19,7 @@ export default function SummaryByType({ entries }: { entries: TypeSummary[] }) {
           <Button
             type="button"
             size="sm"
-            className={expanded ? "h-8" : "h-8 bg-green-600 hover:bg-green-700"}
+            className={expanded ? "h-8" : "h-8 bg-primary hover:bg-primary-hover"}
             variant={expanded ? "outline" : "default"}
             onClick={() => setExpanded((v) => !v)}
           >
@@ -31,15 +31,15 @@ export default function SummaryByType({ entries }: { entries: TypeSummary[] }) {
       {expanded && (
         <CardContent>
           {entries.length === 0 ? (
-            <p className="text-gray-400 text-sm">Kho trống</p>
+            <p className="text-text-muted text-sm">Kho trống</p>
           ) : (
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {entries.map((e) => (
-                <div key={e.name} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2">
+                <div key={e.name} className="flex items-center justify-between bg-background rounded px-3 py-2">
                   <span className="font-medium text-sm">{e.name}</span>
                   <div className="flex gap-2 text-xs">
-                    {e.mother > 0 && <Badge className="bg-purple-100 text-purple-700">MM: {e.mother.toLocaleString("vi-VN")}</Badge>}
-                    {e.finished > 0 && <Badge className="bg-green-100 text-green-700">TP: {e.finished.toLocaleString("vi-VN")}</Badge>}
+                    {e.mother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM: {e.mother.toLocaleString("vi-VN")}</Badge>}
+                    {e.finished > 0 && <Badge className="bg-primary-light text-primary-strong">TP: {e.finished.toLocaleString("vi-VN")}</Badge>}
                   </div>
                 </div>
               ))}

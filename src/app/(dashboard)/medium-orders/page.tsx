@@ -8,5 +8,5 @@ export default async function MediumOrdersPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/medium-orders"))) redirect("/dashboard");
 
-  return <MediumOrdersList canConfirm={role === "MOI_TRUONG"} />;
+  return <MediumOrdersList canConfirm={role === "MOI_TRUONG"} currentUserId={session?.user?.id ?? null} />;
 }

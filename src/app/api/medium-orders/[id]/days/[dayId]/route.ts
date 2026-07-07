@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
+import { isSameDay } from "date-fns";
 import { z } from "zod";
 
 const patchSchema = z.union([
@@ -40,6 +41,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (day.handedOverAt) {
     return NextResponse.json({ message: "Ngày này đã bàn giao, không thể sửa" }, { status: 400 });
+  }
+  // Chỉ được nhập số liệu/bàn giao đúng ngày thực tế — tránh nhập bù trước hoặc sửa lại ngày đã qua.
+  if (!isSameDay(day.date, new Date())) {
+    return NextResponse.json({ message: "Chỉ được nhập liệu đúng với ngày hôm nay" }, { status: 400 });
   }
 
   if ("action" in parsed.data && parsed.data.action === "handover") {

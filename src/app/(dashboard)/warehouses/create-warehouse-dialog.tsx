@@ -56,7 +56,7 @@ export default function CreateWarehouseDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={<Button className="bg-primary hover:bg-primary-hover" />}>
         <Plus className="w-4 h-4 mr-2" /> Thêm kho
       </DialogTrigger>
       <DialogContent className="max-w-md">
@@ -68,7 +68,7 @@ export default function CreateWarehouseDialog() {
             <div className="space-y-1">
               <Label>Mã kho</Label>
               <Input {...register("code")} placeholder="KHO001" />
-              {errors.code && <p className="text-xs text-red-500">{errors.code.message}</p>}
+              {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
             </div>
             <div className="space-y-1">
               <Label>Loại kho</Label>
@@ -80,13 +80,13 @@ export default function CreateWarehouseDialog() {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.type && <p className="text-xs text-red-500">{errors.type.message}</p>}
+              {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
             </div>
           </div>
           <div className="space-y-1">
             <Label>Tên kho</Label>
             <Input {...register("name")} placeholder="Kho sáng A" />
-            {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Ghi chú</Label>
@@ -94,7 +94,7 @@ export default function CreateWarehouseDialog() {
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Tạo kho
             </Button>

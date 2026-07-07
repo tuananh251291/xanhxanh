@@ -27,11 +27,22 @@ enum WarehouseType {
   THANH_PHAM
 }
 
+// Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem User.inspectionLane), dùng để phân
+// loại NV cấy mô theo mức độ cần kiểm tra khi kho mô xử lý/nhận bàn giao.
+enum InspectionLane {
+  XANH
+  DO
+}
+
 enum RoomType {
   // Kho sản xuất — "Kho sáng" gồm 2 phòng: mẫu mẹ (kệ gắn mã cây + nhân viên) và ra rễ (không ràng buộc)
   PHONG_MAU_ME
   PHONG_RA_RE
+  // Phòng tối cá nhân của 1 NV cấy mô cụ thể — 1 Room/NV (assignedStaffId), không quản lý theo giàn kệ,
+  // tự động sinh khi NV cấy mô được gán địa điểm làm việc (xem PATCH /api/users/[id], lib/dark-room.ts).
   PHONG_TOI
+  // Phòng nhiễm — 1 phòng/kho sản xuất, không quản lý theo giàn kệ. Chưa gắn logic nghiệp vụ (placeholder).
+  PHONG_NHIEM
   // Kho thành phẩm
   PHONG_KHA_DUNG
   PHONG_THEO_DOI
@@ -101,6 +112,19 @@ enum AlertType {
   MEDIUM_HANDOVER_READY
   MOTHER_LOT_READY
   MEDIUM_ORDER_CREATED
+  CONTAMINATION_PROPOSAL
+}
+
+// Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
+enum ContaminationProposalType {
+  TRONG
+  HUY
+}
+
+enum ContaminationProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum AlertStatus {
@@ -141,11 +165,17 @@ model User {
   // Chỉ SUPER_ADMIN được sửa field này.
   workplaceWarehouseId String?
   workplaceWarehouse    Warehouse? @relation(fields: [workplaceWarehouseId], references: [id])
+  // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), do NV kho mô phụ trách cùng kho sản xuất cài
+  // đặt (xem /api/users/[id] PATCH). Null = chưa cài đặt.
+  inspectionLane InspectionLane?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
   plantingInstructions PlantingInstruction[] @relation("CreatedBy")
   assignedInstructions PlantingInstruction[] @relation("AssignedTo")
+  handedOverInstructions PlantingInstruction[] @relation("HandedOverBy")
+  contaminationProposalsRequested ContaminationProposal[] @relation("ContaminationProposalRequestedBy")
+  contaminationProposalsApproved  ContaminationProposal[] @relation("ContaminationProposalApprovedBy")
   dailyRecords         DailyRecord[]
   transfersFrom        Transfer[]            @relation("TransferFrom")
   transfersTo          Transfer[]            @relation("TransferTo")
@@ -153,9 +183,13 @@ model User {
   alerts               Alert[]
   roomAccess           RoomAccess[]
   assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
+  assignedRooms        Room[]                 @relation("RoomAssignedStaff")
   mediumOrdersConfirmed    MediumOrder[]      @relation("MediumOrderConfirmedBy")
   mediumOrderDaysConfirmed MediumOrderDay[]   @relation("MediumOrderDayConfirmedBy")
   checklistItems       ChecklistItem[]
+  lotInspections       LotInspection[]
+  inspectedLots        Lot[]                 @relation("LotInspectedBy")
+  materialIntakes      MaterialIntake[]
 
   @@map("users")
 }
@@ -277,6 +311,7 @@ model PlantType {
   lots                 Lot[]
   plantingInstructions PlantingInstruction[]
   shelves              Shelf[]
+  contaminationProposals ContaminationProposal[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -302,6 +337,39 @@ model MediumType {
 }
 
 // ============================================================
+// MATERIALS (vật tư) — mã vật tư do Admin cấp cao (SUPER_ADMIN) tạo, NV môi trường xem tồn + nhập vật tư.
+// ============================================================
+
+model Material {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  unit      String?
+  quantity  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  intakes MaterialIntake[]
+
+  @@map("materials")
+}
+
+// 1 lần NV môi trường nhập vật tư về kho — cộng dồn vào Material.quantity, giữ lịch sử để đối chiếu.
+model MaterialIntake {
+  id          String   @id @default(cuid())
+  materialId  String
+  material    Material @relation(fields: [materialId], references: [id])
+  quantity    Int
+  notes       String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("material_intakes")
+}
+
+// ============================================================
 // WAREHOUSES
 // ============================================================
 
@@ -320,6 +388,7 @@ model Warehouse {
   transfersIn  Transfer[] @relation("TransferTo")
   transfersOut Transfer[] @relation("TransferFrom")
   staff        User[]
+  contaminationProposals ContaminationProposal[]
 
   @@map("warehouses")
 }
@@ -339,6 +408,11 @@ model Room {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Chỉ có giá trị với Room type = PHONG_TOI (phòng tối cá nhân) — 1 NV cấy mô = 1 Room riêng, đóng
+  // vai trò tương đương assignedStaffId trên Shelf ở Phòng mẫu mẹ nhưng ở cấp Room (không qua kệ).
+  assignedStaffId String?
+  assignedStaff   User?    @relation("RoomAssignedStaff", fields: [assignedStaffId], references: [id])
 
   shelves           Shelf[]
   lots              Lot[]      @relation("LotDirectRoom")
@@ -430,6 +504,12 @@ model Lot {
   enteredAt       DateTime   @default(now())
   expectedMoveAt  DateTime?
 
+  // Kiểm tra nhiễm phòng tối cá nhân — null = Chưa kiểm tra, khác null = Đã kiểm tra (cùng convention
+  // với ContaminationRecord.confirmedAt). Bắt buộc trước khi được chọn bàn giao từ phòng tối.
+  inspectedAt     DateTime?
+  inspectedById   String?
+  inspectedBy     User?      @relation("LotInspectedBy", fields: [inspectedById], references: [id])
+
   parentLotId     String?
   parentLot       Lot?       @relation("LotChildren", fields: [parentLotId], references: [id])
   childLots       Lot[]      @relation("LotChildren")
@@ -445,6 +525,7 @@ model Lot {
   orderItems          OrderItem[]
   contaminations      ContaminationRecord[]
   instructionItems    PlantingInstructionItem[]
+  inspectionItems     LotInspectionItem[]
 
   @@unique([code, stageCode])
   @@map("lots")
@@ -487,6 +568,10 @@ model PlantingInstruction {
   // (kệ "đã chia" tự động điền sẵn NV mặc định lúc tạo chỉ định, nhưng CHƯA phải đã bàn giao thật).
   // null = "Chưa bàn giao" dù assignedToId có thể đã có sẵn.
   handedOverAt DateTime?
+  // NV kho mô đã thực hiện bàn giao — dùng để in đúng tên/vị trí "Bên giao" trên Phiếu chỉ định sản
+  // xuất (khác với người đang xem trang, có thể là KY_THUAT hoặc Admin).
+  handedOverById String?
+  handedOverBy   User?     @relation("HandedOverBy", fields: [handedOverById], references: [id])
 
   // NV cấy mô (assignedTo) bấm xác nhận sau khi nhận mẫu mẹ do KHO_MO xuất/bàn giao — dùng để
   // tính % hoàn thành việc "Bàn giao mẫu mẹ" trên dashboard của KHO_MO.
@@ -626,8 +711,9 @@ model DailyRecord {
   motherUsed    Int
   // "MM đã kiểm tra" / "MM mẹ nhiễm" trên bảng nhập liệu tuần của NV cấy mô — nhập tay mỗi ngày,
   // không suy ra được từ ContaminationRecord (model đó theo dõi nhiễm ở cấp Lot, khác cấp/khác lúc).
-  motherChecked      Int            @default(0)
-  motherContaminated Int            @default(0)
+  motherChecked         Int         @default(0)
+  motherContaminatedM03 Int         @default(0)
+  motherContaminatedM05 Int         @default(0)
   notes         String?
   createdAt     DateTime            @default(now())
 
@@ -664,6 +750,71 @@ model ContaminationRecord {
   createdAt     DateTime  @default(now())
 
   @@map("contamination_records")
+}
+
+// Kho mô đề xuất Trồng lại hoặc Hủy bỏ 1 phần số lượng đang nằm ở Phòng nhiễm (theo mã cây + quy cách)
+// của kho sản xuất mình đang làm việc — gửi Admin cấp cao/Admin duyệt. Số lượng bị trừ ngay khỏi Phòng
+// nhiễm lúc gửi đề xuất (xem POST /api/contamination-proposals); nếu bị từ chối sẽ hoàn lại.
+model ContaminationProposal {
+  id            String                       @id @default(cuid())
+  code          String                       @unique
+  // Mã của đề xuất gộp (nhiều dòng cây gửi cùng 1 lần bấm "Gửi đề xuất") — mặc định = code của dòng đầu
+  // tiên trong lần gửi đó (xem POST /api/contamination-proposals). NULL với các dòng tạo trước khi có
+  // tính năng gộp — khi hiển thị coi như 1 batch riêng lẻ (dùng chính code của nó).
+  batchCode     String?
+  type          ContaminationProposalType
+  warehouseId   String
+  warehouse     Warehouse                    @relation(fields: [warehouseId], references: [id])
+  plantTypeId   String
+  plantType     PlantType                    @relation(fields: [plantTypeId], references: [id])
+  stageCode     String
+  quantity      Int
+  status        ContaminationProposalStatus  @default(PENDING)
+  notes         String?
+  requestedById String
+  requestedBy   User                         @relation("ContaminationProposalRequestedBy", fields: [requestedById], references: [id])
+  approvedById  String?
+  approvedBy    User?                        @relation("ContaminationProposalApprovedBy", fields: [approvedById], references: [id])
+  approvedAt    DateTime?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  @@map("contamination_proposals")
+}
+
+// ============================================================
+// LOT INSPECTIONS (kiểm tra nhiễm phòng tối cá nhân)
+// ============================================================
+
+model LotInspection {
+  id                   String   @id @default(cuid())
+  // Lot.code của "lô sản phẩm" được kiểm tra — 1 phiếu gộp tất cả quy cách (M03/M05/T01/T05) cùng
+  // sinh ra trong 1 lần nhập số liệu cấy (xem generateProductLotCode).
+  code                 String
+  staffId              String
+  staff                User     @relation(fields: [staffId], references: [id])
+  totalQuantity        Int
+  contaminatedQuantity Int
+  passedQuantity       Int
+  createdAt            DateTime @default(now())
+
+  items                LotInspectionItem[]
+
+  @@map("lot_inspections")
+}
+
+model LotInspectionItem {
+  id                   String        @id @default(cuid())
+  inspectionId         String
+  inspection           LotInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  lotId                String
+  lot                  Lot           @relation(fields: [lotId], references: [id])
+  stageCode            String
+  initialQuantity      Int
+  contaminatedQuantity Int
+  passedQuantity       Int
+
+  @@map("lot_inspection_items")
 }
 
 // ============================================================

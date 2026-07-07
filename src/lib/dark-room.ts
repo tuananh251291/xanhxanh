@@ -1,23 +1,22 @@
 import { prisma } from "@/lib/prisma";
 
-// Phòng tối cá nhân của NV cấy mô — không quản lý theo giàn kệ như Phòng mẫu mẹ (không hàng/cột/sức
-// chứa/loại cây), chỉ cần 1 "kệ" đại diện duy nhất/NV để Lot có chỗ gắn (Lot.shelfId) ngay khi cấy
-// xong, bên trong Room "Phòng tối" đã seed sẵn theo từng kho sản xuất. Tái dùng assignedStaffId đúng
-// như cơ chế kệ "đã chia" ở Phòng mẫu mẹ.
-export async function getOrCreatePersonalDarkRoomShelf(staffId: string, warehouseId: string) {
-  const darkRoom = await prisma.room.findFirst({ where: { warehouseId, type: "PHONG_TOI" } });
-  if (!darkRoom) throw new Error("Kho sản xuất này chưa có Phòng tối — SUPER_ADMIN cần tạo phòng trước");
-
-  const existing = await prisma.shelf.findFirst({ where: { roomId: darkRoom.id, assignedStaffId: staffId } });
+// Phòng tối cá nhân của NV cấy mô — không quản lý theo giàn kệ như Phòng mẫu mẹ, mỗi NV có 1 Room
+// riêng (type PHONG_TOI, assignedStaffId = NV đó) để Lot gắn thẳng vào (Lot.roomId) ngay khi cấy xong.
+// Idempotent: gọi lại nhiều lần cho cùng 1 NV/kho chỉ trả về đúng 1 Room đã có.
+export async function getOrCreatePersonalDarkRoom(staffId: string, warehouseId: string) {
+  const existing = await prisma.room.findFirst({ where: { warehouseId, type: "PHONG_TOI", assignedStaffId: staffId } });
   if (existing) return existing;
 
   const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { code: true, name: true } });
-  return prisma.shelf.create({
+  const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { code: true } });
+  const code = `${warehouse?.code ?? warehouseId.slice(0, 6)}-PT-${staff?.code ?? staffId.slice(0, 6)}`;
+
+  return prisma.room.create({
     data: {
-      code: `${darkRoom.code}-${staff?.code ?? staffId.slice(0, 6)}`,
+      code,
       name: staff?.name ?? "Phòng tối cá nhân",
+      type: "PHONG_TOI",
       warehouseId,
-      roomId: darkRoom.id,
       assignedStaffId: staffId,
     },
   });

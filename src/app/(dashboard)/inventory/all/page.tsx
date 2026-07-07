@@ -13,6 +13,7 @@ const ROOM_TYPE_ICONS: Record<RoomType, typeof Sun> = {
   PHONG_MAU_ME: Sun,
   PHONG_RA_RE: Sprout,
   PHONG_TOI: Moon,
+  PHONG_NHIEM: AlertTriangle,
   PHONG_KHA_DUNG: PackageCheck,
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
@@ -23,6 +24,7 @@ const ROOM_TYPES_ORDER: RoomType[] = [
   "PHONG_MAU_ME",
   "PHONG_RA_RE",
   "PHONG_TOI",
+  "PHONG_NHIEM",
   "PHONG_KHA_DUNG",
   "PHONG_THEO_DOI",
   "PHONG_HAN_TUI",
@@ -93,10 +95,10 @@ export default async function AllInventoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Warehouse className="w-6 h-6 text-orange-500" /> Tồn kho tổng hợp
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Warehouse className="w-6 h-6 text-warning-foreground" /> Tồn kho tổng hợp
         </h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-text-secondary text-sm mt-1">
           Tất cả kho · {allLots.length} lô · MM: {totalMother.toLocaleString("vi-VN")} · TP: {totalFinished.toLocaleString("vi-VN")}
         </p>
       </div>
@@ -122,9 +124,9 @@ export default async function AllInventoryPage() {
                 <div className="space-y-1 text-sm">
                   {mother > 0 && <p>Mẫu mẹ: <strong>{mother.toLocaleString("vi-VN")}</strong></p>}
                   {finished > 0 && <p>Thành phẩm: <strong>{finished.toLocaleString("vi-VN")}</strong></p>}
-                  {lots.length === 0 && <p className="text-gray-400">Trống</p>}
+                  {lots.length === 0 && <p className="text-text-muted">Trống</p>}
                   {nearExpiryCount > 0 && (
-                    <p className="flex items-center gap-1 text-orange-600 font-medium pt-1">
+                    <p className="flex items-center gap-1 text-warning-foreground font-medium pt-1">
                       <AlertTriangle className="w-3.5 h-3.5" /> {nearExpiryCount} lô sắp/quá hạn
                     </p>
                   )}
@@ -154,19 +156,19 @@ export default async function AllInventoryPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-green-700">
-                    <th className="text-left py-2 font-medium text-white">Loại cây</th>
-                    <th className="text-right py-2 font-medium text-white">Mẫu mẹ</th>
-                    <th className="text-right py-2 font-medium text-white">Thành phẩm</th>
-                    <th className="text-right py-2 font-medium text-white">Tổng</th>
+                  <tr className="bg-primary-light">
+                    <th className="text-left py-2 text-primary-strong font-bold text-base">Loại cây</th>
+                    <th className="text-right py-2 text-primary-strong font-bold text-base">Mẫu mẹ</th>
+                    <th className="text-right py-2 text-primary-strong font-bold text-base">Thành phẩm</th>
+                    <th className="text-right py-2 text-primary-strong font-bold text-base">Tổng</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.values(byType).map((entry) => (
-                    <tr key={entry.name} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
+                    <tr key={entry.name} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                       <td className="py-2 font-medium">{entry.name}</td>
-                      <td className="py-2 text-right text-purple-700">{entry.mother > 0 ? entry.mother.toLocaleString("vi-VN") : "—"}</td>
-                      <td className="py-2 text-right text-green-700">{entry.finished > 0 ? entry.finished.toLocaleString("vi-VN") : "—"}</td>
+                      <td className="py-2 text-right text-violet-foreground">{entry.mother > 0 ? entry.mother.toLocaleString("vi-VN") : "—"}</td>
+                      <td className="py-2 text-right text-primary-strong">{entry.finished > 0 ? entry.finished.toLocaleString("vi-VN") : "—"}</td>
                       <td className="py-2 text-right font-semibold">{(entry.mother + entry.finished).toLocaleString("vi-VN")}</td>
                     </tr>
                   ))}
@@ -183,7 +185,7 @@ export default async function AllInventoryPage() {
         if (!rs?.length) return null;
         return (
           <div key={type} className="space-y-3">
-            <h2 className="text-base font-semibold text-gray-700">{ROOM_TYPE_LABELS[type]}</h2>
+            <h2 className="text-base font-semibold text-foreground">{ROOM_TYPE_LABELS[type]}</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {rs.map((r) => {
                 const lots = roomAllLots(r);
@@ -195,14 +197,14 @@ export default async function AllInventoryPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold">{r.warehouseName} — {r.name}</p>
-                          <p className="text-xs text-gray-400">
+                          <p className="text-xs text-text-muted">
                             {r.shelves.length > 0 ? `${r.shelves.length} kệ · ` : ""}{lots.length} lô
                           </p>
                         </div>
                         <div className="text-right text-sm space-y-0.5">
-                          {mother > 0 && <p className="text-purple-700">MM: {mother.toLocaleString("vi-VN")}</p>}
-                          {finished > 0 && <p className="text-green-700">TP: {finished.toLocaleString("vi-VN")}</p>}
-                          {lots.length === 0 && <p className="text-gray-400">Trống</p>}
+                          {mother > 0 && <p className="text-violet-foreground">MM: {mother.toLocaleString("vi-VN")}</p>}
+                          {finished > 0 && <p className="text-primary-strong">TP: {finished.toLocaleString("vi-VN")}</p>}
+                          {lots.length === 0 && <p className="text-text-muted">Trống</p>}
                         </div>
                       </div>
                     </CardContent>

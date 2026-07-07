@@ -16,34 +16,37 @@ export default async function PhongToiPage() {
   // bị giới hạn, làm việc được ở mọi kho.
   const workplaceWarehouseId = role !== "KY_THUAT" ? session?.user?.workplaceWarehouseId : null;
 
-  const rooms = await prisma.room.findMany({
+  // Phòng tối cá nhân giờ là 1 Room/NV cấy mô — liệt kê theo TỪNG kho sản xuất (không theo từng
+  // phòng riêng lẻ nữa), mỗi kho có thể có rất nhiều phòng tối cá nhân bên trong.
+  const warehouses = await prisma.warehouse.findMany({
     where: {
-      type: "PHONG_TOI",
+      type: "SAN_XUAT",
       isActive: true,
-      ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
+      ...(workplaceWarehouseId ? { id: workplaceWarehouseId } : {}),
+      rooms: { some: { type: "PHONG_TOI", isActive: true } },
     },
     include: {
-      warehouse: { select: { name: true, code: true } },
+      _count: { select: { rooms: { where: { type: "PHONG_TOI", isActive: true } } } },
     },
-    orderBy: { warehouse: { name: "asc" } },
+    orderBy: { name: "asc" },
   });
 
-  // Chỉ có đúng 1 phòng tối phù hợp (NV bị giới hạn 1 kho, hoặc hệ thống chỉ có 1 phòng tối) — vào
-  // thẳng trang chi tiết luôn, khỏi qua bước chọn dư thừa.
-  if (rooms.length === 1) redirect(`/inventory/phong-toi/${rooms[0].id}`);
+  // Chỉ có đúng 1 kho phù hợp (NV bị giới hạn 1 kho, hoặc hệ thống chỉ có 1 kho sản xuất) — vào thẳng
+  // trang danh sách phòng tối cá nhân của kho đó luôn, khỏi qua bước chọn dư thừa.
+  if (warehouses.length === 1) redirect(`/inventory/phong-toi/${warehouses[0].id}`);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Moon className="w-6 h-6 text-indigo-600" /> Phòng tối
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Moon className="w-6 h-6 text-primary-strong" /> Phòng tối
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Phòng tối của các kho sản xuất — mỗi nhân viên cấy mô có 1 phòng tối riêng</p>
+        <p className="text-text-secondary text-sm mt-1">Phòng tối của các kho sản xuất — mỗi nhân viên cấy mô có 1 phòng tối riêng</p>
       </div>
 
-      {rooms.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-gray-400">
-          <Moon className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+      {warehouses.length === 0 ? (
+        <Card><CardContent className="py-16 text-center text-text-muted">
+          <Moon className="w-10 h-10 mx-auto mb-3 text-text-muted" />
           <p>Chưa có phòng tối nào</p>
         </CardContent></Card>
       ) : (
@@ -52,20 +55,20 @@ export default async function PhongToiPage() {
             <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[420px]">
               <thead>
-                <tr className="bg-green-700">
-                  <th className="text-left px-4 py-3 font-medium text-white">Kho sản xuất</th>
-                  <th className="text-left px-4 py-3 font-medium text-white">Phòng tối</th>
-                  <th className="px-4 py-3"></th>
+                <tr className="bg-primary-light">
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Kho sản xuất</th>
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Số phòng tối cá nhân</th>
+                  <th className="px-4 py-3 font-bold text-base"></th>
                 </tr>
               </thead>
               <tbody>
-                {rooms.map((room) => (
-                  <tr key={room.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                    <td className="px-4 py-3 text-gray-700">{room.warehouse.name} <span className="text-xs text-gray-400">({room.warehouse.code})</span></td>
-                    <td className="px-4 py-3 font-medium">{room.name} <span className="text-xs text-gray-400 font-mono">({room.code})</span></td>
+                {warehouses.map((wh) => (
+                  <tr key={wh.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                    <td className="px-4 py-3 text-foreground">{wh.name} <span className="text-xs text-text-muted">({wh.code})</span></td>
+                    <td className="px-4 py-3 font-medium">{wh._count.rooms}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/inventory/phong-toi/${room.id}`}>
-                        <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700">
+                      <Link href={`/inventory/phong-toi/${wh.id}`}>
+                        <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
                           <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
                         </Button>
                       </Link>

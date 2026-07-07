@@ -11,14 +11,14 @@ type RankingEntry = { staffId: string; name: string; total: number };
 type LeaderboardData = { finished: RankingEntry[]; mother: RankingEntry[] };
 
 const RANK_BADGE_STYLES = [
-  "bg-amber-400 text-amber-900",
-  "bg-gray-300 text-gray-700",
-  "bg-orange-400 text-orange-900",
+  "bg-achievement text-achievement-foreground",
+  "bg-muted text-foreground",
+  "bg-warning-light text-warning-foreground",
 ];
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank > 3) {
-    return <span className="w-6 h-6 shrink-0 flex items-center justify-center text-xs text-gray-400">{rank}</span>;
+    return <span className="w-6 h-6 shrink-0 flex items-center justify-center text-xs text-text-muted">{rank}</span>;
   }
   return (
     <span className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${RANK_BADGE_STYLES[rank - 1]}`}>
@@ -37,19 +37,19 @@ function RankingTable({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-        <Icon className="w-4 h-4 text-green-600" /> {title}
+      <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+        <Icon className="w-4 h-4 text-primary-strong" /> {title}
       </p>
       {entries.length === 0 ? (
-        <p className="text-xs text-gray-400">Chưa có dữ liệu tuần này</p>
+        <p className="text-xs text-text-muted">Chưa có dữ liệu tuần này</p>
       ) : (
         <ScrollArea className="h-72 pr-2">
           <div className="space-y-1">
             {entries.map((entry, idx) => (
-              <div key={entry.staffId} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-50">
+              <div key={entry.staffId} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted">
                 <RankBadge rank={idx + 1} />
-                <span className="flex-1 text-sm text-gray-800 truncate">{entry.name}</span>
-                <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+                <span className="flex-1 text-sm text-foreground truncate">{entry.name}</span>
+                <span className="text-sm font-medium text-foreground whitespace-nowrap">
                   {entry.total.toLocaleString("vi-VN")} {unit}
                 </span>
               </div>
@@ -78,25 +78,25 @@ export default function ProductivityLeaderboard() {
   return (
     <Dialog onOpenChange={handleOpenChange}>
       <DialogTrigger
-        className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors w-full text-left bg-white"
+        className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors w-full text-left bg-white"
       >
-        <div className="p-2.5 rounded-xl shrink-0 bg-amber-100 text-amber-500">
+        <div className="p-2.5 rounded-xl shrink-0 bg-warning-light text-warning-foreground">
           <Trophy className="w-5 h-5" />
         </div>
-        <span className="text-sm font-medium text-gray-900">Bảng thi đua năng suất tuần</span>
+        <span className="text-sm font-medium text-foreground">Bảng thi đua năng suất tuần</span>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-500" /> Bảng thi đua năng suất tuần này
+            <Trophy className="w-5 h-5 text-warning-foreground" /> Bảng thi đua năng suất tuần này
           </DialogTitle>
         </DialogHeader>
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <Loader2 className="w-6 h-6 animate-spin text-text-muted" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-gray-100 gap-4 sm:gap-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-border gap-4 sm:gap-0">
             <div className="sm:pr-4">
               <RankingTable title="Cây ra rễ nhiều nhất" icon={Leaf} entries={data?.finished ?? []} unit="cây" />
             </div>

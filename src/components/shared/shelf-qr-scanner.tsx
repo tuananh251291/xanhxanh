@@ -72,18 +72,18 @@ export default function ShelfQrScanner({ open, onOpenChange, onScanCode }: Shelf
         </DialogHeader>
         <div className="space-y-2">
           {error ? (
-            <p className="text-sm text-red-600 py-8 text-center">{error}</p>
+            <p className="text-sm text-destructive py-8 text-center">{error}</p>
           ) : (
             <div className="relative">
               {starting && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-50 rounded-lg">
-                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                <div className="absolute inset-0 flex items-center justify-center bg-background rounded-lg">
+                  <Loader2 className="w-6 h-6 animate-spin text-text-muted" />
                 </div>
               )}
               <div id={SCAN_ELEMENT_ID} className="rounded-lg overflow-hidden" />
             </div>
           )}
-          <p className="text-xs text-gray-400 text-center">Đưa QR code của giàn kệ vào khung hình — có thể quét liên tiếp nhiều kệ</p>
+          <p className="text-xs text-text-muted text-center">Đưa QR code của giàn kệ vào khung hình — có thể quét liên tiếp nhiều kệ</p>
         </div>
       </DialogContent>
     </Dialog>

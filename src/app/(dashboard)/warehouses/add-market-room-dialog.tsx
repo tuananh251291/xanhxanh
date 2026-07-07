@@ -72,7 +72,7 @@ export default function AddMarketRoomDialog({ warehouseId, warehouseCode }: { wa
         </div>
         <div className="flex gap-2 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-          <Button type="button" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading} onClick={onSubmit}>
+          <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading} onClick={onSubmit}>
             {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Tạo phòng
           </Button>

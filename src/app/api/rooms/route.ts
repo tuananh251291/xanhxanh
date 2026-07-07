@@ -5,7 +5,7 @@ import { isAdminRole } from "@/types";
 import { z } from "zod";
 import type { RoomType } from "@prisma/client";
 
-const ROOM_TYPES = ["PHONG_MAU_ME", "PHONG_RA_RE", "PHONG_TOI", "PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
+const ROOM_TYPES = ["PHONG_MAU_ME", "PHONG_RA_RE", "PHONG_TOI", "PHONG_NHIEM", "PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
 
 const createSchema = z.object({
   code: z.string().min(2),

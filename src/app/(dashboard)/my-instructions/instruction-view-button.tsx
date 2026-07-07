@@ -2,15 +2,30 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Loader2, PackageCheck } from "lucide-react";
+import { Loader2, Eye, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 
-export default function ConfirmMotherReceivedButton({ instructionId }: { instructionId: string }) {
+export default function InstructionViewButton({
+  instructionId,
+  needsConfirm,
+}: {
+  instructionId: string;
+  needsConfirm: boolean;
+}) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const confirm = async () => {
+  if (!needsConfirm) {
+    return (
+      <Link href={`/instructions/${instructionId}`}>
+        <Button variant="outline" size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
+      </Link>
+    );
+  }
+
+  const confirmAndView = async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/instructions/${instructionId}`, {
@@ -20,14 +35,16 @@ export default function ConfirmMotherReceivedButton({ instructionId }: { instruc
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã xác nhận nhận mẫu mẹ");
-      router.refresh();
-    } finally { setLoading(false); }
+      router.push(`/instructions/${instructionId}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={loading} onClick={confirm}>
+    <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={loading} onClick={confirmAndView}>
       {loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-1" />}
-      Xác nhận đã nhận mẫu mẹ
+      Xem và Xác nhận bàn giao
     </Button>
   );
 }

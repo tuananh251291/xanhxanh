@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
+import { generateUserCode } from "@/lib/codes";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -47,8 +48,7 @@ export async function POST(req: NextRequest) {
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  const userCount = await prisma.user.count();
-  const code = `NV${String(userCount + 1).padStart(3, "0")}`;
+  const code = await generateUserCode(role);
   const user = await prisma.user.create({
     data: { code, name, email, password: hashed, role, status: "APPROVED" },
     select: { id: true, code: true, name: true, email: true, role: true },

@@ -59,16 +59,16 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-bg to-primary-light p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
-            <div className="bg-green-600 text-white p-3 rounded-xl">
+            <div className="bg-primary text-primary-foreground p-3 rounded-xl">
               <Leaf className="w-8 h-8" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-800">Đăng ký tài khoản</CardTitle>
-          <CardDescription className="text-gray-500">
+          <CardTitle className="text-2xl font-bold text-foreground">Đăng ký tài khoản</CardTitle>
+          <CardDescription className="text-text-secondary">
             Tài khoản sẽ cần Admin duyệt trước khi sử dụng được
           </CardDescription>
         </CardHeader>
@@ -77,38 +77,38 @@ export default function RegisterPage() {
             <div className="space-y-1">
               <Label htmlFor="name">Họ tên</Label>
               <Input id="name" placeholder="Nguyễn Văn A" {...register("name")} />
-              {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
             </div>
             <div className="space-y-1">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" placeholder="email@gmail.com" {...register("email")} />
-              {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
+              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
             <div className="space-y-1">
               <Label htmlFor="password">Mật khẩu</Label>
               <Input id="password" type="password" placeholder="••••••••" {...register("password")} />
-              {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
+              {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
             </div>
             <div className="space-y-1">
               <Label htmlFor="confirmPassword">Xác nhận mật khẩu</Label>
               <Input id="confirmPassword" type="password" placeholder="••••••••" {...register("confirmPassword")} />
               {errors.confirmPassword && (
-                <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
+                <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
               )}
             </div>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-md">
+              <div className="bg-danger-light border border-danger-light text-destructive text-sm px-3 py-2 rounded-md">
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="w-full bg-primary hover:bg-primary-hover" disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Đăng ký
             </Button>
           </form>
-          <p className="text-center text-sm text-gray-500 mt-4">
+          <p className="text-center text-sm text-text-secondary mt-4">
             Đã có tài khoản?{" "}
-            <Link href="/login" className="text-green-600 hover:underline font-medium">
+            <Link href="/login" className="text-primary-strong hover:underline font-medium">
               Đăng nhập
             </Link>
           </p>

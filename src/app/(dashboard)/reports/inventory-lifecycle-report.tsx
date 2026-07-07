@@ -63,11 +63,11 @@ export default async function InventoryLifecycleReport() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Tuổi trung bình lô hàng theo loại phòng</CardTitle>
-          <p className="text-sm text-gray-500">Số ngày trung bình lô đang lưu tại phòng tính từ lúc nhập</p>
+          <p className="text-sm text-text-secondary">Số ngày trung bình lô đang lưu tại phòng tính từ lúc nhập</p>
         </CardHeader>
         <CardContent>
           {ageData.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">Chưa có dữ liệu</p>
+            <p className="text-sm text-text-muted text-center py-6">Chưa có dữ liệu</p>
           ) : (
             <ReportBarChart
               data={ageData}
@@ -82,19 +82,19 @@ export default async function InventoryLifecycleReport() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Lô sắp/quá hạn chuyển giai đoạn</CardTitle>
-          <p className="text-sm text-gray-500">Còn ≤3 ngày hoặc đã quá hạn dự kiến chuyển giai đoạn</p>
+          <p className="text-sm text-text-secondary">Còn ≤3 ngày hoặc đã quá hạn dự kiến chuyển giai đoạn</p>
         </CardHeader>
         <CardContent className="p-0">
           {nearExpiryLots.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">Không có lô nào sắp/quá hạn</p>
+            <p className="text-sm text-text-muted text-center py-6">Không có lô nào sắp/quá hạn</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-green-700">
-                    <th className="text-left px-3 py-2 font-medium text-white">Mã lô</th>
-                    <th className="text-left px-3 py-2 font-medium text-white">Loại cây</th>
-                    <th className="text-right px-3 py-2 font-medium text-white">Trạng thái</th>
+                  <tr className="bg-primary-light">
+                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã lô</th>
+                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Loại cây</th>
+                    <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -102,11 +102,11 @@ export default async function InventoryLifecycleReport() {
                     const daysLeft = lot.expectedMoveAt ? differenceInCalendarDays(lot.expectedMoveAt, new Date()) : null;
                     const overdue = daysLeft !== null && daysLeft < 0;
                     return (
-                      <tr key={lot.code} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
+                      <tr key={lot.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                         <td className="px-3 py-2 font-mono">{lot.code}</td>
                         <td className="px-3 py-2">{lot.plantType.name}</td>
                         <td className="px-3 py-2 text-right">
-                          <Badge className={overdue ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}>
+                          <Badge className={overdue ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
                             {overdue ? `Quá hạn ${Math.abs(daysLeft!)} ngày` : `Còn ${daysLeft} ngày`}
                           </Badge>
                         </td>
@@ -123,7 +123,7 @@ export default async function InventoryLifecycleReport() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Lô nhập kho theo tuần</CardTitle>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-secondary">
             Số lô mới nhập kho mỗi tuần — <strong>không phải</strong> tồn kho tại từng thời điểm (hệ thống chưa lưu lịch sử tồn kho theo thời gian)
           </p>
         </CardHeader>

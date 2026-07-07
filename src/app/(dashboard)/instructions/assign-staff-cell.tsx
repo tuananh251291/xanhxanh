@@ -43,7 +43,7 @@ export default function AssignStaffCell({ instructionId, staffList }: { instruct
           ))}
         </SelectContent>
       </Select>
-      <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700" disabled={loading} onClick={assign}>
+      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={loading} onClick={assign}>
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
         Bàn giao
       </Button>

@@ -75,10 +75,10 @@ export default function ReportLineChart({
       <div style={{ display: showTable ? "block" : "none" }} className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left px-3 py-2 font-medium text-gray-600">{xKey}</th>
+            <tr className="border-b bg-background">
+              <th className="text-left px-3 py-2 text-text-secondary font-bold text-base">{xKey}</th>
               {series.map((s) => (
-                <th key={s.key} className="text-right px-3 py-2 font-medium text-gray-600">{s.label}</th>
+                <th key={s.key} className="text-right px-3 py-2 font-medium text-text-secondary">{s.label}</th>
               ))}
             </tr>
           </thead>

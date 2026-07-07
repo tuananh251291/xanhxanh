@@ -101,11 +101,11 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <PackageOpen className="w-6 h-6 text-indigo-600" />
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <PackageOpen className="w-6 h-6 text-primary-strong" />
           {isKhoThanhPham ? "Luân chuyển giữa các phòng" : "Bàn giao mẫu mẹ"}
         </h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-text-secondary text-sm mt-1">
           {isKhoThanhPham
             ? "Chuyển hàng hóa tự do giữa các phòng trong kho thành phẩm"
             : "Chuyển mẫu mẹ từ kho sáng sang phòng tối cho NV cấy"}
@@ -117,7 +117,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
         <CardContent className="space-y-3">
           {isKhoThanhPham && (
             <div className="space-y-1">
-              <Label>Phòng nguồn <span className="text-red-500">*</span></Label>
+              <Label>Phòng nguồn <span className="text-destructive">*</span></Label>
               <Select
                 items={sourceRooms.map((r) => ({ value: r.id, label: roomLabel(r) }))}
                 value={fromRoomId || null}
@@ -133,7 +133,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
             </div>
           )}
           <div className="space-y-1">
-            <Label>Phòng đích <span className="text-red-500">*</span></Label>
+            <Label>Phòng đích <span className="text-destructive">*</span></Label>
             <Select
               items={destRooms.filter((r) => r.id !== fromRoomId).map((r) => ({ value: r.id, label: roomLabel(r) }))}
               value={toRoomId || null}
@@ -182,7 +182,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
         </CardHeader>
         <CardContent className="space-y-3">
           {selectedItems.length === 0 ? (
-            <p className="text-sm text-gray-400">Chưa chọn lô nào</p>
+            <p className="text-sm text-text-muted">Chưa chọn lô nào</p>
           ) : (
             selectedItems.map((item, idx) => {
               const lot = getLot(item.lotId);
@@ -217,9 +217,9 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
                     value={item.quantity || ""}
                     onChange={(e) => setSelectedItems((prev) => prev.map((it, i) => i === idx ? { ...it, quantity: parseInt(e.target.value) || 0 } : it))}
                   />
-                  {lot && <span className="text-xs text-gray-400">/{lot.quantity}</span>}
+                  {lot && <span className="text-xs text-text-muted">/{lot.quantity}</span>}
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(idx)}>
-                    <Trash2 className="w-4 h-4 text-red-400" />
+                    <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </div>
               );
@@ -229,7 +229,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
       </Card>
 
       <Button
-        className="w-full bg-indigo-600 hover:bg-indigo-700"
+        className="w-full bg-primary hover:bg-primary-hover"
         onClick={submit}
         disabled={loading || selectedItems.length === 0}
       >

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, ScanLine, Loader2, Send, X, PlusCircle, Plus, ClipboardList, Search } from "lucide-react";
+import { Package, PackagePlus, ScanLine, Loader2, Send, X, PlusCircle, Plus, ClipboardList, Search } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -23,7 +23,7 @@ type PickableShelf = { id: string; code: string; name: string; warehouseName: st
 
 type CreatedTransfer = { id: string; code: string; transferredAt: string; shelves: ScannedShelf[] };
 
-const PENDING_LABEL = { label: "Đã bàn giao / Chưa xác nhận", color: "bg-yellow-100 text-yellow-700" };
+const PENDING_LABEL = { label: "Đã bàn giao / Chưa xác nhận", color: "bg-warning-light text-warning-foreground" };
 
 // crypto.randomUUID() chỉ chạy được trong secure context (HTTPS hoặc localhost) — NV kho thường mở
 // trang này qua IP LAN bằng HTTP thường (điện thoại), nên cần fallback không phụ thuộc secure context.
@@ -35,7 +35,13 @@ const newRowId = () =>
 
 const newRow = (): Row => ({ rowId: newRowId(), shelf: null });
 
-export default function TransferFinishedForm({ khaDungRoomId, staffName }: { khaDungRoomId: string; staffName: string }) {
+export default function TransferFinishedForm({
+  khaDungRoomId, staffName, workplaceWarehouseId,
+}: {
+  khaDungRoomId: string;
+  staffName: string;
+  workplaceWarehouseId: string | null;
+}) {
   const [rows, setRows] = useState<Row[]>([newRow()]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanningRowId, setScanningRowId] = useState<string | null>(null);
@@ -44,7 +50,10 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
   const [pickableShelves, setPickableShelves] = useState<PickableShelf[]>([]);
 
   useEffect(() => {
-    fetch("/api/rooms?type=PHONG_RA_RE")
+    // NV kho mô chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc) — chỉ cho chọn giàn kệ
+    // Phòng ra rễ thuộc đúng kho đó, không hiện kệ của kho sản xuất khác.
+    const qs = workplaceWarehouseId ? `&warehouseId=${workplaceWarehouseId}` : "";
+    fetch(`/api/rooms?type=PHONG_RA_RE${qs}`)
       .then((r) => r.json())
       .then((rooms: { name: string; warehouse: { name: string }; shelves: { id: string; code: string; name: string }[] }[]) => {
         if (!Array.isArray(rooms)) return;
@@ -54,7 +63,7 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
           )
         );
       });
-  }, []);
+  }, [workplaceWarehouseId]);
 
   const filledShelves = useMemo(() => rows.filter((r) => r.shelf).map((r) => r.shelf!), [rows]);
 
@@ -154,13 +163,13 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
           <div className="flex items-start justify-between mb-4">
             <div>
               <h1 className="text-xl font-bold">PHIẾU BÀN GIAO THÀNH PHẨM</h1>
-              <p className="font-mono text-blue-700 mt-1">{createdTransfer.code}</p>
+              <p className="font-mono text-info-foreground mt-1">{createdTransfer.code}</p>
             </div>
             <Badge className={PENDING_LABEL.color}>{PENDING_LABEL.label}</Badge>
           </div>
-          <p className="text-sm text-gray-600">Người bàn giao: <strong>{staffName}</strong></p>
-          <p className="text-sm text-gray-600">Thời gian: {format(new Date(createdTransfer.transferredAt), "dd/MM/yyyy HH:mm", { locale: vi })}</p>
-          <p className="text-sm text-gray-600 mb-3">
+          <p className="text-sm text-text-secondary">Người bàn giao: <strong>{staffName}</strong></p>
+          <p className="text-sm text-text-secondary">Thời gian: {format(new Date(createdTransfer.transferredAt), "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+          <p className="text-sm text-text-secondary mb-3">
             Giàn kệ: {createdTransfer.shelves.map((s) => s.code).join(", ")}
           </p>
 
@@ -168,10 +177,10 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
           <table className="w-full border-collapse text-sm min-w-[420px]">
             <thead>
               <tr>
-                <th className="border px-3 py-2 text-left">Mã cây</th>
-                <th className="border px-3 py-2 text-left">Loại cây</th>
-                <th className="border px-3 py-2 text-right">T01</th>
-                <th className="border px-3 py-2 text-right">T05</th>
+                <th className="border px-3 py-2 text-left font-bold text-base">Mã cây</th>
+                <th className="border px-3 py-2 text-left font-bold text-base">Loại cây</th>
+                <th className="border px-3 py-2 text-right font-bold text-base">T01</th>
+                <th className="border px-3 py-2 text-right font-bold text-base">T05</th>
               </tr>
             </thead>
             <tbody>
@@ -190,13 +199,13 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
           <div className="grid grid-cols-1 gap-6 mt-10 pt-4 text-sm text-center sm:grid-cols-2">
             <div>
               <p className="font-medium">NGƯỜI GIAO (KHO MÔ)</p>
-              <p className="text-xs text-gray-500 italic">(Ký và ghi rõ họ tên)</p>
+              <p className="text-xs text-text-secondary italic">(Ký và ghi rõ họ tên)</p>
               <div className="h-20" />
               <p className="font-medium">{staffName}</p>
             </div>
             <div>
               <p className="font-medium">NGƯỜI NHẬN (KHO THÀNH PHẨM)</p>
-              <p className="text-xs text-gray-500 italic">(Ký và ghi rõ họ tên)</p>
+              <p className="text-xs text-text-secondary italic">(Ký và ghi rõ họ tên)</p>
               <div className="h-20" />
             </div>
           </div>
@@ -215,19 +224,19 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Package className="w-6 h-6 text-green-600" /> Bàn giao thành phẩm
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Package className="w-6 h-6 text-primary-strong" /> Bàn giao thành phẩm
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Quét QR hoặc chọn giàn kệ trong Phòng ra rễ để tổng hợp thành phẩm bàn giao cho Kho thành phẩm</p>
+        <p className="text-text-secondary text-sm mt-1">Quét QR hoặc chọn giàn kệ trong Phòng ra rễ để tổng hợp thành phẩm bàn giao cho Kho thành phẩm</p>
       </div>
 
       <Link href="/transfers/finished/list">
-        <Card className="hover:bg-gray-50 transition-colors cursor-pointer">
+        <Card className="hover:bg-muted transition-colors cursor-pointer">
           <CardContent className="py-3 flex items-center justify-between">
-            <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <ClipboardList className="w-4 h-4 text-gray-400" /> Danh sách phiếu bàn giao
+            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <ClipboardList className="w-4 h-4 text-text-muted" /> Danh sách phiếu đã bàn giao
             </span>
-            <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700 pointer-events-none">
+            <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover pointer-events-none">
               <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
             </Button>
           </CardContent>
@@ -237,92 +246,98 @@ export default function TransferFinishedForm({ khaDungRoomId, staffName }: { kha
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Giàn kệ đã quét ({filledShelves.length})</CardTitle>
+            <div className="flex items-center gap-2">
+              <PackagePlus className="w-5 h-5 text-primary-strong" />
+              <div>
+                <CardTitle className="text-base">Tạo phiếu bàn giao mới</CardTitle>
+                <p className="text-xs text-text-muted mt-0.5">Giàn kệ đã quét ({filledShelves.length})</p>
+              </div>
+            </div>
             <Button type="button" variant="outline" size="sm" onClick={addRow}>
               <Plus className="w-4 h-4 mr-1" /> Thêm hàng
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-2">
-          {rows.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Bấm &quot;Thêm hàng&quot; để bắt đầu</p>
-          ) : (
-            rows.map((row) => (
-              <div key={row.rowId} className="flex items-center gap-2 border rounded-lg px-3 py-2">
-                {row.shelf ? (
-                  <>
-                    <div className="flex-1">
-                      <span className="font-mono font-medium text-blue-700">{row.shelf.code}</span>
-                      <span className="text-gray-500 text-sm ml-2">{row.shelf.name}</span>
-                      <span className="text-xs text-gray-400 ml-2">{row.shelf.lots.length} lô</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Select
-                      items={pickableShelves
-                        .filter((s) => !filledShelves.some((sc) => sc.id === s.id))
-                        .map((s) => ({ value: s.id, label: `${s.code} — ${s.warehouseName} · ${s.roomName}` }))}
-                      value=""
-                      onValueChange={(v) => pickShelfForRow(row.rowId, v as string)}
-                    >
-                      <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn giàn kệ..." /></SelectTrigger>
-                      <SelectContent>
-                        {pickableShelves
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {rows.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-4">Bấm &quot;Thêm hàng&quot; để bắt đầu</p>
+            ) : (
+              rows.map((row) => (
+                <div key={row.rowId} className="flex items-center gap-2 border rounded-lg px-3 py-2">
+                  {row.shelf ? (
+                    <>
+                      <div className="flex-1">
+                        <span className="font-mono font-medium text-info-foreground">{row.shelf.code}</span>
+                        <span className="text-text-secondary text-sm ml-2">{row.shelf.name}</span>
+                        <span className="text-xs text-text-muted ml-2">{row.shelf.lots.length} lô</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Select
+                        items={pickableShelves
                           .filter((s) => !filledShelves.some((sc) => sc.id === s.id))
-                          .map((s) => (
-                            <SelectItem key={s.id} value={s.id}>{s.code} — {s.warehouseName} · {s.roomName}</SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <Button type="button" variant="outline" size="sm" onClick={() => openScannerForRow(row.rowId)}>
-                      <ScanLine className="w-4 h-4 mr-1.5" /> Quét QR
-                    </Button>
-                  </>
-                )}
-                <Button variant="ghost" size="sm" onClick={() => removeRow(row.rowId)}>
-                  <X className="w-4 h-4 text-red-400" />
-                </Button>
+                          .map((s) => ({ value: s.id, label: `${s.code} — ${s.warehouseName} · ${s.roomName}` }))}
+                        value=""
+                        onValueChange={(v) => pickShelfForRow(row.rowId, v as string)}
+                      >
+                        <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn giàn kệ..." /></SelectTrigger>
+                        <SelectContent>
+                          {pickableShelves
+                            .filter((s) => !filledShelves.some((sc) => sc.id === s.id))
+                            .map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.code} — {s.warehouseName} · {s.roomName}</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" size="sm" onClick={() => openScannerForRow(row.rowId)}>
+                        <ScanLine className="w-4 h-4 mr-1.5" /> Quét QR
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => removeRow(row.rowId)}>
+                    <X className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {aggregated.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Tổng hợp theo loại cây</p>
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Mã cây</th>
+                      <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Loại cây</th>
+                      <th className="text-right px-4 py-2 text-primary-strong font-bold text-base">T01</th>
+                      <th className="text-right px-4 py-2 text-primary-strong font-bold text-base">T05</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aggregated.map((row) => (
+                      <tr key={row.code} className="border-b last:border-0 even:bg-primary-light">
+                        <td className="px-4 py-2 font-mono">{row.code}</td>
+                        <td className="px-4 py-2">{row.name}</td>
+                        <td className="px-4 py-2 text-right font-medium">{row.t01.toLocaleString("vi-VN")}</td>
+                        <td className="px-4 py-2 text-right font-medium">{row.t05.toLocaleString("vi-VN")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))
+            </div>
           )}
+
+          <Button className="w-full bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting || allLots.length === 0}>
+            {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+            Bàn giao
+          </Button>
         </CardContent>
       </Card>
-
-      {aggregated.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Tổng hợp theo loại cây</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-green-700">
-                    <th className="text-left px-4 py-2 font-medium text-white">Mã cây</th>
-                    <th className="text-left px-4 py-2 font-medium text-white">Loại cây</th>
-                    <th className="text-right px-4 py-2 font-medium text-white">T01</th>
-                    <th className="text-right px-4 py-2 font-medium text-white">T05</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aggregated.map((row) => (
-                    <tr key={row.code} className="border-b last:border-0 even:bg-green-50">
-                      <td className="px-4 py-2 font-mono">{row.code}</td>
-                      <td className="px-4 py-2">{row.name}</td>
-                      <td className="px-4 py-2 text-right font-medium">{row.t01.toLocaleString("vi-VN")}</td>
-                      <td className="px-4 py-2 text-right font-medium">{row.t05.toLocaleString("vi-VN")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Button className="w-full bg-green-600 hover:bg-green-700" onClick={submit} disabled={submitting || allLots.length === 0}>
-        {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-        Bàn giao
-      </Button>
 
       <ShelfQrScanner open={scannerOpen} onOpenChange={setScannerOpen} onScanCode={handleScan} />
     </div>

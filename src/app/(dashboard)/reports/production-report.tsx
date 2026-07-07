@@ -32,7 +32,7 @@ export default async function ProductionReport() {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Sản lượng theo thời gian ({HISTORY_WEEKS} tuần gần nhất)</CardTitle>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-secondary">
           Tổng mẫu mẹ: <strong>{totalMother.toLocaleString("vi-VN")}</strong> · Tổng thành phẩm: <strong>{totalFinished.toLocaleString("vi-VN")}</strong>
         </p>
       </CardHeader>

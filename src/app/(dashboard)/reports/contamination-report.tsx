@@ -81,7 +81,7 @@ export default async function ContaminationReport() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Xu hướng tỉ lệ nhiễm toàn hệ thống ({HISTORY_WEEKS} tuần gần nhất)</CardTitle>
-          <p className="text-sm text-gray-500">Ngưỡng cảnh báo hiện tại: {ALERT_THRESHOLD_PCT}%</p>
+          <p className="text-sm text-text-secondary">Ngưỡng cảnh báo hiện tại: {ALERT_THRESHOLD_PCT}%</p>
         </CardHeader>
         <CardContent>
           <ReportLineChart
@@ -98,7 +98,7 @@ export default async function ContaminationReport() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Tỉ lệ nhiễm theo nhân viên cấy mô</CardTitle>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-text-secondary">
             <span className="inline-flex items-center gap-1 mr-3"><span className="w-2 h-2 rounded-full inline-block" style={{ background: "#0ca30c" }} /> Tốt (&lt;10%)</span>
             <span className="inline-flex items-center gap-1 mr-3"><span className="w-2 h-2 rounded-full inline-block" style={{ background: "#fab219" }} /> Cảnh báo (10-20%)</span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ background: "#d03b3b" }} /> Vượt ngưỡng (&gt;20%)</span>
@@ -106,7 +106,7 @@ export default async function ContaminationReport() {
         </CardHeader>
         <CardContent>
           {staffData.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">Chưa có dữ liệu</p>
+            <p className="text-sm text-text-muted text-center py-6">Chưa có dữ liệu</p>
           ) : (
             <ReportBarChart
               data={staffData}

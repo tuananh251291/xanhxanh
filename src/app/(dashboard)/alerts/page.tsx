@@ -25,9 +25,9 @@ type Alert = {
 };
 
 const STATUS_COLORS: Record<Alert["status"], string> = {
-  UNREAD: "bg-red-100 text-red-700",
-  READ: "bg-gray-100 text-gray-600",
-  RESOLVED: "bg-green-100 text-green-700",
+  UNREAD: "bg-danger-light text-destructive",
+  READ: "bg-muted text-text-secondary",
+  RESOLVED: "bg-primary-light text-primary-strong",
 };
 
 const FILTERS = [
@@ -73,10 +73,10 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Bell className="w-6 h-6 text-amber-500" /> Thông báo
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Bell className="w-6 h-6 text-warning-foreground" /> Thông báo
           </h1>
-          <p className="text-gray-500 text-sm mt-1">{unreadCount} chưa đọc</p>
+          <p className="text-text-secondary text-sm mt-1">{unreadCount} chưa đọc</p>
         </div>
         <div className="flex gap-1">
           {FILTERS.map((f) => (
@@ -93,10 +93,10 @@ export default function AlertsPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
       ) : alerts.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-gray-400">
-          <Bell className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+        <Card><CardContent className="py-16 text-center text-text-muted">
+          <Bell className="w-10 h-10 mx-auto mb-3 text-text-muted" />
           <p>Không có thông báo nào</p>
         </CardContent></Card>
       ) : (
@@ -110,12 +110,12 @@ export default function AlertsPage() {
                       <Badge className={STATUS_COLORS[a.status]}>{ALERT_STATUS_LABELS[a.status]}</Badge>
                       <Badge variant="secondary" className="text-xs">{ALERT_TYPE_LABELS[a.type] ?? a.type}</Badge>
                     </div>
-                    <p className="text-sm font-medium text-gray-800">{a.title}</p>
-                    <p className="text-sm text-gray-500">{a.message}</p>
+                    <p className="text-sm font-medium text-foreground">{a.title}</p>
+                    <p className="text-sm text-text-secondary">{a.message}</p>
                     {a.cause && (
-                      <p className="text-xs font-medium text-indigo-700">Nguyên nhân: {DEVIATION_CAUSE_LABELS[a.cause]}</p>
+                      <p className="text-xs font-medium text-primary-strong">Nguyên nhân: {DEVIATION_CAUSE_LABELS[a.cause]}</p>
                     )}
-                    <p className="text-xs text-gray-400">{formatDistanceToNow(new Date(a.createdAt), { addSuffix: true, locale: vi })}</p>
+                    <p className="text-xs text-text-muted">{formatDistanceToNow(new Date(a.createdAt), { addSuffix: true, locale: vi })}</p>
                   </div>
                   <div className="flex gap-1 shrink-0">
                     {a.status === "UNREAD" && (
@@ -124,7 +124,7 @@ export default function AlertsPage() {
                       </Button>
                     )}
                     {a.status !== "RESOLVED" && a.type !== "OUTPUT_DEVIATION" && (
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(a.id, "RESOLVED")} disabled={processing === a.id}>
+                      <Button size="sm" className="bg-primary hover:bg-primary-hover" onClick={() => updateStatus(a.id, "RESOLVED")} disabled={processing === a.id}>
                         {processing === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
                       </Button>
                     )}
@@ -148,7 +148,7 @@ export default function AlertsPage() {
                     </Select>
                     <Button
                       size="sm"
-                      className="bg-green-600 hover:bg-green-700"
+                      className="bg-primary hover:bg-primary-hover"
                       disabled={!causeSelection[a.id] || processing === a.id}
                       onClick={() => updateStatus(a.id, "RESOLVED", causeSelection[a.id])}
                     >

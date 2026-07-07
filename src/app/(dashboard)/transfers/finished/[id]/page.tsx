@@ -12,9 +12,9 @@ import { PrintButton } from "@/components/shared/print-button";
 import type { TransferStatus } from "@prisma/client";
 
 const STATUS_LABELS: Record<TransferStatus, { label: string; color: string }> = {
-  PENDING: { label: "Đã bàn giao / Chưa xác nhận", color: "bg-yellow-100 text-yellow-700" },
-  CONFIRMED: { label: "Bàn giao thành công", color: "bg-green-100 text-green-700" },
-  REJECTED: { label: "Bị từ chối", color: "bg-red-100 text-red-700" },
+  PENDING: { label: "Đã bàn giao / Chưa xác nhận", color: "bg-warning-light text-warning-foreground" },
+  CONFIRMED: { label: "Bàn giao thành công", color: "bg-primary-light text-primary-strong" },
+  REJECTED: { label: "Bị từ chối", color: "bg-danger-light text-destructive" },
 };
 
 export default async function TransferFinishedDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -54,22 +54,22 @@ export default async function TransferFinishedDetailPage({ params }: { params: P
         <div className="flex items-start justify-between mb-4">
           <div>
             <h1 className="text-xl font-bold">PHIẾU BÀN GIAO THÀNH PHẨM</h1>
-            <p className="font-mono text-blue-700 mt-1">{transfer.code}</p>
+            <p className="font-mono text-info-foreground mt-1">{transfer.code}</p>
           </div>
           <Badge className={STATUS_LABELS[transfer.status].color}>{STATUS_LABELS[transfer.status].label}</Badge>
         </div>
-        <p className="text-sm text-gray-600">Người bàn giao: <strong>{transfer.fromUser.name}</strong></p>
-        <p className="text-sm text-gray-600">Thời gian: {format(transfer.transferredAt, "dd/MM/yyyy HH:mm", { locale: vi })}</p>
-        <p className="text-sm text-gray-600 mb-3">{shelvesLine}</p>
+        <p className="text-sm text-text-secondary">Người bàn giao: <strong>{transfer.fromUser.name}</strong></p>
+        <p className="text-sm text-text-secondary">Thời gian: {format(transfer.transferredAt, "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+        <p className="text-sm text-text-secondary mb-3">{shelvesLine}</p>
 
         <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm min-w-[420px]">
           <thead>
             <tr>
-              <th className="border px-3 py-2 text-left">Mã cây</th>
-              <th className="border px-3 py-2 text-left">Loại cây</th>
-              <th className="border px-3 py-2 text-right">T01</th>
-              <th className="border px-3 py-2 text-right">T05</th>
+              <th className="border px-3 py-2 text-left font-bold text-base">Mã cây</th>
+              <th className="border px-3 py-2 text-left font-bold text-base">Loại cây</th>
+              <th className="border px-3 py-2 text-right font-bold text-base">T01</th>
+              <th className="border px-3 py-2 text-right font-bold text-base">T05</th>
             </tr>
           </thead>
           <tbody>
@@ -88,13 +88,13 @@ export default async function TransferFinishedDetailPage({ params }: { params: P
         <div className="grid grid-cols-1 gap-6 mt-10 pt-4 text-sm text-center sm:grid-cols-2">
           <div>
             <p className="font-medium">NGƯỜI GIAO (KHO MÔ)</p>
-            <p className="text-xs text-gray-500 italic">(Ký và ghi rõ họ tên)</p>
+            <p className="text-xs text-text-secondary italic">(Ký và ghi rõ họ tên)</p>
             <div className="h-20" />
             <p className="font-medium">{transfer.fromUser.name}</p>
           </div>
           <div>
             <p className="font-medium">NGƯỜI NHẬN (KHO THÀNH PHẨM)</p>
-            <p className="text-xs text-gray-500 italic">(Ký và ghi rõ họ tên)</p>
+            <p className="text-xs text-text-secondary italic">(Ký và ghi rõ họ tên)</p>
             <div className="h-20" />
           </div>
         </div>

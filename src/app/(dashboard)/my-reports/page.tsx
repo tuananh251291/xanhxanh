@@ -45,10 +45,10 @@ export default async function MyReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-green-600" /> Báo cáo cá nhân
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <BarChart3 className="w-6 h-6 text-primary-strong" /> Báo cáo cá nhân
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Sản lượng và tỉ lệ nhiễm tháng {format(new Date(), "MM/yyyy")}</p>
+        <p className="text-text-secondary text-sm mt-1">Sản lượng và tỉ lệ nhiễm tháng {format(new Date(), "MM/yyyy")}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -68,24 +68,24 @@ export default async function MyReportsPage() {
         <CardHeader><CardTitle className="text-base">Nhật ký cấy gần đây</CardTitle></CardHeader>
         <CardContent>
           {recentRecords.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">Chưa có nhật ký nào</p>
+            <p className="text-sm text-text-muted text-center py-8">Chưa có nhật ký nào</p>
           ) : (
             <div className="space-y-2">
               {recentRecords.map((r) => {
                 const mother = r.items.filter((i) => i.stage === "MAU_ME").reduce((s, i) => s + i.quantityCreated, 0);
                 const finished = r.items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + i.quantityCreated, 0);
                 return (
-                  <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg text-sm">
+                  <div key={r.id} className="flex items-center justify-between p-3 bg-background rounded-lg text-sm">
                     <div>
                       <p className="font-medium">
-                        <span className="font-mono text-blue-700">{r.instruction.code}</span>
-                        <span className="text-gray-500 ml-2">{r.instruction.plantType.name}</span>
+                        <span className="font-mono text-info-foreground">{r.instruction.code}</span>
+                        <span className="text-text-secondary ml-2">{r.instruction.plantType.name}</span>
                       </p>
-                      <p className="text-xs text-gray-400">{format(r.recordDate, "dd/MM/yyyy", { locale: vi })} · Dùng {r.motherUsed.toLocaleString("vi-VN")} mẫu mẹ</p>
+                      <p className="text-xs text-text-muted">{format(r.recordDate, "dd/MM/yyyy", { locale: vi })} · Dùng {r.motherUsed.toLocaleString("vi-VN")} mẫu mẹ</p>
                     </div>
                     <div className="flex gap-2">
-                      {mother > 0 && <Badge className="bg-purple-100 text-purple-700">MM +{mother.toLocaleString("vi-VN")}</Badge>}
-                      {finished > 0 && <Badge className="bg-green-100 text-green-700">TP +{finished.toLocaleString("vi-VN")}</Badge>}
+                      {mother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM +{mother.toLocaleString("vi-VN")}</Badge>}
+                      {finished > 0 && <Badge className="bg-primary-light text-primary-strong">TP +{finished.toLocaleString("vi-VN")}</Badge>}
                     </div>
                   </div>
                 );
@@ -108,22 +108,22 @@ function StatCard({
   subtitle?: string;
 }) {
   const colorMap = {
-    green: "bg-green-100 text-green-600",
-    blue: "bg-blue-100 text-blue-600",
-    yellow: "bg-amber-100 text-amber-600",
-    purple: "bg-purple-100 text-purple-600",
-    red: "bg-red-100 text-red-600",
+    green: "bg-primary-light text-primary-strong",
+    blue: "bg-info-light text-info-foreground",
+    yellow: "bg-warning-light text-warning-foreground",
+    purple: "bg-violet-light text-violet-foreground",
+    red: "bg-danger-light text-destructive",
   };
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500">{title}</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">
+            <p className="text-sm text-text-secondary">{title}</p>
+            <p className="text-3xl font-bold text-foreground mt-1">
               {typeof value === "number" ? value.toLocaleString("vi-VN") : value}
             </p>
-            {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+            {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
           </div>
           <div className={`p-3 rounded-xl ${colorMap[color]}`}>
             <Icon className="w-6 h-6" />

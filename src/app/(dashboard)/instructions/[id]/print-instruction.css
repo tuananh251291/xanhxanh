@@ -1,0 +1,257 @@
+/* Phiếu chỉ định sản xuất — layout in khổ A5, tối ưu mực đen/xám */
+
+.pi-page-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 20px 12px;
+  background: #eef0f2;
+  border-radius: 8px;
+}
+
+.pi-sheet {
+  width: 100%;
+  max-width: 148mm;
+  background: #ffffff;
+  color: #1a1a1a;
+  padding: 9mm 8mm;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10.5pt;
+  line-height: 1.3;
+}
+
+/* Header */
+.pi-header {
+  text-align: center;
+  border-bottom: 1.5px solid #1a1a1a;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.pi-title {
+  font-size: 19pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0 0 2px;
+}
+.pi-code {
+  font-size: 10pt;
+  margin: 0 0 3px;
+}
+.pi-legend {
+  font-size: 8.5pt;
+  color: #444;
+  margin: 0;
+}
+
+/* Sections */
+.pi-section {
+  margin-top: 11px;
+}
+.pi-section-title {
+  font-size: 12.5pt;
+  font-weight: 700;
+  margin: 0 0 6px;
+  padding-bottom: 3px;
+  border-bottom: 0.75px solid #999;
+}
+
+/* 2-column grid for Section 1 & 2 */
+.pi-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.pi-field {
+  border: 0.75px solid #999;
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-width: 0;
+}
+.pi-field .pi-label {
+  display: block;
+  font-size: 9pt;
+  color: #555;
+  margin-bottom: 1px;
+}
+.pi-field .pi-value {
+  display: block;
+  font-weight: 700;
+  font-size: 10.5pt;
+  word-break: break-word;
+}
+
+/* Section 3 — card mẫu mẹ */
+.pi-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pi-card-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 0.75px solid #999;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.pi-card-cell {
+  padding: 7px 10px;
+  border-right: 0.75px solid #999;
+  min-width: 0;
+}
+.pi-card-cell:last-child {
+  border-right: none;
+}
+.pi-card-cell .pi-label {
+  display: block;
+  font-size: 9pt;
+  color: #555;
+  margin-bottom: 2px;
+}
+.pi-card-cell .pi-value {
+  display: block;
+  font-weight: 700;
+  font-size: 13pt;
+  word-break: break-word;
+}
+.pi-card-cell .pi-value.mono {
+  font-family: "Courier New", monospace;
+  letter-spacing: 0.02em;
+}
+
+/* Section 4 — bảng chỉ định cấy */
+.pi-notes-text {
+  font-size: 10pt;
+  margin: 0 0 6px;
+  white-space: pre-line;
+}
+.pi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10pt;
+  table-layout: fixed;
+}
+.pi-table th,
+.pi-table td {
+  border: 0.75px solid #999;
+  padding: 6px 5px;
+  text-align: center;
+  word-break: break-word;
+}
+.pi-table th {
+  background: #f4f4f5;
+  font-weight: 700;
+  font-size: 12pt;
+}
+.pi-table td.pi-left {
+  text-align: left;
+  font-weight: 500;
+}
+.pi-table tr.pi-total td {
+  font-weight: 700;
+}
+
+/* Section 5 — lưu ý */
+.pi-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  background: #f4f4f5;
+  border: 0.75px solid #ccc;
+  border-radius: 4px;
+  padding: 7px 9px;
+}
+.pi-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.pi-note p {
+  margin: 0;
+  font-size: 9.5pt;
+  font-style: italic;
+  color: #333;
+}
+
+/* Section 6 — ký xác nhận */
+.pi-sign-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  text-align: center;
+}
+.pi-sign-col .pi-role {
+  font-weight: 700;
+  font-size: 11pt;
+  margin: 0;
+}
+.pi-sign-space {
+  height: 58mm;
+}
+.pi-sign-col .pi-hint {
+  font-size: 9pt;
+  font-style: italic;
+  color: #555;
+  margin: 2px 0 0;
+}
+.pi-confirm {
+  font-size: 9pt;
+  margin: 10px 0 0;
+}
+
+/* Responsive: mobile thu nhỏ nhưng giữ tỉ lệ A5 */
+@media (max-width: 480px) {
+  .pi-page-wrap {
+    padding: 12px 6px;
+  }
+  .pi-sheet {
+    padding: 7mm 6mm;
+    font-size: 9.5pt;
+  }
+  .pi-title {
+    font-size: 16pt;
+  }
+  .pi-section-title {
+    font-size: 11pt;
+  }
+  .pi-grid2 {
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 8px;
+  }
+  .pi-sign-space {
+    height: 40mm;
+  }
+}
+
+/* Print — khổ A5 */
+@page {
+  size: A5 portrait;
+  margin: 8mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .pi-page-wrap {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    display: block;
+  }
+  .pi-sheet {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+    font-size: 10.5pt;
+  }
+  .pi-table,
+  .pi-field,
+  .pi-card-row,
+  .pi-note {
+    break-inside: avoid;
+  }
+}

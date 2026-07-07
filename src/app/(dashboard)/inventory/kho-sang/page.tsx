@@ -12,11 +12,11 @@ import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
 
 function expiryClass(expectedMoveAt: Date | null): string {
-  if (!expectedMoveAt) return "text-gray-400";
+  if (!expectedMoveAt) return "text-text-muted";
   const daysLeft = differenceInCalendarDays(expectedMoveAt, new Date());
-  if (daysLeft < 0) return "text-red-600 font-semibold";
-  if (daysLeft <= 3) return "text-orange-600 font-semibold";
-  return "text-gray-400";
+  if (daysLeft < 0) return "text-destructive font-semibold";
+  if (daysLeft <= 3) return "text-warning-foreground font-semibold";
+  return "text-text-muted";
 }
 
 export default async function KhoSangPage() {
@@ -63,10 +63,10 @@ export default async function KhoSangPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sun className="w-6 h-6 text-yellow-500" /> {onlyMotherRoom ? "Phòng mẫu mẹ" : "Phòng sáng"}
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Sun className="w-6 h-6 text-warning-foreground" /> {onlyMotherRoom ? "Phòng mẫu mẹ" : "Phòng sáng"}
         </h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-text-secondary text-sm mt-1">
           {onlyMotherRoom
             ? `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")}`
             : `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")}`}
@@ -89,7 +89,7 @@ export default async function KhoSangPage() {
       {rooms.map((room) => (
         <CollapsibleRoom key={room.id} title={`${room.warehouse.name} — ${room.name}`}>
           {room.shelves.length === 0 ? (
-            <p className="text-sm text-gray-400 pl-2">Chưa có kệ</p>
+            <p className="text-sm text-text-muted pl-2">Chưa có kệ</p>
           ) : room.type === "PHONG_MAU_ME" ? (
             (() => {
               const renderRow = (shelf: (typeof room.shelves)[number]) => {
@@ -98,13 +98,13 @@ export default async function KhoSangPage() {
                   return acc;
                 }, {});
                 return (
-                  <tr key={shelf.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                    <td className="px-3 py-2 text-sm font-bold text-gray-700 whitespace-nowrap">{shelf.code}</td>
-                    <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">{shelf.name}</td>
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{shelf.plantType?.name ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{shelf.assignedStaff?.name ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{(bagsByCode["M03"] ?? 0).toLocaleString("vi-VN")}</td>
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{(bagsByCode["M05"] ?? 0).toLocaleString("vi-VN")}</td>
+                  <tr key={shelf.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                    <td className="px-3 py-2 text-sm font-bold text-foreground whitespace-nowrap">{shelf.code}</td>
+                    <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap">{shelf.name}</td>
+                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.plantType?.name ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.assignedStaff?.name ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{(bagsByCode["M03"] ?? 0).toLocaleString("vi-VN")}</td>
+                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{(bagsByCode["M05"] ?? 0).toLocaleString("vi-VN")}</td>
                   </tr>
                 );
               };
@@ -112,13 +112,13 @@ export default async function KhoSangPage() {
                 <div className="overflow-x-auto border rounded-lg">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-green-700">
-                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Mã kệ</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên kệ</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên cây chi tiết</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-white">Nhân viên phụ trách</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-white">M03</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-white">M05</th>
+                      <tr className="bg-primary-light">
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã kệ</th>
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">M03</th>
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">M05</th>
                       </tr>
                     </thead>
                     <tbody>{rows.map(renderRow)}</tbody>
@@ -130,19 +130,19 @@ export default async function KhoSangPage() {
               return (
                 <div className="space-y-4">
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-2">
-                      Kho mẫu mẹ đã chia <span className="font-normal text-gray-400">({assignedShelves.length} kệ)</span>
+                    <p className="text-xs font-semibold text-text-secondary mb-2">
+                      Kho mẫu mẹ đã chia <span className="font-normal text-text-muted">({assignedShelves.length} kệ)</span>
                     </p>
                     {assignedShelves.length === 0 ? (
-                      <p className="text-xs text-gray-400 pl-1">Chưa có kệ nào được gán nhân viên</p>
+                      <p className="text-xs text-text-muted pl-1">Chưa có kệ nào được gán nhân viên</p>
                     ) : renderTable(assignedShelves)}
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-2">
-                      Kho mẫu mẹ chung <span className="font-normal text-gray-400">({unassignedShelves.length} kệ)</span>
+                    <p className="text-xs font-semibold text-text-secondary mb-2">
+                      Kho mẫu mẹ chung <span className="font-normal text-text-muted">({unassignedShelves.length} kệ)</span>
                     </p>
                     {unassignedShelves.length === 0 ? (
-                      <p className="text-xs text-gray-400 pl-1">Không còn kệ nào chưa gán nhân viên</p>
+                      <p className="text-xs text-text-muted pl-1">Không còn kệ nào chưa gán nhân viên</p>
                     ) : renderTable(unassignedShelves)}
                   </div>
                 </div>
@@ -162,12 +162,12 @@ export default async function KhoSangPage() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-mono">{shelf.code}</CardTitle>
-                        <span className="text-xs text-gray-500">{shelf.name}</span>
+                        <span className="text-xs text-text-secondary">{shelf.name}</span>
                       </div>
                       {shelf.capacity && (
-                        <div className="w-full bg-gray-100 rounded-full h-1.5">
+                        <div className="w-full bg-muted rounded-full h-1.5">
                           <div
-                            className="bg-green-500 rounded-full h-1.5"
+                            className="bg-primary rounded-full h-1.5"
                             style={{ width: `${Math.min(100, (shelfClusters / shelf.capacity) * 100)}%` }}
                           />
                         </div>
@@ -175,12 +175,12 @@ export default async function KhoSangPage() {
                     </CardHeader>
                     <CardContent className="pt-0">
                       {shelf.lots.length === 0 ? (
-                        <p className="text-xs text-gray-400">Trống</p>
+                        <p className="text-xs text-text-muted">Trống</p>
                       ) : (
                         <div className="space-y-1">
                           <div className="flex gap-2 text-xs">
-                            {shelfMother > 0 && <Badge className="bg-purple-100 text-purple-700">MM: {shelfMother.toLocaleString("vi-VN")}</Badge>}
-                            {shelfFinished > 0 && <Badge className="bg-green-100 text-green-700">TP: {shelfFinished.toLocaleString("vi-VN")}</Badge>}
+                            {shelfMother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM: {shelfMother.toLocaleString("vi-VN")}</Badge>}
+                            {shelfFinished > 0 && <Badge className="bg-primary-light text-primary-strong">TP: {shelfFinished.toLocaleString("vi-VN")}</Badge>}
                           </div>
                           <div className="space-y-0.5 mt-1">
                             {shelf.lots.slice(0, 5).map((lot) => {
@@ -188,7 +188,7 @@ export default async function KhoSangPage() {
                                 ? differenceInCalendarDays(lot.expectedMoveAt, new Date())
                                 : null;
                               return (
-                                <div key={lot.id} className="flex items-center justify-between text-xs text-gray-600">
+                                <div key={lot.id} className="flex items-center justify-between text-xs text-text-secondary">
                                   <span className="font-mono">{lot.code}</span>
                                   <span>{lot.quantity.toLocaleString("vi-VN")}</span>
                                   <span className={expiryClass(lot.expectedMoveAt)}>
@@ -204,7 +204,7 @@ export default async function KhoSangPage() {
                               );
                             })}
                             {shelf.lots.length > 5 && (
-                              <p className="text-xs text-gray-400">+{shelf.lots.length - 5} lô khác</p>
+                              <p className="text-xs text-text-muted">+{shelf.lots.length - 5} lô khác</p>
                             )}
                           </div>
                         </div>
@@ -219,7 +219,7 @@ export default async function KhoSangPage() {
       ))}
 
       {rooms.length === 0 && (
-        <Card><CardContent className="py-12 text-center text-gray-400">
+        <Card><CardContent className="py-12 text-center text-text-muted">
           Chưa có phòng sáng nào
         </CardContent></Card>
       )}

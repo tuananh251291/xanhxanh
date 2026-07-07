@@ -23,9 +23,9 @@ type Lot = {
 };
 
 function statusBadge(daysLeft: number) {
-  if (daysLeft < 0) return <Badge className="bg-red-100 text-red-700">Quá hạn {Math.abs(daysLeft)} ngày</Badge>;
-  if (daysLeft === 0) return <Badge className="bg-orange-100 text-orange-700">Đến hạn hôm nay</Badge>;
-  return <Badge className="bg-gray-100 text-gray-600">Còn {daysLeft} ngày</Badge>;
+  if (daysLeft < 0) return <Badge className="bg-danger-light text-destructive">Quá hạn {Math.abs(daysLeft)} ngày</Badge>;
+  if (daysLeft === 0) return <Badge className="bg-warning-light text-warning-foreground">Đến hạn hôm nay</Badge>;
+  return <Badge className="bg-muted text-text-secondary">Còn {daysLeft} ngày</Badge>;
 }
 
 const thisWeekStart = () => startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -70,10 +70,10 @@ export default function MotherReadyBoard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sprout className="w-6 h-6 text-emerald-600" /> Mẫu mẹ đạt chưa chỉ định
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Sprout className="w-6 h-6 text-primary-strong" /> Mẫu mẹ đạt chưa chỉ định
         </h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-text-secondary text-sm mt-1">
           Danh sách lô mẫu mẹ đã đến hạn cấy chuyển nhưng chưa được tạo chỉ định cấy — lô sẽ tự động biến mất khỏi danh sách này sau khi tạo chỉ định
         </p>
       </div>
@@ -95,10 +95,10 @@ export default function MotherReadyBoard() {
           <Button type="button" variant="outline" size="sm" onClick={() => setPendingWeekStart(thisWeekStart())}>
             Tuần này
           </Button>
-          <Button type="button" size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={applyFilter}>
+          <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover" onClick={applyFilter}>
             <Search className="w-4 h-4 mr-1" /> Tìm kiếm
           </Button>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-text-secondary">
             Đang xem tuần {format(appliedWeekStart, "dd/MM/yyyy", { locale: vi })} – {format(appliedWeekEnd, "dd/MM/yyyy", { locale: vi })} · {filtered.length} lô
           </span>
         </div>
@@ -107,36 +107,36 @@ export default function MotherReadyBoard() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-12">Không có lô mẫu mẹ nào đến hạn cấy chuyển trong tuần đã chọn</p>
+            <p className="text-sm text-text-muted text-center py-12">Không có lô mẫu mẹ nào đến hạn cấy chuyển trong tuần đã chọn</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-green-700">
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã lô</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên chi tiết</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Quy cách</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Số lượng</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Kệ</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">NV phụ trách</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Hạn cấy chuyển</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
+                  <tr className="bg-primary-light">
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã lô</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên chi tiết</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Quy cách</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Số lượng</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Kệ</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV phụ trách</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Hạn cấy chuyển</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((l) => (
-                    <tr key={l.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{l.code}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{l.plantType.name}</td>
+                    <tr key={l.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{l.code}</td>
+                      <td className="px-4 py-3 text-sm text-foreground">{l.plantType.name}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline">{l.stageCode}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{l.quantity.toLocaleString("vi-VN")}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{l.shelf?.code ?? "—"}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{l.instruction?.assignedTo?.name ?? "—"}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
+                      <td className="px-4 py-3 text-sm text-text-secondary">{l.quantity.toLocaleString("vi-VN")}</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">{l.shelf?.code ?? "—"}</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">{l.instruction?.assignedTo?.name ?? "—"}</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">
                         {l.expectedMoveAt ? format(new Date(l.expectedMoveAt), "dd/MM/yyyy", { locale: vi }) : "—"}
                       </td>
                       <td className="px-4 py-3">{statusBadge(l.daysLeft)}</td>

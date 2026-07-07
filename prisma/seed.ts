@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import "dotenv/config";
 import { ROLE_NAV } from "@/types";
+import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { startOfWeek, subWeeks, subDays, addDays, getWeek } from "date-fns";
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL! });
@@ -216,15 +217,16 @@ async function main() {
   }
   console.log("✅ Warehouses created");
 
-  // Rooms — mỗi kho sản xuất có "Kho sáng" (chia 2: Phòng mẫu mẹ + Phòng ra rễ) + 1 phòng tối;
-  // kho thành phẩm có 3 phòng cố định + phòng thị trường (mở thêm được)
+  // Rooms — mỗi kho sản xuất có "Kho sáng" (chia 2: Phòng mẫu mẹ + Phòng ra rễ) + 1 Phòng nhiễm cố
+  // định; Phòng tối cá nhân (1 Room/NV cấy mô) tự sinh riêng bên dưới, không seed cứng ở đây.
+  // Kho thành phẩm có 3 phòng cố định + phòng thị trường (mở thêm được)
   const roomDefs = [
     { code: "SXA-PS", name: "Phòng mẫu mẹ A", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-A" },
     { code: "SXA-PRR", name: "Phòng ra rễ A", type: "PHONG_RA_RE" as const, warehouseCode: "SX-A" },
-    { code: "SXA-PT", name: "Phòng tối A", type: "PHONG_TOI" as const, warehouseCode: "SX-A" },
+    { code: "SXA-NHIEM", name: "Phòng Nhiễm A", type: "PHONG_NHIEM" as const, warehouseCode: "SX-A" },
     { code: "SXB-PS", name: "Phòng mẫu mẹ B", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-B" },
     { code: "SXB-PRR", name: "Phòng ra rễ B", type: "PHONG_RA_RE" as const, warehouseCode: "SX-B" },
-    { code: "SXB-PT", name: "Phòng tối B", type: "PHONG_TOI" as const, warehouseCode: "SX-B" },
+    { code: "SXB-NHIEM", name: "Phòng Nhiễm B", type: "PHONG_NHIEM" as const, warehouseCode: "SX-B" },
     { code: "KTPA-KD", name: "Phòng khả dụng", type: "PHONG_KHA_DUNG" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-TD", name: "Phòng theo dõi", type: "PHONG_THEO_DOI" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-HT", name: "Phòng hàn túi", type: "PHONG_HAN_TUI" as const, warehouseCode: "KTP-A" },
@@ -308,30 +310,21 @@ async function main() {
     }
   }
 
-  // Shelves for phòng tối (10 kệ mỗi phòng)
-  for (const roomCode of ["SXA-PT", "SXB-PT"]) {
-    const roomId = createdRooms[roomCode];
-    const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
-    for (let i = 1; i <= 10; i++) {
-      const code = `${roomCode}-K${String(i).padStart(2, "0")}`;
-      await prisma.shelf.upsert({
-        where: { code },
-        update: {},
-        create: {
-          code,
-          name: `Kệ tối ${String(i).padStart(2, "0")}`,
-          warehouseId,
-          roomId,
-          rowNumber: 1,
-          colNumber: i,
-          capacity: 30,
-        },
-      });
-    }
-  }
-
   // Kho thành phẩm KHÔNG quản lý theo giàn kệ — lô gắn thẳng vào Phòng (Lot.roomId), không tạo Shelf.
   console.log("✅ Shelves created");
+
+  // Phòng tối cá nhân — 1 Room/NV cấy mô, tự sinh (không quản lý theo giàn kệ). Gán luôn workplace-
+  // WarehouseId cho các NV cấy mô demo (xoay vòng SX-A/SX-B) để có sẵn dữ liệu ngay từ lần seed đầu.
+  const seedCaymoStaff = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
+  for (let i = 0; i < seedCaymoStaff.length; i++) {
+    const staff = seedCaymoStaff[i];
+    const warehouseId = staff.workplaceWarehouseId ?? createdWarehouses[i % 2 === 0 ? "SX-A" : "SX-B"];
+    if (!staff.workplaceWarehouseId) {
+      await prisma.user.update({ where: { id: staff.id }, data: { workplaceWarehouseId: warehouseId } });
+    }
+    await getOrCreatePersonalDarkRoom(staff.id, warehouseId);
+  }
+  console.log("✅ Phòng tối cá nhân created");
 
   // Lots — mã lô = mã chi tiết loại cây + mã NV cấy 3 số + mã tuần/năm 4 số (lotCodeBase()), 4 quy cách
   // M03/M05/T01/T05 của cùng 1 lượt demo (cùng cây, cùng NV, cùng tuần) dùng CHUNG 1 mã lô, phân biệt
@@ -446,7 +439,9 @@ async function main() {
               expectedMotherOutput,
               expectedFinishedOutput,
               weekStart,
-              status: weeksAgo >= 2 ? "COMPLETED" : "ACTIVE",
+              // Đây là dữ liệu LỊCH SỬ cho báo cáo (kế hoạch vs thực tế), không phải chỉ định đang chạy
+              // thật — luôn để COMPLETED, tránh vi phạm luật "1 NV cấy mô chỉ chạy 1 chỉ định ACTIVE".
+              status: "COMPLETED",
             },
           });
 

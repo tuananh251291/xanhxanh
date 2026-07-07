@@ -17,12 +17,21 @@ export async function GET(_req: NextRequest) {
   if (role === "MOI_TRUONG" && session.user.workplaceWarehouseId) {
     where.instructions = { some: { items: { some: { shelf: { warehouseId: session.user.workplaceWarehouseId } } } } };
   }
+  // Kho mô chỉ nhận đơn đã được NV môi trường xác nhận (chưa xác nhận thì chưa có gì để nhận) — cùng
+  // quy ước warehouse best-effort như trên.
+  if (role === "KHO_MO") {
+    where.confirmedAt = { not: null };
+    if (session.user.workplaceWarehouseId) {
+      where.instructions = { some: { items: { some: { shelf: { warehouseId: session.user.workplaceWarehouseId } } } } };
+    }
+  }
 
   const orders = await prisma.mediumOrder.findMany({
     where,
     include: {
       instructions: { select: { code: true, plantType: { select: { name: true } } } },
       items: { include: { mediumType: { select: { code: true } } } },
+      days: { select: { handedOverAt: true, confirmedAt: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 100,

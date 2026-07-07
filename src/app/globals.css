@@ -39,6 +39,45 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* Hệ màu khu vườn pastel — bổ sung cho theme mặc định của shadcn */
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-light: var(--primary-light);
+  --color-primary-bg: var(--primary-bg);
+  --color-primary-strong: var(--primary-strong);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-light: var(--success-light);
+
+  --color-warning: var(--warning);
+  --color-warning-hover: var(--warning-hover);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-light: var(--warning-light);
+
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-light);
+
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-light: var(--info-light);
+
+  --color-achievement: var(--achievement);
+  --color-achievement-foreground: var(--achievement-foreground);
+
+  --color-secondary-hover: var(--secondary-hover);
+
+  /* Violet — accent trang trí/phân loại, tách khỏi các màu trạng thái ngữ nghĩa ở trên */
+  --color-violet-light: var(--violet-light);
+  --color-violet-foreground: var(--violet-foreground);
+
+  --color-divider: var(--divider);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --animate-progress-glow: progress-glow 0.3s ease-out;
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,38 +88,85 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #F8FBF8;
+  --foreground: #233028;
+  --card: #FFFFFF;
+  --card-foreground: #233028;
+  --popover: #FFFFFF;
+  --popover-foreground: #233028;
+
+  /* Primary — xanh lá pastel */
+  --primary: #6BBF7A;
+  --primary-hover: #5AAA69;
+  --primary-active: #4D995C;
+  --primary-light: #EAF7EC;
+  --primary-bg: #F7FCF8;
+  --primary-strong: #2E7D46;
+  --primary-foreground: #1F3A28;
+
+  /* Secondary — xanh ngọc pastel */
+  --secondary: #7CC9B6;
+  --secondary-hover: #6BB5A0;
+  --secondary-foreground: #1B4034;
+
+  /* Violet — accent trang trí (phân loại, huy hiệu phụ...), không mang ý nghĩa trạng thái */
+  --violet-light: #EFEBFA;
+  --violet-foreground: #5B4B8A;
+
+  --muted: #EDF4EE;
+  --muted-foreground: #64736B;
+  --text-secondary: #64736B;
+  --text-muted: #95A39B;
+
+  /* Accent dùng cho hover/highlight cấu trúc (menu, dropdown...) — nền xanh pastel rất nhạt */
+  --accent: #EAF7EC;
+  --accent-foreground: #233028;
+
+  /* Accent riêng cho thành tựu — vàng nhạt, tách khỏi --accent cấu trúc ở trên */
+  --achievement: #F4C95D;
+  --achievement-foreground: #6B4A16;
+
+  --success: #68B984;
+  --success-foreground: #1E4029;
+  --success-light: #E7F5EC;
+
+  --warning: #F6C26B;
+  --warning-hover: #E8AE4F;
+  --warning-foreground: #6B4A16;
+  --warning-light: #FCF0D9;
+
+  /* Danger pastel dùng cho nền/điểm nhấn nhẹ. --destructive (đậm hơn) dùng riêng cho chữ/viền
+     cần đủ độ tương phản (lỗi form, nút xoá...) vì #E67C73 trên nền trắng không đạt AA cho chữ. */
+  --danger: #E67C73;
+  --danger-light: #FBEAE8;
+  --destructive: #B3413A;
+
+  --info: #8CBDEB;
+  --info-foreground: #1E3A5C;
+  --info-light: #E9F2FC;
+
+  --border: #E4EEE5;
+  --divider: #EDF4EE;
+  --input: #E4EEE5;
+  --ring: #6BBF7A;
+
+  /* Chart — tối đa 5 màu pastel cho một dashboard */
+  --chart-1: #6BBF7A;
+  --chart-2: #7CC9B6;
+  --chart-3: #F4C95D;
+  --chart-4: #8CBDEB;
+  --chart-5: #B8ACDE;
+
+  --radius: 0.75rem;
+
+  --sidebar: #F3F8F3;
+  --sidebar-foreground: #233028;
+  --sidebar-primary: #6BBF7A;
+  --sidebar-primary-foreground: #1F3A28;
+  --sidebar-accent: #EAF7EC;
+  --sidebar-accent-foreground: #2E7D46;
+  --sidebar-border: #E4EEE5;
+  --sidebar-ring: #6BBF7A;
 }
 
 .dark {
@@ -133,5 +219,17 @@
   img {
     max-width: 100%;
     height: auto;
+  }
+}
+
+@keyframes progress-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(107, 191, 122, 0);
+  }
+  40% {
+    box-shadow: 0 0 14px 2px rgba(107, 191, 122, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(107, 191, 122, 0);
   }
 }

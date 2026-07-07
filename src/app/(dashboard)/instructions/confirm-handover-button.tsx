@@ -25,7 +25,7 @@ export default function ConfirmHandoverButton({ instructionId }: { instructionId
   };
 
   return (
-    <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700" disabled={loading} onClick={confirm}>
+    <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={loading} onClick={confirm}>
       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
       Bàn giao
     </Button>

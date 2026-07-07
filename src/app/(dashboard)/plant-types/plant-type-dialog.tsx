@@ -72,9 +72,9 @@ export default function PlantTypeDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-primary hover:bg-primary-hover" />}>
         {isEdit
-          ? <Pencil className="w-4 h-4" />
+          ? <><Pencil className="w-4 h-4 mr-2" />Chỉnh sửa</>
           : <><Plus className="w-4 h-4 mr-2" />Thêm chi tiết loại cây</>
         }
       </DialogTrigger>
@@ -111,7 +111,7 @@ export default function PlantTypeDialog({
               <Label>Mã cây</Label>
               <div className="flex items-center gap-2">
                 <Input value={category?.code ?? "—"} disabled className="w-16 text-center font-mono" />
-                <span className="text-gray-400">+</span>
+                <span className="text-text-muted">+</span>
                 <Input
                   value={codeSuffix}
                   onChange={(e) => setCodeSuffix(e.target.value.toUpperCase().slice(0, 3))}
@@ -119,16 +119,16 @@ export default function PlantTypeDialog({
                   maxLength={3}
                   className="w-24 font-mono"
                 />
-                {fullCode && <span className="text-sm text-gray-500">= <span className="font-mono font-bold">{fullCode}</span></span>}
+                {fullCode && <span className="text-sm text-text-secondary">= <span className="font-mono font-bold">{fullCode}</span></span>}
               </div>
-              <p className="text-xs text-gray-400">2 ký tự đầu tự lấy theo Loại cây đã chọn, nhập tay 3 ký tự còn lại (chữ/số)</p>
-              {codeTaken && <p className="text-xs text-red-500">Mã cây &quot;{fullCode}&quot; đã có sẵn trong hệ thống</p>}
+              <p className="text-xs text-text-muted">2 ký tự đầu tự lấy theo Loại cây đã chọn, nhập tay 3 ký tự còn lại (chữ/số)</p>
+              {codeTaken && <p className="text-xs text-destructive">Mã cây &quot;{fullCode}&quot; đã có sẵn trong hệ thống</p>}
             </div>
           )}
           <div className="space-y-1">
             <Label>Tên chi tiết loại cây</Label>
             <Input {...register("name")} placeholder="VD: Trầu bà lá xẻ" />
-            {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Mô tả (tùy chọn)</Label>
@@ -138,17 +138,17 @@ export default function PlantTypeDialog({
             <div className="space-y-1">
               <Label className="text-sm font-medium">Thời gian đợi cấy chuyển (tuần)</Label>
               <Input {...register("transferWaitWeeks")} type="number" min={1} />
-              {errors.transferWaitWeeks && <p className="text-xs text-red-500">{errors.transferWaitWeeks.message}</p>}
+              {errors.transferWaitWeeks && <p className="text-xs text-destructive">{errors.transferWaitWeeks.message}</p>}
             </div>
             <div className="space-y-1">
               <Label className="text-sm font-medium">Thời gian ra rễ (tuần)</Label>
               <Input {...register("rootingWeeks")} type="number" min={1} />
-              {errors.rootingWeeks && <p className="text-xs text-red-500">{errors.rootingWeeks.message}</p>}
+              {errors.rootingWeeks && <p className="text-xs text-destructive">{errors.rootingWeeks.message}</p>}
             </div>
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading || (!isEdit && codeTaken)}>
+            <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading || (!isEdit && codeTaken)}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isEdit ? "Cập nhật" : "Thêm"}
             </Button>

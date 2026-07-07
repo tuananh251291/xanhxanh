@@ -18,5 +18,11 @@ export default async function TransferFinishedPage() {
     redirect("/dashboard");
   }
 
-  return <TransferFinishedForm khaDungRoomId={khaDungRoom.id} staffName={session!.user.name ?? ""} />;
+  return (
+    <TransferFinishedForm
+      khaDungRoomId={khaDungRoom.id}
+      staffName={session!.user.name ?? ""}
+      workplaceWarehouseId={session!.user.workplaceWarehouseId ?? null}
+    />
+  );
 }

@@ -19,9 +19,9 @@ export default function CollapsibleRoom({
         className="flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
         onClick={() => setExpanded((v) => !v)}
       >
-        <h2 className="min-w-0 text-lg font-semibold text-gray-800 flex items-center gap-2">
-          {expanded ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
-          <Layers className="w-5 h-5 text-yellow-500 shrink-0" /> <span className="break-words">{title}</span>
+        <h2 className="min-w-0 text-lg font-semibold text-foreground flex items-center gap-2">
+          {expanded ? <ChevronDown className="w-4 h-4 text-text-muted shrink-0" /> : <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />}
+          <Layers className="w-5 h-5 text-warning-foreground shrink-0" /> <span className="break-words">{title}</span>
         </h2>
         <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Thu gọn" : "Xem thêm"}

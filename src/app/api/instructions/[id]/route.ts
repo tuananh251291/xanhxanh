@@ -58,6 +58,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.assignedToId !== session?.user?.id) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     }
+    // NV cấy mô chỉ được thực hiện 1 chỉ định tại 1 thời điểm — KHO_MO có thể bàn giao trước chỉ định
+    // mới bất cứ lúc nào, nhưng NV cấy mô chỉ được XÁC NHẬN (bắt đầu) sau khi chỉ định đang thực hiện
+    // hiện tại (đã xác nhận nhận mẫu mẹ nhưng chưa kết thúc) thực sự kết thúc.
+    if (!instruction.motherReceivedAt) {
+      const stillActive = await prisma.plantingInstruction.findFirst({
+        where: {
+          assignedToId: instruction.assignedToId,
+          motherReceivedAt: { not: null },
+          status: { in: ["ACTIVE", "DRAFT"] },
+          id: { not: id },
+        },
+        select: { code: true },
+      });
+      if (stillActive) {
+        return NextResponse.json(
+          { message: `Bạn còn chỉ định ${stillActive.code} đang thực hiện chưa kết thúc — chỉ có thể xác nhận chỉ định mới sau khi chỉ định đó kết thúc` },
+          { status: 400 }
+        );
+      }
+    }
     const updated = await prisma.plantingInstruction.update({
       where: { id },
       data: { motherReceivedAt: instruction.motherReceivedAt ?? new Date() },
@@ -76,9 +96,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!instruction.assignedToId) {
       return NextResponse.json({ message: "Chỉ định chưa có nhân viên cấy mô để bàn giao" }, { status: 400 });
     }
+    // Kho mô được bàn giao trước chỉ định mới ngay cả khi NV cấy mô đang thực hiện chỉ định khác — luật
+    // "1 chỉ định tại 1 thời điểm" chỉ chặn ở bước NV cấy mô XÁC NHẬN (xem confirmMotherReceived).
     const updated = await prisma.plantingInstruction.update({
       where: { id },
-      data: { handedOverAt: instruction.handedOverAt ?? new Date() },
+      data: {
+        handedOverAt: instruction.handedOverAt ?? new Date(),
+        handedOverById: instruction.handedOverById ?? session!.user!.id,
+        // Bàn giao thật sự nghĩa là chỉ định đã bắt đầu chạy — kích hoạt luôn nếu còn ở DRAFT, tránh kẹt
+        // ở DRAFT vĩnh viễn (khiến nút xác nhận nhận mẫu mẹ và luật "1 NV/1 chỉ định ACTIVE" bị sai lệch).
+        status: instruction.status === "DRAFT" ? "ACTIVE" : instruction.status,
+      },
       include: { assignedTo: { select: { name: true } } },
     });
     return NextResponse.json(updated);
@@ -90,24 +118,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     : isAdminRole(role) || role === "KY_THUAT";
   if (!allowed) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
-  // NV cấy mô chỉ nhận chỉ định mới sau khi chỉ định hiện tại đã "Kết thúc".
-  if ("assignedToId" in parsed.data) {
-    const stillActive = await prisma.plantingInstruction.findFirst({
-      where: { assignedToId: parsed.data.assignedToId, status: "ACTIVE" },
-      select: { code: true },
-    });
-    if (stillActive) {
-      return NextResponse.json(
-        { message: `Nhân viên cấy mô này còn chỉ định ${stillActive.code} chưa kết thúc, không thể nhận chỉ định mới` },
-        { status: 400 }
-      );
-    }
-  }
-
+  // Kho mô được gán/bàn giao trước chỉ định mới (kệ "chung") ngay cả khi NV cấy mô đang thực hiện chỉ
+  // định khác — luật "1 chỉ định tại 1 thời điểm" chỉ chặn ở bước NV cấy mô XÁC NHẬN (confirmMotherReceived).
   // Kho mô chọn NV cấy mô (kệ "chung") = hành động bàn giao luôn, đánh dấu cả 2 mốc cùng lúc.
   const updated = await prisma.plantingInstruction.update({
     where: { id },
-    data: isAssignAction ? { ...parsed.data, handedOverAt: new Date() } : parsed.data,
+    data: isAssignAction ? { ...parsed.data, handedOverAt: new Date(), handedOverById: session!.user!.id } : parsed.data,
     include: { assignedTo: { select: { name: true } } },
   });
   return NextResponse.json(updated);

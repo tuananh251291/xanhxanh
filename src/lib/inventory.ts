@@ -19,11 +19,11 @@ export async function getSystemConfig(key: string, defaultValue: string): Promis
 }
 
 export async function createAlert(data: {
-  type: "CONTAMINATION_HIGH" | "OUTPUT_DEVIATION" | "ORDER_EXPIRING" | "ORDER_EXPIRED" | "STOCK_LOW" | "LOT_READY_TRANSFER" | "ORDER_PENDING_PACK" | "MEDIUM_HANDOVER_READY" | "MOTHER_LOT_READY" | "MEDIUM_ORDER_CREATED";
+  type: "CONTAMINATION_HIGH" | "OUTPUT_DEVIATION" | "ORDER_EXPIRING" | "ORDER_EXPIRED" | "STOCK_LOW" | "LOT_READY_TRANSFER" | "ORDER_PENDING_PACK" | "MEDIUM_HANDOVER_READY" | "MOTHER_LOT_READY" | "MEDIUM_ORDER_CREATED" | "CONTAMINATION_PROPOSAL";
   title: string;
   message: string;
   userId?: string;
-  targetRole?: "ADMIN" | "KY_THUAT" | "CAY_MO" | "KHO_MO" | "KHO_THANH_PHAM" | "SALE" | "MOI_TRUONG" | "DIEU_PHOI";
+  targetRole?: "SUPER_ADMIN" | "ADMIN" | "KY_THUAT" | "CAY_MO" | "KHO_MO" | "KHO_THANH_PHAM" | "SALE" | "MOI_TRUONG" | "DIEU_PHOI";
   relatedId?: string;
   relatedType?: string;
 }) {

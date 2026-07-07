@@ -48,9 +48,9 @@ export default function MediumTypeDialog({ item }: { item?: MediumType }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-primary hover:bg-primary-hover" />}>
         {isEdit
-          ? <Pencil className="w-4 h-4" />
+          ? <><Pencil className="w-4 h-4 mr-2" />Chỉnh sửa</>
           : <><Plus className="w-4 h-4 mr-2" />Thêm môi trường</>
         }
       </DialogTrigger>
@@ -61,12 +61,12 @@ export default function MediumTypeDialog({ item }: { item?: MediumType }) {
             <div className="space-y-1">
               <Label>Mã môi trường</Label>
               <Input {...register("code")} placeholder="MT001" disabled={isEdit} />
-              {errors.code && <p className="text-xs text-red-500">{errors.code.message}</p>}
+              {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
             </div>
             <div className="space-y-1">
               <Label>Tên</Label>
               <Input {...register("name")} placeholder="MS cơ bản" />
-              {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+              {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
             </div>
           </div>
           <div className="space-y-1">
@@ -75,7 +75,7 @@ export default function MediumTypeDialog({ item }: { item?: MediumType }) {
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isEdit ? "Cập nhật" : "Thêm"}
             </Button>

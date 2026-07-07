@@ -58,17 +58,17 @@ export default function ContaminationPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <AlertTriangle className="w-6 h-6 text-red-600" /> Lọc nhiễm
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <AlertTriangle className="w-6 h-6 text-destructive" /> Lọc nhiễm
         </h1>
-        <p className="text-gray-500 text-sm mt-1">{records.length} báo cáo nhiễm chờ xác nhận</p>
+        <p className="text-text-secondary text-sm mt-1">{records.length} báo cáo nhiễm chờ xác nhận</p>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
       ) : records.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-gray-400">
-          <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+        <Card><CardContent className="py-16 text-center text-text-muted">
+          <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-text-muted" />
           <p>Không có báo cáo nhiễm nào đang chờ</p>
         </CardContent></Card>
       ) : (
@@ -81,23 +81,23 @@ export default function ContaminationPage() {
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-blue-700">{r.lot.code}</span>
+                        <span className="font-mono font-bold text-info-foreground">{r.lot.code}</span>
                         <Badge variant="secondary" className="text-xs">{r.lot.stage === "MAU_ME" ? "Mẫu mẹ" : "Thành phẩm"}</Badge>
-                        {rate > 0.2 && <Badge className="bg-red-100 text-red-700 text-xs">⚠️ {Math.round(rate * 100)}%</Badge>}
+                        {rate > 0.2 && <Badge className="bg-danger-light text-destructive text-xs">⚠️ {Math.round(rate * 100)}%</Badge>}
                       </div>
-                      <p className="text-sm text-gray-700">{r.lot.plantType.name}</p>
-                      <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-                        <span>Số lượng báo nhiễm: <strong className="text-red-600">{r.quantity.toLocaleString("vi-VN")}</strong></span>
+                      <p className="text-sm text-foreground">{r.lot.plantType.name}</p>
+                      <div className="flex flex-wrap gap-3 text-xs text-text-secondary">
+                        <span>Số lượng báo nhiễm: <strong className="text-destructive">{r.quantity.toLocaleString("vi-VN")}</strong></span>
                         <span>Tồn hiện tại: {r.lot.quantity.toLocaleString("vi-VN")}</span>
                         {r.lot.shelf && <span>Kệ: {r.lot.shelf.name} ({r.lot.shelf.warehouse.name})</span>}
                         {r.lot.instruction && <span>Chỉ định: {r.lot.instruction.code}</span>}
                       </div>
-                      <p className="text-xs text-gray-400">{format(new Date(r.recordDate), "dd/MM/yyyy HH:mm", { locale: vi })}</p>
-                      {r.notes && <p className="text-xs text-gray-500 italic">&quot;{r.notes}&quot;</p>}
+                      <p className="text-xs text-text-muted">{format(new Date(r.recordDate), "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+                      {r.notes && <p className="text-xs text-text-secondary italic">&quot;{r.notes}&quot;</p>}
                     </div>
                     <Button
                       size="sm"
-                      className="bg-green-600 hover:bg-green-700"
+                      className="bg-primary hover:bg-primary-hover"
                       onClick={() => confirm(r.id)}
                       disabled={processing === r.id}
                     >

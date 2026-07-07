@@ -36,7 +36,7 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
   return (
     <div className="space-y-4">
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -50,33 +50,33 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-green-700">
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã cây</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên chi tiết</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Loại cây</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thời gian đợi cấy chuyển</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thời gian ra rễ</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thao tác</th>
+                <tr className="bg-primary-light">
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã cây</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên chi tiết</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Loại cây</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thời gian đợi cấy chuyển</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thời gian ra rễ</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center text-sm text-gray-400 py-10">Không tìm thấy chi tiết loại cây nào khớp</td></tr>
+                  <tr><td colSpan={7} className="text-center text-sm text-text-muted py-10">Không tìm thấy chi tiết loại cây nào khớp</td></tr>
                 ) : (
                   filtered.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-green-700">{p.code}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        <span className="flex items-center gap-2"><Leaf className="w-3.5 h-3.5 text-green-500 shrink-0" />{p.name}</span>
+                    <tr key={p.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-primary-strong">{p.code}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-foreground">
+                        <span className="flex items-center gap-2"><Leaf className="w-3.5 h-3.5 text-primary-strong shrink-0" />{p.name}</span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        <span className="font-mono text-xs text-gray-500 mr-1">{p.category.code}</span>{p.category.name}
+                      <td className="px-4 py-3 text-sm text-text-secondary">
+                        <span className="font-mono text-xs text-text-secondary mr-1">{p.category.code}</span>{p.category.name}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{p.transferWaitWeeks} tuần</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{p.rootingWeeks} tuần</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">{p.transferWaitWeeks} tuần</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">{p.rootingWeeks} tuần</td>
                       <td className="px-4 py-3">
-                        <Badge className={p.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
+                        <Badge className={p.isActive ? "bg-primary-light text-primary-strong" : "bg-muted text-text-secondary"}>
                           {p.isActive ? "Hoạt động" : "Vô hiệu"}
                         </Badge>
                       </td>

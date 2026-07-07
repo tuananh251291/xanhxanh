@@ -98,37 +98,37 @@ export async function POST(req: NextRequest) {
     toWarehouseId = toRoom.warehouseId;
   }
 
-  // Lấy warehouse/room nguồn từ lot đầu tiên
+  // Lấy warehouse/room nguồn từ lot đầu tiên — Phòng tối cá nhân giờ gắn thẳng qua Lot.roomId (không
+  // qua kệ), nên chỉ còn lô ở Kho sáng (Phòng mẫu mẹ/ra rễ) mới cần suy ra từ shelf.
   const firstLot = await prisma.lot.findUnique({
     where: { id: items[0].lotId },
     include: {
+      room: { include: { warehouse: true } },
       shelf: { include: { warehouse: true, room: true } },
-      instruction: { include: { items: { take: 1, include: { shelf: { select: { warehouseId: true } } } } } },
     },
   });
 
-  let fromWarehouseId = firstLot?.shelf?.warehouseId ?? null;
-  let fromRoomId = firstLot?.shelf?.roomId ?? null;
-  let isFromDarkRoom = firstLot?.shelf?.room?.type === "PHONG_TOI";
+  const fromWarehouseId = firstLot?.room?.warehouseId ?? firstLot?.shelf?.warehouseId ?? null;
+  const fromRoomId = firstLot?.roomId ?? firstLot?.shelf?.roomId ?? null;
+  const isFromDarkRoom = firstLot?.room?.type === "PHONG_TOI" || firstLot?.shelf?.room?.type === "PHONG_TOI";
   const isFromRootingRoom = firstLot?.shelf?.room?.type === "PHONG_RA_RE";
-
-  // Lô chưa được xếp kệ nào (vừa cấy xong, đang "trong phòng tối" theo nghĩa khái niệm, chờ bàn giao) —
-  // suy ra kho từ kệ nguồn của chỉ định cấy đã tạo ra lô, rồi lấy Phòng tối của đúng kho đó làm nguồn.
-  if (!fromWarehouseId) {
-    const instrWarehouseId = firstLot?.instruction?.items[0]?.shelf?.warehouseId;
-    if (instrWarehouseId) {
-      fromWarehouseId = instrWarehouseId;
-      const darkRoom = await prisma.room.findFirst({ where: { warehouseId: instrWarehouseId, type: "PHONG_TOI" } });
-      fromRoomId = darkRoom?.id ?? null;
-      isFromDarkRoom = !!darkRoom;
-    }
-  }
 
   // Không chọn đích cụ thể (VD: gửi từ phòng tối, để hệ thống tự chỉ định kệ lúc xác nhận) → mặc định
   // cùng kho sản xuất với nguồn.
   if (!toWarehouseId) toWarehouseId = fromWarehouseId ?? undefined;
   if (!toWarehouseId) {
     return NextResponse.json({ message: "Cần chọn kho hoặc phòng đích" }, { status: 400 });
+  }
+
+  // Bàn giao từ phòng tối cá nhân → bắt buộc mọi lô đã "Đã kiểm tra" nhiễm trước khi bàn giao.
+  if (isFromDarkRoom) {
+    const lots = await prisma.lot.findMany({
+      where: { id: { in: items.map((i) => i.lotId) } },
+      select: { id: true, inspectedAt: true },
+    });
+    if (lots.some((lot) => !lot.inspectedAt)) {
+      return NextResponse.json({ message: "Cần kiểm tra nhiễm trước khi bàn giao" }, { status: 400 });
+    }
   }
 
   const code = await generateTransferCode();

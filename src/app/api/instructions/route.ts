@@ -99,20 +99,11 @@ export async function POST(req: NextRequest) {
     ? [...distinctStaffIds][0]
     : undefined;
 
-  // NV cấy mô chỉ nhận chỉ định tuần mới sau khi chỉ định hiện tại đã "Kết thúc" — chặn ngay ở bước tạo
-  // để tránh 1 NV cùng lúc gánh 2 chỉ định.
-  if (autoAssignedToId) {
-    const stillActive = await prisma.plantingInstruction.findFirst({
-      where: { assignedToId: autoAssignedToId, status: "ACTIVE" },
-      select: { code: true },
-    });
-    if (stillActive) {
-      return NextResponse.json(
-        { message: `Nhân viên cấy mô này còn chỉ định ${stillActive.code} chưa kết thúc, không thể nhận chỉ định mới` },
-        { status: 400 }
-      );
-    }
-  }
+  // Lưu ý: KHO_MO/KY_THUAT vẫn được tạo và gán/bàn giao chỉ định mới cho NV cấy mô ngay cả khi NV đó
+  // đang thực hiện 1 chỉ định khác (VD: chuẩn bị trước chỉ định tuần sau) — chỉ định mới sẽ ở trạng thái
+  // "Chưa bàn giao"/"Đã bàn giao / chờ xác nhận" cho tới khi NV cấy mô xác nhận. Luật "1 chỉ định tại 1
+  // thời điểm" chỉ chặn ở bước NV cấy mô XÁC NHẬN nhận mẫu mẹ (xem confirmMotherReceived trong
+  // /api/instructions/[id]/route.ts), không chặn ở bước tạo/gán/bàn giao.
 
   const itemsWithOutput = shelfItems.map((item) => ({
     ...item,

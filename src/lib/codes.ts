@@ -1,5 +1,32 @@
 import { prisma } from "@/lib/prisma";
 import { getWeek, getISODay, format } from "date-fns";
+import type { UserRole } from "@prisma/client";
+
+// Tiền tố + độ dài số thứ tự cho mã nhân viên theo từng vai trò — Admin cao nhất và Admin dùng chung 1
+// dãy số "AD" (cùng nhóm quản trị). VD: AD01, NVKT01, NVCM001, NVK01, NVTP01, NVS01, NVMT01, NVDP01.
+const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
+  SUPER_ADMIN: { prefix: "AD", pad: 2 },
+  ADMIN: { prefix: "AD", pad: 2 },
+  KY_THUAT: { prefix: "NVKT", pad: 2 },
+  CAY_MO: { prefix: "NVCM", pad: 3 },
+  KHO_MO: { prefix: "NVK", pad: 2 },
+  KHO_THANH_PHAM: { prefix: "NVTP", pad: 2 },
+  SALE: { prefix: "NVS", pad: 2 },
+  MOI_TRUONG: { prefix: "NVMT", pad: 2 },
+  DIEU_PHOI: { prefix: "NVDP", pad: 2 },
+};
+
+export async function generateUserCode(role: UserRole): Promise<string> {
+  const { prefix, pad } = USER_CODE_FORMAT[role];
+  const rolesSharingPrefix = (Object.keys(USER_CODE_FORMAT) as UserRole[])
+    .filter((r) => USER_CODE_FORMAT[r].prefix === prefix);
+  const last = await prisma.user.findFirst({
+    where: { role: { in: rolesSharingPrefix }, code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(prefix.length), 10) + 1 : 1;
+  return `${prefix}${String(seq).padStart(pad, "0")}`;
+}
 
 // Mã chỉ định = CD + mã kho sản xuất (1 ký tự, VD "A" từ warehouse.code "SX-A") + mã giàn kệ nguồn
 // (5 ký tự "R{hàng}C{cột 2 số}", VD "R4C05") + ngày tạo "ddMMyy" (6 số, VD 20/10/2026 → "201026").
@@ -91,4 +118,22 @@ export async function generateOrderCode(): Promise<string> {
   });
   const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
   return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// Mã đề xuất Trồng/Hủy hàng nhiễm = 1 ký tự loại ("H" Hủy / "T" Trồng) + ngày tháng năm tạo "ddMMyy"
+// (VD 07/07/2026 → "H070726"). Nhiều đề xuất cùng loại, cùng ngày → thêm hậu tố "-2", "-3"... để tránh
+// trùng (giống generateInstructionCode/generateLotCode).
+export async function generateContaminationProposalCode(
+  type: "TRONG" | "HUY",
+  date: Date = new Date()
+): Promise<string> {
+  const base = `${type === "HUY" ? "H" : "T"}${format(date, "ddMMyy")}`;
+
+  let candidate = base;
+  let n = 1;
+  while (await prisma.contaminationProposal.findFirst({ where: { code: candidate } })) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
 }

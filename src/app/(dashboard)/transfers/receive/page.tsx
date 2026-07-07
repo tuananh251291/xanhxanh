@@ -119,17 +119,17 @@ export default function TransferReceivePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <PackageCheck className="w-6 h-6 text-blue-600" /> Nhận bàn giao
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <PackageCheck className="w-6 h-6 text-info-foreground" /> Nhận bàn giao
         </h1>
-        <p className="text-gray-500 text-sm mt-1">{pendingTransfers.length} phiếu chờ xác nhận</p>
+        <p className="text-text-secondary text-sm mt-1">{pendingTransfers.length} phiếu chờ xác nhận</p>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
       ) : pendingTransfers.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-gray-400">
-          <PackageCheck className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+        <Card><CardContent className="py-16 text-center text-text-muted">
+          <PackageCheck className="w-10 h-10 mx-auto mb-3 text-text-muted" />
           <p>Không có phiếu bàn giao nào đang chờ</p>
         </CardContent></Card>
       ) : (
@@ -145,16 +145,16 @@ export default function TransferReceivePage() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono font-bold text-blue-700">{t.code}</span>
-                      <Badge className="bg-yellow-100 text-yellow-700">Chờ xác nhận</Badge>
+                      <span className="font-mono font-bold text-info-foreground">{t.code}</span>
+                      <Badge className="bg-warning-light text-warning-foreground">Chờ xác nhận</Badge>
                     </div>
-                    <p className="text-sm text-gray-600">Từ: <strong>{t.fromUser.name}</strong></p>
+                    <p className="text-sm text-text-secondary">Từ: <strong>{t.fromUser.name}</strong></p>
                     {t.fromWarehouse && (
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-text-secondary">
                         Nguồn: {t.fromWarehouse.name}{t.fromRoom ? ` — ${t.fromRoom.name}` : ""}
                       </p>
                     )}
-                    <p className="text-xs text-gray-400">{format(t.transferredAt, "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+                    <p className="text-xs text-text-muted">{format(t.transferredAt, "dd/MM/yyyy HH:mm", { locale: vi })}</p>
                     <p className="text-sm mt-1">{t.items.length} lô · {t.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} mẫu</p>
                   </div>
                   <Button
@@ -224,32 +224,32 @@ export default function TransferReceivePage() {
                   <div className="mt-4 space-y-3 border-t pt-3">
                     {isExternalFinishedHandoff ? (
                       <>
-                        <p className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+                        <p className="text-xs text-text-secondary bg-info-light rounded p-2">
                           Kho thành phẩm không quản lý theo giàn kệ — chia số lượng theo từng loại cây + quy cách vào Phòng theo dõi / Phòng hàn túi (được phép chia vào 1 hoặc cả 2 phòng).
                         </p>
                         {!theoDoiRoom || !hanTuiRoom ? (
-                          <p className="text-sm text-red-600 flex items-center gap-1.5">
+                          <p className="text-sm text-destructive flex items-center gap-1.5">
                             <AlertTriangle className="w-4 h-4" /> Chưa có đủ Phòng theo dõi / Phòng hàn túi trong kho thành phẩm — liên hệ Admin tạo phòng.
                           </p>
                         ) : (
                           <div className="overflow-x-auto border rounded-lg">
                             <table className="w-full text-sm">
                               <thead>
-                                <tr className="bg-green-700">
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">Mã cây</th>
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên cây chi tiết</th>
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">Quy cách</th>
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">Tổng theo phiếu</th>
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">{theoDoiRoom.name}</th>
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">{hanTuiRoom.name}</th>
-                                  <th className="text-left px-3 py-2 text-xs font-medium text-white">Đã nhập</th>
+                                <tr className="bg-primary-light">
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã cây</th>
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Quy cách</th>
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tổng theo phiếu</th>
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{theoDoiRoom.name}</th>
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{hanTuiRoom.name}</th>
+                                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Đã nhập</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {groups.map((g) => {
                                   const matched = rowSum(g) === g.total;
                                   return (
-                                    <tr key={`${g.plantTypeId}:${g.stageCode}`} className="border-b last:border-0 even:bg-green-50">
+                                    <tr key={`${g.plantTypeId}:${g.stageCode}`} className="border-b last:border-0 even:bg-primary-light">
                                       <td className="px-3 py-2 font-mono text-xs">{g.plantTypeCode}</td>
                                       <td className="px-3 py-2">{g.plantTypeName}</td>
                                       <td className="px-3 py-2 font-medium">{g.stageCode}</td>
@@ -276,7 +276,7 @@ export default function TransferReceivePage() {
                                           }
                                         />
                                       </td>
-                                      <td className={`px-3 py-2 font-medium ${matched ? "text-green-600" : "text-red-600"}`}>
+                                      <td className={`px-3 py-2 font-medium ${matched ? "text-primary-strong" : "text-destructive"}`}>
                                         {rowSum(g).toLocaleString("vi-VN")} / {g.total.toLocaleString("vi-VN")}
                                       </td>
                                     </tr>
@@ -287,21 +287,21 @@ export default function TransferReceivePage() {
                           </div>
                         )}
                         {theoDoiRoom && hanTuiRoom && !allMatched && (
-                          <p className="text-sm text-red-600 flex items-center gap-1.5">
+                          <p className="text-sm text-destructive flex items-center gap-1.5">
                             <AlertTriangle className="w-4 h-4" /> Tổng số lượng chưa khớp với phiếu bàn giao — vui lòng kiểm tra lại.
                           </p>
                         )}
                       </>
                     ) : isToFinishedWarehouse ? (
                       <>
-                        <p className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+                        <p className="text-xs text-text-secondary bg-info-light rounded p-2">
                           Kho thành phẩm không quản lý theo giàn kệ — xác nhận nhận thẳng vào phòng đích, không cần chọn kệ.
                         </p>
                         <div className="space-y-1">
                           {t.items.map((item) => (
                             <div key={item.id} className="flex items-center gap-3 text-sm">
-                              <span className="font-mono text-blue-700">{item.lot.code}</span>
-                              <span className="text-gray-500">{item.lot.plantType.name}</span>
+                              <span className="font-mono text-info-foreground">{item.lot.code}</span>
+                              <span className="text-text-secondary">{item.lot.plantType.name}</span>
                               <Badge variant="secondary" className="text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
                               <span className="font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
                             </div>
@@ -310,7 +310,7 @@ export default function TransferReceivePage() {
                       </>
                     ) : isAuto ? (
                       <>
-                        <p className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+                        <p className="text-xs text-text-secondary bg-info-light rounded p-2">
                           {isSurplus
                             ? "Bàn giao MM dư (chỉ định đã kết thúc do hết thời gian) — hệ thống tự xếp thẳng vào Kho quá hạn trong Kho mẫu mẹ chung."
                             : "Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M03/M05) vào đúng kệ của nhân viên phụ trách trong Kho mẫu mẹ đã chia (dư quá 1800 cụm sẽ tự chuyển sang Kho đúng hạn), cây ra rễ vào Phòng ra rễ."}
@@ -318,8 +318,8 @@ export default function TransferReceivePage() {
                         <div className="space-y-1">
                           {t.items.map((item) => (
                             <div key={item.id} className="flex items-center gap-3 text-sm">
-                              <span className="font-mono text-blue-700">{item.lot.code}</span>
-                              <span className="text-gray-500">{item.lot.plantType.name}</span>
+                              <span className="font-mono text-info-foreground">{item.lot.code}</span>
+                              <span className="text-text-secondary">{item.lot.plantType.name}</span>
                               <Badge variant="secondary" className="text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
                               <span className="font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
                             </div>
@@ -328,7 +328,7 @@ export default function TransferReceivePage() {
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-medium text-gray-700">Phân bổ kệ cho từng lô:</p>
+                        <p className="text-sm font-medium text-foreground">Phân bổ kệ cho từng lô:</p>
                         {t.items.map((item) => {
                           const allShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
                           // Chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng loại cây của lô này, và còn đủ chỗ.
@@ -344,8 +344,8 @@ export default function TransferReceivePage() {
                           return (
                             <div key={item.id} className="flex flex-wrap items-center gap-3 text-sm">
                               <div className="min-w-0 flex-1">
-                                <span className="font-mono text-blue-700">{item.lot.code}</span>
-                                <span className="text-gray-500 ml-2">{item.lot.plantType.name}</span>
+                                <span className="font-mono text-info-foreground">{item.lot.code}</span>
+                                <span className="text-text-secondary ml-2">{item.lot.plantType.name}</span>
                                 <Badge variant="secondary" className="ml-2 text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
                                 <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
                               </div>
@@ -383,7 +383,7 @@ export default function TransferReceivePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-red-600"
+                        className="text-destructive"
                         onClick={() => reject(t.id)}
                         disabled={processing === t.id}
                       >
@@ -391,7 +391,7 @@ export default function TransferReceivePage() {
                       </Button>
                       <Button
                         size="sm"
-                        className="bg-green-600 hover:bg-green-700"
+                        className="bg-primary hover:bg-primary-hover"
                         onClick={() => (mode === "split" ? submitSplit() : confirm(t.id, t.items, mode, isSurplus))}
                         disabled={processing === t.id || (mode === "split" && !allMatched)}
                       >

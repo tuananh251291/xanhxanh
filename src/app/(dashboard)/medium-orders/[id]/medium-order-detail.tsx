@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Loader2, Send, Check } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { MEDIUM_ORDER_DAY_STATUS_LABELS, type UserRole } from "@/types";
 
@@ -37,12 +37,12 @@ type Order = {
 type QuantityField = "m03" | "m05" | "t01" | "t05";
 const FIELDS: QuantityField[] = ["m03", "m05", "t01", "t05"];
 
-const NUMBER_INPUT_CLASS = "w-20 text-right ml-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+const NUMBER_INPUT_CLASS = "block w-20 text-center mx-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 function dayStatus(day: OrderDay) {
-  if (day.confirmedAt) return { label: MEDIUM_ORDER_DAY_STATUS_LABELS.CONFIRMED, color: "bg-green-100 text-green-700" };
-  if (day.handedOverAt) return { label: MEDIUM_ORDER_DAY_STATUS_LABELS.HANDED_OVER, color: "bg-yellow-100 text-yellow-700" };
-  return { label: MEDIUM_ORDER_DAY_STATUS_LABELS.NOT_HANDED_OVER, color: "bg-gray-100 text-gray-600" };
+  if (day.confirmedAt) return { label: MEDIUM_ORDER_DAY_STATUS_LABELS.CONFIRMED, color: "bg-primary-light text-primary-strong" };
+  if (day.handedOverAt) return { label: MEDIUM_ORDER_DAY_STATUS_LABELS.HANDED_OVER, color: "bg-warning-light text-warning-foreground" };
+  return { label: MEDIUM_ORDER_DAY_STATUS_LABELS.NOT_HANDED_OVER, color: "bg-muted text-text-secondary" };
 }
 
 export default function MediumOrderDetail({ orderId, role }: { orderId: string; role: UserRole | null }) {
@@ -115,8 +115,8 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
     }
   };
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
-  if (!order) return <p className="text-sm text-gray-400 text-center py-12">Không tìm thấy đơn</p>;
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
+  if (!order) return <p className="text-sm text-text-muted text-center py-12">Không tìm thấy đơn</p>;
 
   const totals = order.days.reduce(
     (acc, d) => ({ m03: acc.m03 + d.m03, m05: acc.m05 + d.m05, t01: acc.t01 + d.t01, t05: acc.t05 + d.t05 }),
@@ -128,8 +128,8 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       <div className="flex items-center gap-3">
         <Link href="/medium-orders"><Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button></Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 font-mono">{order.code}</h1>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl font-bold text-foreground font-mono">{order.code}</h1>
+          <p className="text-text-secondary text-sm">
             {order.instructions.length} chỉ định ·{" "}
             {format(new Date(order.weekStart), "dd/MM", { locale: vi })} – {format(new Date(order.weekEnd), "dd/MM/yyyy", { locale: vi })}
           </p>
@@ -137,34 +137,23 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Chỉ định cấy gộp trong đơn này</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {order.instructions.map((inst) => (
-            <Badge key={inst.code} variant="outline">
-              <span className="font-mono">{inst.code}</span> — {inst.plantType.name}
-            </Badge>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Quy cách cần pha</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base font-bold text-primary-strong">Quy cách cần pha</CardTitle></CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-green-700">
-                  <th className="text-left px-4 py-2 font-medium text-white">Quy cách</th>
-                  <th className="text-left px-4 py-2 font-medium text-white">Mã môi trường</th>
-                  <th className="text-right px-4 py-2 font-medium text-white">SL cần</th>
+                <tr className="bg-primary-light">
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Quy cách</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Mã môi trường</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">SL cần</th>
                 </tr>
               </thead>
               <tbody>
                 {order.items.map((item) => (
-                  <tr key={item.id} className="border-b last:border-0 even:bg-green-50">
+                  <tr key={item.id} className="border-b last:border-0 even:bg-primary-light">
                     <td className="px-4 py-2"><Badge variant="outline">{item.stageCode}</Badge></td>
-                    <td className="px-4 py-2 font-mono text-cyan-700">{item.mediumType.code} <span className="text-gray-500 font-sans">— {item.mediumType.name}</span></td>
-                    <td className="px-4 py-2 text-right font-medium">{item.quantity.toLocaleString("vi-VN")}</td>
+                    <td className="px-4 py-2 font-mono text-secondary-foreground">{item.mediumType.code}</td>
+                    <td className="px-4 py-2 text-left font-medium">{item.quantity.toLocaleString("vi-VN")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -174,28 +163,29 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Bảng pha theo ngày</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base font-bold text-primary-strong">Bảng pha theo ngày</CardTitle></CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-green-700 text-white">
-                  <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Ngày</th>
-                  <th className="px-3 py-2 text-right font-medium">M03</th>
-                  <th className="px-3 py-2 text-right font-medium">M05</th>
-                  <th className="px-3 py-2 text-right font-medium">T01</th>
-                  <th className="px-3 py-2 text-right font-medium">T05</th>
-                  <th className="px-3 py-2 text-center font-medium">Bàn giao</th>
-                  <th className="px-3 py-2 text-left font-medium">Trạng thái</th>
+                <tr className="bg-primary-light text-primary-strong">
+                  <th className="px-3 py-2 text-left whitespace-nowrap font-bold text-base">Ngày</th>
+                  <th className="px-3 py-2 text-center font-bold text-base">M03</th>
+                  <th className="px-3 py-2 text-center font-bold text-base">M05</th>
+                  <th className="px-3 py-2 text-center font-bold text-base">T01</th>
+                  <th className="px-3 py-2 text-center font-bold text-base">T05</th>
+                  <th className="px-3 py-2 text-center font-bold text-base">Bàn giao</th>
+                  <th className="px-3 py-2 text-left font-bold text-base">Trạng thái</th>
                 </tr>
               </thead>
               <tbody>
                 {order.days.map((day) => {
                   const status = dayStatus(day);
-                  const editable = isMoiTruong && !day.handedOverAt;
+                  const isToday = isSameDay(new Date(day.date), new Date());
+                  const editable = isMoiTruong && !day.handedOverAt && isToday;
                   const draft = drafts[day.id];
                   return (
-                    <tr key={day.id} className="border-b last:border-0 even:bg-green-50">
+                    <tr key={day.id} className="border-b last:border-0 even:bg-primary-light">
                       <td className="px-3 py-2 font-medium whitespace-nowrap">
                         {format(new Date(day.date), "EEEE, dd/MM", { locale: vi })}
                       </td>
@@ -209,19 +199,19 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                               onChange={(e) => setDraftField(day.id, field, e.target.value)}
                             />
                           ) : (
-                            <p className="text-right text-gray-700">{day[field].toLocaleString("vi-VN")}</p>
+                            <p className="text-center text-foreground">{day[field].toLocaleString("vi-VN")}</p>
                           )}
                         </td>
                       ))}
                       <td className="px-3 py-2 text-center">
                         {editable && (
-                          <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700" disabled={savingDayId === day.id} onClick={() => handover(day)}>
+                          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={savingDayId === day.id} onClick={() => handover(day)}>
                             {savingDayId === day.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
                             {savingDayId !== day.id && "Bàn giao"}
                           </Button>
                         )}
                         {isKhoMo && day.handedOverAt && !day.confirmedAt && (
-                          <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700" disabled={savingDayId === day.id} onClick={() => confirmDay(day)}>
+                          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={savingDayId === day.id} onClick={() => confirmDay(day)}>
                             {savingDayId === day.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
                             {savingDayId !== day.id && "Xác nhận"}
                           </Button>
@@ -231,12 +221,12 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                     </tr>
                   );
                 })}
-                <tr className="border-b bg-blue-50 font-semibold">
+                <tr className="border-b bg-info-light font-semibold">
                   <td className="px-3 py-2">Tổng cộng</td>
-                  <td className="px-3 py-2 text-right">{totals.m03.toLocaleString("vi-VN")}</td>
-                  <td className="px-3 py-2 text-right">{totals.m05.toLocaleString("vi-VN")}</td>
-                  <td className="px-3 py-2 text-right">{totals.t01.toLocaleString("vi-VN")}</td>
-                  <td className="px-3 py-2 text-right">{totals.t05.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-center">{totals.m03.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-center">{totals.m05.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-center">{totals.t01.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-center">{totals.t05.toLocaleString("vi-VN")}</td>
                   <td className="px-3 py-2" colSpan={2}></td>
                 </tr>
               </tbody>

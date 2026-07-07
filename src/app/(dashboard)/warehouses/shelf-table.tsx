@@ -90,21 +90,21 @@ export default function ShelfTable({
       return acc;
     }, {});
     return (
-      <tr key={shelf.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
+      <tr key={shelf.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
         <td className="px-3 py-2 whitespace-nowrap">
           <button
             className="flex items-center gap-1.5 text-left"
             onClick={() => setQrShelf(shelf)}
             title="Xem QR"
           >
-            <span className="text-sm font-bold text-gray-700">{shelf.code}</span>
-            <QrCode className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <span className="text-sm font-bold text-foreground">{shelf.code}</span>
+            <QrCode className="w-3.5 h-3.5 text-text-muted shrink-0" />
           </button>
         </td>
-        <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">{shelf.name}</td>
+        <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap">{shelf.name}</td>
         {isMauMeRoom && (
           <>
-            <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+            <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
               {shelf.plantType?.name ?? "—"}
             </td>
             <td className="px-3 py-2 min-w-[160px]">
@@ -130,23 +130,23 @@ export default function ShelfTable({
                   </SelectContent>
                 </Select>
               ) : (
-                <span className="text-xs text-gray-600">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
+                <span className="text-xs text-text-secondary">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
               )}
             </td>
             <td className="px-3 py-2 whitespace-nowrap">
               {shelf.assignedStaff ? (
                 <span
                   className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                    shelf.lots.length > 0 ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"
+                    shelf.lots.length > 0 ? "bg-warning-light text-warning-foreground" : "bg-primary-light text-primary-strong"
                   }`}
                 >
                   {shelf.lots.length > 0 ? "Đã có lô" : "Trống"}
                 </span>
               ) : (
-                <span className="text-xs text-gray-400">—</span>
+                <span className="text-xs text-text-muted">—</span>
               )}
             </td>
-            <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+            <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
               {Object.keys(bagsBySpec).length === 0
                 ? "—"
                 : Object.entries(bagsBySpec)
@@ -172,24 +172,24 @@ export default function ShelfTable({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <span className="text-xs text-gray-600">{shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "—"}</span>
+                  <span className="text-xs text-text-secondary">{shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "—"}</span>
                 )}
               </td>
             )}
           </>
         )}
         <td className="px-3 py-2 min-w-[140px]">
-          <div className="flex items-center gap-1.5 text-xs text-gray-600">
-            <Package className="w-3 h-3 text-green-500 shrink-0" />
+          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <Package className="w-3 h-3 text-primary-strong shrink-0" />
             {used.toLocaleString("vi-VN")}
             {shelf.capacity ? `/${shelf.capacity}` : ""}
             {isMauMeRoom && " cụm"}
           </div>
           {usage !== null && (
-            <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
-                  usage > 90 ? "bg-red-500" : usage > 70 ? "bg-yellow-500" : "bg-green-500"
+                  usage > 90 ? "bg-destructive" : usage > 70 ? "bg-warning" : "bg-primary"
                 }`}
                 style={{ width: `${Math.min(usage, 100)}%` }}
               />
@@ -214,7 +214,7 @@ export default function ShelfTable({
                 </SelectContent>
               </Select>
             ) : (
-              <span className="text-xs text-gray-400">—</span>
+              <span className="text-xs text-text-muted">—</span>
             )}
           </td>
         )}
@@ -226,20 +226,20 @@ export default function ShelfTable({
     <div className="overflow-x-auto border rounded-lg">
       <table className="w-full">
         <thead>
-          <tr className="bg-green-700">
-            <th className="text-left px-3 py-2 text-xs font-medium text-white">Mã kệ</th>
-            <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên kệ</th>
+          <tr className="bg-primary-light">
+            <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã kệ</th>
+            <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
             {isMauMeRoom && (
               <>
-                <th className="text-left px-3 py-2 text-xs font-medium text-white">Tên cây chi tiết</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-white">Nhân viên phụ trách</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-white">Trạng thái</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-white">Số túi M03/M05</th>
-                {showPoolColumn && <th className="text-left px-3 py-2 text-xs font-medium text-white">Kho quá hạn/đúng hạn</th>}
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Trạng thái</th>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số túi M03/M05</th>
+                {showPoolColumn && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Kho quá hạn/đúng hạn</th>}
               </>
             )}
-            <th className="text-left px-3 py-2 text-xs font-medium text-white">Tồn / Sức chứa</th>
-            {canMoveRoom && <th className="text-left px-3 py-2 text-xs font-medium text-white">Chuyển phòng</th>}
+            <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tồn / Sức chứa</th>
+            {canMoveRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Chuyển phòng</th>}
           </tr>
         </thead>
         <tbody>{rows.map((s) => renderRow(s, showPoolColumn))}</tbody>
@@ -257,19 +257,19 @@ export default function ShelfTable({
       {isMauMeRoom ? (
         <div className="space-y-4">
           <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">
-              Kho mẫu mẹ đã chia <span className="font-normal text-gray-400">({assignedShelves.length} kệ)</span>
+            <p className="text-xs font-semibold text-text-secondary mb-2">
+              Kho mẫu mẹ đã chia <span className="font-normal text-text-muted">({assignedShelves.length} kệ)</span>
             </p>
             {assignedShelves.length === 0 ? (
-              <p className="text-xs text-gray-400 pl-1">Chưa có kệ nào được gán nhân viên</p>
+              <p className="text-xs text-text-muted pl-1">Chưa có kệ nào được gán nhân viên</p>
             ) : renderTable(assignedShelves, false)}
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">
-              Kho mẫu mẹ chung <span className="font-normal text-gray-400">({unassignedShelves.length} kệ)</span>
+            <p className="text-xs font-semibold text-text-secondary mb-2">
+              Kho mẫu mẹ chung <span className="font-normal text-text-muted">({unassignedShelves.length} kệ)</span>
             </p>
             {unassignedShelves.length === 0 ? (
-              <p className="text-xs text-gray-400 pl-1">Không còn kệ nào chưa gán nhân viên</p>
+              <p className="text-xs text-text-muted pl-1">Không còn kệ nào chưa gán nhân viên</p>
             ) : renderTable(unassignedShelves, true)}
           </div>
         </div>
@@ -286,7 +286,7 @@ export default function ShelfTable({
             <div className="text-center space-y-3">
               <QRCodeDisplay value={qrShelf.code} size={200} />
               <p className="text-sm font-medium">{qrShelf.name}</p>
-              <p className="text-xs text-gray-500">{qrShelf.code}</p>
+              <p className="text-xs text-text-secondary">{qrShelf.code}</p>
               <Button
                 variant="outline"
                 size="sm"

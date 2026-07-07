@@ -59,7 +59,7 @@ export default function PendingApprovals({ users }: { users: PendingUser[] }) {
           <div key={u.id} className="flex flex-wrap items-center gap-3 border rounded-lg p-3">
             <div className="min-w-0 flex-1 basis-full sm:basis-auto">
               <p className="font-medium text-sm">{u.name}</p>
-              <p className="text-xs text-gray-500">{u.email} · {u.code}</p>
+              <p className="text-xs text-text-secondary">{u.email} · {u.code}</p>
             </div>
             <Select items={ROLE_LABELS} onValueChange={(v) => setRoleMap((prev) => ({ ...prev, [u.id]: v as UserRole }))}>
               <SelectTrigger className="w-full sm:w-48">
@@ -73,7 +73,7 @@ export default function PendingApprovals({ users }: { users: PendingUser[] }) {
             </Select>
             <Button
               size="sm"
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-primary hover:bg-primary-hover"
               disabled={processing === u.id}
               onClick={() => approve(u.id)}
             >
@@ -82,7 +82,7 @@ export default function PendingApprovals({ users }: { users: PendingUser[] }) {
             <Button
               size="sm"
               variant="outline"
-              className="text-red-600"
+              className="text-destructive"
               disabled={processing === u.id}
               onClick={() => reject(u.id)}
             >

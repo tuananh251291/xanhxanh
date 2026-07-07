@@ -53,8 +53,8 @@ export default async function WarehousesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Kho & Giàn kệ</h1>
-          <p className="text-gray-500 text-sm mt-1">{warehouses.length} kho — bấm vào từng kho để xem phòng, bấm vào từng phòng để xem chi tiết giàn kệ</p>
+          <h1 className="text-2xl font-bold text-foreground">Kho & Giàn kệ</h1>
+          <p className="text-text-secondary text-sm mt-1">{warehouses.length} kho — bấm vào từng kho để xem phòng, bấm vào từng phòng để xem chi tiết giàn kệ</p>
         </div>
         <CreateWarehouseDialog />
       </div>

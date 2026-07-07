@@ -20,8 +20,8 @@ export default async function PlantTypesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quản lý loại cây</h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Quản lý loại cây</h1>
+          <p className="text-text-secondary text-sm mt-1">
             {categories.length} loại cây · {plantTypes.length} chi tiết loại cây — mã cây đầy đủ = mã loại cây + số thứ tự (VD: MT001)
           </p>
         </div>
@@ -31,8 +31,8 @@ export default async function PlantTypesPage() {
       <div className="flex flex-wrap items-center gap-2">
         {categories.map((c) => (
           <div key={c.id} className="inline-flex items-center gap-1 border rounded-full pl-3 pr-1 py-1 text-sm bg-white">
-            <span className="font-mono font-bold text-green-700">{c.code}</span>
-            <span className="text-gray-700">{c.name}</span>
+            <span className="font-mono font-bold text-primary-strong">{c.code}</span>
+            <span className="text-foreground">{c.name}</span>
             <PlantCategoryDialog category={c} />
           </div>
         ))}
@@ -40,7 +40,7 @@ export default async function PlantTypesPage() {
       </div>
 
       {plantTypes.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">Chưa có chi tiết loại cây nào — bấm &quot;Thêm chi tiết loại cây&quot; để bắt đầu</p>
+        <p className="text-sm text-text-muted text-center py-12">Chưa có chi tiết loại cây nào — bấm &quot;Thêm chi tiết loại cây&quot; để bắt đầu</p>
       ) : (
         <PlantTypeTable plantTypes={plantTypes} categories={categories} />
       )}

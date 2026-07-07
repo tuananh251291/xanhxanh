@@ -16,10 +16,10 @@ export default async function ReportsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-indigo-600" /> Báo cáo
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <BarChart3 className="w-6 h-6 text-primary-strong" /> Báo cáo
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Tổng hợp sản lượng, tỉ lệ nhiễm, kế hoạch và tồn kho</p>
+        <p className="text-text-secondary text-sm mt-1">Tổng hợp sản lượng, tỉ lệ nhiễm, kế hoạch và tồn kho</p>
       </div>
 
       <Tabs defaultValue="production">

@@ -4,7 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
 import { addDays, startOfWeek, subWeeks } from "date-fns";
 import { generateInstructionCode, generateProductLotCode, generateTransferCode, generateMediumOrderCode } from "@/lib/codes";
-import { getOrCreatePersonalDarkRoomShelf } from "@/lib/dark-room";
+import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { buildInstructionMediumNeeds, aggregateMediumOrderItems, getOrderWeekRange } from "@/lib/medium-orders";
 import { planShelfAssignments } from "@/lib/shelf-assignment";
 
@@ -176,7 +176,7 @@ async function createInstruction(params: {
 
 // Mô phỏng NV cấy mô nhập dữ liệu cấy cho 1 ngày cụ thể — tạo lô sản phẩm (mã theo generateProductLotCode)
 // gắn thẳng vào kệ đại diện Phòng tối cá nhân, đúng logic đang chạy ở POST /api/daily-records.
-async function seedDailyRecord(params: { instructionId: string; instructionCode: string; staffId: string; date: Date; personalShelfId: string }) {
+async function seedDailyRecord(params: { instructionId: string; instructionCode: string; staffId: string; date: Date; personalRoomId: string }) {
   const m03 = 10 + Math.floor(Math.random() * 10);
   const t01 = 15 + Math.floor(Math.random() * 15);
   const productLotCode = generateProductLotCode(params.instructionCode, params.date);
@@ -191,7 +191,7 @@ async function seedDailyRecord(params: { instructionId: string; instructionCode:
       initialQuantity: m03,
       status: "ACTIVE",
       instructionId: params.instructionId,
-      shelfId: params.personalShelfId,
+      roomId: params.personalRoomId,
       enteredAt: params.date,
     },
   });
@@ -205,7 +205,7 @@ async function seedDailyRecord(params: { instructionId: string; instructionCode:
       initialQuantity: t01,
       status: "ACTIVE",
       instructionId: params.instructionId,
-      shelfId: params.personalShelfId,
+      roomId: params.personalRoomId,
       enteredAt: params.date,
     },
   });
@@ -217,7 +217,8 @@ async function seedDailyRecord(params: { instructionId: string; instructionCode:
       recordDate: params.date,
       motherUsed: m03 + 5,
       motherChecked: m03 + 5,
-      motherContaminated: 0,
+      motherContaminatedM03: 0,
+      motherContaminatedM05: 0,
       items: {
         create: [
           { lotId: motherLot.id, stage: "MAU_ME", quantityCreated: m03 },
@@ -358,7 +359,7 @@ async function main() {
         instructionCode: instruction.code,
         staffId: caymo1.id,
         date: addDays(lastWeekStart, d),
-        personalShelfId: (await getOrCreatePersonalDarkRoomShelf(caymo1.id, warehouseId)).id,
+        personalRoomId: (await getOrCreatePersonalDarkRoom(caymo1.id, warehouseId)).id,
       });
     }
     await handOffToLightRoom({ instructionId: instruction.id, staffId: caymo1.id, warehouseId });
@@ -378,14 +379,14 @@ async function main() {
       motherMediumTypeId,
       finishedMediumTypeId,
     });
-    const personalShelf = await getOrCreatePersonalDarkRoomShelf(caymo1.id, warehouseId);
+    const personalRoom = await getOrCreatePersonalDarkRoom(caymo1.id, warehouseId);
     for (let d = 0; d < 2; d++) {
       await seedDailyRecord({
         instructionId: instruction.id,
         instructionCode: instruction.code,
         staffId: caymo1.id,
         date: addDays(thisWeekStart, d),
-        personalShelfId: personalShelf.id,
+        personalRoomId: personalRoom.id,
       });
     }
     console.log(`✅ [ACTIVE] ${instruction.code} — ${caymo1.name} — đã cấy 2/6 ngày, còn ở phòng tối cá nhân`);

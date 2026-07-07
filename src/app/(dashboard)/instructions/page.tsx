@@ -18,11 +18,11 @@ import AssignStaffCell from "./assign-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
-  DRAFT: "bg-gray-100 text-gray-600",
-  ACTIVE: "bg-blue-100 text-blue-700",
-  COMPLETED: "bg-green-100 text-green-700",
-  CANCELLED: "bg-red-100 text-red-600",
-  ENDED: "bg-slate-200 text-slate-700",
+  DRAFT: "bg-muted text-text-secondary",
+  ACTIVE: "bg-info-light text-info-foreground",
+  COMPLETED: "bg-primary-light text-primary-strong",
+  CANCELLED: "bg-danger-light text-destructive",
+  ENDED: "bg-muted text-foreground",
 };
 
 const PAGE_SIZE = 8;
@@ -106,10 +106,10 @@ export default async function InstructionsPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-foreground">
             {role === "KHO_MO" ? "Chỉ định cấy chưa bàn giao" : "Chỉ định cấy"}
           </h1>
-          <p className="text-gray-500 text-sm mt-1">{total} chỉ định</p>
+          <p className="text-text-secondary text-sm mt-1">{total} chỉ định</p>
         </div>
         {(isAdminRole(role) || role === "KY_THUAT") && <CreateInstructionDialog />}
       </div>
@@ -129,7 +129,7 @@ export default async function InstructionsPage({
               <Label className="text-xs">Mã cây</Label>
               <Input type="text" name="plantCode" defaultValue={plantCodeFilter} placeholder="VD: AL001" className="w-40" />
             </div>
-            <Button type="submit" size="sm" className="bg-green-600 hover:bg-green-700">
+            <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
               <Search className="w-4 h-4 mr-1" /> Tìm kiếm
             </Button>
             {hasFilters && (
@@ -142,8 +142,8 @@ export default async function InstructionsPage({
       </Card>
 
       {instructions.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-gray-400">
-          <ClipboardList className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+        <Card><CardContent className="py-16 text-center text-text-muted">
+          <ClipboardList className="w-10 h-10 mx-auto mb-3 text-text-muted" />
           <p>Chưa có chỉ định cấy nào{hasFilters ? " khớp bộ lọc" : ""}</p>
         </CardContent></Card>
       ) : (
@@ -152,24 +152,24 @@ export default async function InstructionsPage({
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-green-700">
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã chỉ định</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã cây</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên cây chi tiết</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">NV cấy</th>
-                    {role === "KHO_MO" && <th className="text-left px-4 py-3 text-sm font-medium text-white">Bàn giao</th>}
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-white">Ngày tạo</th>
-                    <th className="px-4 py-3"></th>
+                  <tr className="bg-primary-light">
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã chỉ định</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã cây</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên cây chi tiết</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV cấy</th>
+                    {role === "KHO_MO" && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Bàn giao</th>}
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày tạo</th>
+                    <th className="px-4 py-3 font-bold text-base"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {instructions.map((inst) => (
-                    <tr key={inst.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{inst.code}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-700">{inst.plantType.code}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{inst.plantType.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                    <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{inst.code}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-foreground">{inst.plantType.code}</td>
+                      <td className="px-4 py-3 text-sm text-foreground">{inst.plantType.name}</td>
+                      <td className="px-4 py-3 text-sm text-foreground">
                         {!inst.assignedTo ? (
                           role === "KHO_MO" ? (
                             <AssignStaffCell instructionId={inst.id} staffList={caymoStaff} />
@@ -188,9 +188,9 @@ export default async function InstructionsPage({
                       <td className="px-4 py-3">
                         {role === "KHO_MO" ? (
                           !inst.handedOverAt ? (
-                            <Badge className="bg-red-100 text-red-700">Chưa bàn giao</Badge>
+                            <Badge className="bg-danger-light text-destructive">Chưa bàn giao</Badge>
                           ) : (
-                            <Badge className="bg-amber-100 text-amber-700">Đã bàn giao / chưa xác nhận</Badge>
+                            <Badge className="bg-warning-light text-warning-foreground">Đã bàn giao / chưa xác nhận</Badge>
                           )
                         ) : (
                           <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
@@ -198,13 +198,13 @@ export default async function InstructionsPage({
                           </Badge>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
+                      <td className="px-4 py-3 text-sm text-text-secondary">
                         {format(inst.createdAt, "dd/MM/yyyy", { locale: vi })}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <Link href={`/instructions/${inst.id}`}>
-                            <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700">
+                            <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
                               <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
                             </Button>
                           </Link>
@@ -221,7 +221,7 @@ export default async function InstructionsPage({
 
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t">
-                <p className="text-sm text-gray-500">Trang {page}/{totalPages}</p>
+                <p className="text-sm text-text-secondary">Trang {page}/{totalPages}</p>
                 <div className="flex gap-2">
                   {page > 1 ? (
                     <Link href={pageHref(page - 1)}>

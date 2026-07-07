@@ -178,7 +178,7 @@ export default function CreateInstructionDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={<Button className="bg-primary hover:bg-primary-hover" />}>
         <Plus className="w-4 h-4 mr-2" /> Tạo chỉ định cấy
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -187,7 +187,7 @@ export default function CreateInstructionDialog() {
 
           <div className="space-y-1">
             <Label className="flex items-center gap-1">
-              <QrCode className="w-3.5 h-3.5 text-gray-400" /> Giàn kệ nguồn <span className="text-red-500">*</span>
+              <QrCode className="w-3.5 h-3.5 text-text-muted" /> Giàn kệ nguồn <span className="text-destructive">*</span>
             </Label>
             <Select onValueChange={(v) => onShelfChange(v as string)} value={shelfId}>
               <SelectTrigger>
@@ -206,7 +206,7 @@ export default function CreateInstructionDialog() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-400">Sau này sẽ quét QR code kệ để tự chọn đúng kệ này</p>
+            <p className="text-xs text-text-muted">Sau này sẽ quét QR code kệ để tự chọn đúng kệ này</p>
           </div>
 
           {rows.length > 0 && (
@@ -215,7 +215,7 @@ export default function CreateInstructionDialog() {
                 <div key={r.lotId} className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{MOTHER_SPEC_LABELS[r.stageCode as keyof typeof MOTHER_SPEC_LABELS] ?? r.stageCode}</Badge>
-                    <span className="text-xs text-gray-500">Lô {r.lotCode} · còn {r.available.toLocaleString("vi-VN")}</span>
+                    <span className="text-xs text-text-secondary">Lô {r.lotCode} · còn {r.available.toLocaleString("vi-VN")}</span>
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <div className="space-y-1">
@@ -276,7 +276,7 @@ export default function CreateInstructionDialog() {
                     </div>
                   </div>
                   {r.qty > 0 && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-text-secondary">
                       → Mẫu mẹ dự kiến: <strong>{r.expectedMother.toLocaleString("vi-VN")}</strong> · Thành phẩm dự kiến: <strong>{r.expectedFinished.toLocaleString("vi-VN")}</strong>
                     </p>
                   )}
@@ -289,7 +289,7 @@ export default function CreateInstructionDialog() {
             <Label>Tuần thực hiện</Label>
             <Input type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
             {weekStart && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-secondary">
                 Thứ 2, {format(new Date(weekStart), "dd/MM/yyyy", { locale: vi })} – Chủ nhật,{" "}
                 {format(addDays(new Date(weekStart), 6), "dd/MM/yyyy", { locale: vi })}
               </p>
@@ -297,8 +297,8 @@ export default function CreateInstructionDialog() {
           </div>
 
           {(totalMotherOutput > 0 || totalFinishedOutput > 0) && (
-            <div className="bg-blue-50 rounded-lg p-3 space-y-3">
-              <p className="text-xs font-medium text-blue-700 flex items-center gap-1">
+            <div className="bg-info-light rounded-lg p-3 space-y-3">
+              <p className="text-xs font-medium text-info-foreground flex items-center gap-1">
                 <Calculator className="w-3.5 h-3.5" /> Tổng dự kiến (cộng dồn các quy cách nguồn)
               </p>
               <div className="bg-white rounded p-2 text-sm">
@@ -309,7 +309,7 @@ export default function CreateInstructionDialog() {
                 <Label className="text-xs">Phân bổ quy cách thành phẩm dự kiến</Label>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">{FINISHED_SPEC_LABELS.T01}</Label>
+                    <Label className="text-xs text-text-secondary">{FINISHED_SPEC_LABELS.T01}</Label>
                     <Input
                       type="number" min={0}
                       value={plannedT01}
@@ -321,19 +321,19 @@ export default function CreateInstructionDialog() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs text-gray-500">{FINISHED_SPEC_LABELS.T05}</Label>
+                    <Label className="text-xs text-text-secondary">{FINISHED_SPEC_LABELS.T05}</Label>
                     <Input
                       type="number" min={0}
                       value={plannedT05}
                       onChange={(e) => { setPlannedTouched(true); setPlannedT05(e.target.value); }}
                     />
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-text-muted">
                       ≈ {Math.floor((Number(plannedT05) || 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi
                       {(Number(plannedT05) || 0) % FINISHED_SPEC_BAG_SIZE.T05 > 0 && ` (dư ${(Number(plannedT05) || 0) % FINISHED_SPEC_BAG_SIZE.T05} cây)`}
                     </p>
                   </div>
                 </div>
-                <p className={plannedSum === totalFinishedOutput ? "text-xs text-green-600" : "text-xs text-orange-500"}>
+                <p className={plannedSum === totalFinishedOutput ? "text-xs text-primary-strong" : "text-xs text-warning-foreground"}>
                   Đã phân bổ: {plannedSum.toLocaleString("vi-VN")} / {totalFinishedOutput.toLocaleString("vi-VN")}
                   {plannedSum !== totalFinishedOutput && " — phải khớp đúng mới tạo được chỉ định"}
                 </p>
@@ -349,7 +349,7 @@ export default function CreateInstructionDialog() {
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
             <Button
-              type="button" className="flex-1 bg-green-600 hover:bg-green-700"
+              type="button" className="flex-1 bg-primary hover:bg-primary-hover"
               disabled={loading || plannedSum !== totalFinishedOutput}
               onClick={onSubmit}
             >

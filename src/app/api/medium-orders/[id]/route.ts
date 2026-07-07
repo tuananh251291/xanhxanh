@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isMediumOrderInProgress } from "@/lib/medium-orders";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,6 +36,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const order = await prisma.mediumOrder.findUnique({ where: { id } });
   if (!order) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+
+  // Mỗi NV môi trường chỉ được xử lý 1 đơn "đang thực hiện" tại 1 thời điểm — chặn xác nhận đơn mới nếu
+  // đơn khác do chính người này xác nhận trước đó chưa kết thúc (xem isMediumOrderInProgress).
+  if (!order.confirmedAt) {
+    const myOrders = await prisma.mediumOrder.findMany({
+      where: { confirmedById: session!.user.id, confirmedAt: { not: null } },
+      include: { days: { select: { handedOverAt: true, confirmedAt: true } } },
+    });
+    if (myOrders.some((o) => isMediumOrderInProgress(o))) {
+      return NextResponse.json({ message: "Bạn cần hoàn thành đơn sản xuất hiện tại" }, { status: 400 });
+    }
+  }
 
   const updated = await prisma.mediumOrder.update({
     where: { id },

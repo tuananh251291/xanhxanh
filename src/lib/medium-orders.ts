@@ -75,3 +75,29 @@ export function getOrderWeekRange(instructionWeekStart: Date): { weekStart: Date
   const days = Array.from({ length: 8 }, (_, i) => addDays(weekStart, i));
   return { weekStart, weekEnd, days };
 }
+
+export type MediumOrderDayLike = {
+  handedOverAt: Date | string | null;
+  confirmedAt: Date | string | null;
+};
+
+// 1 đơn coi là "đã kết thúc" (xong phần việc của NV môi trường) khi cả 8 ngày trong tuần đều đã được
+// bàn giao (handedOverAt) — không xét theo số lượng vì ngày mới tạo luôn có số lượng = 0 (chưa nhập),
+// nên không thể dùng "tổng số lượng = 0" để suy ra "không cần bàn giao" (sẽ luôn đúng ngay khi vừa xác
+// nhận đơn, làm đơn "kết thúc" ngay lập tức). Dùng chung để: (1) xác định đơn "đang xử lý" (đã xác nhận,
+// chưa kết thúc) hiện trên trang "Bàn giao môi trường", (2) chặn 1 NV môi trường xác nhận đơn thứ 2 khi
+// đơn hiện tại của họ chưa kết thúc.
+export function isMediumOrderFinished(days: MediumOrderDayLike[]): boolean {
+  return days.length > 0 && days.every((d) => d.handedOverAt != null);
+}
+
+export function isMediumOrderInProgress(order: { confirmedAt: Date | string | null; days: MediumOrderDayLike[] }): boolean {
+  return !!order.confirmedAt && !isMediumOrderFinished(order.days);
+}
+
+// 1 đơn coi là "đã nhận" (từ góc nhìn Kho mô) khi cả 8 ngày đều đã được Kho mô xác nhận nhận
+// (confirmedAt) — dùng để tách 2 danh sách ở trang "Nhận môi trường": "đã nhận" (mọi ngày xong) và
+// "đang bàn giao" (còn ít nhất 1 ngày chưa được xác nhận, kể cả khi NV môi trường chưa bàn giao ngày đó).
+export function isMediumOrderReceived(days: MediumOrderDayLike[]): boolean {
+  return days.length > 0 && days.every((d) => d.confirmedAt != null);
+}

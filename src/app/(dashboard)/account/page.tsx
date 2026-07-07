@@ -128,8 +128,8 @@ export default function AccountPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Tài khoản của tôi</h1>
-        <p className="text-gray-500 text-sm mt-1">Quản lý ảnh đại diện và mật khẩu đăng nhập</p>
+        <h1 className="text-2xl font-bold text-foreground">Tài khoản của tôi</h1>
+        <p className="text-text-secondary text-sm mt-1">Quản lý ảnh đại diện và mật khẩu đăng nhập</p>
       </div>
 
       <Card>
@@ -180,19 +180,19 @@ export default function AccountPage() {
             <div className="space-y-1">
               <Label htmlFor="currentPassword">Mật khẩu hiện tại</Label>
               <Input id="currentPassword" type="password" placeholder="••••••••" {...register("currentPassword")} />
-              {errors.currentPassword && <p className="text-sm text-red-500">{errors.currentPassword.message}</p>}
+              {errors.currentPassword && <p className="text-sm text-destructive">{errors.currentPassword.message}</p>}
             </div>
             <div className="space-y-1">
               <Label htmlFor="newPassword">Mật khẩu mới</Label>
               <Input id="newPassword" type="password" placeholder="••••••••" {...register("newPassword")} />
-              {errors.newPassword && <p className="text-sm text-red-500">{errors.newPassword.message}</p>}
+              {errors.newPassword && <p className="text-sm text-destructive">{errors.newPassword.message}</p>}
             </div>
             <div className="space-y-1">
               <Label htmlFor="confirmPassword">Xác nhận mật khẩu mới</Label>
               <Input id="confirmPassword" type="password" placeholder="••••••••" {...register("confirmPassword")} />
-              {errors.confirmPassword && <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>}
+              {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>}
             </div>
-            <Button type="submit" disabled={savingPassword} className="bg-green-600 hover:bg-green-700">
+            <Button type="submit" disabled={savingPassword} className="bg-primary hover:bg-primary-hover">
               {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Đổi mật khẩu
             </Button>

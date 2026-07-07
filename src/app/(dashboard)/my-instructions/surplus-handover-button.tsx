@@ -22,7 +22,7 @@ export default function SurplusHandoverButton({ instructionId, surplus }: { inst
   };
 
   return (
-    <Button size="sm" className="bg-amber-600 hover:bg-amber-700" disabled={loading} onClick={submit}>
+    <Button size="sm" className="bg-warning text-warning-foreground hover:bg-warning-hover" disabled={loading} onClick={submit}>
       {loading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
       Bàn giao MM dư ({surplus.toLocaleString("vi-VN")})
     </Button>

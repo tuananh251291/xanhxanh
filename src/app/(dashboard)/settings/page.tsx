@@ -50,13 +50,13 @@ export default function SettingsPage() {
     } finally { setSaving(false); }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
+  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Cài đặt hệ thống</h1>
-        <p className="text-gray-500 text-sm mt-1">Cấu hình các tham số vận hành</p>
+        <h1 className="text-2xl font-bold text-foreground">Cài đặt hệ thống</h1>
+        <p className="text-text-secondary text-sm mt-1">Cấu hình các tham số vận hành</p>
       </div>
 
       <Card>
@@ -69,7 +69,7 @@ export default function SettingsPage() {
           {Object.entries(CONFIG_META).map(([key, meta]) => (
             <div key={key} className="space-y-2">
               <Label className="text-sm font-medium">{meta.label}</Label>
-              <p className="text-xs text-gray-500">{meta.description}</p>
+              <p className="text-xs text-text-secondary">{meta.description}</p>
               <div className="flex items-center gap-2 max-w-xs">
                 <Input
                   type="number"
@@ -78,13 +78,13 @@ export default function SettingsPage() {
                   onChange={(e) => setConfigs((prev) => ({ ...prev, [key]: e.target.value }))}
                   className="w-28"
                 />
-                <span className="text-sm text-gray-500">{meta.unit}</span>
+                <span className="text-sm text-text-secondary">{meta.unit}</span>
               </div>
             </div>
           ))}
 
           <div className="pt-4 border-t">
-            <Button onClick={handleSave} disabled={saving} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary-hover">
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Lưu cài đặt
             </Button>

@@ -73,7 +73,7 @@ export default function PermissionMatrix({ permissions }: { permissions: Permiss
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">Phân quyền truy cập trang theo vai trò</CardTitle>
-        <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={saving || dirty.size === 0} onClick={save}>
+        <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={saving || dirty.size === 0} onClick={save}>
           {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
           Lưu thay đổi{dirty.size > 0 ? ` (${dirty.size})` : ""}
         </Button>
@@ -82,10 +82,10 @@ export default function PermissionMatrix({ permissions }: { permissions: Permiss
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-green-700">
-                <th className="text-left px-3 py-2 font-medium text-white sticky left-0 bg-green-700">Trang</th>
+              <tr className="bg-primary-light">
+                <th className="text-left px-3 py-2 text-primary-strong sticky left-0 bg-primary-light font-bold text-base">Trang</th>
                 {ROLES.map((role) => (
-                  <th key={role} className="text-center px-2 py-2 font-medium text-white whitespace-nowrap">
+                  <th key={role} className="text-center px-2 py-2 font-medium text-primary-strong whitespace-nowrap">
                     {ROLE_LABELS[role]}
                   </th>
                 ))}
@@ -93,10 +93,10 @@ export default function PermissionMatrix({ permissions }: { permissions: Permiss
             </thead>
             <tbody>
               {pages.map((page) => (
-                <tr key={page.href} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                  <td className="px-3 py-2 font-medium text-gray-800 sticky left-0 bg-green-50 whitespace-nowrap">
+                <tr key={page.href} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                  <td className="px-3 py-2 font-medium text-foreground sticky left-0 bg-primary-light whitespace-nowrap">
                     {page.label}
-                    <span className="text-xs text-gray-400 block">{page.href}</span>
+                    <span className="text-xs text-text-muted block">{page.href}</span>
                   </td>
                   {ROLES.map((role) => (
                     <td key={role} className="text-center px-2 py-2">

@@ -40,9 +40,9 @@ export default async function PlanVsActualReport() {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Kế hoạch vs thực tế — sản lượng mẫu mẹ ({HISTORY_WEEKS} tuần gần nhất)</CardTitle>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-secondary">
           Dự kiến: <strong>{totalPlanned.toLocaleString("vi-VN")}</strong> · Thực tế: <strong>{totalActual.toLocaleString("vi-VN")}</strong> ·
-          Lệch: <strong className={Math.abs(deviationPct) > 20 ? "text-red-600" : ""}>{deviationPct > 0 ? "+" : ""}{deviationPct}%</strong>
+          Lệch: <strong className={Math.abs(deviationPct) > 20 ? "text-destructive" : ""}>{deviationPct > 0 ? "+" : ""}{deviationPct}%</strong>
         </p>
       </CardHeader>
       <CardContent>

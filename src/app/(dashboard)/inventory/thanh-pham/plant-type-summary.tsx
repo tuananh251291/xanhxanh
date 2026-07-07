@@ -23,9 +23,9 @@ export default function PlantTypeSummary({ entries }: { entries: Entry[] }) {
   const renderColumn = (col: Entry[]) => (
     <div className="space-y-2">
       {col.map((e) => (
-        <div key={e.id} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2">
+        <div key={e.id} className="flex items-center justify-between bg-background rounded px-3 py-2">
           <span className="font-medium text-sm">{e.name}</span>
-          <Badge className="bg-green-100 text-green-700">{e.quantity.toLocaleString("vi-VN")}</Badge>
+          <Badge className="bg-primary-light text-primary-strong">{e.quantity.toLocaleString("vi-VN")}</Badge>
         </div>
       ))}
     </div>
@@ -55,7 +55,7 @@ export default function PlantTypeSummary({ entries }: { entries: Entry[] }) {
 
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <p className="text-sm text-gray-500">Trang {page + 1}/{totalPages}</p>
+              <p className="text-sm text-text-secondary">Trang {page + 1}/{totalPages}</p>
               <div className="flex gap-2">
                 <Button
                   type="button"

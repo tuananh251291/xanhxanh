@@ -116,7 +116,7 @@ export default function ChecklistSettings() {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
+  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
 
   return (
     <Card>
@@ -124,7 +124,7 @@ export default function ChecklistSettings() {
         <CardTitle className="text-base flex items-center gap-2">
           <ListChecks className="w-4 h-4" /> Checklist đầu việc hàng ngày
         </CardTitle>
-        <p className="text-sm text-gray-500">Soạn đầu việc theo từng vai trò và ngưỡng % cảnh báo nếu hoàn thành không đạt</p>
+        <p className="text-sm text-text-secondary">Soạn đầu việc theo từng vai trò và ngưỡng % cảnh báo nếu hoàn thành không đạt</p>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1 max-w-xs">
@@ -149,7 +149,7 @@ export default function ChecklistSettings() {
               value={thresholdInput}
               onChange={(e) => setThresholdInput(e.target.value)}
             />
-            <span className="text-sm text-gray-500">%</span>
+            <span className="text-sm text-text-secondary">%</span>
             <Button size="sm" variant="outline" onClick={saveThreshold} disabled={savingThreshold}>
               {savingThreshold ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             </Button>
@@ -158,23 +158,23 @@ export default function ChecklistSettings() {
 
         <div className="border-t pt-3 space-y-1">
           {roleTemplates.length === 0 ? (
-            <p className="text-sm text-gray-400 py-2">Chưa có đầu việc nào cho vai trò này</p>
+            <p className="text-sm text-text-muted py-2">Chưa có đầu việc nào cho vai trò này</p>
           ) : (
             roleTemplates.map((t) => (
               <div key={t.id} className={`flex items-center gap-2 py-1.5 text-sm ${!t.isActive ? "opacity-50" : ""}`}>
                 {editingId === t.id ? (
                   <>
                     <Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} className="flex-1 h-8" />
-                    <Button size="sm" variant="ghost" onClick={() => saveEdit(t.id)}><Check className="w-4 h-4 text-green-600" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}><X className="w-4 h-4 text-gray-400" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => saveEdit(t.id)}><Check className="w-4 h-4 text-primary-strong" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}><X className="w-4 h-4 text-text-muted" /></Button>
                   </>
                 ) : (
                   <>
                     <Checkbox checked={t.isActive} onCheckedChange={() => toggleActive(t)} />
                     <span className="flex-1">{t.title}</span>
-                    {!t.isActive && <span className="text-xs text-gray-400">(đã ẩn)</span>}
-                    <Button size="sm" variant="ghost" onClick={() => startEdit(t)}><Pencil className="w-3.5 h-3.5 text-gray-400" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeTemplate(t)}><Trash2 className="w-3.5 h-3.5 text-red-400" /></Button>
+                    {!t.isActive && <span className="text-xs text-text-muted">(đã ẩn)</span>}
+                    <Button size="sm" variant="ghost" onClick={() => startEdit(t)}><Pencil className="w-3.5 h-3.5 text-text-muted" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => removeTemplate(t)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
                   </>
                 )}
               </div>
@@ -189,7 +189,7 @@ export default function ChecklistSettings() {
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addTemplate(); }}
           />
-          <Button onClick={addTemplate} disabled={adding || !newTitle.trim()} className="bg-cyan-600 hover:bg-cyan-700 shrink-0">
+          <Button onClick={addTemplate} disabled={adding || !newTitle.trim()} className="bg-secondary hover:bg-secondary-hover shrink-0">
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
             Thêm
           </Button>

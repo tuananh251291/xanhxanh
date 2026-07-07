@@ -68,22 +68,22 @@ export default function RoomAccessDialog({
         <DialogHeader>
           <DialogTitle>Phân quyền xem "{roomName}"</DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-gray-500 -mt-2">Chọn nhân viên Sale được xem phòng này</p>
+        <p className="text-xs text-text-secondary -mt-2">Chọn nhân viên Sale được xem phòng này</p>
         <div className="space-y-2 max-h-64 overflow-y-auto">
           {saleUsers.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-4">Chưa có nhân viên Sale nào</p>
+            <p className="text-sm text-text-muted text-center py-4">Chưa có nhân viên Sale nào</p>
           )}
           {saleUsers.map((u) => (
             <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer py-1">
               <Checkbox checked={selected.has(u.id)} onCheckedChange={() => toggle(u.id)} />
               <span>{u.name}</span>
-              <span className="text-xs text-gray-400">({u.email})</span>
+              <span className="text-xs text-text-muted">({u.email})</span>
             </label>
           ))}
         </div>
         <div className="flex gap-2 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-          <Button type="button" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading} onClick={onSave}>
+          <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading} onClick={onSave}>
             {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Lưu
           </Button>

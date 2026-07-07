@@ -70,10 +70,10 @@ export default async function ThanhPhamRoomPage({
           <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 flex flex-wrap items-center gap-2">
-            <Icon className="w-6 h-6 text-green-600 shrink-0" /> <span className="break-words">{room.name}</span>
+          <h1 className="text-2xl font-bold text-foreground flex flex-wrap items-center gap-2">
+            <Icon className="w-6 h-6 text-primary-strong shrink-0" /> <span className="break-words">{room.name}</span>
           </h1>
-          <p className="text-gray-500 text-sm flex flex-wrap items-center gap-2">
+          <p className="text-text-secondary text-sm flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{ROOM_TYPE_LABELS[room.type]}</Badge>
             · {aggregated.length} loại cây · {totalQuantity.toLocaleString("vi-VN")} cây
           </p>
@@ -81,8 +81,8 @@ export default async function ThanhPhamRoomPage({
       </div>
 
       {aggregated.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-gray-400">
-          <Icon className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+        <Card><CardContent className="py-16 text-center text-text-muted">
+          <Icon className="w-10 h-10 mx-auto mb-3 text-text-muted" />
           <p>Phòng này chưa có lô thành phẩm nào</p>
         </CardContent></Card>
       ) : (
@@ -92,16 +92,16 @@ export default async function ThanhPhamRoomPage({
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-green-700">
-                      <th className="text-left px-3 py-2 text-xs font-medium text-white">Mã cây</th>
-                      <th className="text-left px-3 py-2 text-xs font-medium text-white">Loại cây</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-white">T01</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-white">T05</th>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã cây</th>
+                      <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Loại cây</th>
+                      <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T01</th>
+                      <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T05</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pageRows.map((row) => (
-                      <tr key={row.code} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
+                      <tr key={row.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                         <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
                         <td className="px-3 py-2">{row.name}</td>
                         <td className="px-3 py-2 text-right font-medium">{row.t01.toLocaleString("vi-VN")}</td>
@@ -116,7 +116,7 @@ export default async function ThanhPhamRoomPage({
 
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-              <p className="text-sm text-gray-500">Trang {page}/{totalPages}</p>
+              <p className="text-sm text-text-secondary">Trang {page}/{totalPages}</p>
               <div className="flex gap-2">
                 {page > 1 ? (
                   <Link href={pageHref(page - 1)}>

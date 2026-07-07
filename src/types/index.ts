@@ -3,15 +3,15 @@ import type { UserRole } from "@prisma/client";
 export type { UserRole };
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  SUPER_ADMIN: "Admin cao nhất",
+  SUPER_ADMIN: "Admin cấp cao",
   ADMIN: "Admin",
-  KY_THUAT: "Nhân viên kỹ thuật",
-  CAY_MO: "Nhân viên nuôi cấy mô",
-  KHO_MO: "Nhân viên kho mô",
-  KHO_THANH_PHAM: "Nhân viên kho thành phẩm",
-  SALE: "Nhân viên sale",
-  MOI_TRUONG: "Nhân viên đổ môi trường",
-  DIEU_PHOI: "Nhân viên điều phối",
+  KY_THUAT: "NV Kỹ thuật",
+  CAY_MO: "NV Cấy mô",
+  KHO_MO: "NV Kho",
+  KHO_THANH_PHAM: "NV Kho thành phẩm",
+  SALE: "Sale",
+  MOI_TRUONG: "NV Môi trường",
+  DIEU_PHOI: "NV Điều phối",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -25,6 +25,17 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   MOI_TRUONG: "bg-cyan-100 text-cyan-800",
   DIEU_PHOI: "bg-orange-100 text-orange-800",
 };
+
+// Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem /inspection-lane).
+export const INSPECTION_LANE_LABELS = {
+  XANH: "Xanh",
+  DO: "Đỏ",
+} as const;
+
+export const INSPECTION_LANE_COLORS = {
+  XANH: "bg-green-100 text-green-800",
+  DO: "bg-red-100 text-red-800",
+} as const;
 
 // ADMIN và SUPER_ADMIN đều có full quyền trang/tính năng — chỉ khác ở quyền duyệt tài khoản mới (chỉ SUPER_ADMIN).
 export function isAdminRole(role: UserRole | null | undefined): boolean {
@@ -45,6 +56,7 @@ export const ROOM_TYPE_LABELS = {
   PHONG_MAU_ME: "Phòng mẫu mẹ",
   PHONG_RA_RE: "Phòng ra rễ",
   PHONG_TOI: "Phòng tối",
+  PHONG_NHIEM: "Phòng Nhiễm",
   PHONG_KHA_DUNG: "Phòng khả dụng",
   PHONG_THEO_DOI: "Phòng theo dõi",
   PHONG_HAN_TUI: "Phòng hàn túi",
@@ -55,6 +67,7 @@ export const ROOM_TYPE_COLORS = {
   PHONG_MAU_ME: "bg-yellow-100 text-yellow-800",
   PHONG_RA_RE: "bg-lime-100 text-lime-800",
   PHONG_TOI: "bg-gray-800 text-white",
+  PHONG_NHIEM: "bg-red-100 text-red-800",
   PHONG_KHA_DUNG: "bg-green-100 text-green-800",
   PHONG_THEO_DOI: "bg-orange-100 text-orange-800",
   PHONG_HAN_TUI: "bg-purple-100 text-purple-800",
@@ -145,6 +158,19 @@ export const ALERT_TYPE_LABELS = {
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
   MOTHER_LOT_READY: "Mẫu mẹ đến tuổi cấy chuyển",
   MEDIUM_ORDER_CREATED: "Có đơn đặt hàng môi trường mới",
+  CONTAMINATION_PROPOSAL: "Đề xuất trồng/hủy hàng nhiễm",
+} as const;
+
+// Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).
+export const CONTAMINATION_PROPOSAL_TYPE_LABELS = {
+  TRONG: "Trồng lại",
+  HUY: "Hủy bỏ",
+} as const;
+
+export const CONTAMINATION_PROPOSAL_STATUS_LABELS = {
+  PENDING: "Chờ duyệt",
+  APPROVED: "Đã duyệt",
+  REJECTED: "Từ chối",
 } as const;
 
 // Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt (null/có giá trị).
@@ -180,6 +206,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/plant-types", label: "Danh sách cây", icon: "Leaf" },
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
+    { href: "/materials", label: "Vật tư", icon: "Boxes" },
+    { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -190,6 +218,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/plant-types", label: "Danh sách cây", icon: "Leaf" },
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
+    { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -207,18 +236,20 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
+    { href: "/product-handover", label: "Bàn giao sản phẩm", icon: "Send" },
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy chưa bàn giao", icon: "ClipboardList" },
-    { href: "/transfers/receive", label: "Nhận bàn giao", icon: "PackageCheck" },
+    { href: "/transfers/receive", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },
-    { href: "/transfers/finished", label: "BG thành phẩm", icon: "Package" },
-    { href: "/contamination", label: "Lọc nhiễm", icon: "AlertTriangle" },
+    { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
+    { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
+    { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_THANH_PHAM: [
@@ -238,6 +269,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   MOI_TRUONG: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/medium-orders", label: "Đơn đặt hàng MT", icon: "FlaskConical" },
+    { href: "/medium-orders/current", label: "Bàn giao môi trường", icon: "PackageCheck" },
+    { href: "/materials", label: "Quản lý vật tư", icon: "Boxes" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   DIEU_PHOI: [

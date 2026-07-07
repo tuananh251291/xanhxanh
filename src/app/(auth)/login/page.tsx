@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Leaf, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { randomGreetingQuote, randomGreetingBackground } from "@/lib/greetings";
 
 const loginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
@@ -20,10 +21,14 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+const GREETING_DURATION_MS = 5000;
+
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [greetingQuote, setGreetingQuote] = useState<string | null>(null);
+  const [greetingBg, setGreetingBg] = useState("");
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -40,26 +45,46 @@ export default function LoginPage() {
       });
       if (result?.error) {
         setError("Email hoặc mật khẩu không đúng");
+        setLoading(false);
       } else {
-        router.push("/dashboard");
-        router.refresh();
+        setGreetingBg(randomGreetingBackground());
+        setGreetingQuote(randomGreetingQuote());
+        setTimeout(() => {
+          router.push("/dashboard");
+          router.refresh();
+        }, GREETING_DURATION_MS);
       }
-    } finally {
+    } catch {
       setLoading(false);
     }
   };
 
+  if (greetingQuote) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${greetingBg} p-4`}>
+        <div className="flex flex-col items-center text-center max-w-md animate-in fade-in zoom-in-95 duration-500">
+          <div className="bg-primary text-primary-foreground p-4 rounded-2xl mb-6 shadow-lg">
+            <Leaf className="w-10 h-10" />
+          </div>
+          <h1 className="text-3xl font-bold text-foreground mb-3">Xin chào!</h1>
+          <p className="text-text-secondary text-base leading-relaxed">{greetingQuote}</p>
+          <Loader2 className="w-5 h-5 mt-8 animate-spin text-text-muted" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-bg to-primary-light p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
-            <div className="bg-green-600 text-white p-3 rounded-xl">
+            <div className="bg-primary text-primary-foreground p-3 rounded-xl">
               <Leaf className="w-8 h-8" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-800">Xanh Xanh</CardTitle>
-          <CardDescription className="text-gray-500">
+          <CardTitle className="text-2xl font-bold text-foreground">Xanh Xanh</CardTitle>
+          <CardDescription className="text-text-secondary">
             Hệ thống quản lý nuôi cấy mô – kho – bán hàng
           </CardDescription>
         </CardHeader>
@@ -74,7 +99,7 @@ export default function LoginPage() {
                 {...register("email")}
               />
               {errors.email && (
-                <p className="text-sm text-red-500">{errors.email.message}</p>
+                <p className="text-sm text-destructive">{errors.email.message}</p>
               )}
             </div>
             <div className="space-y-1">
@@ -86,22 +111,22 @@ export default function LoginPage() {
                 {...register("password")}
               />
               {errors.password && (
-                <p className="text-sm text-red-500">{errors.password.message}</p>
+                <p className="text-sm text-destructive">{errors.password.message}</p>
               )}
             </div>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-md">
+              <div className="bg-danger-light border border-danger-light text-destructive text-sm px-3 py-2 rounded-md">
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="w-full bg-primary hover:bg-primary-hover" disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Đăng nhập
             </Button>
           </form>
-          <p className="text-center text-sm text-gray-500 mt-4">
+          <p className="text-center text-sm text-text-secondary mt-4">
             Chưa có tài khoản?{" "}
-            <Link href="/register" className="text-green-600 hover:underline font-medium">
+            <Link href="/register" className="text-primary-strong hover:underline font-medium">
               Đăng ký
             </Link>
           </p>

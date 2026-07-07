@@ -64,10 +64,10 @@ export default async function ThanhPhamInventoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Package className="w-6 h-6 text-green-600" /> Tồn kho thành phẩm
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Package className="w-6 h-6 text-primary-strong" /> Tồn kho thành phẩm
         </h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-text-secondary text-sm mt-1">
           Tổng: {totalLots.length} lô · {totalQuantity.toLocaleString("vi-VN")} cây
         </p>
       </div>
@@ -76,7 +76,7 @@ export default async function ThanhPhamInventoryPage() {
         <CardHeader><CardTitle className="text-base">Tồn kho theo loại cây</CardTitle></CardHeader>
         <CardContent>
           {byTypeEntries.length === 0 ? (
-            <p className="text-gray-400 text-sm">Kho trống</p>
+            <p className="text-text-muted text-sm">Kho trống</p>
           ) : (
             <PlantTypeSummary entries={byTypeEntries} />
           )}
@@ -90,14 +90,14 @@ export default async function ThanhPhamInventoryPage() {
           <Card key={room.id}>
             <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
               <div className="min-w-0 flex flex-wrap items-center gap-2">
-                <Icon className="w-5 h-5 text-green-600 shrink-0" />
-                <span className="font-semibold text-gray-800 break-words">{room.name}</span>
+                <Icon className="w-5 h-5 text-primary-strong shrink-0" />
+                <span className="font-semibold text-foreground break-words">{room.name}</span>
                 <Badge variant="secondary">{ROOM_TYPE_LABELS[room.type]}</Badge>
                 <Badge variant="outline" className="text-xs">T01: {t01.toLocaleString("vi-VN")}</Badge>
                 <Badge variant="outline" className="text-xs">T05: {t05.toLocaleString("vi-VN")}</Badge>
               </div>
               <Link href={`/inventory/thanh-pham/${room.id}`}>
-                <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700">
+                <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
                   <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
                 </Button>
               </Link>
@@ -107,8 +107,8 @@ export default async function ThanhPhamInventoryPage() {
       })}
 
       {rooms.length === 0 && (
-        <Card><CardContent className="py-12 text-center text-gray-400 flex flex-col items-center gap-2">
-          <Layers className="w-8 h-8 text-gray-300" />
+        <Card><CardContent className="py-12 text-center text-text-muted flex flex-col items-center gap-2">
+          <Layers className="w-8 h-8 text-text-muted" />
           Chưa có phòng thành phẩm nào
         </CardContent></Card>
       )}

@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { ListChecks, Loader2 } from "lucide-react";
+import { ListChecks, Loader2, Trophy } from "lucide-react";
+import { toast } from "sonner";
 
 type ChecklistItem = {
   id: string;
@@ -31,16 +32,28 @@ export default function TodayChecklist() {
   useEffect(() => { load(); }, [load]);
 
   const toggle = async (item: ChecklistItem) => {
+    const completing = !item.completed;
     setSavingId(item.id);
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, completed: !i.completed } : i)));
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, completed: completing } : i)));
     try {
       const res = await fetch(`/api/checklist/items/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completed: !item.completed }),
+        body: JSON.stringify({ completed: completing }),
       });
       if (!res.ok) {
         setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, completed: item.completed } : i)));
+        return;
+      }
+      if (completing) {
+        const allDone = items.every((i) => i.id === item.id || i.completed);
+        if (allDone) {
+          toast.success("Xuất sắc! Hôm nay bạn đã hoàn thành toàn bộ nhiệm vụ trong ngày. Cảm ơn vì sự nỗ lực của bạn!", {
+            icon: <Trophy className="w-4 h-4 text-achievement-foreground" />,
+          });
+        } else {
+          toast.success(`Xuất sắc! Bạn đã hoàn thành nhiệm vụ '${item.title}' 🎉`);
+        }
       }
     } finally {
       setSavingId(null);
@@ -56,7 +69,7 @@ export default function TodayChecklist() {
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <ListChecks className="w-4 h-4 text-cyan-600" /> Việc cần làm hôm nay
+            <ListChecks className="w-4 h-4 text-secondary-foreground" /> Việc cần làm hôm nay
           </CardTitle>
           <Badge variant="secondary">{doneCount}/{items.length}</Badge>
         </div>
@@ -69,8 +82,8 @@ export default function TodayChecklist() {
               disabled={savingId === item.id}
               onCheckedChange={() => toggle(item)}
             />
-            <span className={item.completed ? "line-through text-gray-400" : "text-gray-700"}>{item.title}</span>
-            {savingId === item.id && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+            <span className={item.completed ? "line-through text-text-muted" : "text-foreground"}>{item.title}</span>
+            {savingId === item.id && <Loader2 className="w-3 h-3 animate-spin text-text-muted" />}
           </label>
         ))}
       </CardContent>

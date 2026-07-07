@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
-  PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck, type LucideIcon,
+  PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck, FlaskConical, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
@@ -13,6 +13,9 @@ import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addD
 import { vi } from "date-fns/locale";
 import TodayChecklist from "@/components/shared/today-checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
+import { isMediumOrderInProgress } from "@/lib/medium-orders";
+import { randomGreetingQuote } from "@/lib/greetings";
+import { getInspectionDueAt } from "@/lib/inspection";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -43,13 +46,11 @@ async function getSaleStats(userId: string) {
   return { myOrders, availableLots };
 }
 
-// Logic xác định "hoàn thành" tạm thời dựa trên dữ liệu đã có sẵn — sẽ tinh chỉnh lại khi
-// làm chi tiết từng công việc (đặc biệt việc 4, hiện chưa có bảng lưu "đã kiểm tra nhiễm hôm nay").
 async function getCayMoStats(userId: string) {
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
 
-  const [pendingMotherReceipt, dailyRecordToday, handoverToday] = await Promise.all([
+  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday] = await Promise.all([
     // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
     // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
     prisma.plantingInstruction.findFirst({
@@ -57,6 +58,19 @@ async function getCayMoStats(userId: string) {
     }),
     prisma.dailyRecord.findFirst({
       where: { staffId: userId, recordDate: { gte: todayStart, lte: todayEnd } },
+    }),
+    // "Kiểm tra nhiễm phòng tối" chỉ hoàn thành khi không còn lô nào ở phòng tối cá nhân của NV bị QUÁ
+    // HẠN kiểm tra (xem getInspectionDueAt) — lô mới nhập, chưa tới hạn thì không chặn việc này. Cùng
+    // phạm vi lô với /api/lots?roomType=PHONG_TOI (xem my-dark-room/page.tsx): gắn thẳng vào Room qua
+    // roomId, không qua Shelf.
+    prisma.lot.findMany({
+      where: {
+        status: "ACTIVE",
+        instruction: { assignedToId: userId },
+        inspectedAt: null,
+        room: { type: "PHONG_TOI" },
+      },
+      select: { enteredAt: true },
     }),
     prisma.transfer.findFirst({
       where: {
@@ -67,11 +81,14 @@ async function getCayMoStats(userId: string) {
     }),
   ]);
 
+  const now = new Date();
+  const hasOverdueDarkRoomLot = uninspectedDarkRoomLots.some((lot) => getInspectionDueAt(lot.enteredAt) <= now);
+
   return {
     motherReceived: !pendingMotherReceipt,
     dailyRecordDone: !!dailyRecordToday,
+    contaminationChecked: !hasOverdueDarkRoomLot,
     handoverDone: !!handoverToday,
-    contaminationChecked: false, // chưa có cách xác định — sẽ bổ sung khi làm chi tiết việc này
   };
 }
 
@@ -144,6 +161,9 @@ async function getKyThuatStats(userId: string) {
 // chưa xử lý (không giới hạn theo tuần hiện tại), giống cách tính việc "Tạo chỉ định cấy" của Kỹ thuật.
 // NV kho mô chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc) — công việc chỉ tính trên
 // chỉ định thuộc đúng kho đó.
+// Các công việc "hàng tuần" khác (bàn giao thành phẩm/nhận môi trường/đề xuất nhiễm) không có hạn chót
+// cố định như việc 1 — tạm tính % theo tỉ lệ đã xử lý/tổng phát sinh trong tuần (hoặc lượng tồn còn lại
+// với Phòng nhiễm), có thể cần NV nghiệp vụ mô tả rõ hơn để điều chỉnh sau.
 async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
@@ -151,18 +171,110 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const thursdayDeadline = addDays(weekStart, 3);
   const nextMondayDeadline = addWeeks(weekStart, 1);
 
-  const dueInstructions = await prisma.plantingInstruction.findMany({
-    where: {
-      createdAt: { lte: thursdayDeadline },
-      ...(workplaceWarehouseId ? { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } : {}),
-    },
-    select: { handedOverAt: true },
-  });
+  const [dueInstructions, finishedTransfers, mediumDays, contaminationLots] = await Promise.all([
+    prisma.plantingInstruction.findMany({
+      where: {
+        createdAt: { lte: thursdayDeadline },
+        ...(workplaceWarehouseId ? { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } : {}),
+      },
+      select: { handedOverAt: true },
+    }),
+    // Bàn giao thành phẩm: phiếu Transfer từ Phòng ra rễ tạo trong tuần này — Kho thành phẩm xác nhận
+    // (CONFIRMED) coi là xong.
+    prisma.transfer.findMany({
+      where: {
+        fromRoom: { type: "PHONG_RA_RE", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+        createdAt: { gte: weekStart, lte: weekEnd },
+      },
+      select: { status: true },
+    }),
+    // Nhận môi trường: ngày môi trường đã được NV môi trường bàn giao (handedOverAt) trong tuần này —
+    // Kho mô xác nhận (confirmedAt) coi là xong.
+    prisma.mediumOrderDay.findMany({
+      where: {
+        date: { gte: weekStart, lte: weekEnd },
+        handedOverAt: { not: null },
+        ...(workplaceWarehouseId
+          ? { order: { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } }
+          : {}),
+      },
+      select: { confirmedAt: true },
+    }),
+    // Đề xuất Trồng/Hủy: lô còn tồn trong Phòng nhiễm của kho này — hết tồn nghĩa là đã gửi đề xuất xử lý
+    // hết (xem lib/contamination-room.ts — số lượng bị trừ ngay khỏi Phòng nhiễm lúc gửi đề xuất).
+    prisma.lot.findMany({
+      where: {
+        status: "ACTIVE",
+        room: { type: "PHONG_NHIEM", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+      },
+      select: { quantity: true },
+    }),
+  ]);
+
   const handoverTotal = dueInstructions.length;
   const handoverDone = dueInstructions.filter((i) => i.handedOverAt !== null).length;
   const handoverPercent = handoverTotal === 0 ? 100 : Math.round((handoverDone / handoverTotal) * 100);
 
-  return { weekStart, weekEnd, nextMondayDeadline, handoverDone, handoverTotal, handoverPercent };
+  const finishedTotal = finishedTransfers.length;
+  const finishedDone = finishedTransfers.filter((t) => t.status === "CONFIRMED").length;
+  const finishedPercent = finishedTotal === 0 ? 100 : Math.round((finishedDone / finishedTotal) * 100);
+
+  const mediumTotal = mediumDays.length;
+  const mediumDone = mediumDays.filter((d) => d.confirmedAt !== null).length;
+  const mediumPercent = mediumTotal === 0 ? 100 : Math.round((mediumDone / mediumTotal) * 100);
+
+  const contaminationOutstanding = contaminationLots.reduce((sum, l) => sum + l.quantity, 0);
+  const contaminationPercent = contaminationOutstanding === 0 ? 100 : 0;
+
+  return {
+    weekStart, weekEnd, nextMondayDeadline,
+    handoverDone, handoverTotal, handoverPercent,
+    finishedDone, finishedTotal, finishedPercent,
+    mediumDone, mediumTotal, mediumPercent,
+    contaminationOutstanding, contaminationPercent,
+  };
+}
+
+// Việc "hàng ngày" của Kho mô: xác nhận các phiếu bàn giao từ Phòng tối cá nhân (NV cấy mô gửi lên) được
+// tạo trong ngày — cùng phạm vi lọc phiếu với GET /api/transfers cho KHO_MO (toUserId null + đúng kho).
+async function getKhoMoDailyStats(workplaceWarehouseId: string | null) {
+  const todayStart = startOfDay(new Date());
+  const todayEnd = endOfDay(new Date());
+
+  const transfersToday = await prisma.transfer.findMany({
+    where: {
+      toUserId: null,
+      fromRoom: { type: "PHONG_TOI", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+      createdAt: { gte: todayStart, lte: todayEnd },
+    },
+    select: { status: true },
+  });
+
+  const receiveTotal = transfersToday.length;
+  const receiveDone = transfersToday.filter((t) => t.status === "CONFIRMED").length;
+  const receivePercent = receiveTotal === 0 ? 100 : Math.round((receiveDone / receiveTotal) * 100);
+
+  return { receiveDone, receiveTotal, receivePercent };
+}
+
+// Đơn "đang xử lý" của NV môi trường = đơn do chính họ xác nhận, chưa kết thúc (xem
+// isMediumOrderInProgress) — dùng để hiện thẳng lên dashboard, giống trang "Bàn giao môi trường".
+async function getMoiTruongStats(userId: string, workplaceWarehouseId: string | null) {
+  const [myOrders, pendingOrders] = await Promise.all([
+    prisma.mediumOrder.findMany({
+      where: { confirmedById: userId, confirmedAt: { not: null } },
+      include: { days: { select: { handedOverAt: true, confirmedAt: true } } },
+      orderBy: { confirmedAt: "desc" },
+    }),
+    prisma.mediumOrder.count({
+      where: {
+        confirmedAt: null,
+        ...(workplaceWarehouseId ? { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } : {}),
+      },
+    }),
+  ]);
+  const activeOrder = myOrders.find((o) => isMediumOrderInProgress(o)) ?? null;
+  return { activeOrder, pendingOrders };
 }
 
 async function getKhoMoStats() {
@@ -194,8 +306,12 @@ export default async function DashboardPage() {
   }
 
   if (role === "KHO_MO") {
-    const stats = await getKhoMoWeeklyStats(session?.user?.workplaceWarehouseId ?? null);
-    return <KhoMoTaskDashboard stats={stats} userName={session?.user?.name ?? ""} />;
+    const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
+    const [weeklyStats, dailyStats] = await Promise.all([
+      getKhoMoWeeklyStats(workplaceWarehouseId),
+      getKhoMoDailyStats(workplaceWarehouseId),
+    ]);
+    return <KhoMoTaskDashboard weeklyStats={weeklyStats} dailyStats={dailyStats} userName={session?.user?.name ?? ""} />;
   }
 
   if (role === "KHO_THANH_PHAM") {
@@ -213,13 +329,18 @@ export default async function DashboardPage() {
     return <KyThuatDashboard stats={stats} userName={session?.user?.name ?? ""} />;
   }
 
+  if (role === "MOI_TRUONG") {
+    const stats = await getMoiTruongStats(userId, session?.user?.workplaceWarehouseId ?? null);
+    return <MoiTruongDashboard stats={stats} userName={session?.user?.name ?? ""} />;
+  }
+
   return <DefaultDashboard role={role} userName={session?.user?.name ?? ""} />;
 }
 
 function GreetingBanner() {
   return (
-    <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
-      Ngày mới bùng nổ năng lượng và hoàn thành xuất sắc mọi mục tiêu hôm nay nhé mọi người!
+    <p className="text-sm font-bold text-primary-strong bg-primary-light border border-primary-light rounded-lg px-3 py-2">
+      {randomGreetingQuote()}
     </p>
   );
 }
@@ -228,8 +349,8 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard tổng quan</h1>
-        <p className="text-gray-500 text-sm mt-1">Quản trị hệ thống</p>
+        <h1 className="text-2xl font-bold text-foreground">Dashboard tổng quan</h1>
+        <p className="text-text-secondary text-sm mt-1">Quản trị hệ thống</p>
       </div>
       <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -243,19 +364,19 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <AlertTriangle className="w-4 h-4 text-warning-foreground" />
               Cảnh báo chưa đọc ({stats.recentAlerts.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {stats.recentAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-start justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div key={alert.id} className="flex items-start justify-between p-3 bg-warning-light rounded-lg border border-warning-light">
                   <div>
-                    <p className="text-sm font-medium text-gray-800">{alert.title}</p>
-                    <p className="text-xs text-gray-500">{alert.message}</p>
+                    <p className="text-sm font-medium text-foreground">{alert.title}</p>
+                    <p className="text-xs text-text-secondary">{alert.message}</p>
                   </div>
-                  <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
+                  <span className="text-xs text-text-muted whitespace-nowrap ml-4">
                     {formatDistanceToNow(alert.createdAt, { addSuffix: true, locale: vi })}
                   </span>
                 </div>
@@ -272,8 +393,8 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
-        <p className="text-gray-500 text-sm mt-1">Nhân viên sale</p>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1">Nhân viên sale</p>
       </div>
       <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -289,10 +410,10 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
           <CardContent>
             <div className="space-y-2">
               {stats.myOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={order.id} className="flex items-center justify-between p-3 bg-background rounded-lg">
                   <div>
                     <p className="text-sm font-medium">{order.code}</p>
-                    <p className="text-xs text-gray-500">{order.customerName}</p>
+                    <p className="text-xs text-text-secondary">{order.customerName}</p>
                   </div>
                   <Badge variant={order.status === "HELD" ? "secondary" : "default"}>
                     {ORDER_STATUS_LABELS[order.status]}
@@ -317,8 +438,8 @@ function CayMoDashboard({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
-        <p className="text-gray-500 text-sm mt-1 capitalize">Nhân viên nuôi cấy mô · {today}</p>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1 capitalize">Nhân viên nuôi cấy mô · {today}</p>
       </div>
       <GreetingBanner />
 
@@ -345,17 +466,17 @@ function CayMoDashboard({
           />
           <TaskRow
             href="/my-dark-room"
-            icon={Send}
-            title="3. Bàn giao sản phẩm"
-            description="Bàn giao lô từ phòng tối cho Kho mô"
-            done={stats.handoverDone}
-          />
-          <TaskRow
-            href="/my-dark-room"
             icon={Moon}
-            title="4. Kiểm tra nhiễm phòng tối"
+            title="3. Kiểm tra nhiễm phòng tối"
             description="Kiểm tra và báo cáo nhiễm các lô trong phòng tối"
             done={stats.contaminationChecked}
+          />
+          <TaskRow
+            href="/product-handover"
+            icon={Send}
+            title="4. Bàn giao sản phẩm"
+            description="Bàn giao lô từ phòng tối cho Kho mô"
+            done={stats.handoverDone}
           />
         </CardContent>
       </Card>
@@ -377,19 +498,19 @@ function TaskRow({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors"
+      className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className={`p-2.5 rounded-xl shrink-0 ${done ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+        <div className={`p-2.5 rounded-xl shrink-0 ${done ? "bg-primary-light text-primary-strong" : "bg-danger-light text-destructive"}`}>
           <Icon className="w-5 h-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{title}</p>
-          <p className="text-xs text-gray-500 truncate">{description}</p>
+          <p className="text-sm font-medium text-foreground truncate">{title}</p>
+          <p className="text-xs text-text-secondary truncate">{description}</p>
         </div>
       </div>
       <Badge
-        className={`shrink-0 gap-1 ${done ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-red-100 text-red-700 hover:bg-red-100"}`}
+        className={`shrink-0 gap-1 ${done ? "bg-primary-light text-primary-strong hover:bg-primary-light" : "bg-danger-light text-destructive hover:bg-danger-light"}`}
       >
         {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
         {done ? "Đã hoàn thành" : "Chưa hoàn thành"}
@@ -408,8 +529,8 @@ function KyThuatDashboard({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
-        <p className="text-gray-500 text-sm mt-1">Nhân viên kỹ thuật · Tuần {weekLabel}</p>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1">Nhân viên kỹ thuật · Tuần {weekLabel}</p>
       </div>
       <GreetingBanner />
 
@@ -455,20 +576,20 @@ function WeeklyTaskRow({
   return (
     <Link
       href={href}
-      className="block p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors"
+      className="block p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`p-2.5 rounded-xl shrink-0 ${done ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+          <div className={`p-2.5 rounded-xl shrink-0 ${done ? "bg-primary-light text-primary-strong" : "bg-danger-light text-destructive"}`}>
             <Icon className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{title}</p>
-            <p className="text-xs text-gray-500 truncate">{deadline}</p>
+            <p className="text-sm font-medium text-foreground truncate">{title}</p>
+            <p className="text-xs text-text-secondary truncate">{deadline}</p>
           </div>
         </div>
         <Badge
-          className={`shrink-0 gap-1 ${done ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-red-100 text-red-700 hover:bg-red-100"}`}
+          className={`shrink-0 gap-1 ${done ? "bg-primary-light text-primary-strong hover:bg-primary-light" : "bg-danger-light text-destructive hover:bg-danger-light"}`}
         >
           {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
           {done
@@ -476,9 +597,9 @@ function WeeklyTaskRow({
             : `Chưa hoàn thành — ${countLabel ?? `${percent}%`}`}
         </Badge>
       </div>
-      <div className="w-full bg-gray-100 rounded-full h-1.5 mt-3">
+      <div className="w-full bg-muted rounded-full h-1.5 mt-3">
         <div
-          className={`rounded-full h-1.5 ${done ? "bg-green-500" : "bg-red-400"}`}
+          className={`rounded-full h-1.5 ${done ? "bg-primary" : "bg-destructive"}`}
           style={{ width: `${Math.min(100, percent)}%` }}
         />
       </div>
@@ -487,18 +608,35 @@ function WeeklyTaskRow({
 }
 
 function KhoMoTaskDashboard({
-  stats, userName,
+  weeklyStats, dailyStats, userName,
 }: {
-  stats: Awaited<ReturnType<typeof getKhoMoWeeklyStats>>;
+  weeklyStats: Awaited<ReturnType<typeof getKhoMoWeeklyStats>>;
+  dailyStats: Awaited<ReturnType<typeof getKhoMoDailyStats>>;
   userName: string;
 }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
-        <p className="text-gray-500 text-sm mt-1">Nhân viên kho mô</p>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1">Nhân viên kho mô</p>
       </div>
       <GreetingBanner />
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Công việc hàng ngày</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <WeeklyTaskRow
+            href="/transfers/receive"
+            icon={PackageCheck}
+            title="1. Nhận bàn giao từ kho tối"
+            deadline="Xác nhận các phiếu bàn giao từ phòng tối cá nhân gửi lên trong ngày"
+            percent={dailyStats.receivePercent}
+            countLabel={`${dailyStats.receiveDone}/${dailyStats.receiveTotal} phiếu`}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">
@@ -509,10 +647,91 @@ function KhoMoTaskDashboard({
             href="/instructions"
             icon={Send}
             title="1. Giao mẫu mẹ theo chỉ định cấy"
-            deadline={`Chỉ định tạo trước Thứ 5 tuần này cần bàn giao trước Thứ 2 tuần sau (${format(stats.nextMondayDeadline, "dd/MM", { locale: vi })})`}
-            percent={stats.handoverPercent}
-            countLabel={`${stats.handoverDone}/${stats.handoverTotal} chỉ định`}
+            deadline={`Chỉ định tạo trước Thứ 5 tuần này cần bàn giao trước Thứ 2 tuần sau (${format(weeklyStats.nextMondayDeadline, "dd/MM", { locale: vi })})`}
+            percent={weeklyStats.handoverPercent}
+            countLabel={`${weeklyStats.handoverDone}/${weeklyStats.handoverTotal} chỉ định`}
           />
+          <WeeklyTaskRow
+            href="/transfers/finished"
+            icon={Package}
+            title="2. Bàn giao thành phẩm"
+            deadline="Xác nhận Kho thành phẩm đã nhận các phiếu bàn giao từ Phòng ra rễ trong tuần"
+            percent={weeklyStats.finishedPercent}
+            countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} phiếu`}
+          />
+          <WeeklyTaskRow
+            href="/medium-orders/receive"
+            icon={FlaskConical}
+            title="3. Nhận môi trường"
+            deadline="Xác nhận các ngày môi trường đã được NV môi trường bàn giao trong tuần"
+            percent={weeklyStats.mediumPercent}
+            countLabel={`${weeklyStats.mediumDone}/${weeklyStats.mediumTotal} ngày`}
+          />
+          <WeeklyTaskRow
+            href="/contamination-proposals"
+            icon={AlertTriangle}
+            title="4. Đề xuất Trồng/Hủy"
+            deadline="Gửi đề xuất xử lý hết số lượng đang tồn trong Phòng nhiễm"
+            percent={weeklyStats.contaminationPercent}
+            countLabel={
+              weeklyStats.contaminationOutstanding === 0
+                ? "Đã xử lý hết"
+                : `${weeklyStats.contaminationOutstanding.toLocaleString("vi-VN")} còn tồn`
+            }
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MoiTruongDashboard({
+  stats, userName,
+}: {
+  stats: Awaited<ReturnType<typeof getMoiTruongStats>>;
+  userName: string;
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1">Nhân viên môi trường</p>
+      </div>
+      <GreetingBanner />
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Bàn giao môi trường</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {stats.activeOrder ? (
+            <Link
+              href={`/medium-orders/${stats.activeOrder.id}`}
+              className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 rounded-xl shrink-0 bg-warning-light text-warning-foreground">
+                  <FlaskConical className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate font-mono">{stats.activeOrder.code}</p>
+                  <p className="text-xs text-text-secondary truncate">Đơn đang xử lý — bấm để xem chi tiết và bàn giao</p>
+                </div>
+              </div>
+              <Badge className="bg-warning-light text-warning-foreground shrink-0">Đang thực hiện</Badge>
+            </Link>
+          ) : (
+            <div className="text-center py-6 text-text-secondary">
+              <FlaskConical className="w-8 h-8 mx-auto mb-2 text-text-muted" />
+              <p className="text-sm">Không có đơn sản xuất môi trường nào đang xử lý</p>
+            </div>
+          )}
+          {stats.pendingOrders > 0 && (
+            <p className="text-xs text-text-muted mt-3">
+              Có {stats.pendingOrders} đơn đang chờ xác nhận —{" "}
+              <Link href="/medium-orders" className="text-primary-strong hover:underline font-medium">xem danh sách</Link>
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -527,8 +746,8 @@ function KhoDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getKho
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Tổng quan kho</h1>
-        <p className="text-gray-500 text-sm mt-1">{ROLE_LABELS[role]}</p>
+        <h1 className="text-2xl font-bold text-foreground">Tổng quan kho</h1>
+        <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
       <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -545,15 +764,15 @@ function DefaultDashboard({ role, userName }: { role: UserRole; userName: string
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Xin chào, {userName}!</h1>
-        <p className="text-gray-500 text-sm mt-1">{ROLE_LABELS[role]}</p>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
       <GreetingBanner />
       <TodayChecklist />
       <Card>
         <CardContent className="pt-6">
-          <div className="text-center py-8 text-gray-500">
-            <TrendingUp className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <div className="text-center py-8 text-text-secondary">
+            <TrendingUp className="w-12 h-12 mx-auto mb-3 text-text-muted" />
             <p>Chọn một mục từ menu bên trái để bắt đầu.</p>
           </div>
         </CardContent>
@@ -572,20 +791,20 @@ function StatCard({
   subtitle?: string;
 }) {
   const colorMap = {
-    green: "bg-green-100 text-green-600",
-    blue: "bg-blue-100 text-blue-600",
-    yellow: "bg-amber-100 text-amber-600",
-    purple: "bg-purple-100 text-purple-600",
-    red: "bg-red-100 text-red-600",
+    green: "bg-primary-light text-primary-strong",
+    blue: "bg-info-light text-info-foreground",
+    yellow: "bg-warning-light text-warning-foreground",
+    purple: "bg-violet-light text-violet-foreground",
+    red: "bg-danger-light text-destructive",
   };
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500">{title}</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">{value.toLocaleString("vi-VN")}</p>
-            {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+            <p className="text-sm text-text-secondary">{title}</p>
+            <p className="text-3xl font-bold text-foreground mt-1">{value.toLocaleString("vi-VN")}</p>
+            {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
           </div>
           <div className={`p-3 rounded-xl ${colorMap[color]}`}>
             <Icon className="w-6 h-6" />

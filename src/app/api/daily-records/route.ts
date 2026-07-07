@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateProductLotCode } from "@/lib/codes";
 import { createAlert, getSystemConfig } from "@/lib/inventory";
-import { getOrCreatePersonalDarkRoomShelf } from "@/lib/dark-room";
+import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
+import { addToContaminationRoom } from "@/lib/contamination-room";
 import { z } from "zod";
 import { addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, differenceInCalendarDays, isSameDay } from "date-fns";
 
@@ -17,7 +18,8 @@ const STAGE_LABELS: Record<StageKey, string> = { m03: "M03", m05: "M05", t05: "T
 const schema = z.object({
   instructionId: z.string(),
   motherChecked: z.number().int().min(0),
-  motherContaminated: z.number().int().min(0),
+  motherContaminatedM03: z.number().int().min(0),
+  motherContaminatedM05: z.number().int().min(0),
   motherUsed: z.number().int().min(0),
   m03: z.number().int().min(0),
   m05: z.number().int().min(0),
@@ -36,11 +38,11 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { instructionId, motherChecked, motherContaminated, motherUsed, m03, m05, t05, t01, notes } = parsed.data;
+  const { instructionId, motherChecked, motherContaminatedM03, motherContaminatedM05, motherUsed, m03, m05, t05, t01, notes } = parsed.data;
 
   const instruction = await prisma.plantingInstruction.findUnique({
     where: { id: instructionId },
-    include: { plantType: true, items: { include: { shelf: { select: { warehouseId: true } } } } },
+    include: { plantType: true, items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } } },
   });
   if (!instruction) return NextResponse.json({ message: "Không tìm thấy chỉ định" }, { status: 404 });
   if (instruction.assignedToId !== session.user.id) {
@@ -66,13 +68,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Đã nhập dữ liệu cho hôm nay, không thể sửa lại" }, { status: 409 });
   }
 
+  // Tổng "MM đã kiểm tra" lũy kế cả tuần (Thứ 2 - Chủ nhật, tức toàn bộ DailyRecord của chỉ định vì 1
+  // chỉ định = đúng 1 tuần) không được vượt quá số mẫu mẹ được cấp cho chỉ định (inputMotherQuantity —
+  // đã là tổng cộng dồn từ mọi dòng quy cách nguồn M03/M05, xem PlantingInstruction) — chặn cứng, không
+  // cho lưu nếu vượt.
+  const checkedAgg = await prisma.dailyRecord.aggregate({
+    where: { instructionId },
+    _sum: { motherChecked: true },
+  });
+  const cumulativeChecked = (checkedAgg._sum.motherChecked ?? 0) + motherChecked;
+  if (cumulativeChecked > instruction.inputMotherQuantity) {
+    return NextResponse.json({
+      message: `Tổng MM đã kiểm tra (${cumulativeChecked}) vượt quá số mẫu mẹ được cấp cho chỉ định (${instruction.inputMotherQuantity})`,
+    }, { status: 400 });
+  }
+
   // Lô sản xuất ra tự động chuyển vào Phòng tối CÁ NHÂN của NV cấy mô ngay khi nhập dữ liệu — không
   // cần đợi bàn giao mới có chỗ. Suy ra đúng kho sản xuất từ giàn kệ nguồn của chỉ định.
   const warehouseId = instruction.items[0]?.shelf?.warehouseId;
-  if (!warehouseId) {
+  const warehouseCode = instruction.items[0]?.shelf?.warehouse.code;
+  if (!warehouseId || !warehouseCode) {
     return NextResponse.json({ message: "Không xác định được kho sản xuất của chỉ định" }, { status: 400 });
   }
-  const personalShelf = await getOrCreatePersonalDarkRoomShelf(session.user.id, warehouseId);
+  const personalRoom = await getOrCreatePersonalDarkRoom(session.user.id, warehouseId);
 
   const items = ([
     { stage: "MAU_ME" as const, stageCode: "M03" as const, quantityCreated: m03 },
@@ -103,7 +121,7 @@ export async function POST(req: NextRequest) {
         quantity: item.quantityCreated,
         initialQuantity: item.quantityCreated,
         instructionId,
-        shelfId: personalShelf.id,
+        roomId: personalRoom.id,
         enteredAt: new Date(),
         expectedMoveAt,
       },
@@ -120,13 +138,35 @@ export async function POST(req: NextRequest) {
       recordDate: today,
       motherUsed,
       motherChecked,
-      motherContaminated,
+      motherContaminatedM03,
+      motherContaminatedM05,
       notes,
       items: { create: recordItems },
     },
     include: {
       items: { include: { lot: true } },
     },
+  });
+
+  // Mẫu mẹ nhiễm phát hiện lúc kiểm tra hằng ngày → cộng dồn vào Phòng nhiễm của đúng kho, theo quy
+  // cách (M03/M05 tách riêng, không suy luận tỉ lệ).
+  await addToContaminationRoom(prisma, {
+    warehouseId,
+    warehouseCode,
+    plantTypeId: instruction.plantTypeId,
+    plantTypeCode: instruction.plantType.code,
+    stage: "MAU_ME",
+    stageCode: "M03",
+    quantity: motherContaminatedM03,
+  });
+  await addToContaminationRoom(prisma, {
+    warehouseId,
+    warehouseCode,
+    plantTypeId: instruction.plantTypeId,
+    plantTypeCode: instruction.plantType.code,
+    stage: "MAU_ME",
+    stageCode: "M05",
+    quantity: motherContaminatedM05,
   });
 
   // Kiểm tra tiến độ cấy theo từng quy cách (M03/M05/T05/T01) so với mức trung bình cần đạt mỗi ngày

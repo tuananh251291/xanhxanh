@@ -51,7 +51,7 @@ export default function PlantCategoryDialog({ category }: { category?: Category 
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={isEdit ? <Button variant="ghost" size="sm" /> : <Button className="bg-primary hover:bg-primary-hover" />}>
         {isEdit
           ? <Pencil className="w-4 h-4" />
           : <><Plus className="w-4 h-4 mr-2" />Thêm loại cây</>
@@ -66,17 +66,17 @@ export default function PlantCategoryDialog({ category }: { category?: Category 
             <div className="space-y-1">
               <Label>Mã loại cây (2-3 chữ cái)</Label>
               <Input {...register("code")} placeholder="VD: MT" maxLength={3} />
-              {errors.code && <p className="text-xs text-red-500">{errors.code.message}</p>}
+              {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
             </div>
           )}
           <div className="space-y-1">
             <Label>Tên loại cây</Label>
             <Input {...register("name")} placeholder="VD: Trầu bà" />
-            {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
-            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isEdit ? "Cập nhật" : "Thêm"}
             </Button>

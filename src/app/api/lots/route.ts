@@ -27,9 +27,8 @@ export async function GET(req: NextRequest) {
   } else if (warehouseId) {
     where.shelf = { warehouseId };
   } else if (roomType === "PHONG_TOI") {
-    // "Phòng tối" = lô vừa tạo chưa được xếp kệ nào (shelfId null, trạng thái thực tế của lô mới cấy
-    // trước khi bàn giao) HOẶC đã có kệ thật trong 1 phòng tối cụ thể.
-    where.OR = [{ shelfId: null }, { shelf: { room: { type: "PHONG_TOI" } } }];
+    // Phòng tối cá nhân giờ là 1 Room riêng/NV — Lot gắn thẳng vào Room đó (roomId), không qua kệ.
+    where.room = { type: "PHONG_TOI" };
   } else if (roomType) {
     where.shelf = { room: { type: roomType } };
   }
@@ -53,6 +52,9 @@ export async function GET(req: NextRequest) {
           warehouse: { select: { name: true, type: true } },
           room: { select: { name: true, type: true } },
         },
+      },
+      room: {
+        select: { name: true, type: true, warehouse: { select: { name: true } } },
       },
       instruction: { select: { code: true, assignedToId: true, assignedTo: { select: { id: true, name: true } } } },
       _count: { select: { contaminations: true, instructionItems: true } },

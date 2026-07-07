@@ -60,7 +60,7 @@ export default function CreateUserDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button className="bg-green-600 hover:bg-green-700" />}>
+      <DialogTrigger render={<Button className="bg-primary hover:bg-primary-hover" />}>
         <UserPlus className="w-4 h-4 mr-2" />
         Thêm người dùng
       </DialogTrigger>
@@ -72,17 +72,17 @@ export default function CreateUserDialog() {
           <div className="space-y-1">
             <Label>Họ tên</Label>
             <Input {...register("name")} placeholder="Nguyễn Văn A" />
-            {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Email</Label>
             <Input {...register("email")} type="email" placeholder="email@company.com" />
-            {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+            {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Mật khẩu</Label>
             <Input {...register("password")} type="password" placeholder="Tối thiểu 6 ký tự" />
-            {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+            {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Vai trò</Label>
@@ -96,13 +96,13 @@ export default function CreateUserDialog() {
                 ))}
               </SelectContent>
             </Select>
-            {errors.role && <p className="text-xs text-red-500">{errors.role.message}</p>}
+            {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>
               Hủy
             </Button>
-            <Button type="submit" className="flex-1 bg-green-600 hover:bg-green-700" disabled={loading}>
+            <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Tạo tài khoản
             </Button>

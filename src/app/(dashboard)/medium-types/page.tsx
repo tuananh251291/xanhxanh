@@ -15,8 +15,8 @@ export default async function MediumTypesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quản lý môi trường</h1>
-          <p className="text-gray-500 text-sm mt-1">{items.length} loại môi trường</p>
+          <h1 className="text-2xl font-bold text-foreground">Quản lý môi trường</h1>
+          <p className="text-text-secondary text-sm mt-1">{items.length} loại môi trường</p>
         </div>
         <MediumTypeDialog />
       </div>
@@ -25,22 +25,22 @@ export default async function MediumTypesPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-green-700">
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Mã MT</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Tên môi trường</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Mô tả</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Trạng thái</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-white">Thao tác</th>
+                <tr className="bg-primary-light">
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã MT</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên môi trường</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mô tả</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((m) => (
-                  <tr key={m.id} className="border-b last:border-0 even:bg-green-50 hover:bg-green-100">
-                    <td className="px-4 py-3 text-sm font-mono font-medium text-blue-700">{m.code}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{m.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{m.description ?? "—"}</td>
+                  <tr key={m.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                    <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{m.code}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-foreground">{m.name}</td>
+                    <td className="px-4 py-3 text-sm text-text-secondary">{m.description ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <Badge className={m.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}>
+                      <Badge className={m.isActive ? "bg-primary-light text-primary-strong" : "bg-muted text-text-secondary"}>
                         {m.isActive ? "Hoạt động" : "Vô hiệu"}
                       </Badge>
                     </td>

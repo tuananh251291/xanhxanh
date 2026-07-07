@@ -43,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <AuthSessionProvider session={session}>
-      <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
+      <div className="flex min-h-screen flex-col bg-background md:flex-row">
         <Sidebar
           user={{
             name: session.user.name ?? "",
