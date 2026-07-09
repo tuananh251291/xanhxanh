@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { motherClusterUnits, MOTHER_SPEC_BAG_SIZE } from "@/types";
+import { getCurrentWeekSlot } from "@/lib/rooting-week-group";
 
 export class ShelfAssignError extends Error {}
 
@@ -22,6 +23,7 @@ type ShelfCandidate = {
   plantTypeId: string | null;
   assignedStaffId: string | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
+  weekSlot: number | null; // chỉ có ý nghĩa với PHONG_RA_RE — xem getCurrentWeekSlot
   roomType: "PHONG_MAU_ME" | "PHONG_RA_RE";
   used: number; // cụm hiện có (chỉ có ý nghĩa với PHONG_MAU_ME)
   hasActiveLot: boolean; // kệ Kho mẫu mẹ đã chia đang có sẵn 1 lô ACTIVE hay không
@@ -60,6 +62,11 @@ export async function planShelfAssignments(
       lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
     },
   });
+  // Chỉ áp dụng lọc Nhóm tuần nếu kho này đã cấu hình ít nhất 1 kệ Phòng ra rễ có weekSlot — cho phép
+  // các kho chưa dùng cơ chế này (chưa gán weekSlot cho kệ nào) tiếp tục xếp theo kiểu cũ (ít dùng nhất
+  // trong toàn bộ Phòng ra rễ), tương thích ngược.
+  const rootingUsesWeekSlot = shelves.some((s) => s.room?.type === "PHONG_RA_RE" && s.weekSlot !== null);
+  const currentWeekSlot = getCurrentWeekSlot();
 
   const candidates: ShelfCandidate[] = shelves.map((s) => ({
     id: s.id,
@@ -68,6 +75,7 @@ export async function planShelfAssignments(
     plantTypeId: s.plantTypeId,
     assignedStaffId: s.assignedStaffId,
     sharedMotherPool: s.sharedMotherPool,
+    weekSlot: s.weekSlot,
     roomType: s.room!.type as "PHONG_MAU_ME" | "PHONG_RA_RE",
     used: s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0),
     hasActiveLot: s.lots.length > 0,
@@ -79,8 +87,17 @@ export async function planShelfAssignments(
 
   for (const { lotId, lot } of transferItems) {
     if (lot.stage === "THANH_PHAM") {
-      const pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
+      let pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
       if (pool.length === 0) throw new ShelfAssignError("Không có kệ Phòng ra rễ nào trong kho này");
+      if (rootingUsesWeekSlot) {
+        const weekPool = pool.filter((c) => c.weekSlot === currentWeekSlot);
+        if (weekPool.length === 0) {
+          throw new ShelfAssignError(
+            `Chưa có kệ Phòng ra rễ nào được gán Nhóm tuần ${currentWeekSlot} — SUPER_ADMIN cần cấu hình ở /warehouses`
+          );
+        }
+        pool = weekPool;
+      }
       pool.sort((a, b) => (usedById.get(a.id) ?? 0) - (usedById.get(b.id) ?? 0));
 
       let remainingBags = lot.quantity;

@@ -253,6 +253,35 @@
 - [x] Kiểm thử qua trình duyệt thật (Playwright, cài tạm rồi gỡ): tài khoản KY_THUAT không còn thấy chữ
       "Phòng ra rễ" ở đâu trên trang, tài khoản KHO_MO không đổi hành vi (vẫn thấy đủ).
 
+### 2.19 Nhóm tuần xoay vòng cho kệ Phòng ra rễ — đề xuất bàn giao thành phẩm theo nhóm (SUPER_ADMIN, KHO_MO)
+- [x] `Shelf.weekSlot` (1-4) — thuộc tính riêng của kệ Phòng ra rễ (không liên quan `ShelfGroup`/`groupId`
+      dùng cho Nhóm giàn kệ ở 2.x trước), SUPER_ADMIN gán trực tiếp trên bảng kệ mỗi Phòng ra rễ
+      (`/warehouses`, cột "Nhóm tuần" mới trong `shelf-table.tsx`, chỉ hiện ở Phòng ra rễ). Cây ra rễ tuần
+      nào tự xếp vào đúng kệ có `weekSlot` = tuần đó — xoay vòng 4 tuần 1 chu kỳ, tính bằng công thức tuần
+      liên tục mod 4 (`getCurrentWeekSlot` trong `src/lib/rooting-week-group.ts`), không lưu trạng thái
+      "đang là nhóm mấy" nên không lệch khi qua năm mới/restart server.
+- [x] `planShelfAssignments` (Kho mô xác nhận nhận Phòng tối → Kho sáng) lọc kệ Phòng ra rễ theo đúng
+      `weekSlot` tuần hiện tại trước khi chọn kệ ít dùng nhất — chỉ áp dụng nếu kho đó đã gán `weekSlot`
+      cho ít nhất 1 kệ Phòng ra rễ (tương thích ngược: kho chưa cấu hình vẫn xếp theo kiểu cũ, không lọc).
+      Không tìm được kệ đúng Nhóm tuần → lỗi rõ yêu cầu SUPER_ADMIN cấu hình.
+- [x] Cố định 3 tuần "đạt xuất" cho MỌI loại cây trong cơ chế Nhóm tuần (không phụ thuộc `rootingWeeks` —
+      field đó chỉ dùng tính `Lot.expectedMoveAt` riêng, không liên quan). `summarizeRootingWeekGroups`
+      tính theo lô cũ nhất (`enteredAt`, chính là thời điểm KHO_MO xếp lô vào kệ) trong từng Nhóm tuần đã
+      nằm kho ≥ 21 ngày.
+- [x] Trang `/transfers/finished` (Bàn giao thành phẩm, KHO_MO) hiện banner đề xuất khi 1 Nhóm tuần đủ 3
+      tuần — liệt kê đúng kho/phòng, số kệ, số lô, ngày lô cũ nhất, nút "Chọn tất cả kệ trong nhóm" tự điền
+      form bàn giao (không cần quét/chọn tay từng kệ). Chỉ tính trong đúng kho làm việc của NV nếu đã được
+      gán `workplaceWarehouseId`.
+- [x] Tiện thể sửa 1 lỗi có sẵn phát hiện khi test: nút "Xem thêm" của nhóm "Phòng sáng"/"Phòng tối" trên
+      `/warehouses` (`warehouse-board.tsx`) không mở rộng được — `onClick` trên `Button` không chặn
+      bubbling nên bắn `toggleGroup` 2 lần (từ nút + từ div cha cùng `onClick`), triệt tiêu lẫn nhau. Thêm
+      `e.stopPropagation()` giống pattern đã dùng ở cấp kho.
+- [x] Kiểm thử qua API thật (`tsx` gọi thẳng `planShelfAssignments`) + trình duyệt thật (Playwright, cài
+      tạm rồi gỡ): gán `weekSlot=4` cho 2 kệ, lô THANH_PHAM giả lập xếp đúng vào kệ ít dùng nhất trong 2
+      kệ đó; kho chưa cấu hình `weekSlot` vẫn xếp theo kiểu cũ (least-used toàn Phòng ra rễ); backdate
+      `enteredAt` 1 lô về 22 ngày trước → banner đúng hiện "Nhóm tuần 4 đã đủ 3 tuần", bấm "Chọn tất cả"
+      điền đúng form; dọn sạch dữ liệu test sau khi xác nhận.
+
 ---
 
 ## Phase 3 — Bán hàng & kho thành phẩm

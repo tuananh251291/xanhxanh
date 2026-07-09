@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, ScanLine, Loader2, Send, X, PlusCircle, Plus, ClipboardList, Search } from "lucide-react";
+import { Package, ScanLine, Loader2, Send, X, PlusCircle, Plus, ClipboardList, Search, AlertTriangle, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -23,6 +23,14 @@ type PickableShelf = { id: string; code: string; name: string; warehouseName: st
 
 type CreatedTransfer = { id: string; code: string; transferredAt: string; shelves: ScannedShelf[] };
 
+type DueGroup = {
+  weekSlot: number;
+  warehouseName: string;
+  roomName: string;
+  oldestEnteredAt: string;
+  shelves: ScannedShelf[];
+};
+
 const PENDING_LABEL = { label: "Đã bàn giao / Chưa xác nhận", color: "bg-warning-light text-warning-foreground" };
 
 // crypto.randomUUID() chỉ chạy được trong secure context (HTTPS hoặc localhost) — NV kho thường mở
@@ -36,11 +44,12 @@ const newRowId = () =>
 const newRow = (): Row => ({ rowId: newRowId(), shelf: null });
 
 export default function TransferFinishedForm({
-  khaDungRoomId, staffName, workplaceWarehouseId,
+  khaDungRoomId, staffName, workplaceWarehouseId, dueGroups = [],
 }: {
   khaDungRoomId: string;
   staffName: string;
   workplaceWarehouseId: string | null;
+  dueGroups?: DueGroup[];
 }) {
   const [rows, setRows] = useState<Row[]>([newRow()]);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -105,6 +114,11 @@ export default function TransferFinishedForm({
     await resolveAndFillRow(scanningRowId, code);
     setScannerOpen(false);
   }, [scanningRowId, resolveAndFillRow]);
+
+  const selectDueGroup = (group: DueGroup) => {
+    setRows(group.shelves.map((shelf) => ({ rowId: newRowId(), shelf })));
+    toast.success(`Đã chọn ${group.shelves.length} kệ của Nhóm tuần ${group.weekSlot}`);
+  };
 
   const addRow = () => setRows((prev) => [...prev, newRow()]);
   const removeRow = (rowId: string) => setRows((prev) => prev.filter((r) => r.rowId !== rowId));
@@ -229,6 +243,35 @@ export default function TransferFinishedForm({
         </h1>
         <p className="text-text-secondary text-sm mt-1">Quét QR hoặc chọn giàn kệ trong Phòng ra rễ để tổng hợp thành phẩm bàn giao cho Kho thành phẩm</p>
       </div>
+
+      {dueGroups.length > 0 && (
+        <div className="space-y-3">
+          {dueGroups.map((group) => {
+            const lotCount = group.shelves.reduce((sum, s) => sum + s.lots.length, 0);
+            return (
+              <Card key={`${group.roomName}-${group.weekSlot}`} className="border border-warning-light bg-warning-light">
+                <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-warning-foreground shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-warning-foreground">
+                        Nhóm tuần {group.weekSlot} đã đủ 3 tuần — cần bàn giao sang kho thành phẩm
+                      </p>
+                      <p className="text-sm text-warning-foreground/80">
+                        {group.roomName} ({group.warehouseName}) · {group.shelves.length} kệ · {lotCount} lô · lô cũ nhất từ{" "}
+                        {format(new Date(group.oldestEnteredAt), "dd/MM/yyyy", { locale: vi })}
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="bg-primary hover:bg-primary-hover shrink-0" onClick={() => selectDueGroup(group)}>
+                    <CheckCheck className="w-4 h-4 mr-1.5" /> Chọn tất cả kệ trong nhóm
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

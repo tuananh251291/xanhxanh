@@ -467,6 +467,14 @@ model Shelf {
   // block — có thể gộp kệ từ nhiều block/phòng/kho khác nhau vào cùng 1 Nhóm.
   groupId     String?
   group       ShelfGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  // Chỉ dùng cho kệ Phòng ra rễ (SUPER_ADMIN cấu hình) — 1 trong 4 "Nhóm tuần" xoay vòng, KHÔNG liên
+  // quan gì tới ShelfGroup/groupId ở trên. Cây ra rễ đưa vào kho tuần nào thì tự xếp vào đúng kệ có
+  // weekSlot = tuần đó (xem getCurrentWeekSlot trong src/lib/rooting-week-group.ts — công thức tuần
+  // liên tục mod 4, không cần lưu "nhóm đang active"). Sau 3 tuần, toàn bộ kệ cùng weekSlot đó "đạt
+  // xuất" — hệ thống đề xuất KHO_MO bàn giao hết sang kho thành phẩm để dọn trống, tuần thứ 4 kể từ
+  // lúc xếp thì weekSlot đó được tái sử dụng cho lứa mới. Cố định 3 tuần cho MỌI loại cây, không phụ
+  // thuộc rootingWeeks (field đó chỉ dùng tính Lot.expectedMoveAt, không liên quan cơ chế này).
+  weekSlot    Int?
   // Tối đa được xếp trên kệ này — Phòng mẫu mẹ tính theo CỤM (mặc định 1800 nếu không nhập), Phòng ra
   // rễ tính theo TÚI thành phẩm (T01/T05), không bắt buộc — null nghĩa là không giới hạn.
   capacity    Int?

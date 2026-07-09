@@ -7,11 +7,13 @@ import { z } from "zod";
 // plantTypeId/assignedStaffId chỉ có ý nghĩa với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình).
 // roomId (chuyển kệ giữa Phòng mẫu mẹ ↔ Phòng ra rễ, hoặc phòng khác cùng kho) — Admin thường cũng được.
 // sharedMotherPool chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ.
+// weekSlot chỉ áp dụng cho kệ Phòng ra rễ (SUPER_ADMIN cấu hình) — xem rooting-week-group.ts.
 const patchSchema = z.object({
   plantTypeId: z.string().nullable().optional(),
   assignedStaffId: z.string().nullable().optional(),
   roomId: z.string().optional(),
   sharedMotherPool: z.enum(["QUA_HAN", "DUNG_HAN"]).nullable().optional(),
+  weekSlot: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -21,7 +23,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { plantTypeId, assignedStaffId, roomId, sharedMotherPool } = parsed.data;
+  const { plantTypeId, assignedStaffId, roomId, sharedMotherPool, weekSlot } = parsed.data;
 
   const changesPlantOrStaff = plantTypeId !== undefined || assignedStaffId !== undefined;
   if (changesPlantOrStaff && role !== "SUPER_ADMIN") {
@@ -30,11 +32,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (sharedMotherPool !== undefined && role !== "SUPER_ADMIN") {
     return NextResponse.json({ message: "Chỉ Admin cao nhất mới được phân loại Kho quá hạn/đúng hạn" }, { status: 403 });
   }
+  if (weekSlot !== undefined && role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cao nhất mới được gán Nhóm tuần cho kệ" }, { status: 403 });
+  }
   if (roomId !== undefined && !isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
-  if (!changesPlantOrStaff && roomId === undefined && sharedMotherPool === undefined) {
+  if (!changesPlantOrStaff && roomId === undefined && sharedMotherPool === undefined && weekSlot === undefined) {
     return NextResponse.json({ message: "Không có gì để cập nhật" }, { status: 400 });
+  }
+
+  if (weekSlot !== undefined) {
+    const shelf = await prisma.shelf.findUnique({ where: { id }, select: { room: { select: { type: true } } } });
+    if (!shelf) return NextResponse.json({ message: "Không tìm thấy kệ" }, { status: 404 });
+    const targetRoomType = roomId !== undefined
+      ? (await prisma.room.findUnique({ where: { id: roomId }, select: { type: true } }))?.type
+      : shelf.room?.type;
+    if (targetRoomType !== "PHONG_RA_RE") {
+      return NextResponse.json({ message: "Nhóm tuần chỉ áp dụng cho kệ Phòng ra rễ" }, { status: 400 });
+    }
   }
 
   if (sharedMotherPool) {
@@ -46,8 +62,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const data: { plantTypeId?: string | null; assignedStaffId?: string | null; roomId?: string; sharedMotherPool?: "QUA_HAN" | "DUNG_HAN" | null } = {};
+  const data: {
+    plantTypeId?: string | null;
+    assignedStaffId?: string | null;
+    roomId?: string;
+    sharedMotherPool?: "QUA_HAN" | "DUNG_HAN" | null;
+    weekSlot?: number | null;
+  } = {};
   if (sharedMotherPool !== undefined) data.sharedMotherPool = sharedMotherPool;
+  if (weekSlot !== undefined) data.weekSlot = weekSlot;
 
   if (roomId !== undefined) {
     const room = await prisma.room.findUnique({ where: { id: roomId }, select: { type: true } });
@@ -57,6 +80,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (room.type !== "PHONG_MAU_ME") {
       data.plantTypeId = null;
       data.assignedStaffId = null;
+    }
+    // Rời khỏi Phòng ra rễ thì Nhóm tuần không còn ý nghĩa — bỏ gán.
+    if (room.type !== "PHONG_RA_RE" && data.weekSlot === undefined) {
+      data.weekSlot = null;
     }
   }
 

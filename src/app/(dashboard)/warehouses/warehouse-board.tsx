@@ -27,6 +27,7 @@ type ShelfData = {
   plantType: PlantType | null;
   assignedStaff: Staff | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
+  weekSlot: number | null;
   lots: { quantity: number; stageCode: string }[];
 };
 type RoomData = {
@@ -324,7 +325,12 @@ export default function WarehouseBoard({
                                 · {rooms.length} phòng{groupShelfCount > 0 ? ` · ${groupShelfCount} kệ` : ""}
                               </span>
                             </div>
-                            <Button type="button" variant="outline" size="sm" onClick={() => toggleGroup(id)}>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); toggleGroup(id); }}
+                            >
                               {groupExpanded ? "Thu gọn" : "Xem thêm"}
                             </Button>
                           </div>
