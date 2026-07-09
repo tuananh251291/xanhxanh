@@ -161,7 +161,13 @@ function RoomCard({
             <>
               {canMoveRoom && (
                 <div className="flex justify-end">
-                  <AddShelvesDialog roomId={room.id} roomCode={room.code} roomType={room.type as "PHONG_MAU_ME" | "PHONG_RA_RE"} />
+                  <AddShelvesDialog
+                    roomId={room.id}
+                    roomCode={room.code}
+                    roomType={room.type as "PHONG_MAU_ME" | "PHONG_RA_RE"}
+                    caymoStaff={caymoStaff}
+                    canAssignStaff={canManageStaffAndPlant}
+                  />
                 </div>
               )}
               {room.shelves.length === 0 ? (
