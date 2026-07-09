@@ -107,3 +107,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json(shelf);
 }
+
+// Xóa giàn kệ — chỉ Admin cấp cao. Xóa mềm (isActive: false). Client đã hỏi xác nhận kèm cảnh báo nếu
+// kệ đang có lô cây (dữ liệu shelf.lots đã có sẵn phía client, xem ShelfTable) trước khi gọi API này —
+// vẫn cho xóa dù còn lô, vì Lot.shelfId là quan hệ optional nên không mất dữ liệu lô, chỉ ẩn kệ khỏi
+// danh sách đang hoạt động.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cấp cao mới được xóa giàn kệ" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const shelf = await prisma.shelf.findUnique({ where: { id } });
+  if (!shelf) return NextResponse.json({ message: "Không tìm thấy kệ" }, { status: 404 });
+
+  await prisma.shelf.update({ where: { id }, data: { isActive: false } });
+
+  return NextResponse.json({ success: true });
+}

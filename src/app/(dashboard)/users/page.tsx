@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { ROLE_LABELS, ROLE_COLORS } from "@/types";
+import { ROLE_LABELS, ROLE_COLORS, isAdminRole } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import CreateUserDialog from "./create-user-dialog";
@@ -17,6 +17,7 @@ import EditUserDialog from "./edit-user-dialog";
 import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
 import WorkplaceCell from "./workplace-cell";
+import PlantingCapacityCell from "./planting-capacity-cell";
 
 const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG"] as const;
 const PAGE_SIZE = 7;
@@ -29,6 +30,7 @@ export default async function UsersPage({
   const session = await auth();
   if (!(await isPageAllowed(session?.user?.role ?? null, "/users"))) redirect("/dashboard");
   const canApprove = session?.user?.role === "SUPER_ADMIN";
+  const canEditCapacity = isAdminRole(session?.user?.role);
 
   const sp = await searchParams;
   const search = sp.q?.trim() ?? "";
@@ -124,6 +126,7 @@ export default async function UsersPage({
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Email</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vai trò</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vị trí làm việc</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Năng lực cấy</th>
                       {canApprove && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
                     </tr>
                   </thead>
@@ -155,6 +158,17 @@ export default async function UsersPage({
                             <span className="text-xs text-text-muted">—</span>
                           )}
                         </td>
+                        <td className="px-4 py-3">
+                          {user.role === "CAY_MO" ? (
+                            canEditCapacity ? (
+                              <PlantingCapacityCell userId={user.id} currentValue={user.plantingCapacity} />
+                            ) : (
+                              <span className="text-xs text-text-secondary">{user.plantingCapacity.toLocaleString("vi-VN")}</span>
+                            )
+                          ) : (
+                            <span className="text-xs text-text-muted">—</span>
+                          )}
+                        </td>
                         {canApprove && (
                           <td className="px-4 py-3">
                             {user.role && user.role !== "SUPER_ADMIN" ? (
@@ -170,7 +184,7 @@ export default async function UsersPage({
                     ))}
                     {users.length === 0 && (
                       <tr>
-                        <td colSpan={canApprove ? 6 : 5} className="px-4 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={canApprove ? 7 : 6} className="px-4 py-8 text-center text-sm text-text-muted">
                           Không tìm thấy nhân viên phù hợp
                         </td>
                       </tr>

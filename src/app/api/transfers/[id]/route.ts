@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { motherClusterUnits, SURPLUS_TRANSFER_TAG } from "@/types";
 import { planShelfAssignments, planSurplusPlacement, ShelfAssignError } from "@/lib/shelf-assignment";
+import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
 import { generateLotCode } from "@/lib/codes";
 import { z } from "zod";
 
@@ -28,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     where: { id },
     include: {
       fromRoom: { select: { type: true, warehouseId: true } },
+      fromUser: { select: { inspectionLane: true } },
       toWarehouse: { select: { type: true } },
       items: {
         include: {
@@ -61,60 +63,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const warehouseId = transfer.fromRoom?.warehouseId ?? transfer.fromWarehouseId;
     if (!warehouseId) return NextResponse.json({ message: "Không xác định được kho nguồn" }, { status: 400 });
 
+    // NV không thuộc luồng Xanh (Đỏ/chưa cài đặt) bắt buộc phải qua bước Kiểm tra ở
+    // /transfers/receive-phong-toi trước — chốt chặn phòng thủ, luồng UI bình thường không còn
+    // đường nào gọi tới đây cho phiếu Đỏ nữa (trang cũ đã lọc, trang mới dùng endpoint riêng).
+    if (!isSurplusTransfer && transfer.fromUser.inspectionLane !== "XANH") {
+      const inspection = await prisma.transferInspection.findUnique({ where: { transferId: id } });
+      if (!inspection) return NextResponse.json({ message: "Cần kiểm tra trước khi xác nhận nhận hàng" }, { status: 400 });
+    }
+
+    // Chỉ xử lý phần CHƯA xếp — nếu NV thuộc luồng Xanh, 1 phần (mẫu mẹ hoặc ra rễ) có thể đã được xác
+    // nhận riêng qua /transfers/receive-phong-toi trước đó (VD do luồng vừa bị đổi Xanh→Đỏ giữa chừng).
+    const pendingItems = transfer.items.filter((i) => !i.confirmedAt);
+
     let placements;
     try {
       placements = isSurplusTransfer
-        ? await planSurplusPlacement(transfer.items.map((i) => ({ lotId: i.lotId, lot: i.lot })), warehouseId)
-        : await planShelfAssignments(transfer.items.map((i) => ({ lotId: i.lotId, lot: i.lot })), warehouseId);
+        ? await planSurplusPlacement(pendingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), warehouseId)
+        : await planShelfAssignments(pendingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), warehouseId);
     } catch (e) {
       if (e instanceof ShelfAssignError) return NextResponse.json({ message: e.message }, { status: 409 });
       throw e;
     }
 
     await prisma.$transaction(async (tx) => {
-      const byLot = new Map<string, typeof placements>();
-      for (const p of placements) {
-        if (!byLot.has(p.lotId)) byLot.set(p.lotId, []);
-        byLot.get(p.lotId)!.push(p);
+      await commitShelfPlacements(tx, placements);
+      await tx.transferItem.updateMany({ where: { id: { in: pendingItems.map((i) => i.id) } }, data: { confirmedAt: new Date() } });
+      const remaining = await tx.transferItem.count({ where: { transferId: id, confirmedAt: null } });
+      if (remaining === 0) {
+        await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
       }
-      for (const [lotId, parts] of byLot) {
-        const [first, ...rest] = parts;
-        const isSplit = rest.length > 0;
-        await tx.lot.update({
-          where: { id: lotId },
-          data: {
-            shelfId: first.shelfId,
-            enteredAt: new Date(),
-            ...(isSplit ? { quantity: first.quantity, initialQuantity: first.quantity } : {}),
-          },
-        });
-        for (const part of rest) {
-          const staffUser = part.lot.instruction?.assignedToId
-            ? await prisma.user.findUnique({ where: { id: part.lot.instruction.assignedToId }, select: { code: true } })
-            : null;
-          const code = await generateLotCode({
-            plantTypeCode: part.lot.plantType.code,
-            staffCode: staffUser?.code ?? "000",
-            stageCode: part.lot.stageCode,
-          });
-          await tx.lot.create({
-            data: {
-              code,
-              plantTypeId: part.lot.plantTypeId,
-              stage: part.lot.stage,
-              stageCode: part.lot.stageCode,
-              shelfId: part.shelfId,
-              quantity: part.quantity,
-              initialQuantity: part.quantity,
-              status: "ACTIVE",
-              enteredAt: new Date(),
-              instructionId: part.lot.instructionId,
-              parentLotId: lotId,
-            },
-          });
-        }
-      }
-      await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
     });
 
     return NextResponse.json({
@@ -216,6 +193,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             }
           }
         }
+        await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
         await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
       });
 
@@ -231,6 +209,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { roomId: transfer.toRoomId, shelfId: null, enteredAt: new Date() },
         });
       }
+      await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
       await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
     });
 
@@ -293,6 +272,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
+    await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
     await tx.transfer.update({
       where: { id },
       data: { status: "CONFIRMED", confirmedAt: new Date() },

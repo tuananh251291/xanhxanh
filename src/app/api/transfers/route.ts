@@ -31,18 +31,14 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
   if (role === "CAY_MO") where.fromUserId = session.user.id;
-  if (role === "KHO_MO" || role === "KHO_THANH_PHAM") {
-    // Bàn giao từ Phòng tối/Phòng ra rễ không chỉ định người nhận cụ thể — bất kỳ KHO_MO/KHO_THANH_PHAM
-    // nào cũng nhận được, nên cần hiện cho mọi NV chứ không chỉ người tạo/người được chỉ định. NV kho mô
-    // chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc) nên chỉ thấy phiếu từ đúng kho đó.
-    const workplaceWarehouseId = role === "KHO_MO" ? session.user.workplaceWarehouseId : null;
+  // Kho mô không còn dùng endpoint chung này nữa — bàn giao Phòng tối (luồng Xanh, luồng Đỏ, và MM dư)
+  // giờ xử lý hết ở các API riêng dưới /api/transfers/receive-phong-toi/* (xem trang
+  // /transfers/receive-phong-toi). Trả rỗng để tránh lộ dữ liệu nếu vẫn còn nơi nào gọi nhầm.
+  if (role === "KHO_MO") return NextResponse.json([]);
+  if (role === "KHO_THANH_PHAM") {
     where.OR = [
       { fromUserId: session.user.id },
       { toUserId: session.user.id },
-      {
-        toUserId: null,
-        fromRoom: { type: "PHONG_TOI", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
-      },
       // Bàn giao thành phẩm (Phòng ra rễ → Kho thành phẩm) — KHO_THANH_PHAM cần thấy để xác nhận nhận.
       { toUserId: null, fromRoom: { type: "PHONG_RA_RE" } },
     ];
@@ -63,7 +59,7 @@ export async function GET(req: NextRequest) {
         },
       },
       toRoom: { select: { name: true, type: true, shelves: { where: { isActive: true } } } },
-      fromUser: { select: { name: true } },
+      fromUser: { select: { code: true, name: true } },
       toUser: { select: { name: true } },
       items: {
         include: {

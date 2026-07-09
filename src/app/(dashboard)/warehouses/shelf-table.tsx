@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Package } from "lucide-react";
+import { QrCode, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -64,6 +64,7 @@ export default function ShelfTable({
 }) {
   const [qrShelf, setQrShelf] = useState<Shelf | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const router = useRouter();
   const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
   const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
@@ -80,6 +81,22 @@ export default function ShelfTable({
       toast.success(successMsg);
       router.refresh();
     } finally { setSavingId(null); }
+  };
+
+  const deleteShelf = async (shelf: Shelf) => {
+    const totalQty = shelf.lots.reduce((s, l) => s + l.quantity, 0);
+    const confirmMsg = shelf.lots.length > 0
+      ? `Giàn kệ ${shelf.code} đang có ${shelf.lots.length} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} cây/túi). Xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động. Bạn có chắc chắn muốn xóa?`
+      : `Xóa giàn kệ ${shelf.code}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setDeletingId(shelf.id);
+    try {
+      const res = await fetch(`/api/shelves/${shelf.id}`, { method: "DELETE" });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã xóa giàn kệ ${shelf.code}`);
+      router.refresh();
+    } finally { setDeletingId(null); }
   };
 
   const renderRow = (shelf: Shelf, showPoolColumn: boolean) => {
@@ -218,6 +235,21 @@ export default function ShelfTable({
             )}
           </td>
         )}
+        {canManageStaffAndPlant && (
+          <td className="px-3 py-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="text-destructive hover:bg-danger-light"
+              disabled={deletingId === shelf.id}
+              onClick={() => deleteShelf(shelf)}
+              title="Xóa giàn kệ"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </td>
+        )}
       </tr>
     );
   };
@@ -240,6 +272,7 @@ export default function ShelfTable({
             )}
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tồn / Sức chứa</th>
             {canMoveRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Chuyển phòng</th>}
+            {canManageStaffAndPlant && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Xóa</th>}
           </tr>
         </thead>
         <tbody>{rows.map((s) => renderRow(s, showPoolColumn))}</tbody>

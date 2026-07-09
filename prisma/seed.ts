@@ -221,12 +221,12 @@ async function main() {
   // định; Phòng tối cá nhân (1 Room/NV cấy mô) tự sinh riêng bên dưới, không seed cứng ở đây.
   // Kho thành phẩm có 3 phòng cố định + phòng thị trường (mở thêm được)
   const roomDefs = [
-    { code: "SXA-PS", name: "Phòng mẫu mẹ A", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-A" },
-    { code: "SXA-PRR", name: "Phòng ra rễ A", type: "PHONG_RA_RE" as const, warehouseCode: "SX-A" },
-    { code: "SXA-NHIEM", name: "Phòng Nhiễm A", type: "PHONG_NHIEM" as const, warehouseCode: "SX-A" },
-    { code: "SXB-PS", name: "Phòng mẫu mẹ B", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-B" },
-    { code: "SXB-PRR", name: "Phòng ra rễ B", type: "PHONG_RA_RE" as const, warehouseCode: "SX-B" },
-    { code: "SXB-NHIEM", name: "Phòng Nhiễm B", type: "PHONG_NHIEM" as const, warehouseCode: "SX-B" },
+    { code: "SXA-PS", name: "Phòng mẫu mẹ Đông Dư", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-A" },
+    { code: "SXA-PRR", name: "Phòng ra rễ Đông Dư", type: "PHONG_RA_RE" as const, warehouseCode: "SX-A" },
+    { code: "SXA-NHIEM", name: "Phòng Nhiễm Đông Dư", type: "PHONG_NHIEM" as const, warehouseCode: "SX-A" },
+    { code: "SXB-PS", name: "Phòng mẫu mẹ Hưng Yên", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-B" },
+    { code: "SXB-PRR", name: "Phòng ra rễ Hưng Yên", type: "PHONG_RA_RE" as const, warehouseCode: "SX-B" },
+    { code: "SXB-NHIEM", name: "Phòng Nhiễm Hưng Yên", type: "PHONG_NHIEM" as const, warehouseCode: "SX-B" },
     { code: "KTPA-KD", name: "Phòng khả dụng", type: "PHONG_KHA_DUNG" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-TD", name: "Phòng theo dõi", type: "PHONG_THEO_DOI" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-HT", name: "Phòng hàn túi", type: "PHONG_HAN_TUI" as const, warehouseCode: "KTP-A" },
@@ -260,23 +260,26 @@ async function main() {
     const roomId = createdRooms[roomCode];
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
+      const rowStr = String(row).padStart(2, "0");
+      const block = `R${rowStr}`;
       for (let col = 1; col <= 5; col++) {
         const colStr = String(col).padStart(2, "0");
-        const code = `${roomCode}-R${row}C${colStr}`;
+        const code = `${roomCode}-R${rowStr}C${colStr}`;
         const plantType = createdPlantTypes[psShelfSeq % createdPlantTypes.length];
         const staff = psCaymoStaff.length > 0 ? psCaymoStaff[psShelfSeq % psCaymoStaff.length] : null;
         psShelfSeq += 1;
         psShelfPlantType[code] = plantType.id;
         await prisma.shelf.upsert({
           where: { code },
-          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 1800 },
+          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 1800, block },
           create: {
             code,
-            name: `Kệ R${row}C${colStr}`,
+            name: `Kệ R${rowStr}C${colStr}`,
             warehouseId,
             roomId,
             rowNumber: row,
             colNumber: col,
+            block,
             capacity: 1800,
             plantTypeId: plantType.id,
             assignedStaffId: staff?.id,
@@ -291,19 +294,22 @@ async function main() {
     const roomId = createdRooms[roomCode];
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
+      const rowStr = String(row).padStart(2, "0");
+      const block = `R${rowStr}`;
       for (let col = 1; col <= 5; col++) {
         const colStr = String(col).padStart(2, "0");
-        const code = `${roomCode}-R${row}C${colStr}`;
+        const code = `${roomCode}-R${rowStr}C${colStr}`;
         await prisma.shelf.upsert({
           where: { code },
-          update: {},
+          update: { block },
           create: {
             code,
-            name: `Kệ R${row}C${colStr}`,
+            name: `Kệ R${rowStr}C${colStr}`,
             warehouseId,
             roomId,
             rowNumber: row,
             colNumber: col,
+            block,
           },
         });
       }

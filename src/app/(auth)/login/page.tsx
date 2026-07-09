@@ -21,7 +21,7 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-const GREETING_DURATION_MS = 5000;
+const GREETING_DURATION_MS = 3000;
 
 export default function LoginPage() {
   const router = useRouter();

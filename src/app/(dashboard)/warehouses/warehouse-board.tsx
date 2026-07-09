@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, Warehouse as WarehouseIcon, Layers, Search, Sun, Moon } from "lucide-react";
+import { ChevronDown, ChevronRight, Warehouse as WarehouseIcon, Layers, Search, Sun, Moon, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS, ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
 import type { WarehouseType, RoomType } from "@prisma/client";
 import AddMarketRoomDialog from "./add-market-room-dialog";
+import AddShelvesDialog from "./add-shelves-dialog";
 import RoomAccessDialog from "./room-access-dialog";
 import ShelfTable from "./shelf-table";
 
@@ -55,7 +58,7 @@ type WarehouseData = {
 };
 
 function RoomCard({
-  room, wh, expanded, onToggle, saleUsers, caymoStaff, canManageStaffAndPlant, canMoveRoom,
+  room, wh, expanded, onToggle, saleUsers, caymoStaff, canManageStaffAndPlant, canMoveRoom, onDeleted,
 }: {
   room: RoomData;
   wh: WarehouseData;
@@ -65,8 +68,25 @@ function RoomCard({
   caymoStaff: Staff[];
   canManageStaffAndPlant: boolean;
   canMoveRoom: boolean;
+  onDeleted: () => void;
 }) {
   const isDarkRoom = room.type === "PHONG_TOI" || room.type === "PHONG_NHIEM";
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteRoom = async () => {
+    const confirmMsg = room.shelves.length > 0
+      ? `Phòng ${room.name} đang có ${room.shelves.length} giàn kệ. Xóa phòng sẽ xóa luôn tất cả giàn kệ bên trong. Bạn có chắc chắn muốn xóa?`
+      : `Xóa phòng ${room.name}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.id}`, { method: "DELETE" });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã xóa phòng ${room.name}`);
+      onDeleted();
+    } finally { setDeleting(false); }
+  };
 
   return (
     <div className="border rounded-lg">
@@ -115,26 +135,48 @@ function RoomCard({
               {expanded ? "Thu gọn" : "Xem chi tiết"}
             </Button>
           )}
+          {canManageStaffAndPlant && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="text-destructive hover:bg-danger-light"
+              disabled={deleting}
+              onClick={deleteRoom}
+              title="Xóa phòng"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </div>
       {!isDarkRoom && expanded && (
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-3">
           {NO_SHELF_ROOM_TYPES.has(room.type) ? (
             <p className="text-text-muted text-sm text-center py-3">
               Kho thành phẩm không quản lý theo giàn kệ — xem tồn kho tại trang Tồn kho thành phẩm
             </p>
-          ) : room.shelves.length === 0 ? (
-            <p className="text-text-muted text-sm text-center py-3">Chưa có giàn kệ nào</p>
           ) : (
-            <ShelfTable
-              shelves={room.shelves}
-              currentRoomId={room.id}
-              currentRoomType={room.type}
-              staffOptions={caymoStaff}
-              canManageStaffAndPlant={canManageStaffAndPlant}
-              canMoveRoom={canMoveRoom}
-              moveableRooms={wh.rooms.filter((r) => r.type === "PHONG_MAU_ME" || r.type === "PHONG_RA_RE")}
-            />
+            <>
+              {canMoveRoom && (
+                <div className="flex justify-end">
+                  <AddShelvesDialog roomId={room.id} roomCode={room.code} roomType={room.type as "PHONG_MAU_ME" | "PHONG_RA_RE"} />
+                </div>
+              )}
+              {room.shelves.length === 0 ? (
+                <p className="text-text-muted text-sm text-center py-3">Chưa có giàn kệ nào</p>
+              ) : (
+                <ShelfTable
+                  shelves={room.shelves}
+                  currentRoomId={room.id}
+                  currentRoomType={room.type}
+                  staffOptions={caymoStaff}
+                  canManageStaffAndPlant={canManageStaffAndPlant}
+                  canMoveRoom={canMoveRoom}
+                  moveableRooms={wh.rooms.filter((r) => r.type === "PHONG_MAU_ME" || r.type === "PHONG_RA_RE")}
+                />
+              )}
+            </>
           )}
         </div>
       )}
@@ -158,6 +200,24 @@ export default function WarehouseBoard({
   const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
+  const [deletingWarehouseId, setDeletingWarehouseId] = useState<string | null>(null);
+  const router = useRouter();
+
+  const deleteWarehouse = async (wh: WarehouseData) => {
+    const shelfCount = wh.rooms.reduce((s, r) => s + r.shelves.length, 0) + wh.shelves.length;
+    const confirmMsg = wh.rooms.length > 0 || shelfCount > 0
+      ? `Kho ${wh.name} đang có ${wh.rooms.length} phòng và ${shelfCount} giàn kệ. Xóa kho sẽ xóa luôn tất cả bên trong. Bạn có chắc chắn muốn xóa?`
+      : `Xóa kho ${wh.name}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setDeletingWarehouseId(wh.id);
+    try {
+      const res = await fetch(`/api/warehouses/${wh.id}`, { method: "DELETE" });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã xóa kho ${wh.name}`);
+      router.refresh();
+    } finally { setDeletingWarehouseId(null); }
+  };
 
   const toggleWarehouse = (id: string) => {
     setExpandedWarehouses((prev) => {
@@ -181,7 +241,7 @@ export default function WarehouseBoard({
     });
   };
 
-  const roomCardProps = { saleUsers, caymoStaff, canManageStaffAndPlant, canMoveRoom };
+  const roomCardProps = { saleUsers, caymoStaff, canManageStaffAndPlant, canMoveRoom, onDeleted: () => router.refresh() };
 
   return (
     <div className="space-y-4">
@@ -219,6 +279,19 @@ export default function WarehouseBoard({
                   <Button type="button" variant="outline" size="sm" onClick={() => toggleWarehouse(wh.id)}>
                     {whExpanded ? "Thu gọn" : "Xem thêm"}
                   </Button>
+                  {canManageStaffAndPlant && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-destructive hover:bg-danger-light"
+                      disabled={deletingWarehouseId === wh.id}
+                      onClick={() => deleteWarehouse(wh)}
+                      title="Xóa kho"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>

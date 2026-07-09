@@ -98,6 +98,22 @@ export function generateProductLotCode(instructionCode: string, date: Date = new
   return `${instructionCode}${dayDigit}`;
 }
 
+// Mã kho = tiền tố theo loại ("SX" kho sản xuất / "KTP" kho thành phẩm) + 1 chữ cái tăng dần theo thứ
+// tự tạo (SX-A, SX-B, ... — riêng theo từng loại, không dùng chung dãy). Quá 26 kho cùng loại thì
+// chuyển sang số ("SX-27"...) — thực tế khó xảy ra nhưng vẫn tránh lỗi ký tự ngoài A-Z.
+export async function generateWarehouseCode(type: "SAN_XUAT" | "THANH_PHAM"): Promise<string> {
+  const prefix = type === "SAN_XUAT" ? "SX" : "KTP";
+  const letterFor = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String(i - 25));
+
+  let index = await prisma.warehouse.count({ where: { type } });
+  let candidate = `${prefix}-${letterFor(index)}`;
+  while (await prisma.warehouse.findFirst({ where: { code: candidate } })) {
+    index += 1;
+    candidate = `${prefix}-${letterFor(index)}`;
+  }
+  return candidate;
+}
+
 export async function generateMediumOrderCode(): Promise<string> {
   const today = new Date();
   const prefix = `DHMT-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;

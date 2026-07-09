@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     },
     include: {
       warehouse: { select: { id: true, name: true, code: true } },
-      shelves: { where: { isActive: true } },
+      shelves: { where: { isActive: true }, include: { group: { select: { id: true, name: true } } } },
     },
     orderBy: [{ warehouse: { name: "asc" } }, { type: "asc" }],
   });

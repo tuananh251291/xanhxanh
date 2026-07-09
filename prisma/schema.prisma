@@ -168,6 +168,9 @@ model User {
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), do NV kho mô phụ trách cùng kho sản xuất cài
   // đặt (xem /api/users/[id] PATCH). Null = chưa cài đặt.
   inspectionLane InspectionLane?
+  // Năng lực cấy — chỉ áp dụng cho NV cấy mô (CAY_MO): số cụm mẫu mẹ NV đó dùng hết trong 1 tuần
+  // (thể hiện tốc độ cấy), chỉ ADMIN/SUPER_ADMIN cài đặt được (xem /api/users/[id] PATCH).
+  plantingCapacity Int @default(1920)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -189,6 +192,7 @@ model User {
   checklistItems       ChecklistItem[]
   lotInspections       LotInspection[]
   inspectedLots        Lot[]                 @relation("LotInspectedBy")
+  transferInspectionsPerformed TransferInspection[] @relation("TransferInspectedBy")
   materialIntakes      MaterialIntake[]
 
   @@map("users")
@@ -454,6 +458,15 @@ model Shelf {
   room        Room?     @relation(fields: [roomId], references: [id])
   rowNumber   Int?
   colNumber   Int?
+  // Khối vật lý trong 1 phòng — các kệ cùng 1 hàng (rowNumber), VD R04C01 đến R04C99 trong CÙNG 1 phòng,
+  // thuộc chung 1 block (VD "R04"). Không gộp xuyên phòng (Phòng mẫu mẹ và Phòng ra rễ luôn tách block
+  // riêng dù trùng rowNumber) — chỉ là nhãn tiện nhóm/lọc, tính từ rowNumber lúc tạo/đổi mã kệ.
+  block       String?
+  // Nhóm gộp nhiều block lại (VD block R01 + R02 cùng 1 Nhóm) — không bắt buộc, chỉ Admin cấp cao
+  // (SUPER_ADMIN) mới cài đặt được (xem /settings/shelf-groups). Có thể gộp block từ nhiều phòng/kho
+  // khác nhau vào cùng 1 Nhóm, khác với block (luôn tách riêng theo từng phòng).
+  groupId     String?
+  group       ShelfGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   // Tối đa bao nhiêu (mẫu mẹ/túi) được xếp trên kệ này — kệ Phòng mẫu mẹ mặc định 360.
   capacity    Int?
   // Chỉ ràng buộc với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình) — 1 kệ chỉ xếp 1 mã cây và
@@ -473,6 +486,23 @@ model Shelf {
   instructionItems PlantingInstructionItem[]
 
   @@map("shelves")
+}
+
+// Nhóm gộp nhiều block giàn kệ lại với nhau (VD block R01 + R02 = 1 Nhóm) — thuộc tính không bắt buộc,
+// chỉ Admin cấp cao (SUPER_ADMIN) cài đặt qua trang /settings/shelf-groups. Có thể gộp block từ nhiều
+// phòng/kho khác nhau vào cùng 1 Nhóm.
+model ShelfGroup {
+  id        String   @id @default(cuid())
+  name      String
+  // Loại nhóm — nhập tự do, không bắt buộc, chỉ để Admin cấp cao tự phân loại/ghi chú thêm (VD "Khu
+  // sản xuất chính", "Khu dự trữ"...), không ràng buộc nghiệp vụ nào khác.
+  type      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shelves Shelf[]
+
+  @@map("shelf_groups")
 }
 
 // ============================================================
@@ -843,19 +873,57 @@ model Transfer {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  items TransferItem[]
+  items      TransferItem[]
+  inspection TransferInspection?
 
   @@map("transfers")
 }
 
+// Kho mô tự kiểm tra lại số lượng/chất lượng khi nhận bàn giao Phòng tối của NV luồng Đỏ/chưa cài
+// đặt luồng (luồng Xanh bỏ qua bước này — coi như tự động tin tưởng) — 1 phiếu bàn giao 1 phiếu
+// kiểm tra. Sau khi xác nhận, đi tiếp bước "Sắp xếp về kho" (xem src/lib/receive-phong-toi.ts).
+model TransferInspection {
+  id            String   @id @default(cuid())
+  transferId    String   @unique
+  transfer      Transfer @relation(fields: [transferId], references: [id])
+  inspectedById String
+  inspectedBy   User     @relation("TransferInspectedBy", fields: [inspectedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  items TransferInspectionItem[]
+
+  @@map("transfer_inspections")
+}
+
+model TransferInspectionItem {
+  id                   String             @id @default(cuid())
+  inspectionId         String
+  inspection           TransferInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  stageCode            String
+  handedOverQuantity   Int
+  contaminatedQuantity Int
+  passedQuantity       Int
+  randomCheckPassRate  Float
+  // = round(randomCheckPassRate/100 * handedOverQuantity) — chỉ dùng tính lương sau này, KHÔNG
+  // dùng để trừ vào số lượng thực tế đem xếp kệ (số đó luôn là passedQuantity).
+  creditedQuantity     Int
+
+  @@unique([inspectionId, stageCode])
+  @@map("transfer_inspection_items")
+}
+
 model TransferItem {
-  id         String   @id @default(cuid())
-  transferId String
-  transfer   Transfer @relation(fields: [transferId], references: [id])
-  lotId      String
-  lot        Lot      @relation(fields: [lotId], references: [id])
-  quantity   Int
-  notes      String?
+  id          String    @id @default(cuid())
+  transferId  String
+  transfer    Transfer  @relation(fields: [transferId], references: [id])
+  lotId       String
+  lot         Lot       @relation(fields: [lotId], references: [id])
+  quantity    Int
+  notes       String?
+  // Đã được xếp kệ (mẫu mẹ hoặc ra rễ) — dùng cho luồng bàn giao Phòng tối Xanh (xem
+  // /transfers/receive-phong-toi), cho phép xác nhận ĐỘC LẬP từng nhóm (mẫu mẹ / ra rễ) trong cùng 1
+  // phiếu thay vì phải xong cả phiếu mới CONFIRMED. null = chưa xếp.
+  confirmedAt DateTime?
 
   @@map("transfer_items")
 }

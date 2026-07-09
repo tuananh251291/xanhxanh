@@ -628,7 +628,7 @@ function KhoMoTaskDashboard({
         </CardHeader>
         <CardContent className="space-y-3">
           <WeeklyTaskRow
-            href="/transfers/receive"
+            href="/transfers/receive-phong-toi"
             icon={PackageCheck}
             title="1. Nhận bàn giao từ kho tối"
             deadline="Xác nhận các phiếu bàn giao từ phòng tối cá nhân gửi lên trong ngày"

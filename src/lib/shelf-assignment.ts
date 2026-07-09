@@ -10,7 +10,7 @@ type LotForAssign = {
   stageCode: string;
   quantity: number;
   plantTypeId: string;
-  plantType: { code: string };
+  plantType: { code: string; name: string };
   instructionId: string | null;
   instruction: { assignedToId: string | null } | null;
 };

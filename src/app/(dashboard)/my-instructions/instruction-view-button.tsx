@@ -20,7 +20,7 @@ export default function InstructionViewButton({
   if (!needsConfirm) {
     return (
       <Link href={`/instructions/${instructionId}`}>
-        <Button variant="outline" size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
+        <Button size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
       </Link>
     );
   }

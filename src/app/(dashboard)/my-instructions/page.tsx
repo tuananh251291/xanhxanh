@@ -8,23 +8,14 @@ import { ClipboardList, Eye } from "lucide-react";
 import Link from "next/link";
 import { format, addDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS } from "@/types";
-import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import InstructionViewButton from "./instruction-view-button";
 import SurplusHandoverButton from "./surplus-handover-button";
+import DoneInstructionsTable from "./done-instructions-table";
 
 const END_REASON_LABELS: Record<string, string> = {
   TIME_UP: "Hết thời gian (qua Chủ nhật)",
   MOTHER_USED_UP: "Đã dùng hết mẫu mẹ được cấp",
-};
-
-const STATUS_COLORS: Record<InstructionStatus, string> = {
-  DRAFT: "bg-muted text-text-secondary",
-  ACTIVE: "bg-info-light text-info-foreground",
-  COMPLETED: "bg-primary-light text-primary-strong",
-  CANCELLED: "bg-danger-light text-destructive",
-  ENDED: "bg-muted text-foreground",
 };
 
 // Với chỉ định đang ACTIVE, badge không thể chỉ lấy status DB (luôn là "Đang thực hiện" ngay từ lúc
@@ -72,118 +63,118 @@ export default async function MyInstructionsPage() {
       </div>
 
       {active.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-foreground mb-3">Đang thực hiện</h2>
-          <div className="space-y-3">
-            {active.map((inst) => (
-              <Card key={inst.id} className="border-l-4 border-l-blue-500">
-                <CardContent className="py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-bold text-info-foreground">{inst.code}</span>
-                        <Badge className={cayMoStatusBadge(inst).color}>
-                          {cayMoStatusBadge(inst).label}
-                        </Badge>
-                        {inst.weekStart && (
-                          <span className="text-sm text-text-secondary">
-                            Thời gian cấy: Từ <strong>{format(inst.weekStart, "dd/MM/yyyy", { locale: vi })}</strong> đến <strong>{format(addDays(inst.weekStart, 6), "dd/MM/yyyy", { locale: vi })}</strong>
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-semibold text-foreground">
-                        Mã cây: <span className="font-mono">{inst.plantType.code}</span>
-                        <span className="inline-block ml-4">Tên cây: {inst.plantType.name}</span>
-                      </p>
-                      {inst.motherReceivedAt && (
-                        <p className="text-xs text-primary-strong font-medium">
-                          Đã nhận mẫu mẹ lúc {format(inst.motherReceivedAt, "HH:mm dd/MM/yyyy", { locale: vi })}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      {/* Không xét inst.status ở đây — cùng logic với cayMoStatusBadge() phía trên, chỉ dựa vào
-                          handedOverAt/motherReceivedAt để tránh trường hợp chỉ định vẫn còn status DRAFT
-                          (chưa được kích hoạt) nhưng đã bàn giao thật, khiến nút bị ẩn oan. */}
-                      <InstructionViewButton instructionId={inst.id} needsConfirm={!!inst.handedOverAt && !inst.motherReceivedAt} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-info-foreground">Chỉ định cấy đang thực hiện</h2>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã chỉ định</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã cây / Tên cây</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Thời gian cấy</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Trạng thái</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Ghi chú</th>
+                      <th className="px-4 py-3 font-bold text-base">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {active.map((inst) => (
+                      <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light/30">
+                        <td className="px-4 py-3 font-mono font-medium text-info-foreground">{inst.code}</td>
+                        <td className="px-4 py-3 text-foreground">
+                          <span className="font-mono">{inst.plantType.code}</span> — {inst.plantType.name}
+                        </td>
+                        <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
+                          {inst.weekStart ? (
+                            <>Từ <strong>{format(inst.weekStart, "dd/MM/yyyy", { locale: vi })}</strong> đến <strong>{format(addDays(inst.weekStart, 6), "dd/MM/yyyy", { locale: vi })}</strong></>
+                          ) : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge className={cayMoStatusBadge(inst).color}>{cayMoStatusBadge(inst).label}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-primary-strong font-medium">
+                          {inst.motherReceivedAt && <>Đã nhận mẫu mẹ lúc {format(inst.motherReceivedAt, "HH:mm dd/MM/yyyy", { locale: vi })}</>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {/* Không xét inst.status ở đây — cùng logic với cayMoStatusBadge() phía trên, chỉ dựa vào
+                              handedOverAt/motherReceivedAt để tránh trường hợp chỉ định vẫn còn status DRAFT
+                              (chưa được kích hoạt) nhưng đã bàn giao thật, khiến nút bị ẩn oan. */}
+                          <InstructionViewButton instructionId={inst.id} needsConfirm={!!inst.handedOverAt && !inst.motherReceivedAt} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </section>
       )}
 
       {ended.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-foreground mb-3">Đã kết thúc</h2>
-          <div className="space-y-3">
-            {ended.map((inst) => {
-              const surplus = surplusOf(inst);
-              const canHandoverSurplus = inst.endReason === "TIME_UP" && !inst.surplusHandedOverAt && surplus > 0;
-              return (
-                <Card key={inst.id} className="border-l-4 border-l-slate-400">
-                  <CardContent className="py-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-info-foreground">{inst.code}</span>
-                          <Badge className={STATUS_COLORS.ENDED}>Kết thúc</Badge>
-                        </div>
-                        <p className="font-semibold text-foreground">{inst.plantType.name}</p>
-                        <p className="text-sm text-text-secondary">
-                          Lý do: {inst.endReason ? END_REASON_LABELS[inst.endReason] : "—"}
-                        </p>
-                        {inst.endReason === "TIME_UP" && (
-                          <p className="text-sm text-text-secondary">
-                            MM dư: <strong>{Math.max(0, surplus).toLocaleString("vi-VN")}</strong>
-                            {inst.surplusHandedOverAt && (
-                              <span className="text-primary-strong ml-2">
-                                Đã bàn giao lúc {format(inst.surplusHandedOverAt, "HH:mm dd/MM/yyyy", { locale: vi })}
-                              </span>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-2 shrink-0">
-                        <Link href={`/instructions/${inst.id}`}>
-                          <Button variant="outline" size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
-                        </Link>
-                        {canHandoverSurplus && <SurplusHandoverButton instructionId={inst.id} surplus={surplus} />}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-foreground">Đã kết thúc</h2>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã chỉ định</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên cây</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Lý do kết thúc</th>
+                      <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">MM dư</th>
+                      <th className="px-4 py-3 font-bold text-base">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ended.map((inst) => {
+                      const surplus = surplusOf(inst);
+                      const canHandoverSurplus = inst.endReason === "TIME_UP" && !inst.surplusHandedOverAt && surplus > 0;
+                      return (
+                        <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light/30">
+                          <td className="px-4 py-3 font-mono font-medium text-info-foreground">{inst.code}</td>
+                          <td className="px-4 py-3 text-foreground">{inst.plantType.name}</td>
+                          <td className="px-4 py-3 text-text-secondary">
+                            {inst.endReason ? END_REASON_LABELS[inst.endReason] : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-text-secondary">
+                            {inst.endReason === "TIME_UP" ? (
+                              <>
+                                <strong>{Math.max(0, surplus).toLocaleString("vi-VN")}</strong>
+                                {inst.surplusHandedOverAt && (
+                                  <span className="text-primary-strong ml-2 text-xs">
+                                    Đã bàn giao lúc {format(inst.surplusHandedOverAt, "HH:mm dd/MM/yyyy", { locale: vi })}
+                                  </span>
+                                )}
+                              </>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <Link href={`/instructions/${inst.id}`}>
+                                <Button size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
+                              </Link>
+                              {canHandoverSurplus && <SurplusHandoverButton instructionId={inst.id} surplus={surplus} />}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </section>
       )}
 
       {done.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-text-secondary mb-3">Đã hoàn thành / Hủy</h2>
-          <div className="space-y-2">
-            {done.map((inst) => (
-              <Card key={inst.id} className="opacity-70">
-                <CardContent className="py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm text-text-secondary">{inst.code}</span>
-                      <span className="font-medium text-foreground">{inst.plantType.name}</span>
-                      <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
-                        {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
-                      </Badge>
-                    </div>
-                    <Link href={`/instructions/${inst.id}`}>
-                      <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-text-secondary">Chỉ định cấy đã hoàn thành/Hủy</h2>
+          <DoneInstructionsTable instructions={done} />
         </section>
       )}
 

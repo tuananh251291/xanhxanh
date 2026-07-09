@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateUserCode } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
+import { isAdminRole } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -17,6 +18,7 @@ const patchSchema = z.union([
   z.object({ status: z.literal("REJECTED") }),
   z.object({ workplaceWarehouseId: z.string().nullable() }),
   z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
+  z.object({ plantingCapacity: z.number().int().positive() }),
   z.object({
     name: z.string().min(2),
     email: z.string().email(),
@@ -88,6 +90,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { inspectionLane },
       select: { id: true, code: true, name: true, inspectionLane: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Năng lực cấy — số cụm mẫu mẹ 1 NV cấy mô dùng hết trong 1 tuần, chỉ ADMIN/SUPER_ADMIN cài đặt được.
+  if ("plantingCapacity" in parsed.data) {
+    if (!isAdminRole(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin/Admin cao nhất mới có quyền cài đặt năng lực cấy" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    }
+    const { plantingCapacity } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { plantingCapacity },
+      select: { id: true, code: true, name: true, plantingCapacity: true },
     });
     return NextResponse.json(updated);
   }

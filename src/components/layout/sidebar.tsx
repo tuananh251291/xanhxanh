@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Leaf, Warehouse, FlaskConical, BarChart3,
   Settings, ClipboardList, Sun, Moon, PenLine, PackageCheck,
   PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
-  LogOut, Bell, ChevronLeft, ChevronRight, UserCircle, Menu, Flag, Boxes, Send,
+  LogOut, Bell, ChevronLeft, ChevronRight, UserCircle, Menu, Flag, Boxes, Send, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Users, Leaf, Warehouse, FlaskConical, BarChart3,
   Settings, ClipboardList, Sun, Moon, PenLine, PackageCheck,
   PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
-  UserCircle, Flag, Boxes, Send,
+  UserCircle, Flag, Boxes, Send, Layers,
 };
 
 interface SidebarProps {

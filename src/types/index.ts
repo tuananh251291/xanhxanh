@@ -33,8 +33,8 @@ export const INSPECTION_LANE_LABELS = {
 } as const;
 
 export const INSPECTION_LANE_COLORS = {
-  XANH: "bg-green-100 text-green-800",
-  DO: "bg-red-100 text-red-800",
+  XANH: "bg-primary-light text-primary-strong",
+  DO: "bg-danger-light text-destructive",
 } as const;
 
 // ADMIN và SUPER_ADMIN đều có full quyền trang/tính năng — chỉ khác ở quyền duyệt tài khoản mới (chỉ SUPER_ADMIN).
@@ -207,6 +207,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/materials", label: "Vật tư", icon: "Boxes" },
+    { href: "/settings/shelf-groups", label: "Nhóm giàn kệ", icon: "Layers" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
@@ -243,7 +244,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy chưa bàn giao", icon: "ClipboardList" },
-    { href: "/transfers/receive", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
+    { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },
     { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
@@ -254,7 +255,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/transfers/receive", label: "Nhận bàn giao", icon: "PackageCheck" },
+    { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/thanh-pham", label: "Tồn kho TP", icon: "Package" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
