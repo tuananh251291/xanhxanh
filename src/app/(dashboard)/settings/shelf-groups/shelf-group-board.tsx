@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Layers, Loader2, Plus, Pencil, Trash2, Check, X, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
-type GroupRoom = { roomId: string; roomName: string; warehouseId: string; warehouseName: string; blocks: string[] };
+type GroupShelf = { id: string; code: string; block: string | null };
+type GroupRoom = { roomId: string; roomName: string; warehouseId: string; warehouseName: string; shelves: GroupShelf[] };
 type Group = { id: string; name: string; type: string | null; shelfCount: number; rooms: GroupRoom[] };
 
-type ShelfLite = { id: string; block: string | null; group: { id: string; name: string } | null };
+type ShelfLite = { id: string; code: string; block: string | null; group: { id: string; name: string } | null };
 type RoomLite = { id: string; name: string; shelves: ShelfLite[] };
 type WarehouseLite = { id: string; name: string; rooms: RoomLite[] };
 
@@ -32,7 +33,7 @@ export default function ShelfGroupBoard() {
   const [pickerGroupId, setPickerGroupId] = useState<string | null>(null);
   const [pickerWarehouseId, setPickerWarehouseId] = useState<string | null>(null);
   const [pickerRoomId, setPickerRoomId] = useState<string | null>(null);
-  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
+  const [selectedShelfIds, setSelectedShelfIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -98,56 +99,61 @@ export default function ShelfGroupBoard() {
   const pickerWarehouse = warehouses.find((w) => w.id === pickerWarehouseId) ?? null;
   const pickerRoom = pickerWarehouse?.rooms.find((r) => r.id === pickerRoomId) ?? null;
 
-  const blocksInPickerRoom = (() => {
+  const shelvesInPickerRoom = (() => {
     if (!pickerRoom) return [];
-    const map = new Map<string, { block: string; shelfCount: number; groupId: string | null; groupName: string | null }>();
-    for (const s of pickerRoom.shelves) {
-      if (!s.block) continue;
-      const entry = map.get(s.block) ?? { block: s.block, shelfCount: 0, groupId: s.group?.id ?? null, groupName: s.group?.name ?? null };
-      entry.shelfCount += 1;
-      map.set(s.block, entry);
-    }
-    return Array.from(map.values()).sort((a, b) => a.block.localeCompare(b.block));
+    return [...pickerRoom.shelves].sort((a, b) => a.code.localeCompare(b.code));
   })();
 
-  // Mỗi lần đổi phòng đang xem, nạp lại trạng thái tick theo dữ liệu thật (block nào đang thuộc đúng
+  // Gom theo block chỉ để hiển thị tiêu đề phân đoạn cho dễ nhìn/lọc — việc chọn vẫn theo từng kệ lẻ.
+  const shelvesByBlock = (() => {
+    const map = new Map<string, ShelfLite[]>();
+    for (const s of shelvesInPickerRoom) {
+      const key = s.block ?? "—";
+      const list = map.get(key) ?? [];
+      list.push(s);
+      map.set(key, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  })();
+
+  // Mỗi lần đổi phòng đang xem, nạp lại trạng thái tick theo dữ liệu thật (kệ nào đang thuộc đúng
   // Nhóm này) — tick/bỏ tick chỉ sửa tạm trên UI, phải bấm "Lưu" mới thực sự gọi API.
   useEffect(() => {
-    const current = new Set(blocksInPickerRoom.filter((b) => b.groupId === pickerGroupId).map((b) => b.block));
-    setSelectedBlocks(current);
+    const current = new Set(shelvesInPickerRoom.filter((s) => s.group?.id === pickerGroupId).map((s) => s.id));
+    setSelectedShelfIds(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickerRoomId, pickerGroupId]);
 
-  const toggleBlockChecked = (block: string) => {
-    setSelectedBlocks((prev) => {
+  const toggleShelfChecked = (shelfId: string) => {
+    setSelectedShelfIds((prev) => {
       const next = new Set(prev);
-      if (next.has(block)) next.delete(block); else next.add(block);
+      if (next.has(shelfId)) next.delete(shelfId); else next.add(shelfId);
       return next;
     });
   };
 
-  const saveBlocks = async () => {
+  const saveShelves = async () => {
     if (!pickerGroupId || !pickerRoomId) return;
-    const currentlyInGroup = blocksInPickerRoom.filter((b) => b.groupId === pickerGroupId).map((b) => b.block);
-    const toAssign = Array.from(selectedBlocks).filter((b) => !currentlyInGroup.includes(b));
-    const toUnassign = currentlyInGroup.filter((b) => !selectedBlocks.has(b));
+    const currentlyInGroup = shelvesInPickerRoom.filter((s) => s.group?.id === pickerGroupId).map((s) => s.id);
+    const toAssign = Array.from(selectedShelfIds).filter((id) => !currentlyInGroup.includes(id));
+    const toUnassign = currentlyInGroup.filter((id) => !selectedShelfIds.has(id));
     if (toAssign.length === 0 && toUnassign.length === 0) { setPickerGroupId(null); return; }
 
     setSaving(true);
     try {
       const calls = [];
       if (toAssign.length > 0) {
-        calls.push(fetch(`/api/shelf-groups/${pickerGroupId}/blocks`, {
+        calls.push(fetch(`/api/shelf-groups/${pickerGroupId}/shelves`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roomId: pickerRoomId, blocks: toAssign, action: "assign" }),
+          body: JSON.stringify({ shelfIds: toAssign, action: "assign" }),
         }));
       }
       if (toUnassign.length > 0) {
-        calls.push(fetch(`/api/shelf-groups/${pickerGroupId}/blocks`, {
+        calls.push(fetch(`/api/shelf-groups/${pickerGroupId}/shelves`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roomId: pickerRoomId, blocks: toUnassign, action: "unassign" }),
+          body: JSON.stringify({ shelfIds: toUnassign, action: "unassign" }),
         }));
       }
       const results = await Promise.all(calls);
@@ -171,7 +177,7 @@ export default function ShelfGroupBoard() {
           <Layers className="w-6 h-6 text-primary-strong" /> Nhóm giàn kệ
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Gộp nhiều block giàn kệ (VD block R01 + R02) thành 1 Nhóm — thuộc tính không bắt buộc, chỉ Admin cấp cao cài đặt
+          Gộp các kệ lẻ (VD kệ A1C10 + B1C09, không cần cùng block) thành 1 Nhóm — thuộc tính không bắt buộc, chỉ Admin cấp cao cài đặt
         </p>
       </div>
 
@@ -231,7 +237,7 @@ export default function ShelfGroupBoard() {
                   {editingId !== g.id && (
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" onClick={() => openPicker(g.id)}>
-                        <Settings2 className="w-3.5 h-3.5 mr-1.5" /> Quản lý block
+                        <Settings2 className="w-3.5 h-3.5 mr-1.5" /> Quản lý kệ
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => startEdit(g)}><Pencil className="w-3.5 h-3.5 text-text-muted" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => removeGroup(g.id)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
@@ -241,13 +247,13 @@ export default function ShelfGroupBoard() {
               </CardHeader>
               <CardContent>
                 {g.rooms.length === 0 ? (
-                  <p className="text-sm text-text-muted">Chưa gán block nào</p>
+                  <p className="text-sm text-text-muted">Chưa gán kệ nào</p>
                 ) : (
                   <div className="space-y-1.5">
                     {g.rooms.map((r) => (
                       <div key={r.roomId} className="flex flex-wrap items-center gap-1.5 text-sm">
                         <span className="text-text-secondary">{r.warehouseName} — {r.roomName}:</span>
-                        {r.blocks.map((b) => <Badge key={b} variant="secondary">{b}</Badge>)}
+                        {r.shelves.map((s) => <Badge key={s.id} variant="secondary">{s.code}</Badge>)}
                       </div>
                     ))}
                   </div>
@@ -261,7 +267,7 @@ export default function ShelfGroupBoard() {
       <Dialog open={pickerGroupId !== null} onOpenChange={(open) => !open && setPickerGroupId(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Quản lý block — {pickerGroup?.name}</DialogTitle>
+            <DialogTitle>Quản lý kệ — {pickerGroup?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
@@ -291,24 +297,30 @@ export default function ShelfGroupBoard() {
               </Select>
             </div>
 
-            {blocksInPickerRoom.length === 0 ? (
-              <p className="text-sm text-text-muted text-center py-6">Phòng này chưa có block nào</p>
+            {shelvesInPickerRoom.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-6">Phòng này chưa có kệ nào</p>
             ) : (
-              <div className="space-y-1 max-h-80 overflow-y-auto border rounded-lg p-2">
-                {blocksInPickerRoom.map((b) => {
-                  const checked = selectedBlocks.has(b.block);
-                  const belongsToOtherGroup = b.groupId !== null && b.groupId !== pickerGroupId;
-                  return (
-                    <label key={b.block} className="flex items-center gap-2 py-1.5 px-1 text-sm cursor-pointer">
-                      <Checkbox checked={checked} onCheckedChange={() => toggleBlockChecked(b.block)} />
-                      <span className="font-mono font-medium">{b.block}</span>
-                      <span className="text-text-secondary">({b.shelfCount} kệ)</span>
-                      {belongsToOtherGroup && (
-                        <span className="text-xs text-warning-foreground ml-auto">đang thuộc: {b.groupName}</span>
-                      )}
-                    </label>
-                  );
-                })}
+              <div className="space-y-2 max-h-80 overflow-y-auto border rounded-lg p-2">
+                {shelvesByBlock.map(([block, shelves]) => (
+                  <div key={block}>
+                    <p className="text-xs font-medium text-text-muted px-1 pb-0.5">Block {block}</p>
+                    <div className="space-y-0.5">
+                      {shelves.map((s) => {
+                        const checked = selectedShelfIds.has(s.id);
+                        const belongsToOtherGroup = s.group !== null && s.group.id !== pickerGroupId;
+                        return (
+                          <label key={s.id} className="flex items-center gap-2 py-1 px-1 text-sm cursor-pointer">
+                            <Checkbox checked={checked} onCheckedChange={() => toggleShelfChecked(s.id)} />
+                            <span className="font-mono font-medium">{s.code}</span>
+                            {belongsToOtherGroup && (
+                              <span className="text-xs text-warning-foreground ml-auto">đang thuộc: {s.group!.name}</span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -316,7 +328,7 @@ export default function ShelfGroupBoard() {
               <Button type="button" variant="outline" onClick={() => setPickerGroupId(null)} disabled={saving}>
                 Hủy
               </Button>
-              <Button type="button" className="bg-primary hover:bg-primary-hover" onClick={saveBlocks} disabled={saving}>
+              <Button type="button" className="bg-primary hover:bg-primary-hover" onClick={saveShelves} disabled={saving}>
                 {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />}
                 Lưu
               </Button>

@@ -34,14 +34,18 @@ export async function GET(req: NextRequest) {
 
 const MAX_SHELVES_PER_REQUEST = 300;
 
-// Tạo hàng loạt kệ theo lưới hàng/cột trong 1 phòng — mã/tên/block tự sinh đúng quy ước đang dùng
-// (VD phòng "SXA-PS", hàng 1 cột 5 → "SXA-PS-R01C05", tên "Kệ R01C05", block "R01"), giống hệt cách
-// prisma/seed.ts đang tạo kệ demo. Bỏ qua (không lỗi) các mã đã tồn tại để có thể gọi lại nhiều lần
-// khi chỉ muốn bổ sung thêm phần lưới còn thiếu.
+// Tạo hàng loạt kệ trong 1 hàng (chữ cái) theo khoảng cột của 1 phòng — mã/tên/block tự sinh
+// (VD phòng "SXA-PS", hàng A cột 1-5 → "SXA-PS-A01C01"..."SXA-PS-A01C05", tên "Kệ A01C05", block
+// "A01"). Không còn tiền tố "R" như trước — hàng hiển thị bằng chữ cái + quy đổi số 2 chữ số liền
+// sau (A=01, B=02...) để mã kệ luôn đủ độ rộng cố định, dễ sắp xếp. Bỏ qua (không lỗi) các mã đã
+// tồn tại để có thể gọi lại nhiều lần khi chỉ muốn bổ sung thêm phần cột còn thiếu.
 const createSchema = z.object({
   roomId: z.string(),
-  rowFrom: z.number().int().min(1),
-  rowTo: z.number().int().min(1),
+  row: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]$/, "Hàng phải là 1 chữ cái A-Z")
+    .transform((v) => v.toUpperCase()),
   colFrom: z.number().int().min(1),
   colTo: z.number().int().min(1),
   capacity: z.number().int().positive().optional(),
@@ -56,12 +60,15 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { roomId, rowFrom, rowTo, colFrom, colTo, capacity } = parsed.data;
+  const { roomId, row, colFrom, colTo, capacity } = parsed.data;
+  // rowNumber (Int trong DB) chỉ dùng để sắp xếp/nhóm — quy đổi trực tiếp từ chữ cái (A=1, B=2...).
+  const rowNumber = row.charCodeAt(0) - 64;
+  const rowStr = String(rowNumber).padStart(2, "0");
 
-  if (rowFrom > rowTo || colFrom > colTo) {
-    return NextResponse.json({ message: "Khoảng hàng/cột không hợp lệ" }, { status: 400 });
+  if (colFrom > colTo) {
+    return NextResponse.json({ message: "Khoảng cột không hợp lệ" }, { status: 400 });
   }
-  const total = (rowTo - rowFrom + 1) * (colTo - colFrom + 1);
+  const total = colTo - colFrom + 1;
   if (total > MAX_SHELVES_PER_REQUEST) {
     return NextResponse.json({ message: `Chỉ tạo tối đa ${MAX_SHELVES_PER_REQUEST} kệ mỗi lần` }, { status: 400 });
   }
@@ -76,13 +83,10 @@ export async function POST(req: NextRequest) {
   }
 
   const grid: { code: string; name: string; block: string; rowNumber: number; colNumber: number }[] = [];
-  for (let row = rowFrom; row <= rowTo; row++) {
-    const rowStr = String(row).padStart(2, "0");
-    const block = `R${rowStr}`;
-    for (let col = colFrom; col <= colTo; col++) {
-      const colStr = String(col).padStart(2, "0");
-      grid.push({ code: `${room.code}-R${rowStr}C${colStr}`, name: `Kệ R${rowStr}C${colStr}`, block, rowNumber: row, colNumber: col });
-    }
+  const block = `${row}${rowStr}`;
+  for (let col = colFrom; col <= colTo; col++) {
+    const colStr = String(col).padStart(2, "0");
+    grid.push({ code: `${room.code}-${row}${rowStr}C${colStr}`, name: `Kệ ${row}${rowStr}C${colStr}`, block, rowNumber, colNumber: col });
   }
 
   const existing = await prisma.shelf.findMany({
@@ -102,7 +106,9 @@ export async function POST(req: NextRequest) {
         rowNumber: s.rowNumber,
         colNumber: s.colNumber,
         block: s.block,
-        capacity: room.type === "PHONG_MAU_ME" ? (capacity ?? 1800) : null,
+        // Phòng mẫu mẹ: sức chứa tính theo cụm mẫu mẹ, mặc định 1800 nếu không nhập. Phòng ra rễ: sức
+        // chứa tính theo túi thành phẩm (T01/T05), không bắt buộc — để trống nghĩa là không giới hạn.
+        capacity: room.type === "PHONG_MAU_ME" ? (capacity ?? 1800) : (capacity ?? null),
       })),
     });
   }

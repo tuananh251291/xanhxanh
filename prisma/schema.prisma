@@ -462,12 +462,13 @@ model Shelf {
   // thuộc chung 1 block (VD "R04"). Không gộp xuyên phòng (Phòng mẫu mẹ và Phòng ra rễ luôn tách block
   // riêng dù trùng rowNumber) — chỉ là nhãn tiện nhóm/lọc, tính từ rowNumber lúc tạo/đổi mã kệ.
   block       String?
-  // Nhóm gộp nhiều block lại (VD block R01 + R02 cùng 1 Nhóm) — không bắt buộc, chỉ Admin cấp cao
-  // (SUPER_ADMIN) mới cài đặt được (xem /settings/shelf-groups). Có thể gộp block từ nhiều phòng/kho
-  // khác nhau vào cùng 1 Nhóm, khác với block (luôn tách riêng theo từng phòng).
+  // Nhóm gộp các kệ lẻ lại (VD kệ A1C10 + B1C09 cùng 1 Nhóm dù khác block) — không bắt buộc, chỉ Admin
+  // cấp cao (SUPER_ADMIN) mới cài đặt được (xem /settings/shelf-groups). Chọn theo từng kệ, không theo
+  // block — có thể gộp kệ từ nhiều block/phòng/kho khác nhau vào cùng 1 Nhóm.
   groupId     String?
   group       ShelfGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  // Tối đa bao nhiêu (mẫu mẹ/túi) được xếp trên kệ này — kệ Phòng mẫu mẹ mặc định 360.
+  // Tối đa được xếp trên kệ này — Phòng mẫu mẹ tính theo CỤM (mặc định 1800 nếu không nhập), Phòng ra
+  // rễ tính theo TÚI thành phẩm (T01/T05), không bắt buộc — null nghĩa là không giới hạn.
   capacity    Int?
   // Chỉ ràng buộc với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình) — 1 kệ chỉ xếp 1 mã cây và
   // gắn với 1 nhân viên cấy mô cụ thể. Kệ Phòng ra rễ không dùng 2 field này (luôn null).
@@ -488,9 +489,9 @@ model Shelf {
   @@map("shelves")
 }
 
-// Nhóm gộp nhiều block giàn kệ lại với nhau (VD block R01 + R02 = 1 Nhóm) — thuộc tính không bắt buộc,
-// chỉ Admin cấp cao (SUPER_ADMIN) cài đặt qua trang /settings/shelf-groups. Có thể gộp block từ nhiều
-// phòng/kho khác nhau vào cùng 1 Nhóm.
+// Nhóm gộp các kệ giàn kệ lẻ lại với nhau (VD kệ A1C10 + B1C09 = 1 Nhóm, không cần cùng block) —
+// thuộc tính không bắt buộc, chỉ Admin cấp cao (SUPER_ADMIN) cài đặt qua trang /settings/shelf-groups.
+// Có thể gộp kệ từ nhiều block/phòng/kho khác nhau vào cùng 1 Nhóm.
 model ShelfGroup {
   id        String   @id @default(cuid())
   name      String

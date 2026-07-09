@@ -260,11 +260,12 @@ async function main() {
     const roomId = createdRooms[roomCode];
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
+      const rowLetter = String.fromCharCode(64 + row); // 1→A, 2→B, 3→C
       const rowStr = String(row).padStart(2, "0");
-      const block = `R${rowStr}`;
+      const block = `${rowLetter}${rowStr}`;
       for (let col = 1; col <= 5; col++) {
         const colStr = String(col).padStart(2, "0");
-        const code = `${roomCode}-R${rowStr}C${colStr}`;
+        const code = `${roomCode}-${rowLetter}${rowStr}C${colStr}`;
         const plantType = createdPlantTypes[psShelfSeq % createdPlantTypes.length];
         const staff = psCaymoStaff.length > 0 ? psCaymoStaff[psShelfSeq % psCaymoStaff.length] : null;
         psShelfSeq += 1;
@@ -274,7 +275,7 @@ async function main() {
           update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 1800, block },
           create: {
             code,
-            name: `Kệ R${rowStr}C${colStr}`,
+            name: `Kệ ${rowLetter}${rowStr}C${colStr}`,
             warehouseId,
             roomId,
             rowNumber: row,
@@ -294,17 +295,18 @@ async function main() {
     const roomId = createdRooms[roomCode];
     const warehouseId = createdWarehouses[roomCode.startsWith("SXA") ? "SX-A" : "SX-B"];
     for (let row = 1; row <= 3; row++) {
+      const rowLetter = String.fromCharCode(64 + row); // 1→A, 2→B, 3→C
       const rowStr = String(row).padStart(2, "0");
-      const block = `R${rowStr}`;
+      const block = `${rowLetter}${rowStr}`;
       for (let col = 1; col <= 5; col++) {
         const colStr = String(col).padStart(2, "0");
-        const code = `${roomCode}-R${rowStr}C${colStr}`;
+        const code = `${roomCode}-${rowLetter}${rowStr}C${colStr}`;
         await prisma.shelf.upsert({
           where: { code },
           update: { block },
           create: {
             code,
-            name: `Kệ R${rowStr}C${colStr}`,
+            name: `Kệ ${rowLetter}${rowStr}C${colStr}`,
             warehouseId,
             roomId,
             rowNumber: row,

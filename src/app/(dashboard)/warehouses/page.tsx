@@ -22,6 +22,7 @@ export default async function WarehousesPage() {
 
   const [warehouses, saleUsers, caymoStaff] = await Promise.all([
     prisma.warehouse.findMany({
+      where: { isActive: true },
       include: {
         rooms: {
           where: { isActive: true },

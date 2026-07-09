@@ -13,8 +13,11 @@ import { Plus, Loader2, Layers } from "lucide-react";
 import { toast } from "sonner";
 
 const schema = z.object({
-  rowFrom: z.number().int().min(1),
-  rowTo: z.number().int().min(1),
+  row: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]$/, "Hàng phải là 1 chữ cái A-Z")
+    .transform((v) => v.toUpperCase()),
   colFrom: z.number().int().min(1),
   colTo: z.number().int().min(1),
   capacity: z.number().int().positive().optional(),
@@ -36,18 +39,18 @@ export default function AddShelvesDialog({
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { rowFrom: 1, rowTo: 1, colFrom: 1, colTo: 5, capacity: isMauMe ? 1800 : undefined },
+    defaultValues: { row: "A", colFrom: 1, colTo: 5, capacity: isMauMe ? 1800 : undefined },
   });
 
-  const [rowFrom, rowTo, colFrom, colTo] = watch(["rowFrom", "rowTo", "colFrom", "colTo"]);
+  const [row, colFrom, colTo] = watch(["row", "colFrom", "colTo"]);
   const previewCount =
-    [rowFrom, rowTo, colFrom, colTo].every((v) => Number.isFinite(v)) && rowTo >= rowFrom && colTo >= colFrom
-      ? (rowTo - rowFrom + 1) * (colTo - colFrom + 1)
+    /^[A-Za-z]$/.test(row ?? "") && [colFrom, colTo].every((v) => Number.isFinite(v)) && colTo >= colFrom
+      ? colTo - colFrom + 1
       : 0;
 
   const onSubmit = async (data: FormData) => {
-    if (data.rowFrom > data.rowTo || data.colFrom > data.colTo) {
-      toast.error("Khoảng hàng/cột không hợp lệ");
+    if (data.colFrom > data.colTo) {
+      toast.error("Khoảng cột không hợp lệ");
       return;
     }
     setLoading(true);
@@ -83,18 +86,13 @@ export default function AddShelvesDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <p className="text-xs text-text-secondary">
-            Tạo nhiều kệ cùng lúc theo lưới hàng/cột — mã kệ tự sinh dạng {roomCode}-R{"{hàng}"}C{"{cột}"}.
+            Tạo nhiều kệ cùng lúc theo lưới hàng/cột — mã kệ tự sinh dạng {roomCode}-A01C01 (hàng A, cột 01).
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
-              <Label>Hàng từ</Label>
-              <Input type="number" min={1} {...register("rowFrom", { valueAsNumber: true })} />
-              {errors.rowFrom && <p className="text-xs text-destructive">{errors.rowFrom.message}</p>}
-            </div>
-            <div className="space-y-1">
-              <Label>Hàng đến</Label>
-              <Input type="number" min={1} {...register("rowTo", { valueAsNumber: true })} />
-              {errors.rowTo && <p className="text-xs text-destructive">{errors.rowTo.message}</p>}
+              <Label>Hàng</Label>
+              <Input maxLength={1} className="uppercase" placeholder="A" {...register("row")} />
+              {errors.row && <p className="text-xs text-destructive">{errors.row.message}</p>}
             </div>
             <div className="space-y-1">
               <Label>Cột từ</Label>
@@ -107,12 +105,15 @@ export default function AddShelvesDialog({
               {errors.colTo && <p className="text-xs text-destructive">{errors.colTo.message}</p>}
             </div>
           </div>
-          {isMauMe && (
-            <div className="space-y-1">
-              <Label>Sức chứa mỗi kệ (cụm)</Label>
-              <Input type="number" min={1} {...register("capacity", { valueAsNumber: true })} placeholder="1800" />
-            </div>
-          )}
+          <div className="space-y-1">
+            <Label>Sức chứa mỗi kệ ({isMauMe ? "cụm" : "túi"})</Label>
+            <Input
+              type="number"
+              min={1}
+              {...register("capacity", { valueAsNumber: true })}
+              placeholder={isMauMe ? "1800" : "Không giới hạn nếu để trống"}
+            />
+          </div>
           <p className="text-sm text-primary-strong bg-primary-light rounded-md px-3 py-2">
             Sẽ tạo tối đa <strong>{previewCount}</strong> kệ (tự bỏ qua kệ đã có mã trùng).
           </p>

@@ -28,9 +28,10 @@ export async function generateUserCode(role: UserRole): Promise<string> {
   return `${prefix}${String(seq).padStart(pad, "0")}`;
 }
 
-// Mã chỉ định = CD + mã kho sản xuất (1 ký tự, VD "A" từ warehouse.code "SX-A") + mã giàn kệ nguồn
-// (5 ký tự "R{hàng}C{cột 2 số}", VD "R4C05") + ngày tạo "ddMMyy" (6 số, VD 20/10/2026 → "201026").
-// VD đầy đủ: "CDAR4C05201026". Thêm hậu tố "-2", "-3"... nếu trùng (cùng kệ, cùng ngày tạo 2 chỉ định).
+// Mã chỉ định = CD + mã kho sản xuất (1 ký tự, VD "A" từ warehouse.code "SX-A") + phần cuối mã giàn
+// kệ nguồn (sau dấu "-" cuối cùng, VD "A01C05" của kệ "SXA-PS-A01C05") + ngày tạo "ddMMyy" (6 số, VD
+// 20/10/2026 → "201026"). VD đầy đủ: "CDAA01C05201026". Thêm hậu tố "-2", "-3"... nếu trùng (cùng kệ,
+// cùng ngày tạo 2 chỉ định).
 export async function generateInstructionCode(params: {
   warehouseCode: string;
   shelfCode: string;

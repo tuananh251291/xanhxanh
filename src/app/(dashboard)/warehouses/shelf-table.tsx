@@ -200,7 +200,7 @@ export default function ShelfTable({
             <Package className="w-3 h-3 text-primary-strong shrink-0" />
             {used.toLocaleString("vi-VN")}
             {shelf.capacity ? `/${shelf.capacity}` : ""}
-            {isMauMeRoom && " cụm"}
+            {isMauMeRoom ? " cụm" : " túi"}
           </div>
           {usage !== null && (
             <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 
-// Nhóm giàn kệ (gộp nhiều block lại) — chỉ Admin cấp cao (SUPER_ADMIN) mới xem/cài đặt được, theo đúng
+// Nhóm giàn kệ (gộp các kệ lẻ lại, không cần cùng block) — chỉ Admin cấp cao (SUPER_ADMIN) mới xem/cài đặt được, theo đúng
 // yêu cầu nghiệp vụ (khác ADMIN thường, xem isAdminRole trong types/index.ts vốn coi 2 vai trò này
 // ngang quyền ở hầu hết nơi khác — Nhóm giàn kệ là ngoại lệ).
 const createSchema = z.object({
@@ -19,27 +19,30 @@ export async function GET() {
     include: {
       shelves: {
         select: {
+          id: true,
+          code: true,
           block: true,
           warehouse: { select: { id: true, name: true } },
           room: { select: { id: true, name: true } },
         },
+        orderBy: { code: "asc" },
       },
     },
     orderBy: { createdAt: "asc" },
   });
 
   const result = groups.map((g) => {
-    const byRoom = new Map<string, { roomId: string; roomName: string; warehouseId: string; warehouseName: string; blocks: Set<string> }>();
+    const byRoom = new Map<string, { roomId: string; roomName: string; warehouseId: string; warehouseName: string; shelves: { id: string; code: string; block: string | null }[] }>();
     for (const s of g.shelves) {
-      if (!s.room || !s.block) continue;
+      if (!s.room) continue;
       const entry = byRoom.get(s.room.id) ?? {
         roomId: s.room.id,
         roomName: s.room.name,
         warehouseId: s.warehouse.id,
         warehouseName: s.warehouse.name,
-        blocks: new Set<string>(),
+        shelves: [],
       };
-      entry.blocks.add(s.block);
+      entry.shelves.push({ id: s.id, code: s.code, block: s.block });
       byRoom.set(s.room.id, entry);
     }
     return {
@@ -47,7 +50,7 @@ export async function GET() {
       name: g.name,
       type: g.type,
       shelfCount: g.shelves.length,
-      rooms: Array.from(byRoom.values()).map((r) => ({ ...r, blocks: Array.from(r.blocks).sort() })),
+      rooms: Array.from(byRoom.values()),
     };
   });
 

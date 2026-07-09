@@ -32,13 +32,15 @@ export type ShelfPlacement = {
   lot: LotForAssign;
   shelfId: string;
   shelfCode: string;
-  quantity: number; // số túi đặt vào kệ này (có thể nhỏ hơn lot.quantity nếu bị chia do tràn 1800 cụm)
+  quantity: number; // số túi đặt vào kệ này (có thể nhỏ hơn lot.quantity nếu bị chia do tràn sức chứa kệ)
   pool: "OWNED" | "SHARED" | "RA_RE";
 };
 
 /**
  * Nguyên tắc bàn giao Phòng tối → Kho sáng (KHO_MO xác nhận nhận):
- * - Cây ra rễ (THANH_PHAM) → xếp vào kệ Phòng ra rễ (không ràng buộc, chọn kệ đang dùng ít nhất).
+ * - Cây ra rễ (THANH_PHAM) → xếp vào kệ Phòng ra rễ, ưu tiên kệ đang dùng ít nhất; nếu kệ có sức chứa
+ *   (đơn vị túi) và không đủ chỗ, phần dư tự tràn sang kệ trống kế tiếp (chia lô thành nhiều dòng xếp
+ *   kệ). Kệ không đặt sức chứa (capacity = null) coi như không giới hạn.
  * - Mẫu mẹ (MAU_ME, M03/M05) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
  *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây). Mỗi kệ Kho mẫu mẹ
  *   đã chia chỉ chứa đúng 1 lô ACTIVE tại 1 thời điểm — nếu kệ của NV đó đã có lô, toàn bộ lô mới
@@ -80,9 +82,20 @@ export async function planShelfAssignments(
       const pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
       if (pool.length === 0) throw new ShelfAssignError("Không có kệ Phòng ra rễ nào trong kho này");
       pool.sort((a, b) => (usedById.get(a.id) ?? 0) - (usedById.get(b.id) ?? 0));
-      const target = pool[0];
-      placements.push({ lotId, lot, shelfId: target.id, shelfCode: target.code, quantity: lot.quantity, pool: "RA_RE" });
-      usedById.set(target.id, (usedById.get(target.id) ?? 0) + lot.quantity);
+
+      let remainingBags = lot.quantity;
+      for (const shelf of pool) {
+        if (remainingBags <= 0) break;
+        const capLeft = (shelf.capacity ?? Infinity) - (usedById.get(shelf.id) ?? 0);
+        const placeBags = Math.max(0, Math.min(capLeft, remainingBags));
+        if (placeBags <= 0) continue;
+        placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "RA_RE" });
+        usedById.set(shelf.id, (usedById.get(shelf.id) ?? 0) + placeBags);
+        remainingBags -= placeBags;
+      }
+      if (remainingBags > 0) {
+        throw new ShelfAssignError(`Không đủ chỗ ở Phòng ra rễ cho lô ${lot.code} — SUPER_ADMIN cần thêm kệ hoặc tăng sức chứa`);
+      }
       continue;
     }
 
