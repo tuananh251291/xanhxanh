@@ -1,11 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { QrCode, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { toast } from "sonner";
 import QRCodeDisplay from "@/components/shared/qr-code-display";
 import { motherClusterUnits } from "@/types";
@@ -40,11 +51,42 @@ interface Shelf {
   plantType: PlantType | null;
   assignedStaff: Staff | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
+  allowedCodes: string[];
   weekSlot: number | null;
   lots: { quantity: number; stageCode: string }[];
 }
 
 const POOL_LABELS: Record<string, string> = { QUA_HAN: "Kho quá hạn", DUNG_HAN: "Kho đúng hạn" };
+
+// "Cho phép xếp" — Admin gõ tay danh sách chuỗi cách nhau bằng dấu phẩy (VD "EP, HM, AT, MT041"), tự bỏ
+// dấu nháy/khoảng trắng thừa nếu có gõ kèm. Lưu dạng mảng, hiển thị lại nối bằng ", ".
+function parseAllowedCodes(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim().replace(/^['"]+|['"]+$/g, "").toUpperCase())
+    .filter(Boolean);
+}
+
+function AllowedCodesCell({
+  shelfId, initialCodes, disabled, onSave,
+}: {
+  shelfId: string;
+  initialCodes: string[];
+  disabled: boolean;
+  onSave: (shelfId: string, codes: string[]) => void;
+}) {
+  const [value, setValue] = useState(initialCodes.join(", "));
+  return (
+    <Input
+      className="h-8 text-xs"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onSave(shelfId, parseAllowedCodes(value))}
+      placeholder="VD: EP, HM, AT, MT041"
+    />
+  );
+}
 
 export default function ShelfTable({
   shelves,
@@ -69,6 +111,15 @@ export default function ShelfTable({
   const router = useRouter();
   const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
   const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
+
+  // Danh sách gõ-tìm cho combobox "Nhân viên phụ trách" — gõ tên/mã sẽ tự lọc gợi ý.
+  const staffComboboxOptions = useMemo(
+    () => [
+      { value: "NONE", label: "— Chưa gán nhân viên —" },
+      ...staffOptions.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })),
+    ],
+    [staffOptions]
+  );
 
   const patchShelf = async (shelfId: string, body: Record<string, unknown>, successMsg: string) => {
     setSavingId(shelfId);
@@ -100,7 +151,7 @@ export default function ShelfTable({
     } finally { setDeletingId(null); }
   };
 
-  const renderRow = (shelf: Shelf, showPoolColumn: boolean) => {
+  const renderRow = (shelf: Shelf, isChungSection: boolean) => {
     const used = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
     const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
     const bagsBySpec = shelf.lots.reduce<Record<string, number>>((acc, l) => {
@@ -147,35 +198,46 @@ export default function ShelfTable({
         )}
         {isMauMeRoom && (
           <>
-            <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
-              {shelf.plantType?.name ?? "—"}
-            </td>
-            <td className="px-3 py-2 min-w-[160px]">
-              {canManageStaffAndPlant ? (
-                <Select
-                  value={shelf.assignedStaff?.id ?? "NONE"}
-                  onValueChange={(v) => patchShelf(shelf.id, { assignedStaffId: v === "NONE" ? null : v }, "Đã cập nhật nhân viên cho kệ")}
-                >
-                  <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
-                    <SelectValue>
-                      {(v: string | null) => {
-                        if (!v || v === "NONE") return "— Chưa gán nhân viên —";
-                        const s = staffOptions.find((x) => x.id === v);
-                        return s ? `${s.name} (${s.code})` : "—";
-                      }}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NONE">— Chưa gán nhân viên —</SelectItem>
-                    {staffOptions.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <span className="text-xs text-text-secondary">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
-              )}
-            </td>
+            {!isChungSection && (
+              <>
+                <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
+                  {shelf.plantType?.name ?? "—"}
+                </td>
+                <td className="px-3 py-2 min-w-[160px]">
+                  {canManageStaffAndPlant ? (
+                    <Combobox
+                      items={staffComboboxOptions}
+                      // Không gán -> value null để ô trống hiện placeholder (bấm vào gõ luôn được),
+                      // thay vì hiện sẵn chữ "— Chưa gán nhân viên —" khiến gõ ký tự đầu bị chèn giữa
+                      // chữ cũ (xem onFocus select() trong ComboboxInput cho trường hợp gõ đè lại).
+                      value={shelf.assignedStaff ? staffComboboxOptions.find((o) => o.value === shelf.assignedStaff!.id) ?? null : null}
+                      isItemEqualToValue={(a, b) => a.value === b.value}
+                      disabled={savingId === shelf.id}
+                      onValueChange={(v) =>
+                        v && patchShelf(shelf.id, { assignedStaffId: v.value === "NONE" ? null : v.value }, "Đã cập nhật nhân viên cho kệ")
+                      }
+                    >
+                      <ComboboxInputGroup className="w-full h-8">
+                        <ComboboxInput className="text-xs" placeholder="Gõ tên hoặc mã NV…" />
+                        <ComboboxTrigger />
+                      </ComboboxInputGroup>
+                      <ComboboxContent>
+                        <ComboboxEmpty>Không tìm thấy nhân viên</ComboboxEmpty>
+                        <ComboboxList>
+                          {(item: { value: string; label: string }) => (
+                            <ComboboxItem key={item.value} value={item} className="text-xs">
+                              {item.label}
+                            </ComboboxItem>
+                          )}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  ) : (
+                    <span className="text-xs text-text-secondary">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
+                  )}
+                </td>
+              </>
+            )}
             <td className="px-3 py-2 whitespace-nowrap">
               {shelf.assignedStaff ? (
                 <span
@@ -196,28 +258,42 @@ export default function ShelfTable({
                     .map(([spec, qty]) => `${spec}: ${qty} túi`)
                     .join(" · ")}
             </td>
-            {showPoolColumn && (
-              <td className="px-3 py-2 min-w-[140px]">
-                {canManageStaffAndPlant ? (
-                  <Select
-                    value={shelf.sharedMotherPool ?? "NONE"}
-                    onValueChange={(v) =>
-                      patchShelf(shelf.id, { sharedMotherPool: v === "NONE" ? null : v }, "Đã cập nhật phân loại kho cho kệ")
-                    }
-                  >
-                    <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
-                      <SelectValue>{() => (shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "— Chưa phân loại —")}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">— Chưa phân loại —</SelectItem>
-                      <SelectItem value="QUA_HAN">Kho quá hạn</SelectItem>
-                      <SelectItem value="DUNG_HAN">Kho đúng hạn</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <span className="text-xs text-text-secondary">{shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "—"}</span>
-                )}
-              </td>
+            {isChungSection && (
+              <>
+                <td className="px-3 py-2 min-w-[140px]">
+                  {canManageStaffAndPlant ? (
+                    <Select
+                      value={shelf.sharedMotherPool ?? "NONE"}
+                      onValueChange={(v) =>
+                        patchShelf(shelf.id, { sharedMotherPool: v === "NONE" ? null : v }, "Đã cập nhật phân loại kho cho kệ")
+                      }
+                    >
+                      <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
+                        <SelectValue>{() => (shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "— Chưa phân loại —")}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">— Chưa phân loại —</SelectItem>
+                        <SelectItem value="QUA_HAN">Kho quá hạn</SelectItem>
+                        <SelectItem value="DUNG_HAN">Kho đúng hạn</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="text-xs text-text-secondary">{shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "—"}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 min-w-[160px]">
+                  {canManageStaffAndPlant ? (
+                    <AllowedCodesCell
+                      shelfId={shelf.id}
+                      initialCodes={shelf.allowedCodes}
+                      disabled={savingId === shelf.id}
+                      onSave={(id, codes) => patchShelf(id, { allowedCodes: codes }, "Đã cập nhật Cho phép xếp cho kệ")}
+                    />
+                  ) : (
+                    <span className="text-xs text-text-secondary">{shelf.allowedCodes.length > 0 ? shelf.allowedCodes.join(", ") : "—"}</span>
+                  )}
+                </td>
+              </>
             )}
           </>
         )}
@@ -280,7 +356,7 @@ export default function ShelfTable({
     );
   };
 
-  const renderTable = (rows: Shelf[], showPoolColumn: boolean) => (
+  const renderTable = (rows: Shelf[], isChungSection: boolean) => (
     <div className="overflow-x-auto border rounded-lg">
       <table className="w-full">
         <thead>
@@ -290,11 +366,20 @@ export default function ShelfTable({
             {!isMauMeRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần ra rễ</th>}
             {isMauMeRoom && (
               <>
-                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
-                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
+                {!isChungSection && (
+                  <>
+                    <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
+                    <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
+                  </>
+                )}
                 <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Trạng thái</th>
                 <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số túi M03/M05</th>
-                {showPoolColumn && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Kho quá hạn/đúng hạn</th>}
+                {isChungSection && (
+                  <>
+                    <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Kho quá hạn/đúng hạn</th>
+                    <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Cho phép xếp</th>
+                  </>
+                )}
               </>
             )}
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tồn / Sức chứa</th>
@@ -302,7 +387,7 @@ export default function ShelfTable({
             {canManageStaffAndPlant && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Xóa</th>}
           </tr>
         </thead>
-        <tbody>{rows.map((s) => renderRow(s, showPoolColumn))}</tbody>
+        <tbody>{rows.map((s) => renderRow(s, isChungSection))}</tbody>
       </table>
     </div>
   );

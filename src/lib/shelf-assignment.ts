@@ -4,6 +4,12 @@ import { getCurrentWeekSlot } from "@/lib/rooting-week-group";
 
 export class ShelfAssignError extends Error {}
 
+// Kệ "chung" khớp mã cây nếu ít nhất 1 chuỗi trong allowedCodes ("Cho phép xếp") là TIỀN TỐ của mã chi
+// tiết loại cây (VD "MT" khớp mọi mã MT001/MT005/MT041..., "MT041" chỉ khớp đúng mã đó).
+function matchesAllowedCodes(allowedCodes: string[], plantTypeCode: string): boolean {
+  return allowedCodes.some((code) => plantTypeCode.startsWith(code));
+}
+
 type LotForAssign = {
   id: string;
   code: string;
@@ -23,6 +29,7 @@ type ShelfCandidate = {
   plantTypeId: string | null;
   assignedStaffId: string | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
+  allowedCodes: string[]; // "Cho phép xếp" — chỉ có ý nghĩa với kệ chung trong Phòng mẫu mẹ
   weekSlot: number | null; // chỉ có ý nghĩa với PHONG_RA_RE — xem getCurrentWeekSlot
   roomType: "PHONG_MAU_ME" | "PHONG_RA_RE";
   used: number; // cụm hiện có (chỉ có ý nghĩa với PHONG_MAU_ME)
@@ -75,6 +82,7 @@ export async function planShelfAssignments(
     plantTypeId: s.plantTypeId,
     assignedStaffId: s.assignedStaffId,
     sharedMotherPool: s.sharedMotherPool,
+    allowedCodes: s.allowedCodes,
     weekSlot: s.weekSlot,
     roomType: s.room!.type as "PHONG_MAU_ME" | "PHONG_RA_RE",
     used: s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0),
@@ -141,9 +149,14 @@ export async function planShelfAssignments(
     if (remainingBags > 0) {
       // Hàng dư trả về Kho mẫu mẹ chung (sản xuất hàng ngày vượt chỗ kệ đã chia) mặc định vào Kho đúng
       // hạn — ưu tiên kệ đã gắn cờ DUNG_HAN, chỉ dùng kệ chung chưa gắn cờ nếu chưa có kệ nào DUNG_HAN
-      // (tương thích ngược lúc SUPER_ADMIN chưa phân loại hết kệ).
+      // (tương thích ngược lúc SUPER_ADMIN chưa phân loại hết kệ). Khớp theo "Cho phép xếp"
+      // (allowedCodes, tiền tố mã cây) thay cho plantTypeId — kệ chung không còn gán 1 mã cây cố định.
       const chungPool = candidates.filter(
-        (c) => c.roomType === "PHONG_MAU_ME" && !c.assignedStaffId && c.plantTypeId === lot.plantTypeId && c.sharedMotherPool !== "QUA_HAN"
+        (c) =>
+          c.roomType === "PHONG_MAU_ME" &&
+          !c.assignedStaffId &&
+          c.sharedMotherPool !== "QUA_HAN" &&
+          matchesAllowedCodes(c.allowedCodes, lot.plantType.code)
       );
       // Ưu tiên kệ còn nhiều chỗ trống nhất, đủ chứa hết phần dư nếu có; trong đó ưu tiên kệ DUNG_HAN trước.
       chungPool.sort((a, b) => {
@@ -157,7 +170,7 @@ export async function planShelfAssignments(
       const target = chungPool[0];
       if (!target) {
         throw new ShelfAssignError(
-          `Không có kệ Phòng mẫu mẹ chung nào cho mã cây ${lot.plantType.code} — SUPER_ADMIN cần bỏ gán nhân viên 1 kệ để tạo chỗ dự phòng`
+          `Không có kệ Phòng mẫu mẹ chung nào cho phép xếp mã cây ${lot.plantType.code} — SUPER_ADMIN cần cấu hình "Cho phép xếp" cho 1 kệ chung`
         );
       }
       const capLeft = (target.capacity ?? Infinity) - (usedById.get(target.id) ?? 0);
@@ -190,7 +203,11 @@ export async function planSurplusPlacement(
       assignedStaffId: null,
       sharedMotherPool: "QUA_HAN",
     },
-    include: {
+    select: {
+      id: true,
+      code: true,
+      capacity: true,
+      allowedCodes: true,
       lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
     },
   });
@@ -205,8 +222,10 @@ export async function planSurplusPlacement(
     const bagSize = MOTHER_SPEC_BAG_SIZE[lot.stageCode as keyof typeof MOTHER_SPEC_BAG_SIZE] ?? 1;
     let remainingBags = lot.quantity;
 
+    // Khớp theo "Cho phép xếp" (allowedCodes, tiền tố mã cây) — kệ chưa cấu hình (mảng rỗng) coi như
+    // nhận mọi mã cây, giữ tương thích ngược giống hành vi cũ của plantTypeId = null.
     const pool = shelves
-      .filter((s) => !s.plantTypeId || s.plantTypeId === lot.plantTypeId)
+      .filter((s) => s.allowedCodes.length === 0 || matchesAllowedCodes(s.allowedCodes, lot.plantType.code))
       .sort((a, b) => {
         const leftA = (a.capacity ?? Infinity) - (usedById.get(a.id) ?? 0);
         const leftB = (b.capacity ?? Infinity) - (usedById.get(b.id) ?? 0);

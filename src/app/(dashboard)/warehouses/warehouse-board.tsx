@@ -27,6 +27,7 @@ type ShelfData = {
   plantType: PlantType | null;
   assignedStaff: Staff | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
+  allowedCodes: string[];
   weekSlot: number | null;
   lots: { quantity: number; stageCode: string }[];
 };

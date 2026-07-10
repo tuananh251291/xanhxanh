@@ -487,6 +487,12 @@ model Shelf {
   // Chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ — phân nhóm Kho quá hạn/đúng
   // hạn trong "Kho mẫu mẹ chung" (không phải Room riêng, chỉ là cờ trên kệ). Kệ "đã chia" luôn null.
   sharedMotherPool SharedMotherPool?
+  // "Cho phép xếp" — chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ, SUPER_ADMIN
+  // nhập tay danh sách chuỗi (VD ["EP","HM","AT","MT041"]). MM dư trả về Kho mẫu mẹ chung được xếp vào
+  // kệ có ít nhất 1 chuỗi trong danh sách là TIỀN TỐ của mã chi tiết loại cây (VD "MT" khớp mọi mã
+  // MT001/MT005/MT041..., "MT041" chỉ khớp đúng mã đó) — thay thế hoàn toàn cho plantTypeId ở kệ chung
+  // (kệ "đã chia" vẫn dùng plantTypeId như cũ, không đổi). Mảng rỗng = chưa cấu hình.
+  allowedCodes String[] @default([])
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

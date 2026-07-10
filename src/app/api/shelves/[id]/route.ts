@@ -6,7 +6,7 @@ import { z } from "zod";
 
 // plantTypeId/assignedStaffId chỉ có ý nghĩa với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình).
 // roomId (chuyển kệ giữa Phòng mẫu mẹ ↔ Phòng ra rễ, hoặc phòng khác cùng kho) — Admin thường cũng được.
-// sharedMotherPool chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ.
+// sharedMotherPool/allowedCodes chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ.
 // weekSlot chỉ áp dụng cho kệ Phòng ra rễ (SUPER_ADMIN cấu hình) — xem rooting-week-group.ts.
 const patchSchema = z.object({
   plantTypeId: z.string().nullable().optional(),
@@ -14,6 +14,7 @@ const patchSchema = z.object({
   roomId: z.string().optional(),
   sharedMotherPool: z.enum(["QUA_HAN", "DUNG_HAN"]).nullable().optional(),
   weekSlot: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional(),
+  allowedCodes: z.array(z.string().trim().min(1)).optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -23,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { plantTypeId, assignedStaffId, roomId, sharedMotherPool, weekSlot } = parsed.data;
+  const { plantTypeId, assignedStaffId, roomId, sharedMotherPool, weekSlot, allowedCodes } = parsed.data;
 
   const changesPlantOrStaff = plantTypeId !== undefined || assignedStaffId !== undefined;
   if (changesPlantOrStaff && role !== "SUPER_ADMIN") {
@@ -35,10 +36,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (weekSlot !== undefined && role !== "SUPER_ADMIN") {
     return NextResponse.json({ message: "Chỉ Admin cao nhất mới được gán Nhóm tuần ra rễ cho kệ" }, { status: 403 });
   }
+  if (allowedCodes !== undefined && role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cao nhất mới được cấu hình Cho phép xếp" }, { status: 403 });
+  }
   if (roomId !== undefined && !isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
-  if (!changesPlantOrStaff && roomId === undefined && sharedMotherPool === undefined && weekSlot === undefined) {
+  if (
+    !changesPlantOrStaff &&
+    roomId === undefined &&
+    sharedMotherPool === undefined &&
+    weekSlot === undefined &&
+    allowedCodes === undefined
+  ) {
     return NextResponse.json({ message: "Không có gì để cập nhật" }, { status: 400 });
   }
 
@@ -53,12 +63,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  if (sharedMotherPool) {
+  if (sharedMotherPool || allowedCodes !== undefined) {
     const shelf = await prisma.shelf.findUnique({ where: { id }, select: { assignedStaffId: true } });
     if (!shelf) return NextResponse.json({ message: "Không tìm thấy kệ" }, { status: 404 });
     const willBeAssigned = assignedStaffId !== undefined ? !!assignedStaffId : !!shelf.assignedStaffId;
-    if (willBeAssigned) {
+    if (willBeAssigned && sharedMotherPool) {
       return NextResponse.json({ message: "Chỉ kệ chung (chưa gán nhân viên) mới phân loại Kho quá hạn/đúng hạn được" }, { status: 400 });
+    }
+    if (willBeAssigned && allowedCodes !== undefined) {
+      return NextResponse.json({ message: "Chỉ kệ chung (chưa gán nhân viên) mới cấu hình được Cho phép xếp" }, { status: 400 });
     }
   }
 
@@ -68,9 +81,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     roomId?: string;
     sharedMotherPool?: "QUA_HAN" | "DUNG_HAN" | null;
     weekSlot?: number | null;
+    allowedCodes?: string[];
   } = {};
   if (sharedMotherPool !== undefined) data.sharedMotherPool = sharedMotherPool;
   if (weekSlot !== undefined) data.weekSlot = weekSlot;
+  if (allowedCodes !== undefined) data.allowedCodes = allowedCodes;
 
   if (roomId !== undefined) {
     const room = await prisma.room.findUnique({ where: { id: roomId }, select: { type: true } });
@@ -84,6 +99,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Rời khỏi Phòng ra rễ thì Nhóm tuần ra rễ không còn ý nghĩa — bỏ gán.
     if (room.type !== "PHONG_RA_RE" && data.weekSlot === undefined) {
       data.weekSlot = null;
+    }
+    // Rời khỏi Phòng mẫu mẹ thì Cho phép xếp không còn ý nghĩa — bỏ gán.
+    if (room.type !== "PHONG_MAU_ME" && data.allowedCodes === undefined) {
+      data.allowedCodes = [];
     }
   }
 
@@ -103,8 +122,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           );
         }
       }
-      // Kệ chuyển từ "chung" sang "đã chia" thì không còn thuộc Kho quá hạn/đúng hạn nữa.
+      // Kệ chuyển từ "chung" sang "đã chia" thì không còn thuộc Kho quá hạn/đúng hạn nữa, cũng không
+      // còn cấu hình Cho phép xếp.
       data.sharedMotherPool = null;
+      if (data.allowedCodes === undefined) data.allowedCodes = [];
     }
     data.assignedStaffId = assignedStaffId;
   }
