@@ -33,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Chỉ Admin cao nhất mới được phân loại Kho quá hạn/đúng hạn" }, { status: 403 });
   }
   if (weekSlot !== undefined && role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ Admin cao nhất mới được gán Nhóm tuần cho kệ" }, { status: 403 });
+    return NextResponse.json({ message: "Chỉ Admin cao nhất mới được gán Nhóm tuần ra rễ cho kệ" }, { status: 403 });
   }
   if (roomId !== undefined && !isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? (await prisma.room.findUnique({ where: { id: roomId }, select: { type: true } }))?.type
       : shelf.room?.type;
     if (targetRoomType !== "PHONG_RA_RE") {
-      return NextResponse.json({ message: "Nhóm tuần chỉ áp dụng cho kệ Phòng ra rễ" }, { status: 400 });
+      return NextResponse.json({ message: "Nhóm tuần ra rễ chỉ áp dụng cho kệ Phòng ra rễ" }, { status: 400 });
     }
   }
 
@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.plantTypeId = null;
       data.assignedStaffId = null;
     }
-    // Rời khỏi Phòng ra rễ thì Nhóm tuần không còn ý nghĩa — bỏ gán.
+    // Rời khỏi Phòng ra rễ thì Nhóm tuần ra rễ không còn ý nghĩa — bỏ gán.
     if (room.type !== "PHONG_RA_RE" && data.weekSlot === undefined) {
       data.weekSlot = null;
     }

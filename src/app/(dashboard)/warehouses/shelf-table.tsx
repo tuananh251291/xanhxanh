@@ -126,22 +126,22 @@ export default function ShelfTable({
               <Select
                 value={shelf.weekSlot ? String(shelf.weekSlot) : "NONE"}
                 onValueChange={(v) =>
-                  patchShelf(shelf.id, { weekSlot: v === "NONE" ? null : Number(v) }, "Đã cập nhật Nhóm tuần cho kệ")
+                  patchShelf(shelf.id, { weekSlot: v === "NONE" ? null : Number(v) }, "Đã cập nhật Nhóm tuần ra rễ cho kệ")
                 }
               >
                 <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
-                  <SelectValue>{() => (shelf.weekSlot ? `Nhóm tuần ${shelf.weekSlot}` : "— Chưa gán —")}</SelectValue>
+                  <SelectValue>{() => (shelf.weekSlot ? `Nhóm tuần ra rễ ${shelf.weekSlot}` : "— Chưa gán —")}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="NONE">— Chưa gán —</SelectItem>
-                  <SelectItem value="1">Nhóm tuần 1</SelectItem>
-                  <SelectItem value="2">Nhóm tuần 2</SelectItem>
-                  <SelectItem value="3">Nhóm tuần 3</SelectItem>
-                  <SelectItem value="4">Nhóm tuần 4</SelectItem>
+                  <SelectItem value="1">Nhóm tuần ra rễ 1</SelectItem>
+                  <SelectItem value="2">Nhóm tuần ra rễ 2</SelectItem>
+                  <SelectItem value="3">Nhóm tuần ra rễ 3</SelectItem>
+                  <SelectItem value="4">Nhóm tuần ra rễ 4</SelectItem>
                 </SelectContent>
               </Select>
             ) : (
-              <span className="text-xs text-text-secondary">{shelf.weekSlot ? `Nhóm tuần ${shelf.weekSlot}` : "—"}</span>
+              <span className="text-xs text-text-secondary">{shelf.weekSlot ? `Nhóm tuần ra rễ ${shelf.weekSlot}` : "—"}</span>
             )}
           </td>
         )}
@@ -287,7 +287,7 @@ export default function ShelfTable({
           <tr className="bg-primary-light">
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã kệ</th>
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
-            {!isMauMeRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần</th>}
+            {!isMauMeRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần ra rễ</th>}
             {isMauMeRoom && (
               <>
                 <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>

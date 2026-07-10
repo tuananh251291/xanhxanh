@@ -62,7 +62,7 @@ export async function planShelfAssignments(
       lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
     },
   });
-  // Chỉ áp dụng lọc Nhóm tuần nếu kho này đã cấu hình ít nhất 1 kệ Phòng ra rễ có weekSlot — cho phép
+  // Chỉ áp dụng lọc Nhóm tuần ra rễ nếu kho này đã cấu hình ít nhất 1 kệ Phòng ra rễ có weekSlot — cho phép
   // các kho chưa dùng cơ chế này (chưa gán weekSlot cho kệ nào) tiếp tục xếp theo kiểu cũ (ít dùng nhất
   // trong toàn bộ Phòng ra rễ), tương thích ngược.
   const rootingUsesWeekSlot = shelves.some((s) => s.room?.type === "PHONG_RA_RE" && s.weekSlot !== null);
@@ -93,7 +93,7 @@ export async function planShelfAssignments(
         const weekPool = pool.filter((c) => c.weekSlot === currentWeekSlot);
         if (weekPool.length === 0) {
           throw new ShelfAssignError(
-            `Chưa có kệ Phòng ra rễ nào được gán Nhóm tuần ${currentWeekSlot} — SUPER_ADMIN cần cấu hình ở /warehouses`
+            `Chưa có kệ Phòng ra rễ nào được gán Nhóm tuần ra rễ ${currentWeekSlot} — SUPER_ADMIN cần cấu hình ở /warehouses`
           );
         }
         pool = weekPool;

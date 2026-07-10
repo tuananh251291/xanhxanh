@@ -117,7 +117,7 @@ export default function TransferFinishedForm({
 
   const selectDueGroup = (group: DueGroup) => {
     setRows(group.shelves.map((shelf) => ({ rowId: newRowId(), shelf })));
-    toast.success(`Đã chọn ${group.shelves.length} kệ của Nhóm tuần ${group.weekSlot}`);
+    toast.success(`Đã chọn ${group.shelves.length} kệ của Nhóm tuần ra rễ ${group.weekSlot}`);
   };
 
   const addRow = () => setRows((prev) => [...prev, newRow()]);
@@ -255,7 +255,7 @@ export default function TransferFinishedForm({
                     <AlertTriangle className="w-5 h-5 text-warning-foreground shrink-0 mt-0.5" />
                     <div>
                       <p className="font-bold text-warning-foreground">
-                        Nhóm tuần {group.weekSlot} đã đủ 3 tuần — cần bàn giao sang kho thành phẩm
+                        Nhóm tuần ra rễ {group.weekSlot} đã đủ 3 tuần — cần bàn giao sang kho thành phẩm
                       </p>
                       <p className="text-sm text-warning-foreground/80">
                         {group.roomName} ({group.warehouseName}) · {group.shelves.length} kệ · {lotCount} lô · lô cũ nhất từ{" "}

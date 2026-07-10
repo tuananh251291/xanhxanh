@@ -4,7 +4,7 @@ import { differenceInCalendarWeeks } from "date-fns";
 const EPOCH_MONDAY = new Date(2024, 0, 1);
 
 // Cố định 3 tuần cho MỌI loại cây (khác rootingWeeks — field đó chỉ dùng tính Lot.expectedMoveAt cho
-// luồng riêng, không liên quan cơ chế Nhóm tuần này).
+// luồng riêng, không liên quan cơ chế Nhóm tuần ra rễ này).
 export const ROOTING_WEEK_HOLD_DAYS = 21;
 
 // Tuần nào (Thứ 2 - Chủ nhật) thì cây ra rễ tuần đó được xếp vào đúng weekSlot này — xoay vòng 4 tuần
@@ -26,7 +26,7 @@ export type RootingWeekGroupStatus = {
 };
 
 // Tổng hợp theo weekSlot cho các kệ Phòng ra rễ của 1 kho — kệ chưa gán weekSlot (chưa tham gia cơ chế
-// Nhóm tuần) bị bỏ qua hoàn toàn, không tính vào bất kỳ nhóm nào. "Đạt xuất" = lô cũ nhất trong nhóm đã
+// Nhóm tuần ra rễ) bị bỏ qua hoàn toàn, không tính vào bất kỳ nhóm nào. "Đạt xuất" = lô cũ nhất trong nhóm đã
 // nằm ở kệ (enteredAt) đủ ROOTING_WEEK_HOLD_DAYS ngày trở lên.
 export function summarizeRootingWeekGroups(
   shelves: { id: string; code: string; name: string; weekSlot: number | null; lots: { quantity: number; enteredAt: Date }[] }[],

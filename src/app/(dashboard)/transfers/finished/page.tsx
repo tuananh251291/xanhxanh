@@ -21,7 +21,7 @@ export default async function TransferFinishedPage() {
 
   const workplaceWarehouseId = session!.user.workplaceWarehouseId ?? null;
 
-  // Nhóm tuần đã đủ 3 tuần trong Phòng ra rễ — đề xuất KHO_MO chọn nhanh cả nhóm để bàn giao, thay vì
+  // Nhóm tuần ra rễ đã đủ 3 tuần trong Phòng ra rễ — đề xuất KHO_MO chọn nhanh cả nhóm để bàn giao, thay vì
   // quét/chọn từng kệ. Chỉ tính trong đúng kho làm việc của NV (nếu đã được gán); nếu chưa gán kho thì
   // xét toàn bộ kho sản xuất (giữ đúng hành vi hiện có của phần chọn kệ thủ công bên dưới).
   const rootingRooms = await prisma.room.findMany({
