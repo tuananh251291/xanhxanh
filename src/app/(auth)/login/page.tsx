@@ -10,9 +10,83 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Leaf, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Leaf, Loader2, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { randomGreetingQuote, randomGreetingBackground } from "@/lib/greetings";
+
+function ForgotPasswordDialog({ initialEmail }: { initialEmail: string }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState(initialEmail);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const openDialog = () => {
+    setEmail(initialEmail);
+    setResult(null);
+    setOpen(true);
+  };
+
+  const submit = async () => {
+    if (!email) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json();
+      setResult(json.message ?? "Đã gửi yêu cầu.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" onClick={openDialog} className="text-primary-strong hover:underline font-medium text-sm">
+        Quên mật khẩu?
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><KeyRound className="w-5 h-5" /> Quên mật khẩu</DialogTitle>
+          </DialogHeader>
+          {result ? (
+            <p className="text-sm text-text-secondary py-2">{result}</p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-text-secondary">
+                Hệ thống không tự gửi mật khẩu mới — Admin cấp cao sẽ nhận được thông báo và liên hệ trực
+                tiếp (ngoài hệ thống) để cấp lại mật khẩu cho bạn.
+              </p>
+              <div className="space-y-1">
+                <Label htmlFor="forgot-email">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  placeholder="email@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                className="w-full bg-primary hover:bg-primary-hover"
+                disabled={submitting || !email}
+                onClick={submit}
+              >
+                {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Gửi yêu cầu
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 const loginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
@@ -30,9 +104,10 @@ export default function LoginPage() {
   const [greetingQuote, setGreetingQuote] = useState<string | null>(null);
   const [greetingBg, setGreetingBg] = useState("");
 
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
+  const typedEmail = watch("email") ?? "";
 
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
@@ -44,7 +119,11 @@ export default function LoginPage() {
         redirect: false,
       });
       if (result?.error) {
-        setError("Email hoặc mật khẩu không đúng");
+        setError(
+          result.code === "account-locked"
+            ? "Tài khoản đã bị khóa do đăng nhập sai mật khẩu quá 5 lần — vui lòng liên hệ Admin cấp cao để mở lại."
+            : "Email hoặc mật khẩu không đúng"
+        );
         setLoading(false);
       } else {
         setGreetingBg(randomGreetingBackground());
@@ -103,7 +182,10 @@ export default function LoginPage() {
               )}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="password">Mật khẩu</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Mật khẩu</Label>
+                <ForgotPasswordDialog initialEmail={typedEmail} />
+              </div>
               <Input
                 id="password"
                 type="password"

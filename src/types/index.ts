@@ -159,6 +159,9 @@ export const ALERT_TYPE_LABELS = {
   MOTHER_LOT_READY: "Mẫu mẹ đến tuổi cấy chuyển",
   MEDIUM_ORDER_CREATED: "Có đơn đặt hàng môi trường mới",
   CONTAMINATION_PROPOSAL: "Đề xuất trồng/hủy hàng nhiễm",
+  INSPECTION_RESULT_READY: "Có kết quả kiểm tra bàn giao",
+  ACCOUNT_LOCKED: "Tài khoản bị khóa",
+  PASSWORD_RESET_REQUESTED: "Yêu cầu cấp lại mật khẩu",
 } as const;
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).

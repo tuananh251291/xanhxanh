@@ -19,6 +19,7 @@ const patchSchema = z.union([
   z.object({ workplaceWarehouseId: z.string().nullable() }),
   z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
   z.object({ plantingCapacity: z.number().int().positive() }),
+  z.object({ unlockAccount: z.literal(true) }),
   z.object({
     name: z.string().min(2),
     email: z.string().email(),
@@ -109,6 +110,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { plantingCapacity },
       select: { id: true, code: true, name: true, plantingCapacity: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Mở khóa tài khoản bị khóa do đăng nhập sai quá 5 lần — chỉ Admin cao nhất, reset luôn bộ đếm.
+  if ("unlockAccount" in parsed.data) {
+    if (session?.user?.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất mới có quyền mở khóa tài khoản" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { lockedAt: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { lockedAt: null, failedLoginAttempts: 0 },
+      select: { id: true, code: true, name: true, lockedAt: true },
     });
     return NextResponse.json(updated);
   }

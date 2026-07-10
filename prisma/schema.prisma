@@ -113,6 +113,15 @@ enum AlertType {
   MOTHER_LOT_READY
   MEDIUM_ORDER_CREATED
   CONTAMINATION_PROPOSAL
+  // Kho mô vừa kiểm tra xong 1 phiếu bàn giao Phòng tối của NV luồng Đỏ/chưa cài đặt luồng — báo cho
+  // đúng NV cấy mô đó (userId) biết số lượng được ghi nhận (xem TransferInspectionItem.creditedQuantity).
+  INSPECTION_RESULT_READY
+  // NV bị khóa tài khoản do đăng nhập sai mật khẩu quá 5 lần liên tiếp (xem User.lockedAt) — báo cho
+  // SUPER_ADMIN (targetRole) để mở khóa lại.
+  ACCOUNT_LOCKED
+  // NV bấm "Quên mật khẩu" ở trang đăng nhập — báo cho SUPER_ADMIN (targetRole) tự cấp lại mật khẩu
+  // thủ công, báo riêng ngoài hệ thống (không gửi email/SMS tự động).
+  PASSWORD_RESET_REQUESTED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -160,6 +169,12 @@ model User {
   status    UserStatus @default(PENDING)
   isActive  Boolean    @default(true)
   holdDays  Int?
+  // Đếm số lần đăng nhập sai mật khẩu liên tiếp — reset về 0 khi đăng nhập đúng hoặc khi SUPER_ADMIN
+  // mở khóa. Đạt 5 lần thì khóa tài khoản (xem lockedAt).
+  failedLoginAttempts Int @default(0)
+  // Khác null = tài khoản đang bị khóa do đăng nhập sai quá 5 lần — chặn đăng nhập dù đúng mật khẩu.
+  // Chỉ SUPER_ADMIN mở khóa lại được (PATCH /api/users/[id] { unlockAccount: true }).
+  lockedAt DateTime?
   // Địa điểm làm việc — chỉ áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG, ràng buộc mỗi NV chỉ làm việc với
   // đúng 1 kho sản xuất (SAN_XUAT). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho.
   // Chỉ SUPER_ADMIN được sửa field này.
