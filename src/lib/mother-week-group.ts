@@ -60,20 +60,26 @@ export function summarizeMotherWeekGroups(
       isDue: false,
     };
     const quantity = shelf.lots.reduce((sum, lot) => sum + lot.quantity, 0);
-    entry.shelves.push({
-      id: shelf.id,
-      code: shelf.code,
-      name: shelf.name,
-      plantTypeCode: shelf.plantType?.code ?? null,
-      warehouseId: shelf.warehouse.id,
-      warehouseCode: shelf.warehouse.code,
-      warehouseName: shelf.warehouse.name,
-      rowNumber: shelf.rowNumber,
-      colNumber: shelf.colNumber,
-      block: shelf.block,
-      lotCount: shelf.lots.length,
-      quantity,
-    });
+    // Chỉ liệt kê kệ THẬT SỰ có lô mẫu mẹ — 1 Nhóm xoay vòng thường có nhiều kệ trống (chưa từng xếp
+    // gì, chờ dự phòng) hơn số kệ đang dùng; nếu vẫn liệt kê cả kệ trống, KY_THUAT sẽ thấy kệ đó trong
+    // danh sách "đến hạn cấy chuyển" nhưng bấm "Tạo chỉ định" thì không có dữ liệu gì để chọn (không có
+    // lô nào trên kệ đó).
+    if (shelf.lots.length > 0) {
+      entry.shelves.push({
+        id: shelf.id,
+        code: shelf.code,
+        name: shelf.name,
+        plantTypeCode: shelf.plantType?.code ?? null,
+        warehouseId: shelf.warehouse.id,
+        warehouseCode: shelf.warehouse.code,
+        warehouseName: shelf.warehouse.name,
+        rowNumber: shelf.rowNumber,
+        colNumber: shelf.colNumber,
+        block: shelf.block,
+        lotCount: shelf.lots.length,
+        quantity,
+      });
+    }
     for (const lot of shelf.lots) {
       entry.lotCount += 1;
       entry.totalQuantity += lot.quantity;
