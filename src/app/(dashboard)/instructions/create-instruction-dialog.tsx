@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,18 @@ type Row = {
   finishedMediumTypeId: string;
 };
 
-export default function CreateInstructionDialog() {
+export default function CreateInstructionDialog({
+  initialShelfId,
+  triggerContent,
+  triggerClassName,
+}: {
+  // Mở dialog và tự chọn sẵn đúng kệ này — dùng cho lối tắt "Tạo chỉ định" từ banner Nhóm tuần mẫu mẹ
+  // đến hạn (xem instructions/page.tsx), KY_THUAT không cần tự tìm lại kệ trong dropdown.
+  initialShelfId?: string;
+  // Nội dung nút mở dialog tuỳ biến — mặc định là "+ Tạo chỉ định cấy" ở đầu trang.
+  triggerContent?: ReactNode;
+  triggerClassName?: string;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
@@ -50,8 +61,10 @@ export default function CreateInstructionDialog() {
   const [rows, setRows] = useState<Row[]>([]);
   const [weekStart, setWeekStart] = useState(nextWeekStart);
   const [notes, setNotes] = useState("");
-  const [plannedT01, setPlannedT01] = useState("0");
-  const [plannedT05, setPlannedT05] = useState("0");
+  // Giá trị KY_THUAT tự gõ tay (chỉ có ý nghĩa sau khi plannedTouched = true) — giá trị HIỂN THỊ thực
+  // tế (plannedT01/plannedT05 bên dưới) tính trực tiếp lúc render, không đồng bộ qua effect.
+  const [manualT01, setManualT01] = useState("0");
+  const [manualT05, setManualT05] = useState("0");
   const [plannedTouched, setPlannedTouched] = useState(false);
   const router = useRouter();
 
@@ -69,13 +82,38 @@ export default function CreateInstructionDialog() {
 
   useEffect(() => {
     if (!open) return;
+    // Lối tắt theo 1 kệ cụ thể (initialShelfId) lọc thẳng theo shelfId thay vì danh sách chung — danh
+    // sách chung giới hạn 200 lô mới nhất (xem /api/lots), lô của 1 kệ đã đến hạn cấy chuyển (nhập kho
+    // từ lâu) rất dễ rớt khỏi top 200 đó khiến dialog không tự chọn/tự điền được kệ này.
+    const lotsUrl = initialShelfId
+      ? `/api/lots?stage=MAU_ME&status=ACTIVE&availableForInstruction=true&shelfId=${initialShelfId}`
+      : "/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE&availableForInstruction=true";
     Promise.all([
       fetch("/api/medium-types").then((r) => r.json()),
-      fetch("/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE").then((r) => r.json()),
-    ]).then(([mediums, lots]) => {
+      fetch(lotsUrl).then((r) => r.json()),
+    ]).then(([mediums, lots]: [MediumType[], MotherLot[]]) => {
       setMediumTypes(mediums);
       setMotherLots(lots);
+      if (initialShelfId) {
+        const rowsForShelf = lots.filter((l) => l.shelf?.id === initialShelfId);
+        if (rowsForShelf.length > 0) {
+          setShelfId(initialShelfId);
+          setRows(rowsForShelf.map((lot) => ({
+            lotId: lot.id,
+            lotCode: lot.code,
+            stageCode: lot.stageCode,
+            available: lot.quantity,
+            quantityUsed: String(lot.quantity),
+            motherSampleRatio: "",
+            rootingRatio: "",
+            motherMediumTypeId: "",
+            finishedMediumTypeId: "",
+          })));
+          setPlannedTouched(false);
+        }
+      }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Chọn giàn kệ → hiện tất cả các dòng quy cách (M03/M05) đang có trên kệ đó, mặc định lấy toàn bộ số
@@ -118,19 +156,15 @@ export default function CreateInstructionDialog() {
   const totalMotherOutput = rowOutputs.reduce((s, r) => s + r.expectedMother, 0);
   const totalFinishedOutput = rowOutputs.reduce((s, r) => s + r.expectedFinished, 0);
 
-  // Tự đề xuất phân bổ T01/T05 (mặc định dồn hết vào T01) cho tới khi Kỹ thuật tự sửa tay.
-  useEffect(() => {
-    if (plannedTouched) return;
-    setPlannedT01(String(totalFinishedOutput));
-    setPlannedT05("0");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalFinishedOutput, plannedTouched]);
-
+  // Tự đề xuất phân bổ T01/T05 (mặc định dồn hết vào T01) cho tới khi Kỹ thuật tự sửa tay — tính trực
+  // tiếp lúc render (không dùng effect để setState, tránh render lồng thừa).
+  const plannedT01 = plannedTouched ? manualT01 : String(totalFinishedOutput);
+  const plannedT05 = plannedTouched ? manualT05 : "0";
   const plannedSum = (Number(plannedT01) || 0) + (Number(plannedT05) || 0);
 
   const resetForm = () => {
     setShelfId(""); setRows([]); setWeekStart(nextWeekStart()); setNotes("");
-    setPlannedT01("0"); setPlannedT05("0"); setPlannedTouched(false);
+    setManualT01("0"); setManualT05("0"); setPlannedTouched(false);
   };
 
   const onSubmit = async () => {
@@ -178,8 +212,12 @@ export default function CreateInstructionDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button className="bg-primary hover:bg-primary-hover" />}>
-        <Plus className="w-4 h-4 mr-2" /> Tạo chỉ định cấy
+      <DialogTrigger render={<Button size={triggerContent ? "sm" : "default"} className={triggerClassName ?? "bg-primary hover:bg-primary-hover"} />}>
+        {triggerContent ?? (
+          <>
+            <Plus className="w-4 h-4 mr-2" /> Tạo chỉ định cấy
+          </>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Tạo chỉ định cấy mới</DialogTitle></DialogHeader>
@@ -315,8 +353,8 @@ export default function CreateInstructionDialog() {
                       value={plannedT01}
                       onChange={(e) => {
                         setPlannedTouched(true);
-                        setPlannedT01(e.target.value);
-                        setPlannedT05(String(Math.max(0, totalFinishedOutput - (Number(e.target.value) || 0))));
+                        setManualT01(e.target.value);
+                        setManualT05(String(Math.max(0, totalFinishedOutput - (Number(e.target.value) || 0))));
                       }}
                     />
                   </div>
@@ -325,7 +363,14 @@ export default function CreateInstructionDialog() {
                     <Input
                       type="number" min={0}
                       value={plannedT05}
-                      onChange={(e) => { setPlannedTouched(true); setPlannedT05(e.target.value); }}
+                      onChange={(e) => {
+                        // Chốt luôn giá trị T01 đang hiển thị (auto hoặc đã sửa tay từ trước) vào state
+                        // gõ tay TẠI THỜI ĐIỂM NÀY — vì sau khi touched=true, plannedT01 sẽ đọc thẳng từ
+                        // manualT01 thay vì tự tính lại theo totalFinishedOutput.
+                        setPlannedTouched(true);
+                        setManualT01(plannedT01);
+                        setManualT05(e.target.value);
+                      }}
                     />
                     <p className="text-xs text-text-muted">
                       ≈ {Math.floor((Number(plannedT05) || 0) / FINISHED_SPEC_BAG_SIZE.T05).toLocaleString("vi-VN")} túi

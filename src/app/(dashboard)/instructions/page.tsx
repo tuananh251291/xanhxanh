@@ -11,11 +11,12 @@ import Link from "next/link";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS, isAdminRole } from "@/types";
-import CreateInstructionDialog from "./create-instruction-dialog";
 import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import AssignStaffCell from "./assign-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
+import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse } from "@/lib/mother-week-group";
+import MotherDueWarehouseCard from "./mother-due-warehouse-card";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-muted text-text-secondary",
@@ -72,19 +73,52 @@ export default async function InstructionsPage({
     where.items = { some: { shelf: shelfWhere } };
   }
 
+  const canCreateInstruction = isAdminRole(role) || role === "KY_THUAT";
+  // KY_THUAT/Admin xem toàn bộ chỉ định đã tạo qua trang riêng /instructions/list (thu gọn bảng +
+  // thanh tìm kiếm ở đây để trang chính tập trung vào nhóm mẫu mẹ đến hạn + tạo chỉ định mới).
+  const collapseList = canCreateInstruction;
+
+  // Nhóm tuần mẫu mẹ đã đến hạn cấy chuyển (ít nhất 1 lô trên kệ trong nhóm đã tới Lot.expectedMoveAt) —
+  // gộp hiển thị theo tuần để KY_THUAT nhìn theo đợt thay vì lục từng kệ lẻ, xem src/lib/mother-week-group.ts.
+  // Chỉ tính "đạt hạn" theo từng lô thực tế, Nhóm chỉ là nhãn gộp hiển thị/chọn nhanh.
+  const motherDueGroups = canCreateInstruction
+    ? summarizeMotherWeekGroups(
+        await prisma.shelf.findMany({
+          where: { isActive: true, room: { type: "PHONG_MAU_ME" }, rotationGroupId: { not: null } },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            rowNumber: true,
+            colNumber: true,
+            block: true,
+            warehouse: { select: { id: true, code: true, name: true } },
+            rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
+            plantType: { select: { code: true } },
+            lots: { where: { status: "ACTIVE" }, select: { quantity: true, expectedMoveAt: true } },
+          },
+        })
+      ).filter((g) => g.isDue)
+    : [];
+  // Chia lại danh sách kệ đến hạn theo khu Sản xuất (từng kho SAN_XUAT) thay vì gộp chung 1 danh sách —
+  // xem src/lib/mother-week-group.ts.
+  const dueByWarehouse = groupDueMotherShelvesByWarehouse(motherDueGroups);
+
   const [total, instructions, caymoStaff] = await Promise.all([
-    prisma.plantingInstruction.count({ where }),
-    prisma.plantingInstruction.findMany({
-      where,
-      include: {
-        plantType: { select: { code: true, name: true } },
-        createdBy: { select: { name: true } },
-        assignedTo: { select: { name: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
+    prisma.plantingInstruction.count({ where: collapseList ? {} : where }),
+    collapseList
+      ? Promise.resolve([])
+      : prisma.plantingInstruction.findMany({
+          where,
+          include: {
+            plantType: { select: { code: true, name: true } },
+            createdBy: { select: { name: true } },
+            assignedTo: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        }),
     role === "KHO_MO"
       ? prisma.user.findMany({ where: { role: "CAY_MO", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
@@ -104,144 +138,164 @@ export default async function InstructionsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            {role === "KHO_MO" ? "Chỉ định cấy chưa bàn giao" : "Chỉ định cấy"}
-          </h1>
-          <p className="text-text-secondary text-sm mt-1">{total} chỉ định</p>
-        </div>
-        {(isAdminRole(role) || role === "KY_THUAT") && <CreateInstructionDialog />}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">
+          {role === "KHO_MO" ? "Chỉ định cấy chưa bàn giao" : "Chỉ định cấy"}
+        </h1>
+        {!collapseList && <p className="text-text-secondary text-sm mt-1">{total} chỉ định</p>}
       </div>
 
-      <Card>
-        <CardContent className="pt-4">
-          <form className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Ngày tạo</Label>
-              <Input type="date" name="date" defaultValue={dateFilter} className="w-40" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Giàn kệ</Label>
-              <Input type="text" name="shelf" defaultValue={shelfFilter} placeholder="VD: SXA-PS-R1C02" className="w-48" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Mã cây</Label>
-              <Input type="text" name="plantCode" defaultValue={plantCodeFilter} placeholder="VD: AL001" className="w-40" />
-            </div>
-            <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
-              <Search className="w-4 h-4 mr-1" /> Tìm kiếm
-            </Button>
-            {hasFilters && (
-              <Link href="/instructions">
-                <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
-              </Link>
-            )}
-          </form>
-        </CardContent>
-      </Card>
+      {dueByWarehouse.length > 0 && (
+        <div className="space-y-3">
+          {dueByWarehouse.map((wh) => (
+            <MotherDueWarehouseCard key={wh.warehouseId} warehouse={wh} />
+          ))}
+        </div>
+      )}
 
-      {instructions.length === 0 ? (
-        <Card><CardContent className="py-16 text-center text-text-muted">
-          <ClipboardList className="w-10 h-10 mx-auto mb-3 text-text-muted" />
-          <p>Chưa có chỉ định cấy nào{hasFilters ? " khớp bộ lọc" : ""}</p>
-        </CardContent></Card>
-      ) : (
+      {collapseList ? (
         <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-primary-light">
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã chỉ định</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã cây</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên cây chi tiết</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV cấy</th>
-                    {role === "KHO_MO" && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Bàn giao</th>}
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày tạo</th>
-                    <th className="px-4 py-3 font-bold text-base"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {instructions.map((inst) => (
-                    <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{inst.code}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-foreground">{inst.plantType.code}</td>
-                      <td className="px-4 py-3 text-sm text-foreground">{inst.plantType.name}</td>
-                      <td className="px-4 py-3 text-sm text-foreground">
-                        {!inst.assignedTo ? (
-                          role === "KHO_MO" ? (
-                            <AssignStaffCell instructionId={inst.id} staffList={caymoStaff} />
-                          ) : (
-                            <Badge variant="secondary">Chưa gán</Badge>
-                          )
-                        ) : (
-                          inst.assignedTo.name
-                        )}
-                      </td>
-                      {role === "KHO_MO" && (
-                        <td className="px-4 py-3">
-                          {inst.assignedTo && !inst.handedOverAt && <ConfirmHandoverButton instructionId={inst.id} />}
-                        </td>
-                      )}
-                      <td className="px-4 py-3">
-                        {role === "KHO_MO" ? (
-                          !inst.handedOverAt ? (
-                            <Badge className="bg-danger-light text-destructive">Chưa bàn giao</Badge>
-                          ) : (
-                            <Badge className="bg-warning-light text-warning-foreground">Đã bàn giao / chưa xác nhận</Badge>
-                          )
-                        ) : (
-                          <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
-                            {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-text-secondary">
-                        {format(inst.createdAt, "dd/MM/yyyy", { locale: vi })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Link href={`/instructions/${inst.id}`}>
-                            <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
-                              <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
-                            </Button>
-                          </Link>
-                          <Link href={`/instructions/${inst.id}`} target="_blank">
-                            <Button variant="ghost" size="sm" title="In phiếu chỉ định"><Printer className="w-4 h-4" /></Button>
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t">
-                <p className="text-sm text-text-secondary">Trang {page}/{totalPages}</p>
-                <div className="flex gap-2">
-                  {page > 1 ? (
-                    <Link href={pageHref(page - 1)}>
-                      <Button variant="outline" size="sm"><ChevronLeft className="w-4 h-4 mr-1" /> Trước</Button>
-                    </Link>
-                  ) : (
-                    <Button variant="outline" size="sm" disabled><ChevronLeft className="w-4 h-4 mr-1" /> Trước</Button>
-                  )}
-                  {page < totalPages ? (
-                    <Link href={pageHref(page + 1)}>
-                      <Button variant="outline" size="sm">Sau <ChevronRight className="w-4 h-4 ml-1" /></Button>
-                    </Link>
-                  ) : (
-                    <Button variant="outline" size="sm" disabled>Sau <ChevronRight className="w-4 h-4 ml-1" /></Button>
-                  )}
-                </div>
-              </div>
-            )}
+          <CardContent className="flex items-center justify-between py-5">
+            <p className="font-semibold text-primary-strong">Chỉ định cấy đã tạo</p>
+            <Link href="/instructions/list">
+              <Button size="sm" className="bg-primary hover:bg-primary-hover">
+                <Search className="w-4 h-4 mr-1.5" /> Xem chi tiết
+              </Button>
+            </Link>
           </CardContent>
         </Card>
+      ) : (
+        <>
+          <Card>
+            <CardContent className="pt-4">
+              <form className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Ngày tạo</Label>
+                  <Input type="date" name="date" defaultValue={dateFilter} className="w-40" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Giàn kệ</Label>
+                  <Input type="text" name="shelf" defaultValue={shelfFilter} placeholder="VD: SXA-PS-R1C02" className="w-48" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Mã cây</Label>
+                  <Input type="text" name="plantCode" defaultValue={plantCodeFilter} placeholder="VD: AL001" className="w-40" />
+                </div>
+                <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
+                  <Search className="w-4 h-4 mr-1" /> Tìm kiếm
+                </Button>
+                {hasFilters && (
+                  <Link href="/instructions">
+                    <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
+                  </Link>
+                )}
+              </form>
+            </CardContent>
+          </Card>
+
+          {instructions.length === 0 ? (
+            <Card><CardContent className="py-16 text-center text-text-muted">
+              <ClipboardList className="w-10 h-10 mx-auto mb-3 text-text-muted" />
+              <p>Chưa có chỉ định cấy nào{hasFilters ? " khớp bộ lọc" : ""}</p>
+            </CardContent></Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-primary-light">
+                        <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã chỉ định</th>
+                        <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã cây</th>
+                        <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên cây chi tiết</th>
+                        <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV cấy</th>
+                        {role === "KHO_MO" && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Bàn giao</th>}
+                        <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
+                        <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày tạo</th>
+                        <th className="px-4 py-3 font-bold text-base"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {instructions.map((inst) => (
+                        <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                          <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{inst.code}</td>
+                          <td className="px-4 py-3 text-sm font-mono text-foreground">{inst.plantType.code}</td>
+                          <td className="px-4 py-3 text-sm text-foreground">{inst.plantType.name}</td>
+                          <td className="px-4 py-3 text-sm text-foreground">
+                            {!inst.assignedTo ? (
+                              role === "KHO_MO" ? (
+                                <AssignStaffCell instructionId={inst.id} staffList={caymoStaff} />
+                              ) : (
+                                <Badge variant="secondary">Chưa gán</Badge>
+                              )
+                            ) : (
+                              inst.assignedTo.name
+                            )}
+                          </td>
+                          {role === "KHO_MO" && (
+                            <td className="px-4 py-3">
+                              {inst.assignedTo && !inst.handedOverAt && <ConfirmHandoverButton instructionId={inst.id} />}
+                            </td>
+                          )}
+                          <td className="px-4 py-3">
+                            {role === "KHO_MO" ? (
+                              !inst.handedOverAt ? (
+                                <Badge className="bg-danger-light text-destructive">Chưa bàn giao</Badge>
+                              ) : (
+                                <Badge className="bg-warning-light text-warning-foreground">Đã bàn giao / chưa xác nhận</Badge>
+                              )
+                            ) : (
+                              <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
+                                {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-secondary">
+                            {format(inst.createdAt, "dd/MM/yyyy", { locale: vi })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              <Link href={`/instructions/${inst.id}`}>
+                                <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                                  <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
+                                </Button>
+                              </Link>
+                              <Link href={`/instructions/${inst.id}`} target="_blank">
+                                <Button variant="ghost" size="sm" title="In phiếu chỉ định"><Printer className="w-4 h-4" /></Button>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t">
+                    <p className="text-sm text-text-secondary">Trang {page}/{totalPages}</p>
+                    <div className="flex gap-2">
+                      {page > 1 ? (
+                        <Link href={pageHref(page - 1)}>
+                          <Button variant="outline" size="sm"><ChevronLeft className="w-4 h-4 mr-1" /> Trước</Button>
+                        </Link>
+                      ) : (
+                        <Button variant="outline" size="sm" disabled><ChevronLeft className="w-4 h-4 mr-1" /> Trước</Button>
+                      )}
+                      {page < totalPages ? (
+                        <Link href={pageHref(page + 1)}>
+                          <Button variant="outline" size="sm">Sau <ChevronRight className="w-4 h-4 ml-1" /></Button>
+                        </Link>
+                      ) : (
+                        <Button variant="outline" size="sm" disabled>Sau <ChevronRight className="w-4 h-4 ml-1" /></Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

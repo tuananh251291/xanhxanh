@@ -11,16 +11,30 @@ export async function GET(req: NextRequest) {
   const roomType = searchParams.get("roomType");
   const roomId = searchParams.get("roomId");
   const warehouseId = searchParams.get("warehouseId");
+  const shelfId = searchParams.get("shelfId");
   const status = searchParams.get("status") ?? "ACTIVE";
   const instructionId = searchParams.get("instructionId");
   const assignedToId = searchParams.get("assignedToId");
+  const availableForInstruction = searchParams.get("availableForInstruction") === "true";
 
   const where: Record<string, unknown> = {};
   if (stage) where.stage = stage;
   if (status) where.status = status;
   if (instructionId) where.instructionId = instructionId;
+  // Dùng cho dropdown chọn quy cách nguồn lúc tạo chỉ định cấy (xem create-instruction-dialog.tsx) —
+  // ẩn lô mẫu mẹ đang là nguồn của 1 chỉ định CHƯA kết thúc (ACTIVE/DRAFT), tránh 2 chỉ định cùng lúc
+  // dùng chung 1 lô mẫu mẹ làm nguồn (chồng lấn phân bổ). Chỉ định đã ENDED/CANCELLED/COMPLETED thì lô
+  // lại hiện ra bình thường cho vòng cấy chuyển tiếp theo (VD: đến hạn cấy lại theo expectedMoveAt).
+  if (availableForInstruction) {
+    where.instructionItems = { none: { instruction: { status: { in: ["ACTIVE", "DRAFT"] } } } };
+  }
 
-  if (roomId) {
+  if (shelfId) {
+    // Lối tắt "Tạo chỉ định" từ 1 kệ cụ thể (banner Nhóm tuần mẫu mẹ đến hạn) — lọc CHÍNH XÁC đúng kệ
+    // đó thay vì dựa vào danh sách chung (take: 200 theo enteredAt desc bên dưới), tránh trường hợp lô
+    // của kệ đã đến hạn (nhập kho từ lâu) bị rớt khỏi 200 lô mới nhất và dialog không tự chọn được kệ.
+    where.shelfId = shelfId;
+  } else if (roomId) {
     // Kho thành phẩm không quản lý theo giàn kệ — lô gắn thẳng vào phòng (roomId trực tiếp trên Lot).
     // Kho sản xuất vẫn gắn qua kệ (shelf.roomId).
     where.OR = [{ roomId }, { shelf: { roomId } }];
@@ -29,6 +43,10 @@ export async function GET(req: NextRequest) {
   } else if (roomType === "PHONG_TOI") {
     // Phòng tối cá nhân giờ là 1 Room riêng/NV — Lot gắn thẳng vào Room đó (roomId), không qua kệ.
     where.room = { type: "PHONG_TOI" };
+    // Lô đã có phiếu bàn giao PENDING (đang chờ KHO_MO xác nhận) thì ẩn khỏi cả trang kiểm tra nhiễm
+    // lẫn trang bàn giao — lô vẫn nằm vật lý ở phòng tối (status/roomId chưa đổi) cho tới lúc KHO_MO
+    // xác nhận, nên nếu không lọc thì F5 lại trang bàn giao vẫn thấy lô đó và có thể bàn giao trùng lần 2.
+    where.transferItems = { none: { transfer: { status: "PENDING" } } };
   } else if (roomType) {
     where.shelf = { room: { type: roomType } };
   }
