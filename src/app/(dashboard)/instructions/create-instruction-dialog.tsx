@@ -82,11 +82,14 @@ export default function CreateInstructionDialog({
 
   useEffect(() => {
     if (!open) return;
-    // Lối tắt theo 1 kệ cụ thể (initialShelfId) lọc thẳng theo shelfId thay vì danh sách chung — danh
-    // sách chung giới hạn 200 lô mới nhất (xem /api/lots), lô của 1 kệ đã đến hạn cấy chuyển (nhập kho
-    // từ lâu) rất dễ rớt khỏi top 200 đó khiến dialog không tự chọn/tự điền được kệ này.
+    // Lối tắt theo 1 kệ cụ thể (initialShelfId, từ danh sách kệ đến hạn cấy chuyển) lọc thẳng theo
+    // shelfId thay vì danh sách chung — danh sách chung giới hạn 200 lô mới nhất (xem /api/lots), lô
+    // của 1 kệ đã đến hạn cấy chuyển (nhập kho từ lâu) rất dễ rớt khỏi top 200 đó. Đồng thời KHÔNG lọc
+    // availableForInstruction ở đây: mẫu mẹ đến hạn cấy chuyển gần như LUÔN đang là nguồn của chỉ định
+    // tuần trước (còn ACTIVE, vì mẫu mẹ dùng lặp lại qua nhiều tuần cấy chuyển, không bị "dùng hết" như
+    // mẫu mẹ 1 lần) — nếu vẫn lọc thì kệ đến hạn nào cũng rớt sạch, dialog không bao giờ tự chọn được kệ.
     const lotsUrl = initialShelfId
-      ? `/api/lots?stage=MAU_ME&status=ACTIVE&availableForInstruction=true&shelfId=${initialShelfId}`
+      ? `/api/lots?stage=MAU_ME&status=ACTIVE&shelfId=${initialShelfId}`
       : "/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE&availableForInstruction=true";
     Promise.all([
       fetch("/api/medium-types").then((r) => r.json()),
