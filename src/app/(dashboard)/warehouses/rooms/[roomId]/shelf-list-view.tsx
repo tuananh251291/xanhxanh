@@ -69,15 +69,14 @@ export default async function ShelfListView({
       where: { warehouseId: room.warehouseId, type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] }, isActive: true },
       select: { id: true, code: true, name: true, type: true },
     }),
-    // Chỉ cần cho Phòng ra rễ — Phòng mẫu mẹ vẫn gán Nhóm qua /settings/shelf-groups (ràng buộc phức
-    // tạp hơn: yêu cầu đã gán mã cây, khe không vượt quá "Thời gian đợi cấy chuyển"...).
-    room.type === "PHONG_RA_RE"
-      ? prisma.shelfGroup.findMany({
-          where: { rotationKind: "RA_RE" },
-          select: { id: true, name: true },
-          orderBy: { rotationOrder: "asc" },
-        })
-      : Promise.resolve([]),
+    // Nhóm tuần đúng loại theo room.type (RA_RE cho Phòng ra rễ, MAU_ME cho Phòng mẫu mẹ) để gán trực
+    // tiếp tại bảng kệ (xem shelf-table.tsx) — ràng buộc nghiệp vụ (VD Phòng mẫu mẹ yêu cầu đã gán mã
+    // cây, khe không vượt "Thời gian đợi cấy chuyển") vẫn được kiểm tra ở server lúc lưu.
+    prisma.shelfGroup.findMany({
+      where: { rotationKind: room.type === "PHONG_RA_RE" ? "RA_RE" : "MAU_ME" },
+      select: { id: true, name: true },
+      orderBy: { rotationOrder: "asc" },
+    }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));

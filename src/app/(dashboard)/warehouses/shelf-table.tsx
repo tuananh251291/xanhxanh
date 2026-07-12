@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { QrCode, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -125,45 +124,6 @@ function AllowedCodesCell({
   );
 }
 
-// Chọn Nhóm tuần ra rễ cho 1 kệ + nút Lưu riêng (không tự lưu khi đổi lựa chọn trong dropdown, tránh
-// lưu nhầm khi đang gõ-tìm/cuộn) — chỉ SUPER_ADMIN thấy được (canManageStaffAndPlant), theo đúng quy
-// tắc "Nhóm" hiện có của hệ thống (xem /settings/shelf-groups).
-function RotationGroupCell({
-  shelf, options, disabled, onSave,
-}: {
-  shelf: { id: string; rotationGroup: { id: string; name: string } | null };
-  options: { id: string; name: string }[];
-  disabled: boolean;
-  onSave: (shelfId: string, targetGroupId: string | null, currentGroupId: string | null) => void;
-}) {
-  const [value, setValue] = useState(shelf.rotationGroup?.id ?? "NONE");
-  return (
-    <div className="flex items-center gap-1">
-      <Select value={value} onValueChange={(v) => setValue(v as string)}>
-        <SelectTrigger className="h-8 text-xs w-36" disabled={disabled}>
-          <SelectValue>
-            {() => (value === "NONE" ? "— Chưa gán —" : (options.find((o) => o.id === value)?.name ?? "— Chưa gán —"))}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="NONE">— Chưa gán —</SelectItem>
-          {options.map((o) => (
-            <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        size="sm"
-        className="h-8 px-2 bg-primary hover:bg-primary-hover"
-        disabled={disabled}
-        onClick={() => onSave(shelf.id, value === "NONE" ? null : value, shelf.rotationGroup?.id ?? null)}
-      >
-        Lưu
-      </Button>
-    </div>
-  );
-}
-
 export default function ShelfTable({
   shelves,
   currentRoomId,
@@ -179,8 +139,8 @@ export default function ShelfTable({
   currentRoomId: string | null;
   currentRoomType: RoomType | null;
   staffOptions?: Staff[];
-  // Danh sách Nhóm tuần ra rễ (rotationKind = RA_RE) để gán trực tiếp ở đây — chỉ có ý nghĩa cho kệ
-  // Phòng ra rễ (xem cột "Nhóm tuần ra rễ" bên dưới), Phòng mẫu mẹ vẫn quản lý riêng qua /settings/shelf-groups.
+  // Danh sách Nhóm tuần (RA_RE cho Phòng ra rễ, MAU_ME cho Phòng mẫu mẹ "đã chia") để gán trực tiếp ở
+  // đây — caller (rooms/[roomId]/shelf-list-view.tsx) tự chọn đúng rotationKind theo room.type.
   rotationGroupOptions?: { id: string; name: string }[];
   canManageStaffAndPlant?: boolean;
   canMoveRoom?: boolean;
@@ -194,6 +154,9 @@ export default function ShelfTable({
   const [qrShelf, setQrShelf] = useState<Shelf | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [rotationSavingId, setRotationSavingId] = useState<string | null>(null);
+  // Giá trị Nhóm tuần đang CHỌN trong dropdown (chưa bấm Lưu) theo từng kệ — tách khỏi ô Lưu (nút Lưu
+  // nằm chung cột với nút Xóa ở cuối hàng) nên cần giữ ở đây thay vì state cục bộ trong 1 ô như trước.
+  const [rotationValues, setRotationValues] = useState<Record<string, string>>({});
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [assignStaffTarget, setAssignStaffTarget] = useState<Shelf | null>(null);
   const [assignStaffValue, setAssignStaffValue] = useState<{ value: string; label: string } | null>(null);
@@ -249,9 +212,33 @@ export default function ShelfTable({
         });
         if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       }
-      toast.success("Đã cập nhật Nhóm tuần ra rễ cho kệ");
+      toast.success(`Đã cập nhật Nhóm tuần ${isMauMeRoom ? "mẫu mẹ" : "ra rễ"} cho kệ`);
       router.refresh();
     } finally { setRotationSavingId(null); }
+  };
+
+  const getRotationValue = (shelf: Shelf) => rotationValues[shelf.id] ?? (shelf.rotationGroup?.id ?? "NONE");
+
+  // Dropdown chọn Nhóm tuần (RA_RE hoặc MAU_ME tuỳ room) — dùng chung cho cả 2 cột "Nhóm tuần ra rễ"
+  // (Phòng ra rễ) và "Nhóm tuần mẫu mẹ" (Phòng mẫu mẹ đã chia). Nút Lưu tách riêng, nằm ở cột cuối cùng
+  // cạnh nút Xóa (xem renderRow).
+  const renderRotationSelect = (shelf: Shelf) => {
+    const value = getRotationValue(shelf);
+    return (
+      <Select value={value} onValueChange={(v) => setRotationValues((prev) => ({ ...prev, [shelf.id]: v as string }))}>
+        <SelectTrigger className="h-8 text-xs w-40" disabled={rotationSavingId === shelf.id}>
+          <SelectValue>
+            {() => (value === "NONE" ? "— Chưa gán —" : (rotationGroupOptions.find((o) => o.id === value)?.name ?? "— Chưa gán —"))}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="NONE">— Chưa gán —</SelectItem>
+          {rotationGroupOptions.map((o) => (
+            <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
   };
 
   const deleteShelf = async (shelf: Shelf) => {
@@ -339,15 +326,8 @@ export default function ShelfTable({
           </button>
         </td>
         {!isMauMeRoom && (
-          <td className="px-3 py-2 min-w-[220px]">
-            {canManageStaffAndPlant ? (
-              <RotationGroupCell
-                shelf={shelf}
-                options={rotationGroupOptions}
-                disabled={rotationSavingId === shelf.id}
-                onSave={setRotationGroup}
-              />
-            ) : (
+          <td className="px-3 py-2 min-w-[160px]">
+            {canManageStaffAndPlant ? renderRotationSelect(shelf) : (
               <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
             )}
           </td>
@@ -392,8 +372,10 @@ export default function ShelfTable({
                     <span className="text-xs text-text-secondary">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
                   )}
                 </td>
-                <td className="px-3 py-2 min-w-[150px]">
-                  <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
+                <td className="px-3 py-2 min-w-[160px]">
+                  {canManageStaffAndPlant ? renderRotationSelect(shelf) : (
+                    <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
+                  )}
                 </td>
               </>
             )}
@@ -500,17 +482,35 @@ export default function ShelfTable({
         )}
         {canManageStaffAndPlant && (
           <td className="px-3 py-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="text-destructive hover:bg-danger-light"
-              disabled={deletingId === shelf.id}
-              onClick={() => deleteShelf(shelf)}
-              title="Xóa giàn kệ"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {(!isMauMeRoom || !isChungSection) && (
+                <Button
+                  size="sm"
+                  className="h-8 px-2 bg-primary hover:bg-primary-hover"
+                  disabled={rotationSavingId === shelf.id}
+                  onClick={() =>
+                    setRotationGroup(
+                      shelf.id,
+                      getRotationValue(shelf) === "NONE" ? null : getRotationValue(shelf),
+                      shelf.rotationGroup?.id ?? null
+                    )
+                  }
+                >
+                  Lưu
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="text-destructive hover:bg-danger-light"
+                disabled={deletingId === shelf.id}
+                onClick={() => deleteShelf(shelf)}
+                title="Xóa giàn kệ"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
           </td>
         )}
       </tr>
@@ -544,7 +544,7 @@ export default function ShelfTable({
             )}
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tồn / Sức chứa</th>
             {canMoveRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Chuyển phòng</th>}
-            {canManageStaffAndPlant && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Xóa</th>}
+            {canManageStaffAndPlant && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Thao tác</th>}
           </tr>
         </thead>
         <tbody>{rows.map((s) => renderRow(s, isChungSection))}</tbody>
@@ -562,14 +562,6 @@ export default function ShelfTable({
 
   return (
     <>
-      {canManageStaffAndPlant && isMauMeRoom && (
-        <p className="text-xs text-text-muted mb-3">
-          Gán/đổi Nhóm tuần mẫu mẹ cho kệ tại{" "}
-          <Link href="/settings/shelf-groups" className="text-primary-strong underline">
-            Cài đặt → Nhóm giàn kệ
-          </Link>
-        </p>
-      )}
       {isMauMeRoom && section ? (
         renderTable(shelves, section === "CHUNG")
       ) : isMauMeRoom ? (
