@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { QrCode, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/combobox";
 import { toast } from "sonner";
 import QRCodeDisplay from "@/components/shared/qr-code-display";
-import { motherClusterUnits } from "@/types";
+import { sumLotQuantity } from "@/types";
 import type { RoomType } from "@prisma/client";
 
 interface PlantType {
@@ -52,7 +53,7 @@ interface Shelf {
   assignedStaff: Staff | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   allowedCodes: string[];
-  weekSlot: number | null;
+  rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
   lots: { quantity: number; stageCode: string }[];
 }
 
@@ -65,6 +66,42 @@ function parseAllowedCodes(raw: string): string[] {
     .split(",")
     .map((s) => s.trim().replace(/^['"]+|['"]+$/g, "").toUpperCase())
     .filter(Boolean);
+}
+
+// Sức chứa (đơn vị túi) — Admin cấp cao cài đặt số ban đầu lúc tạo kệ (xem add-shelves-dialog.tsx),
+// sửa lại sau tại đây. Để trống = không giới hạn (lưu null).
+function CapacityCell({
+  shelfId, initialCapacity, disabled, onSave,
+}: {
+  shelfId: string;
+  initialCapacity: number | null;
+  disabled: boolean;
+  onSave: (shelfId: string, capacity: number | null) => void;
+}) {
+  const [value, setValue] = useState(initialCapacity != null ? String(initialCapacity) : "");
+  const save = () => {
+    const trimmed = value.trim();
+    if (trimmed === "") { onSave(shelfId, null); return; }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setValue(initialCapacity != null ? String(initialCapacity) : "");
+      return;
+    }
+    onSave(shelfId, Math.trunc(parsed));
+  };
+  return (
+    <Input
+      type="number"
+      min={1}
+      className="h-6 w-14 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+      placeholder="Không giới hạn"
+    />
+  );
 }
 
 function AllowedCodesCell({
@@ -88,29 +125,83 @@ function AllowedCodesCell({
   );
 }
 
+// Chọn Nhóm tuần ra rễ cho 1 kệ + nút Lưu riêng (không tự lưu khi đổi lựa chọn trong dropdown, tránh
+// lưu nhầm khi đang gõ-tìm/cuộn) — chỉ SUPER_ADMIN thấy được (canManageStaffAndPlant), theo đúng quy
+// tắc "Nhóm" hiện có của hệ thống (xem /settings/shelf-groups).
+function RotationGroupCell({
+  shelf, options, disabled, onSave,
+}: {
+  shelf: { id: string; rotationGroup: { id: string; name: string } | null };
+  options: { id: string; name: string }[];
+  disabled: boolean;
+  onSave: (shelfId: string, targetGroupId: string | null, currentGroupId: string | null) => void;
+}) {
+  const [value, setValue] = useState(shelf.rotationGroup?.id ?? "NONE");
+  return (
+    <div className="flex items-center gap-1">
+      <Select value={value} onValueChange={(v) => setValue(v as string)}>
+        <SelectTrigger className="h-8 text-xs w-36" disabled={disabled}>
+          <SelectValue>
+            {() => (value === "NONE" ? "— Chưa gán —" : (options.find((o) => o.id === value)?.name ?? "— Chưa gán —"))}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="NONE">— Chưa gán —</SelectItem>
+          {options.map((o) => (
+            <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        size="sm"
+        className="h-8 px-2 bg-primary hover:bg-primary-hover"
+        disabled={disabled}
+        onClick={() => onSave(shelf.id, value === "NONE" ? null : value, shelf.rotationGroup?.id ?? null)}
+      >
+        Lưu
+      </Button>
+    </div>
+  );
+}
+
 export default function ShelfTable({
   shelves,
   currentRoomId,
   currentRoomType,
   staffOptions = [],
+  rotationGroupOptions = [],
   canManageStaffAndPlant = false,
   canMoveRoom = false,
   moveableRooms = [],
+  section,
 }: {
   shelves: Shelf[];
   currentRoomId: string | null;
   currentRoomType: RoomType | null;
   staffOptions?: Staff[];
+  // Danh sách Nhóm tuần ra rễ (rotationKind = RA_RE) để gán trực tiếp ở đây — chỉ có ý nghĩa cho kệ
+  // Phòng ra rễ (xem cột "Nhóm tuần ra rễ" bên dưới), Phòng mẫu mẹ vẫn quản lý riêng qua /settings/shelf-groups.
+  rotationGroupOptions?: { id: string; name: string }[];
   canManageStaffAndPlant?: boolean;
   canMoveRoom?: boolean;
   moveableRooms?: MoveableRoom[];
+  // Khi truyền vào (từ trang con /da-chia hoặc /chung của Phòng mẫu mẹ — xem rooms/[roomId]/shelf-list-view.tsx),
+  // component chỉ vẽ ĐÚNG 1 bảng theo nhóm đó, bỏ qua việc tự tách "đã chia"/"chung" từ danh sách `shelves`
+  // (danh sách lúc này đã được server lọc sẵn đúng 1 trang của đúng 1 nhóm) — tránh đếm nhầm "(N kệ)" theo
+  // 8 dòng của 1 trang thay vì tổng số thật của cả nhóm.
+  section?: "DA_CHIA" | "CHUNG";
 }) {
   const [qrShelf, setQrShelf] = useState<Shelf | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [rotationSavingId, setRotationSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [assignStaffTarget, setAssignStaffTarget] = useState<Shelf | null>(null);
+  const [assignStaffValue, setAssignStaffValue] = useState<{ value: string; label: string } | null>(null);
   const router = useRouter();
   const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
   const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
+  const motherRoom = moveableRooms.find((r) => r.type === "PHONG_MAU_ME");
+  const raReRoom = moveableRooms.find((r) => r.type === "PHONG_RA_RE");
 
   // Danh sách gõ-tìm cho combobox "Nhân viên phụ trách" — gõ tên/mã sẽ tự lọc gợi ý.
   const staffComboboxOptions = useMemo(
@@ -135,24 +226,101 @@ export default function ShelfTable({
     } finally { setSavingId(null); }
   };
 
+  // Gán/gỡ Nhóm tuần ra rễ cho 1 kệ — dùng đúng API quản lý Nhóm (PATCH /api/shelf-groups/[id]/shelves,
+  // action assign/unassign), KHÔNG qua PATCH /api/shelves/[id] (route đó đã chặn sửa rotationGroupId,
+  // xem comment đầu file route.ts — phải đổi qua đúng cơ chế Nhóm để giữ ràng buộc nghiệp vụ, VD chỉ
+  // nhận đúng loại phòng RA_RE/MAU_ME).
+  const setRotationGroup = async (shelfId: string, targetGroupId: string | null, currentGroupId: string | null) => {
+    if (targetGroupId === currentGroupId) return;
+    setRotationSavingId(shelfId);
+    try {
+      if (targetGroupId) {
+        const res = await fetch(`/api/shelf-groups/${targetGroupId}/shelves`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shelfIds: [shelfId], action: "assign" }),
+        });
+        if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      } else if (currentGroupId) {
+        const res = await fetch(`/api/shelf-groups/${currentGroupId}/shelves`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shelfIds: [shelfId], action: "unassign" }),
+        });
+        if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      }
+      toast.success("Đã cập nhật Nhóm tuần ra rễ cho kệ");
+      router.refresh();
+    } finally { setRotationSavingId(null); }
+  };
+
   const deleteShelf = async (shelf: Shelf) => {
-    const totalQty = shelf.lots.reduce((s, l) => s + l.quantity, 0);
+    const totalQty = sumLotQuantity(shelf.lots);
     const confirmMsg = shelf.lots.length > 0
-      ? `Giàn kệ ${shelf.code} đang có ${shelf.lots.length} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} cây/túi). Xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động. Bạn có chắc chắn muốn xóa?`
-      : `Xóa giàn kệ ${shelf.code}?`;
+      ? `Giàn kệ ${shelf.name} đang có ${shelf.lots.length} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} cây/túi). Xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động. Bạn có chắc chắn muốn xóa?`
+      : `Xóa giàn kệ ${shelf.name}?`;
     if (!window.confirm(confirmMsg)) return;
 
     setDeletingId(shelf.id);
     try {
       const res = await fetch(`/api/shelves/${shelf.id}`, { method: "DELETE" });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã xóa giàn kệ ${shelf.code}`);
+      toast.success(`Đã xóa giàn kệ ${shelf.name}`);
       router.refresh();
     } finally { setDeletingId(null); }
   };
 
+  const confirmAssignToDaChia = async () => {
+    if (!assignStaffTarget || !assignStaffValue || assignStaffValue.value === "NONE" || !motherRoom) return;
+    await patchShelf(
+      assignStaffTarget.id,
+      { roomId: motherRoom.id, assignedStaffId: assignStaffValue.value },
+      `Đã chuyển kệ ${assignStaffTarget.name} sang Kho mẫu mẹ đã chia`
+    );
+    setAssignStaffTarget(null);
+    setAssignStaffValue(null);
+  };
+
+  type MoveTarget = { key: string; label: string; action: () => void };
+
+  // SUPER_ADMIN mới được chọn đích cụ thể "Kho mẫu mẹ đã chia"/"Kho mẫu mẹ chung" — 2 đích này gắn liền
+  // quyết định gán/bỏ nhân viên, vốn đã giới hạn SUPER_ADMIN ở cột "Nhân viên phụ trách" phía trên. Admin
+  // thường chỉ chuyển phòng thô như cũ (không đổi nhân viên phụ trách).
+  const buildMoveTargets = (shelf: Shelf, isChungSection: boolean): MoveTarget[] => {
+    if (!canManageStaffAndPlant) {
+      return otherRooms.map((r) => ({
+        key: r.id,
+        label: r.name,
+        action: () => patchShelf(shelf.id, { roomId: r.id }, `Đã chuyển kệ ${shelf.name} sang ${r.name}`),
+      }));
+    }
+    const targets: MoveTarget[] = [];
+    const inDaChia = isMauMeRoom && !isChungSection;
+    const inChung = isMauMeRoom && isChungSection;
+    const inRaRe = !isMauMeRoom;
+    if (!inChung && motherRoom) {
+      targets.push({
+        key: "CHUNG",
+        label: "Kho mẫu mẹ chung",
+        action: () =>
+          patchShelf(shelf.id, { roomId: motherRoom.id, assignedStaffId: null }, `Đã chuyển kệ ${shelf.name} sang Kho mẫu mẹ chung`),
+      });
+    }
+    if (!inDaChia && motherRoom) {
+      targets.push({ key: "DA_CHIA", label: "Kho mẫu mẹ đã chia", action: () => setAssignStaffTarget(shelf) });
+    }
+    if (!inRaRe && raReRoom) {
+      targets.push({
+        key: "RA_RE",
+        label: "Phòng ra rễ",
+        action: () => patchShelf(shelf.id, { roomId: raReRoom.id }, `Đã chuyển kệ ${shelf.name} sang Phòng ra rễ`),
+      });
+    }
+    return targets;
+  };
+
   const renderRow = (shelf: Shelf, isChungSection: boolean) => {
-    const used = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
+    const used = sumLotQuantity(shelf.lots);
     const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
     const bagsBySpec = shelf.lots.reduce<Record<string, number>>((acc, l) => {
       acc[l.stageCode] = (acc[l.stageCode] ?? 0) + l.quantity;
@@ -166,33 +334,21 @@ export default function ShelfTable({
             onClick={() => setQrShelf(shelf)}
             title="Xem QR"
           >
-            <span className="text-sm font-bold text-foreground">{shelf.code}</span>
+            <span className="text-sm font-bold text-foreground">{shelf.name}</span>
             <QrCode className="w-3.5 h-3.5 text-text-muted shrink-0" />
           </button>
         </td>
-        <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap">{shelf.name}</td>
         {!isMauMeRoom && (
-          <td className="px-3 py-2 min-w-[130px]">
+          <td className="px-3 py-2 min-w-[220px]">
             {canManageStaffAndPlant ? (
-              <Select
-                value={shelf.weekSlot ? String(shelf.weekSlot) : "NONE"}
-                onValueChange={(v) =>
-                  patchShelf(shelf.id, { weekSlot: v === "NONE" ? null : Number(v) }, "Đã cập nhật Nhóm tuần ra rễ cho kệ")
-                }
-              >
-                <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
-                  <SelectValue>{() => (shelf.weekSlot ? `Nhóm tuần ra rễ ${shelf.weekSlot}` : "— Chưa gán —")}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NONE">— Chưa gán —</SelectItem>
-                  <SelectItem value="1">Nhóm tuần ra rễ 1</SelectItem>
-                  <SelectItem value="2">Nhóm tuần ra rễ 2</SelectItem>
-                  <SelectItem value="3">Nhóm tuần ra rễ 3</SelectItem>
-                  <SelectItem value="4">Nhóm tuần ra rễ 4</SelectItem>
-                </SelectContent>
-              </Select>
+              <RotationGroupCell
+                shelf={shelf}
+                options={rotationGroupOptions}
+                disabled={rotationSavingId === shelf.id}
+                onSave={setRotationGroup}
+              />
             ) : (
-              <span className="text-xs text-text-secondary">{shelf.weekSlot ? `Nhóm tuần ra rễ ${shelf.weekSlot}` : "—"}</span>
+              <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
             )}
           </td>
         )}
@@ -236,21 +392,11 @@ export default function ShelfTable({
                     <span className="text-xs text-text-secondary">{shelf.assignedStaff?.name ?? "Chưa gán"}</span>
                   )}
                 </td>
+                <td className="px-3 py-2 min-w-[150px]">
+                  <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
+                </td>
               </>
             )}
-            <td className="px-3 py-2 whitespace-nowrap">
-              {shelf.assignedStaff ? (
-                <span
-                  className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                    shelf.lots.length > 0 ? "bg-warning-light text-warning-foreground" : "bg-primary-light text-primary-strong"
-                  }`}
-                >
-                  {shelf.lots.length > 0 ? "Đã có lô" : "Trống"}
-                </span>
-              ) : (
-                <span className="text-xs text-text-muted">—</span>
-              )}
-            </td>
             <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
               {Object.keys(bagsBySpec).length === 0
                 ? "—"
@@ -300,9 +446,18 @@ export default function ShelfTable({
         <td className="px-3 py-2 min-w-[140px]">
           <div className="flex items-center gap-1.5 text-xs text-text-secondary">
             <Package className="w-3 h-3 text-primary-strong shrink-0" />
-            {used.toLocaleString("vi-VN")}
-            {shelf.capacity ? `/${shelf.capacity}` : ""}
-            {isMauMeRoom ? " cụm" : " túi"}
+            <span>{used.toLocaleString("vi-VN")} /</span>
+            {canManageStaffAndPlant ? (
+              <CapacityCell
+                shelfId={shelf.id}
+                initialCapacity={shelf.capacity}
+                disabled={savingId === shelf.id}
+                onSave={(id, capacity) => patchShelf(id, { capacity }, "Đã cập nhật sức chứa cho kệ")}
+              />
+            ) : (
+              <span>{shelf.capacity ?? "Không giới hạn"}</span>
+            )}
+            <span>túi</span>
           </div>
           {usage !== null && (
             <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -316,24 +471,30 @@ export default function ShelfTable({
           )}
         </td>
         {canMoveRoom && (
-          <td className="px-3 py-2 min-w-[150px]">
-            {otherRooms.length > 0 ? (
-              <Select
-                value="_"
-                onValueChange={(v) => patchShelf(shelf.id, { roomId: v }, "Đã chuyển kệ sang phòng khác")}
-              >
-                <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
-                  <SelectValue>{() => "Chuyển phòng…"}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_" disabled>Chuyển sang…</SelectItem>
-                  {otherRooms.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <td className="px-3 py-2 min-w-[170px]">
+            {used > 0 ? (
+              <span className="text-xs text-text-muted" title="Chỉ chuyển được sang nhóm khác khi tồn kệ bằng 0">
+                Còn tồn — không thể chuyển
+              </span>
             ) : (
-              <span className="text-xs text-text-muted">—</span>
+              (() => {
+                const targets = buildMoveTargets(shelf, isChungSection);
+                return targets.length > 0 ? (
+                  <Select value="_" onValueChange={(v) => targets.find((t) => t.key === v)?.action()}>
+                    <SelectTrigger className="w-full h-8 text-xs" disabled={savingId === shelf.id}>
+                      <SelectValue>{() => "Chuyển phòng…"}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_" disabled>Chuyển sang…</SelectItem>
+                      {targets.map((t) => (
+                        <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className="text-xs text-text-muted">—</span>
+                );
+              })()
             )}
           </td>
         )}
@@ -361,7 +522,6 @@ export default function ShelfTable({
       <table className="w-full">
         <thead>
           <tr className="bg-primary-light">
-            <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã kệ</th>
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
             {!isMauMeRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần ra rễ</th>}
             {isMauMeRoom && (
@@ -370,9 +530,9 @@ export default function ShelfTable({
                   <>
                     <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
                     <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
+                    <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần mẫu mẹ</th>
                   </>
                 )}
-                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Trạng thái</th>
                 <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số túi M03/M05</th>
                 {isChungSection && (
                   <>
@@ -392,21 +552,34 @@ export default function ShelfTable({
     </div>
   );
 
-  // Phòng mẫu mẹ tự chia làm 2 nhóm hiển thị theo việc đã gán nhân viên hay chưa (SUPER_ADMIN
-  // cấu hình nhân viên ở trên) — không phải 1 Room riêng, chỉ là phân nhóm theo assignedStaff.
-  const assignedShelves = isMauMeRoom ? shelves.filter((s) => s.assignedStaff) : [];
-  const unassignedShelves = isMauMeRoom ? shelves.filter((s) => !s.assignedStaff) : [];
+  // Phòng mẫu mẹ tự chia làm 2 nhóm hiển thị theo việc đã gán mã cây HOẶC nhân viên hay chưa (SUPER_ADMIN
+  // cấu hình ở trên) — không phải 1 Room riêng, chỉ là phân nhóm. Kệ "đã chia" có thể đã gán mã cây
+  // nhưng CHƯA gán nhân viên cụ thể (VD chờ SUPER_ADMIN gán NV sau) — vẫn tính là "đã chia", không rơi
+  // lại vào "chung".
+  const isDaChiaShelf = (s: Shelf) => !!s.plantType || !!s.assignedStaff;
+  const assignedShelves = isMauMeRoom ? shelves.filter(isDaChiaShelf) : [];
+  const unassignedShelves = isMauMeRoom ? shelves.filter((s) => !isDaChiaShelf(s)) : [];
 
   return (
     <>
-      {isMauMeRoom ? (
+      {canManageStaffAndPlant && isMauMeRoom && (
+        <p className="text-xs text-text-muted mb-3">
+          Gán/đổi Nhóm tuần mẫu mẹ cho kệ tại{" "}
+          <Link href="/settings/shelf-groups" className="text-primary-strong underline">
+            Cài đặt → Nhóm giàn kệ
+          </Link>
+        </p>
+      )}
+      {isMauMeRoom && section ? (
+        renderTable(shelves, section === "CHUNG")
+      ) : isMauMeRoom ? (
         <div className="space-y-4">
           <div>
             <p className="text-xs font-semibold text-text-secondary mb-2">
               Kho mẫu mẹ đã chia <span className="font-normal text-text-muted">({assignedShelves.length} kệ)</span>
             </p>
             {assignedShelves.length === 0 ? (
-              <p className="text-xs text-text-muted pl-1">Chưa có kệ nào được gán nhân viên</p>
+              <p className="text-xs text-text-muted pl-1">Chưa có kệ nào được gán mã cây</p>
             ) : renderTable(assignedShelves, false)}
           </div>
           <div>
@@ -414,7 +587,7 @@ export default function ShelfTable({
               Kho mẫu mẹ chung <span className="font-normal text-text-muted">({unassignedShelves.length} kệ)</span>
             </p>
             {unassignedShelves.length === 0 ? (
-              <p className="text-xs text-text-muted pl-1">Không còn kệ nào chưa gán nhân viên</p>
+              <p className="text-xs text-text-muted pl-1">Không còn kệ nào chưa gán mã cây</p>
             ) : renderTable(unassignedShelves, true)}
           </div>
         </div>
@@ -425,13 +598,14 @@ export default function ShelfTable({
       <Dialog open={!!qrShelf} onOpenChange={() => setQrShelf(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>QR Code kệ {qrShelf?.code}</DialogTitle>
+            <DialogTitle>QR Code {qrShelf?.name}</DialogTitle>
           </DialogHeader>
           {qrShelf && (
             <div className="text-center space-y-3">
+              {/* value vẫn dùng shelf.code thật để hệ thống quét/tra cứu nhận diện đúng kệ (xem
+                  GET /api/shelves?code=...) — chỉ không hiện chữ mã kệ ra màn hình theo yêu cầu. */}
               <QRCodeDisplay value={qrShelf.code} size={200} />
               <p className="text-sm font-medium">{qrShelf.name}</p>
-              <p className="text-xs text-text-secondary">{qrShelf.code}</p>
               <Button
                 variant="outline"
                 size="sm"
@@ -441,6 +615,61 @@ export default function ShelfTable({
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!assignStaffTarget}
+        onOpenChange={(open) => {
+          if (!open) { setAssignStaffTarget(null); setAssignStaffValue(null); }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Chuyển kệ {assignStaffTarget?.name} sang Kho mẫu mẹ đã chia</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-text-secondary">Chọn nhân viên phụ trách cho kệ này:</p>
+            <Combobox
+              items={staffComboboxOptions.filter((o) => o.value !== "NONE")}
+              value={assignStaffValue}
+              isItemEqualToValue={(a, b) => a.value === b.value}
+              onValueChange={(v) => setAssignStaffValue(v)}
+            >
+              <ComboboxInputGroup className="w-full h-9">
+                <ComboboxInput className="text-sm" placeholder="Gõ tên hoặc mã NV…" />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy nhân viên</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: { value: string; label: string }) => (
+                    <ComboboxItem key={item.value} value={item} className="text-sm">
+                      {item.label}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => { setAssignStaffTarget(null); setAssignStaffValue(null); }}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!assignStaffValue || savingId === assignStaffTarget?.id}
+                onClick={confirmAssignToDaChia}
+              >
+                Xác nhận
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
