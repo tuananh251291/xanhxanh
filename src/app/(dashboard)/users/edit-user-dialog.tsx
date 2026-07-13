@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,6 +28,7 @@ const schema = z.object({
   name: z.string().min(2, "Tên tối thiểu 2 ký tự"),
   email: z.string().email("Email không hợp lệ"),
   role: z.enum(ASSIGNABLE_ROLES),
+  code: z.string().min(1, "Nhập mã nhân viên"),
   isActive: z.boolean(),
   password: z.union([z.string().min(6, "Mật khẩu tối thiểu 6 ký tự"), z.literal("")]).optional(),
 });
@@ -39,6 +40,7 @@ type EditableUser = {
   name: string;
   email: string;
   role: (typeof ASSIGNABLE_ROLES)[number];
+  code: string;
   isActive: boolean;
 };
 
@@ -53,6 +55,7 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
       name: user.name,
       email: user.email,
       role: user.role,
+      code: user.code,
       isActive: user.isActive,
       password: "",
     },
@@ -60,6 +63,28 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
 
   const role = watch("role");
   const isActive = watch("isActive");
+  const prevRoleRef = useRef(user.role);
+
+  const onRoleChange = async (newRole: FormData["role"]) => {
+    setValue("role", newRole);
+    // Đổi sang vai trò khác vai trò gốc → gợi ý mã kế tiếp theo vai trò mới, Admin vẫn sửa lại được.
+    // Đổi lại về đúng vai trò gốc thì trả lại mã gốc thay vì để mã gợi ý cũ.
+    if (newRole === prevRoleRef.current) return;
+    prevRoleRef.current = newRole;
+    if (newRole === user.role) {
+      setValue("code", user.code);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/users/next-code?role=${newRole}`);
+      if (res.ok) {
+        const { code } = await res.json();
+        setValue("code", code);
+      }
+    } catch {
+      // Bỏ qua lỗi gợi ý — Admin vẫn nhập tay được.
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -71,6 +96,7 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
           name: data.name,
           email: data.email,
           role: data.role,
+          code: data.code,
           isActive: data.isActive,
           ...(data.password ? { password: data.password } : {}),
         }),
@@ -89,7 +115,7 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) reset(); }}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) { reset(); prevRoleRef.current = user.role; } }}>
       <DialogTrigger render={<Button variant="ghost" size="sm" />}>
         <Pencil className="w-3.5 h-3.5 mr-1" /> Chỉnh sửa
       </DialogTrigger>
@@ -115,7 +141,7 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
           </div>
           <div className="space-y-1">
             <Label>Vai trò</Label>
-            <Select items={ASSIGNABLE_ROLE_LABELS} value={role} onValueChange={(v) => setValue("role", v as FormData["role"])}>
+            <Select items={ASSIGNABLE_ROLE_LABELS} value={role} onValueChange={(v) => onRoleChange(v as FormData["role"])}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>
@@ -126,6 +152,11 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
               </SelectContent>
             </Select>
             {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
+          </div>
+          <div className="space-y-1">
+            <Label>Mã nhân viên</Label>
+            <Input {...register("code")} placeholder="VD: NVCM070" />
+            {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="edit-user-active" checked={isActive} onCheckedChange={(v) => setValue("isActive", v === true)} />

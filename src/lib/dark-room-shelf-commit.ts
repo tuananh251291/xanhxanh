@@ -1,6 +1,18 @@
 import type { Prisma } from "@prisma/client";
+import { addWeeks } from "date-fns";
 import { generateLotCode } from "@/lib/codes";
 import type { ShelfPlacement } from "@/lib/shelf-assignment";
+
+// Hạn "đến lịch cấy chuyển/chuyển kho thành phẩm" tính từ đúng lúc lô LÊN KỆ (Kho sáng), không phải lúc
+// nhập dữ liệu cấy ở Phòng tối — vì Phòng tối còn giữ lô vài ngày trước khi Kho mô xác nhận nhận lên kệ,
+// nếu tính từ lúc nhập dữ liệu thì hạn sẽ đến sớm hơn thực tế NV cần theo dõi trên kệ.
+function computeExpectedMoveAt(
+  stage: "MAU_ME" | "THANH_PHAM",
+  plantType: { rootingWeeks: number; transferWaitWeeks: number },
+  enteredAt: Date
+): Date {
+  return addWeeks(enteredAt, stage === "MAU_ME" ? plantType.transferWaitWeeks : plantType.rootingWeeks);
+}
 
 // Áp dụng kết quả planShelfAssignments/planSurplusPlacement vào DB: gán shelfId + enteredAt mới cho lô
 // gốc (dùng chung cho PATCH /api/transfers/[id] và POST /api/transfers/receive-phong-toi — tách ra đây
@@ -17,11 +29,18 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
   for (const [lotId, parts] of byLot) {
     const [first, ...rest] = parts;
     const isSplit = rest.length > 0;
+    const enteredAt = new Date();
     await tx.lot.update({
       where: { id: lotId },
       data: {
         shelfId: first.shelfId,
-        enteredAt: new Date(),
+        // Lô rời hẳn Phòng tối khi lên kệ Kho sáng — bắt buộc null theo đúng bất biến "Kho sản xuất
+        // luôn dùng shelfId, roomId luôn null" (xem prisma/schema.prisma, model Lot). Thiếu dòng này
+        // khiến lô đã lên kệ vẫn còn roomId trỏ về Phòng tối cũ, hiện lại trên /my-dark-room và
+        // /product-handover như thể chưa bàn giao dù Kho mô đã xác nhận xong.
+        roomId: null,
+        enteredAt,
+        expectedMoveAt: computeExpectedMoveAt(first.lot.stage, first.lot.plantType, enteredAt),
         ...(isSplit ? { quantity: first.quantity, initialQuantity: first.quantity } : {}),
       },
     });
@@ -44,7 +63,8 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
           quantity: part.quantity,
           initialQuantity: part.quantity,
           status: "ACTIVE",
-          enteredAt: new Date(),
+          enteredAt,
+          expectedMoveAt: computeExpectedMoveAt(part.lot.stage, part.lot.plantType, enteredAt),
           instructionId: part.lot.instructionId,
           parentLotId: lotId,
         },

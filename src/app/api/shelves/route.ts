@@ -40,11 +40,11 @@ const MAX_SHELVES_PER_REQUEST = 300;
 // Số hàng nhập tay (01-99), không tự suy từ vị trí chữ cái trong bảng chữ cái — cho phép đặt VD hàng
 // "D" nhưng số hàng "01"/"02" nếu kho không đánh số hàng tuần tự theo chữ cái. Bỏ qua (không lỗi) các
 // mã đã tồn tại để có thể gọi lại nhiều lần khi chỉ muốn bổ sung thêm phần còn thiếu.
-// assignedStaffId/sharedMotherPool chỉ áp dụng cho Phòng mẫu mẹ (đúng ràng buộc như PATCH
-// /api/shelves/[id]) — "kệ đã chia" gán 1 NV cấy mô cụ thể; "kệ chung" (không gán NV) phân loại thêm
-// Kho quá hạn/đúng hạn (sharedMotherPool). 2 field loại trừ nhau, client tự đảm bảo không gửi cả 2.
-const createSchema = z.object({
-  roomId: z.string(),
+// assignedStaffId/sharedMotherPool/plantTypeId chỉ áp dụng cho Phòng mẫu mẹ (đúng ràng buộc như PATCH
+// /api/shelves/[id]) — "kệ đã chia" gán 1 NV cấy mô cụ thể + có thể kèm mã cây (plantTypeId); "kệ chung"
+// (không gán NV) phân loại thêm Kho quá hạn/đúng hạn (sharedMotherPool). assignedStaffId/sharedMotherPool
+// loại trừ nhau, client tự đảm bảo không gửi cả 2 — plantTypeId gửi kèm assignedStaffId khi tạo lô "đã chia".
+const lineSchema = z.object({
   row: z
     .string()
     .trim()
@@ -54,9 +54,19 @@ const createSchema = z.object({
   rowTo: z.number().int().min(1).max(99),
   colFrom: z.number().int().min(1),
   colTo: z.number().int().min(1),
+});
+
+// Nhận nhiều "hàng" (lines) trong 1 request duy nhất — trước đây client gọi API riêng cho từng hàng,
+// khiến nếu hàng giữa chừng lỗi thì các hàng trước đã tạo thật trong DB nhưng Admin chỉ thấy 1 thông
+// báo lỗi chung, tưởng chưa tạo gì. Giờ toàn bộ grid của mọi hàng được kiểm tra + tạo trong CÙNG 1
+// transaction bên dưới — hoặc tạo hết, hoặc báo lỗi mà không tạo gì cả.
+const createSchema = z.object({
+  roomId: z.string(),
+  lines: z.array(lineSchema).min(1),
   capacity: z.number().int().positive().optional(),
   assignedStaffId: z.string().optional(),
   sharedMotherPool: z.enum(["QUA_HAN", "DUNG_HAN"]).optional(),
+  plantTypeId: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -68,15 +78,17 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { roomId, row, rowFrom, rowTo, colFrom, colTo, capacity, assignedStaffId, sharedMotherPool } = parsed.data;
+  const { roomId, lines, capacity, assignedStaffId, sharedMotherPool, plantTypeId } = parsed.data;
 
-  if (rowFrom > rowTo) {
-    return NextResponse.json({ message: "Khoảng số hàng không hợp lệ" }, { status: 400 });
+  for (const line of lines) {
+    if (line.rowFrom > line.rowTo) {
+      return NextResponse.json({ message: `Hàng ${line.row}: khoảng số hàng không hợp lệ` }, { status: 400 });
+    }
+    if (line.colFrom > line.colTo) {
+      return NextResponse.json({ message: `Hàng ${line.row}: khoảng cột không hợp lệ` }, { status: 400 });
+    }
   }
-  if (colFrom > colTo) {
-    return NextResponse.json({ message: "Khoảng cột không hợp lệ" }, { status: 400 });
-  }
-  const total = (rowTo - rowFrom + 1) * (colTo - colFrom + 1);
+  const total = lines.reduce((sum, l) => sum + (l.rowTo - l.rowFrom + 1) * (l.colTo - l.colFrom + 1), 0);
   if (total > MAX_SHELVES_PER_REQUEST) {
     return NextResponse.json({ message: `Chỉ tạo tối đa ${MAX_SHELVES_PER_REQUEST} kệ mỗi lần` }, { status: 400 });
   }
@@ -89,11 +101,15 @@ export async function POST(req: NextRequest) {
   if (room.type !== "PHONG_MAU_ME" && room.type !== "PHONG_RA_RE") {
     return NextResponse.json({ message: "Chỉ Phòng mẫu mẹ/Phòng ra rễ mới quản lý theo giàn kệ" }, { status: 400 });
   }
-  if ((assignedStaffId || sharedMotherPool) && room.type !== "PHONG_MAU_ME") {
-    return NextResponse.json({ message: "Đã chia/Kho quá hạn-đúng hạn chỉ áp dụng cho Phòng mẫu mẹ" }, { status: 400 });
+  if ((assignedStaffId || sharedMotherPool || plantTypeId) && room.type !== "PHONG_MAU_ME") {
+    return NextResponse.json({ message: "Đã chia/Kho quá hạn-đúng hạn/Mã cây chỉ áp dụng cho Phòng mẫu mẹ" }, { status: 400 });
   }
-  if ((assignedStaffId || sharedMotherPool) && session?.user?.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ Admin cao nhất mới được gán nhân viên/phân loại kho cho kệ" }, { status: 403 });
+  if ((assignedStaffId || sharedMotherPool || plantTypeId) && session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cao nhất mới được gán nhân viên/mã cây/phân loại kho cho kệ" }, { status: 403 });
+  }
+  if (plantTypeId) {
+    const plantType = await prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { id: true } });
+    if (!plantType) return NextResponse.json({ message: "Không tìm thấy loại cây" }, { status: 400 });
   }
   if (assignedStaffId) {
     const staff = await prisma.user.findUnique({ where: { id: assignedStaffId }, select: { role: true, workplaceWarehouseId: true } });
@@ -108,47 +124,55 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const grid: { code: string; name: string; block: string; rowNumber: number; colNumber: number }[] = [];
-  for (let rowNumber = rowFrom; rowNumber <= rowTo; rowNumber++) {
-    const rowStr = String(rowNumber).padStart(2, "0");
-    const block = `${row}${rowStr}`;
-    for (let col = colFrom; col <= colTo; col++) {
-      const colStr = String(col).padStart(2, "0");
-      grid.push({ code: `${room.code}-${row}${rowStr}C${colStr}`, name: `Kệ ${row}${rowStr}C${colStr}`, block, rowNumber, colNumber: col });
+  const gridByCode = new Map<string, { code: string; name: string; block: string; rowNumber: number; colNumber: number }>();
+  for (const line of lines) {
+    for (let rowNumber = line.rowFrom; rowNumber <= line.rowTo; rowNumber++) {
+      const rowStr = String(rowNumber).padStart(2, "0");
+      const block = `${line.row}${rowStr}`;
+      for (let col = line.colFrom; col <= line.colTo; col++) {
+        const colStr = String(col).padStart(2, "0");
+        const code = `${room.code}-${line.row}${rowStr}C${colStr}`;
+        gridByCode.set(code, { code, name: `Kệ ${line.row}${rowStr}C${colStr}`, block, rowNumber, colNumber: col });
+      }
     }
   }
+  const grid = [...gridByCode.values()];
 
-  const existing = await prisma.shelf.findMany({
-    where: { code: { in: grid.map((s) => s.code) } },
-    select: { code: true },
-  });
-  const existingCodes = new Set(existing.map((s) => s.code));
-  const toInsert = grid.filter((s) => !existingCodes.has(s.code));
-
-  if (toInsert.length > 0) {
-    await prisma.shelf.createMany({
-      data: toInsert.map((s) => ({
-        code: s.code,
-        name: s.name,
-        warehouseId: room.warehouseId,
-        roomId: room.id,
-        rowNumber: s.rowNumber,
-        colNumber: s.colNumber,
-        block: s.block,
-        // Phòng mẫu mẹ: sức chứa tính theo cụm mẫu mẹ, mặc định 1800 nếu không nhập. Phòng ra rễ: sức
-        // chứa tính theo túi thành phẩm (T01/T05), không bắt buộc — để trống nghĩa là không giới hạn.
-        capacity: room.type === "PHONG_MAU_ME" ? (capacity ?? 1800) : (capacity ?? null),
-        assignedStaffId: assignedStaffId ?? null,
-        sharedMotherPool: assignedStaffId ? null : (sharedMotherPool ?? null),
-      })),
+  // Kiểm tra mã trùng + tạo hàng loạt trong CÙNG 1 transaction — atomic cho toàn bộ grid (mọi hàng),
+  // tránh để lại dữ liệu nửa vời nếu có lỗi giữa chừng.
+  const { createdCount, skippedCodes } = await prisma.$transaction(async (tx) => {
+    const existing = await tx.shelf.findMany({
+      where: { code: { in: grid.map((s) => s.code) } },
+      select: { code: true },
     });
-  }
+    const existingCodes = new Set(existing.map((s) => s.code));
+    const toInsert = grid.filter((s) => !existingCodes.has(s.code));
 
-  return NextResponse.json(
-    {
+    if (toInsert.length > 0) {
+      await tx.shelf.createMany({
+        data: toInsert.map((s) => ({
+          code: s.code,
+          name: s.name,
+          warehouseId: room.warehouseId,
+          roomId: room.id,
+          rowNumber: s.rowNumber,
+          colNumber: s.colNumber,
+          block: s.block,
+          // Cả Phòng mẫu mẹ lẫn Phòng ra rễ đều tính sức chứa theo TÚI, không có giá trị mặc định nào
+          // — luôn lấy đúng số Admin cấp cao đã nhập cho từng kệ; để trống nghĩa là không giới hạn.
+          capacity: capacity ?? null,
+          assignedStaffId: assignedStaffId ?? null,
+          sharedMotherPool: assignedStaffId ? null : (sharedMotherPool ?? null),
+          plantTypeId: plantTypeId ?? null,
+        })),
+      });
+    }
+
+    return {
       createdCount: toInsert.length,
       skippedCodes: grid.filter((s) => existingCodes.has(s.code)).map((s) => s.code),
-    },
-    { status: 201 }
-  );
+    };
+  });
+
+  return NextResponse.json({ createdCount, skippedCodes }, { status: 201 });
 }

@@ -61,7 +61,15 @@ function RankingTable({
   );
 }
 
-export default function ProductivityLeaderboard() {
+export default function ProductivityLeaderboard({
+  label = "Bảng thi đua năng suất tuần",
+  variant = "card",
+}: {
+  label?: string;
+  // "card": dòng bấm dạng thẻ bo góc (dùng ở dashboard nâng cao). "heading": dạng tiêu đề mục h2 giống
+  // các section khác (VD "Nhiệm vụ chính hôm nay") — dùng ở dashboard cơ bản (Giao diện cơ bản).
+  variant?: "card" | "heading";
+}) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<LeaderboardData | null>(null);
 
@@ -77,14 +85,22 @@ export default function ProductivityLeaderboard() {
 
   return (
     <Dialog onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors w-full text-left bg-white"
-      >
-        <div className="p-2.5 rounded-xl shrink-0 bg-warning-light text-warning-foreground">
-          <Trophy className="w-5 h-5" />
-        </div>
-        <span className="text-sm font-medium text-foreground">Bảng thi đua năng suất tuần</span>
-      </DialogTrigger>
+      {variant === "heading" ? (
+        <DialogTrigger className="w-full text-left">
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-warning-foreground" /> {label}
+          </h2>
+        </DialogTrigger>
+      ) : (
+        <DialogTrigger
+          className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors w-full text-left bg-white"
+        >
+          <div className="p-2.5 rounded-xl shrink-0 bg-warning-light text-warning-foreground">
+            <Trophy className="w-5 h-5" />
+          </div>
+          <span className="text-sm font-medium text-foreground">{label}</span>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

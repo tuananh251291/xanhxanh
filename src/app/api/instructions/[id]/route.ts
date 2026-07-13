@@ -58,6 +58,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.assignedToId !== session?.user?.id) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     }
+    // Chỉ định đã bị hệ thống tự kết thúc (VD hết thời gian, xem ensureInstructionsEnded) hoặc bị
+    // hủy/hoàn thành thì không còn gì để xác nhận — tránh trạng thái mâu thuẫn "đã kết thúc" nhưng
+    // "vừa mới nhận mẫu mẹ".
+    if (instruction.status !== "ACTIVE" && instruction.status !== "DRAFT") {
+      return NextResponse.json({ message: "Chỉ định đã kết thúc hoặc đã hủy — không thể xác nhận nhận mẫu mẹ" }, { status: 400 });
+    }
     // NV cấy mô chỉ được thực hiện 1 chỉ định tại 1 thời điểm — KHO_MO có thể bàn giao trước chỉ định
     // mới bất cứ lúc nào, nhưng NV cấy mô chỉ được XÁC NHẬN (bắt đầu) sau khi chỉ định đang thực hiện
     // hiện tại (đã xác nhận nhận mẫu mẹ nhưng chưa kết thúc) thực sự kết thúc.

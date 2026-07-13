@@ -8,6 +8,8 @@ import { ROLE_NAV, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
 import { ensureMotherReadyAlerts } from "@/lib/mother-ready";
+import { ensureRootingReadyAlerts } from "@/lib/rooting-ready";
+import { ensureInstructionsEnded } from "@/lib/instruction-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -19,7 +21,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const role = session.user.role as UserRole;
 
+  await ensureInstructionsEnded();
   if (role === "KY_THUAT") await ensureMotherReadyAlerts();
+  if (role === "KHO_MO") await ensureRootingReadyAlerts();
 
   const alertCount = await prisma.alert.count({
     where: {

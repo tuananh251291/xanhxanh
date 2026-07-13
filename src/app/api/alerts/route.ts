@@ -9,11 +9,17 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  const type = searchParams.get("type");
+  const unresolved = searchParams.get("unresolved");
 
   const where: Record<string, unknown> = {
     OR: [{ userId: session.user.id }, { targetRole: session.user.role }],
   };
   if (status) where.status = status;
+  if (type) where.type = type;
+  // Dùng cho trang "Kiểm tra tình trạng cấy" — liệt kê theo đã xác định nguyên nhân hay chưa,
+  // tách biệt khỏi trạng thái đã xem (status) trên trang Thông báo.
+  if (unresolved) where.cause = null;
 
   const alerts = await prisma.alert.findMany({
     where,

@@ -5,15 +5,9 @@ import { generateProductLotCode } from "@/lib/codes";
 import { createAlert, getSystemConfig } from "@/lib/inventory";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { addToContaminationRoom } from "@/lib/contamination-room";
+import { motherClusterUnits } from "@/types";
 import { z } from "zod";
-import { addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, differenceInCalendarDays, isSameDay } from "date-fns";
-
-// Tiến độ cấy chuyển được tính theo 6 ngày làm việc (Thứ 2 - Thứ 7) — Chủ nhật là ngày làm thêm tùy chọn
-// nên không cộng thêm vào chỉ tiêu cần đạt (chặn ở mức của ngày Thứ 7 = tổng dự kiến cả tuần).
-const WORKING_DAYS_PER_WEEK = 6;
-const STAGE_KEYS = ["m03", "m05", "t05", "t01"] as const;
-type StageKey = (typeof STAGE_KEYS)[number];
-const STAGE_LABELS: Record<StageKey, string> = { m03: "M03", m05: "M05", t05: "T05", t01: "T01" };
+import { addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 
 const schema = z.object({
   instructionId: z.string(),
@@ -169,49 +163,77 @@ export async function POST(req: NextRequest) {
     quantity: motherContaminatedM05,
   });
 
-  // Kiểm tra tiến độ cấy theo từng quy cách (M03/M05/T05/T01) so với mức trung bình cần đạt mỗi ngày
-  // (dự kiến cả tuần / 6 ngày), tính lũy kế tới hôm nay — chỉ cần 1 quy cách hụt dưới ngưỡng "Tỉ lệ cấy
-  // cần đạt" (Admin cấu hình ở Cài đặt) là coi như lệch, cảnh báo cho KY_THUAT xử lý.
-  const targetPct = parseFloat(await getSystemConfig("planting_ratio_target_pct", "80")) || 80;
-  const elapsedDays = Math.min(differenceInCalendarDays(today, instruction.weekStart) + 1, WORKING_DAYS_PER_WEEK);
+  // Tỉ lệ nhiễm mẫu mẹ sau ủ sáng — tổng mẫu mẹ nhiễm (M03+M05) cộng dồn mọi ngày của chỉ định này so
+  // với tổng mẫu mẹ được cấp (inputMotherQuantity), kiểm tra lại ngay mỗi lần lưu nhật ký — vượt ngưỡng
+  // Admin cấp cao cài đặt (mother_contamination_alert_pct, xem Cài đặt) thì báo cho KHO_MO biết sớm,
+  // trước cả khi có phiếu bàn giao thật, để chủ động xử lý khi nhận.
+  const motherContaminationPct = parseFloat(await getSystemConfig("mother_contamination_alert_pct", "10")) || 10;
+  const contaminatedAgg = await prisma.dailyRecord.aggregate({
+    where: { instructionId },
+    _sum: { motherContaminatedM03: true, motherContaminatedM05: true },
+  });
+  const totalContaminated = (contaminatedAgg._sum.motherContaminatedM03 ?? 0) + (contaminatedAgg._sum.motherContaminatedM05 ?? 0);
+  const motherContaminationRate = instruction.inputMotherQuantity > 0 ? (totalContaminated / instruction.inputMotherQuantity) * 100 : 0;
+  if (motherContaminationRate > motherContaminationPct) {
+    await createAlert({
+      type: "MOTHER_CONTAMINATION_HIGH",
+      title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
+      message: `Chỉ định ${instruction.code}: mẫu mẹ nhiễm ${totalContaminated}/${instruction.inputMotherQuantity} (${Math.round(motherContaminationRate)}%) — vượt ngưỡng ${motherContaminationPct}%`,
+      targetRole: "KHO_MO",
+      relatedId: instructionId,
+      relatedType: "PlantingInstruction",
+    });
+  }
 
-  const expectedByStage: Record<StageKey, number> = {
-    m03: instruction.items.filter((i) => i.stageCode === "M03").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0),
-    m05: instruction.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0),
-    t05: instruction.plannedT05Quantity ?? 0,
-    t01: instruction.plannedT01Quantity ?? 0,
-  };
+  // Tổng "MM sử dụng" lũy kế cả chỉ định — dùng chung cho cả cảnh báo lệch chỉ định (bên dưới) lẫn kiểm
+  // tra tự động kết thúc chỉ định (bên dưới nữa), tránh truy vấn 2 lần.
+  const motherUsedAgg = await prisma.dailyRecord.aggregate({
+    where: { instructionId },
+    _sum: { motherUsed: true },
+  });
+  const totalMotherUsed = motherUsedAgg._sum.motherUsed ?? 0;
 
-  const itemsByStage = await prisma.dailyRecordItem.findMany({
+  // Nghi ngờ cấy sai chỉ định khi CẢ 2 tỉ lệ thực tế (lũy kế cả chỉ định) đều thấp hơn ngưỡng % Admin
+  // cấu hình so với tỉ lệ mục tiêu của chính chỉ định này (suy từ motherSampleRatio/rootingRatio KY_THUAT
+  // nhập lúc tạo chỉ định) — chỉ 1 trong 2 tỉ lệ thấp thì chưa đủ căn cứ kết luận cấy sai (VD tỉ lệ nhân MM
+  // thấp nhưng ra thành phẩm vẫn đạt thì có thể do khác biệt tự nhiên, không phải lỗi thao tác):
+  // - Tỉ lệ nhân MM = số cụm mẫu mẹ thành phẩm (M03/M05, quy đổi cụm) / số mẫu mẹ đã sử dụng.
+  // - Tỉ lệ ra thành phẩm = số cây ra rễ thành phẩm (T05+T01) / số mẫu mẹ đã sử dụng.
+  const motherRatioTargetPct = parseFloat(await getSystemConfig("mother_ratio_target_pct", "80")) || 80;
+  const finishedRatioTargetPct = parseFloat(await getSystemConfig("finished_ratio_target_pct", "80")) || 80;
+
+  const targetMotherOutputClusters = instruction.items
+    .filter((i) => i.stageCode === "M03" || i.stageCode === "M05")
+    .reduce((s, i) => s + motherClusterUnits(i.stageCode, i.expectedMotherOutput ?? 0), 0);
+  const targetMotherRatio = instruction.inputMotherQuantity > 0 ? targetMotherOutputClusters / instruction.inputMotherQuantity : 0;
+  const targetFinishedRatio = instruction.inputMotherQuantity > 0 ? (instruction.expectedFinishedOutput ?? 0) / instruction.inputMotherQuantity : 0;
+
+  const producedItems = await prisma.dailyRecordItem.findMany({
     where: { dailyRecord: { instructionId } },
     include: { lot: { select: { stageCode: true } } },
   });
-  const actualByStage: Record<StageKey, number> = { m03: 0, m05: 0, t05: 0, t01: 0 };
-  for (const i of itemsByStage) {
-    const key = i.lot.stageCode.toLowerCase() as StageKey;
-    if (key in actualByStage) actualByStage[key] += i.quantityCreated;
+  let actualMotherOutputClusters = 0;
+  let actualFinishedOutput = 0;
+  for (const i of producedItems) {
+    if (i.stage === "MAU_ME") actualMotherOutputClusters += motherClusterUnits(i.lot.stageCode, i.quantityCreated);
+    else actualFinishedOutput += i.quantityCreated;
   }
-
-  const behindStages = STAGE_KEYS.filter((key) => {
-    const expected = expectedByStage[key];
-    if (!expected) return false;
-    const expectedToDate = (expected / WORKING_DAYS_PER_WEEK) * elapsedDays;
-    return actualByStage[key] / expectedToDate < targetPct / 100;
-  });
+  const actualMotherRatio = totalMotherUsed > 0 ? actualMotherOutputClusters / totalMotherUsed : 0;
+  const actualFinishedRatio = totalMotherUsed > 0 ? actualFinishedOutput / totalMotherUsed : 0;
+  const motherRatioPct = targetMotherRatio > 0 ? (actualMotherRatio / targetMotherRatio) * 100 : null;
+  const finishedRatioPct = targetFinishedRatio > 0 ? (actualFinishedRatio / targetFinishedRatio) * 100 : null;
 
   let alert = false;
-  if (behindStages.length > 0) {
+  if (
+    totalMotherUsed > 0 &&
+    motherRatioPct !== null && finishedRatioPct !== null &&
+    motherRatioPct < motherRatioTargetPct && finishedRatioPct < finishedRatioTargetPct
+  ) {
     alert = true;
-    const detail = behindStages
-      .map((key) => {
-        const expectedToDate = Math.round((expectedByStage[key] / WORKING_DAYS_PER_WEEK) * elapsedDays);
-        return `${STAGE_LABELS[key]}: ${actualByStage[key]}/${expectedToDate}`;
-      })
-      .join(", ");
     await createAlert({
       type: "OUTPUT_DEVIATION",
       title: "Cấy lệch tiến độ so với chỉ định",
-      message: `Chỉ định ${instruction.code}: đang cấy chậm hơn ${targetPct}% tiến độ cần đạt — ${detail}`,
+      message: `Chỉ định ${instruction.code}: tỉ lệ nhân MM đạt ${Math.round(motherRatioPct)}% (cần ≥${motherRatioTargetPct}%), tỉ lệ ra thành phẩm đạt ${Math.round(finishedRatioPct)}% (cần ≥${finishedRatioTargetPct}%) so với mục tiêu chỉ định`,
       targetRole: "KY_THUAT",
       relatedId: instructionId,
       relatedType: "PlantingInstruction",
@@ -226,12 +248,6 @@ export async function POST(req: NextRequest) {
   let ended = false;
   let endReason: "MOTHER_USED_UP" | "TIME_UP" | null = null;
   if (instruction.status !== "ENDED") {
-    const motherUsedAgg = await prisma.dailyRecord.aggregate({
-      where: { instructionId },
-      _sum: { motherUsed: true },
-    });
-    const totalMotherUsed = motherUsedAgg._sum.motherUsed ?? 0;
-
     if (totalMotherUsed >= instruction.inputMotherQuantity) {
       endReason = "MOTHER_USED_UP";
     } else if (isSameDay(today, weekEnd)) {
@@ -247,7 +263,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ record, lotsCreated, alert, ended, endReason }, { status: 201 });
+  return NextResponse.json(
+    { record, lotsCreated, alert, motherRatioPct, finishedRatioPct, motherRatioTargetPct, finishedRatioTargetPct, ended, endReason },
+    { status: 201 }
+  );
 }
 
 export async function GET(req: NextRequest) {

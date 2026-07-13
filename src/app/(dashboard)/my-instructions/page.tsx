@@ -132,7 +132,12 @@ export default async function MyInstructionsPage() {
                   <tbody>
                     {ended.map((inst) => {
                       const surplus = surplusOf(inst);
-                      const canHandoverSurplus = inst.endReason === "TIME_UP" && !inst.surplusHandedOverAt && surplus > 0;
+                      // Chưa từng xác nhận nhận mẫu mẹ (motherReceivedAt null) — lô gốc chưa hề bị đụng
+                      // tới, "surplus" tính ra lúc này chỉ là toàn bộ inputMotherQuantity chứ không phải
+                      // dư thật — không cho bàn giao (server cũng chặn, xem surplus-handover/route.ts)
+                      // và không hiển thị số dư gây hiểu nhầm.
+                      const canHandoverSurplus =
+                        inst.endReason === "TIME_UP" && !inst.surplusHandedOverAt && surplus > 0 && !!inst.motherReceivedAt;
                       return (
                         <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light/30">
                           <td className="px-4 py-3 font-mono font-medium text-info-foreground">{inst.code}</td>
@@ -141,7 +146,9 @@ export default async function MyInstructionsPage() {
                             {inst.endReason ? END_REASON_LABELS[inst.endReason] : "—"}
                           </td>
                           <td className="px-4 py-3 text-text-secondary">
-                            {inst.endReason === "TIME_UP" ? (
+                            {inst.endReason === "TIME_UP" && !inst.motherReceivedAt ? (
+                              <span className="text-xs text-text-muted">Chưa từng nhận mẫu mẹ — không có gì để bàn giao</span>
+                            ) : inst.endReason === "TIME_UP" ? (
                               <>
                                 <strong>{Math.max(0, surplus).toLocaleString("vi-VN")}</strong>
                                 {inst.surplusHandedOverAt && (

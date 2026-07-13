@@ -95,7 +95,12 @@ export default async function InstructionsPage({
             warehouse: { select: { id: true, code: true, name: true } },
             rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
             plantType: { select: { code: true } },
-            lots: { where: { status: "ACTIVE" }, select: { quantity: true, expectedMoveAt: true } },
+            // Lô đã dùng làm nguồn cho 1 chỉ định cấy coi như đã xử lý xong — loại khỏi "đến hạn cấy
+            // chuyển", giống hệt điều kiện ở /instructions/mother-due/[warehouseId] và /mother-ready.
+            lots: {
+              where: { status: "ACTIVE", instructionItems: { none: {} } },
+              select: { quantity: true, expectedMoveAt: true },
+            },
           },
         })
       ).filter((g) => g.isDue)

@@ -10,10 +10,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { Plus, Loader2, Layers, X } from "lucide-react";
 import { toast } from "sonner";
 
 type Staff = { id: string; code: string; name: string };
+type PlantType = { id: string; code: string; name: string };
+type ComboOption = { value: string; label: string };
 
 const SHARED_POOL_OPTIONS: { value: "NONE" | "DUNG_HAN" | "QUA_HAN"; label: string }[] = [
   { value: "NONE", label: "Chưa phân loại" },
@@ -46,12 +58,13 @@ const nextRowLetter = (row: string) => {
 };
 
 export default function AddShelvesDialog({
-  roomId, roomCode, roomType, caymoStaff = [], canAssignStaff = false,
+  roomId, roomCode, roomType, caymoStaff = [], plantTypes = [], canAssignStaff = false,
 }: {
   roomId: string;
   roomCode: string;
   roomType: "PHONG_MAU_ME" | "PHONG_RA_RE";
   caymoStaff?: Staff[];
+  plantTypes?: PlantType[];
   canAssignStaff?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -63,15 +76,18 @@ export default function AddShelvesDialog({
   const [poolType, setPoolType] = useState<"SHARED" | "ASSIGNED">("SHARED");
   const [assignedStaffId, setAssignedStaffId] = useState("");
   const [sharedMotherPool, setSharedMotherPool] = useState<"NONE" | "DUNG_HAN" | "QUA_HAN">("NONE");
+  const [plantTypeValue, setPlantTypeValue] = useState<ComboOption | null>(null);
   const resetPoolState = () => {
     setPoolType("SHARED");
     setAssignedStaffId("");
     setSharedMotherPool("NONE");
+    setPlantTypeValue(null);
   };
+  const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.name} (${p.code})` }));
 
   const { register, control, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { lines: [{ row: "A", rowFrom: 1, rowTo: 1, colFrom: 1, colTo: 5 }], capacity: isMauMe ? 1800 : undefined },
+    defaultValues: { lines: [{ row: "A", rowFrom: 1, rowTo: 1, colFrom: 1, colTo: 5 }], capacity: undefined },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
 
@@ -113,29 +129,26 @@ export default function AddShelvesDialog({
     }
     const poolFields =
       showPoolSection && poolType === "ASSIGNED"
-        ? { assignedStaffId }
+        ? { assignedStaffId, ...(plantTypeValue ? { plantTypeId: plantTypeValue.value } : {}) }
         : showPoolSection && sharedMotherPool !== "NONE"
           ? { sharedMotherPool }
           : {};
     setLoading(true);
     try {
-      let createdTotal = 0;
-      let skippedTotal = 0;
-      for (const line of data.lines) {
-        const res = await fetch("/api/shelves", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roomId, ...line, capacity: data.capacity, ...poolFields }),
-        });
-        const json = await res.json();
-        if (!res.ok) { toast.error(`Hàng ${line.row}: ${json.message ?? "Có lỗi xảy ra"}`); return; }
-        createdTotal += json.createdCount;
-        skippedTotal += json.skippedCodes.length;
-      }
+      // Gộp mọi hàng vào 1 request duy nhất — server xử lý atomic trong 1 transaction, tránh trường
+      // hợp gọi API tuần tự từng hàng: hàng giữa chừng lỗi thì các hàng trước đã tạo thật nhưng chỉ
+      // báo lỗi chung, khiến Admin tưởng chưa tạo gì.
+      const res = await fetch("/api/shelves", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId, lines: data.lines, capacity: data.capacity, ...poolFields }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success(
-        skippedTotal > 0
-          ? `Đã tạo ${createdTotal} kệ mới — bỏ qua ${skippedTotal} kệ đã có mã trùng`
-          : `Đã tạo ${createdTotal} kệ mới`
+        json.skippedCodes.length > 0
+          ? `Đã tạo ${json.createdCount} kệ mới — bỏ qua ${json.skippedCodes.length} kệ đã có mã trùng`
+          : `Đã tạo ${json.createdCount} kệ mới`
       );
       setOpen(false);
       reset();
@@ -207,12 +220,12 @@ export default function AddShelvesDialog({
             <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm hàng
           </Button>
           <div className="space-y-1">
-            <Label>Sức chứa mỗi kệ ({isMauMe ? "cụm" : "túi"})</Label>
+            <Label>Sức chứa mỗi kệ (túi)</Label>
             <Input
               type="number"
               min={1}
               {...register("capacity", { valueAsNumber: true })}
-              placeholder={isMauMe ? "1800" : "Không giới hạn nếu để trống"}
+              placeholder="Không giới hạn nếu để trống"
             />
           </div>
           {showPoolSection && (
@@ -250,16 +263,39 @@ export default function AddShelvesDialog({
                   </SelectContent>
                 </Select>
               ) : (
-                <Select
-                  items={caymoStaff.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))}
-                  value={assignedStaffId}
-                  onValueChange={(v) => setAssignedStaffId(v as string)}
-                >
-                  <SelectTrigger className="w-full h-9"><SelectValue placeholder="Chọn nhân viên phụ trách" /></SelectTrigger>
-                  <SelectContent>
-                    {caymoStaff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Select
+                    items={caymoStaff.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))}
+                    value={assignedStaffId}
+                    onValueChange={(v) => setAssignedStaffId(v as string)}
+                  >
+                    <SelectTrigger className="w-full h-9"><SelectValue placeholder="Chọn nhân viên phụ trách" /></SelectTrigger>
+                    <SelectContent>
+                      {caymoStaff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Combobox
+                    items={plantTypeOptions}
+                    value={plantTypeValue}
+                    isItemEqualToValue={(a, b) => a.value === b.value}
+                    onValueChange={(v) => setPlantTypeValue(v)}
+                  >
+                    <ComboboxInputGroup className="w-full h-9">
+                      <ComboboxInput className="text-sm" placeholder="Gõ tên hoặc mã cây… (không bắt buộc)" />
+                      <ComboboxTrigger />
+                    </ComboboxInputGroup>
+                    <ComboboxContent>
+                      <ComboboxEmpty>Không tìm thấy loại cây</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item: ComboOption) => (
+                          <ComboboxItem key={item.value} value={item} className="text-sm">
+                            {item.label}
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
+                </div>
               )}
             </div>
           )}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { addToContaminationRoom } from "@/lib/contamination-room";
+import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
 const STAGE_CODES = ["T01", "T05", "M03", "M05"] as const;
@@ -152,6 +153,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
       }
     }
   });
+
+  // Báo cho đúng NV cấy mô đã gửi phiếu này biết kết quả kiểm tra (số lượng ghi nhận) đã có — xem
+  // trang /handover-record. Chỉ luồng Đỏ/chưa cài đặt luồng mới tới được route này (luồng Xanh bị
+  // chặn ở trên), nên không cần kiểm tra lại inspectionLane ở đây. Transaction phía trên đã commit
+  // xong (kiểm tra + trừ hàng nhiễm đã lưu thật) — lỗi gửi thông báo ở đây KHÔNG được để làm hỏng
+  // response, nếu không Kho mô sẽ tưởng cả thao tác kiểm tra thất bại dù dữ liệu đã lưu.
+  try {
+    await createAlert({
+      type: "INSPECTION_RESULT_READY",
+      title: "Có kết quả kiểm tra bàn giao",
+      message: `Phiếu ${transfer.code} đã được Kho mô kiểm tra xong — xem số lượng được ghi nhận`,
+      userId: transfer.fromUserId,
+      relatedId: transfer.id,
+      relatedType: "Transfer",
+    });
+  } catch (err) {
+    console.error(`[inspect/${transferId}] Không gửi được thông báo INSPECTION_RESULT_READY:`, err);
+  }
 
   return NextResponse.json({ success: true });
 }

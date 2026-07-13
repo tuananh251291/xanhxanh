@@ -12,7 +12,7 @@ export const lotSelect = {
   stageCode: true,
   quantity: true,
   plantTypeId: true,
-  plantType: { select: { code: true, name: true } },
+  plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
   instructionId: true,
   instruction: { select: { assignedToId: true } },
 } as const;
@@ -28,7 +28,7 @@ export type PendingItem = {
     stageCode: string;
     quantity: number;
     plantTypeId: string;
-    plantType: { code: string; name: string };
+    plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
     instructionId: string | null;
     instruction: { assignedToId: string | null } | null;
   };

@@ -21,9 +21,10 @@ export default async function TransferFinishedPage() {
 
   const workplaceWarehouseId = session!.user.workplaceWarehouseId ?? null;
 
-  // Nhóm tuần ra rễ đã đủ 3 tuần trong Phòng ra rễ — đề xuất KHO_MO chọn nhanh cả nhóm để bàn giao, thay vì
-  // quét/chọn từng kệ. Chỉ tính trong đúng kho làm việc của NV (nếu đã được gán); nếu chưa gán kho thì
-  // xét toàn bộ kho sản xuất (giữ đúng hành vi hiện có của phần chọn kệ thủ công bên dưới).
+  // Nhóm tuần ra rễ có ít nhất 1 lô đã đến hạn chuyển kho thành phẩm (theo thời gian ra rễ riêng của mã
+  // cây lô đó) — đề xuất KHO_MO chọn nhanh cả nhóm để bàn giao, thay vì quét/chọn từng kệ. Chỉ tính trong
+  // đúng kho làm việc của NV (nếu đã được gán); nếu chưa gán kho thì xét toàn bộ kho sản xuất (giữ đúng
+  // hành vi hiện có của phần chọn kệ thủ công bên dưới).
   const rootingRooms = await prisma.room.findMany({
     where: {
       type: "PHONG_RA_RE",
@@ -38,10 +39,11 @@ export default async function TransferFinishedPage() {
           id: true,
           code: true,
           name: true,
-          weekSlot: true,
+          rotationGroupId: true,
+          rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
           lots: {
             where: { status: "ACTIVE" },
-            select: { id: true, code: true, quantity: true, stageCode: true, enteredAt: true, plantType: { select: { id: true, code: true, name: true } } },
+            select: { id: true, code: true, quantity: true, stageCode: true, enteredAt: true, expectedMoveAt: true, plantType: { select: { id: true, code: true, name: true } } },
           },
         },
       },
@@ -53,12 +55,13 @@ export default async function TransferFinishedPage() {
     return statuses
       .filter((s) => s.isDue)
       .map((s) => ({
-        weekSlot: s.weekSlot,
+        groupId: s.groupId,
+        groupName: s.groupName,
         warehouseName: room.warehouse.name,
         roomName: room.name,
         oldestEnteredAt: s.oldestEnteredAt!.toISOString(),
         shelves: room.shelves
-          .filter((sh) => sh.weekSlot === s.weekSlot)
+          .filter((sh) => sh.rotationGroupId === s.groupId)
           .map((sh) => ({
             id: sh.id,
             code: sh.code,

@@ -9,15 +9,15 @@ const createSchema = z.object({
   codeSuffix: z.string().trim().length(3, "Cần đúng 3 ký tự").regex(/^[A-Za-z0-9]{3}$/, "Chỉ gồm chữ và số"),
   name: z.string().min(2),
   description: z.string().optional(),
-  transferWaitWeeks: z.number().int().min(1).default(5),
-  rootingWeeks: z.number().int().min(1).default(5),
+  transferWaitWeeks: z.number().int().min(1).max(6, "Tối đa 6 tuần").default(4),
+  rootingWeeks: z.number().int().min(1).default(3),
 });
 
 const updateSchema = z.object({
   id: z.string(),
   name: z.string().min(2).optional(),
   description: z.string().optional(),
-  transferWaitWeeks: z.number().int().min(1).optional(),
+  transferWaitWeeks: z.number().int().min(1).max(6, "Tối đa 6 tuần").optional(),
   rootingWeeks: z.number().int().min(1).optional(),
   isActive: z.boolean().optional(),
 });

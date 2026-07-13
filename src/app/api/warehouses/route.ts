@@ -24,7 +24,16 @@ export async function GET(req: NextRequest) {
       rooms: {
         where: { isActive: true },
         orderBy: { type: "asc" },
-        include: { shelves: { where: { isActive: true }, include: { group: { select: { id: true, name: true } } } } },
+        include: {
+          shelves: {
+            where: { isActive: true },
+            include: {
+              group: { select: { id: true, name: true } },
+              rotationGroup: { select: { id: true, name: true } },
+              plantType: { select: { code: true, transferWaitWeeks: true } },
+            },
+          },
+        },
       },
       shelves: { where: { isActive: true, roomId: null } },
     },
@@ -58,6 +67,19 @@ export async function POST(req: NextRequest) {
         { code: `${code}-PS`, name: "Phòng mẫu mẹ", type: "PHONG_MAU_ME", warehouseId: warehouse.id },
         { code: `${code}-PRR`, name: "Phòng ra rễ", type: "PHONG_RA_RE", warehouseId: warehouse.id },
         { code: `${code}-NHIEM`, name: "Phòng nhiễm", type: "PHONG_NHIEM", warehouseId: warehouse.id },
+      ],
+    });
+  }
+
+  // Kho thành phẩm mới mặc định có cấu tạo giống Kho thành phẩm A hiện tại — tự tạo sẵn 3 phòng cố định
+  // (Phòng khả dụng, Phòng theo dõi, Phòng hàn túi); phòng thị trường không tạo sẵn, Admin tự thêm sau
+  // qua "Thêm phòng thị trường" (xem add-market-room-dialog.tsx).
+  if (parsed.data.type === "THANH_PHAM") {
+    await prisma.room.createMany({
+      data: [
+        { code: `${code}-KD`, name: "Phòng khả dụng", type: "PHONG_KHA_DUNG", warehouseId: warehouse.id },
+        { code: `${code}-TD`, name: "Phòng theo dõi", type: "PHONG_THEO_DOI", warehouseId: warehouse.id },
+        { code: `${code}-HT`, name: "Phòng hàn túi", type: "PHONG_HAN_TUI", warehouseId: warehouse.id },
       ],
     });
   }

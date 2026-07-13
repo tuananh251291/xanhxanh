@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
+
+class DuplicateTransferError extends Error {}
+
+// Postgres huỷ 1 trong 2 transaction Serializable đụng nhau bằng lỗi write conflict — Prisma bọc lại
+// thành PrismaClientKnownRequestError mã P2034 ("Transaction failed due to a write conflict...").
+function isSerializationFailure(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034";
+}
 
 // toWarehouseId/toRoomId để trống khi bàn giao "phòng tối → kho sáng": đích cụ thể (Phòng mẫu mẹ hay
 // Phòng ra rễ, kệ nào) do hệ thống tự chỉ định lúc KHO_MO xác nhận (xem PATCH /api/transfers/[id]),
@@ -127,33 +136,68 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const code = await generateTransferCode();
+  // Chặn bàn giao trùng — lô đã có phiếu PENDING khác (VD F5 lại trang trước khi danh sách kịp lọc,
+  // hoặc bấm 2 lần/2 tab) thì không cho tạo phiếu thứ 2 cho cùng lô đó. Check + tạo phiếu gộp trong 1
+  // transaction mức cô lập Serializable — 2 request gần như đồng thời cùng đọc "chưa có phiếu PENDING"
+  // sẽ khiến Postgres tự huỷ 1 trong 2 (lỗi write conflict), thay vì cả 2 cùng lọt qua như khi check và
+  // tạo là 2 câu lệnh tách rời (round-trip riêng, không có gì khoá giữa chừng).
+  let transfer;
+  try {
+    transfer = await prisma.$transaction(
+      async (tx) => {
+        const alreadyPending = await tx.transferItem.findFirst({
+          where: { lotId: { in: items.map((i) => i.lotId) }, transfer: { status: "PENDING" } },
+          select: { lot: { select: { code: true } } },
+        });
+        if (alreadyPending) {
+          throw new DuplicateTransferError(
+            `Lô ${alreadyPending.lot.code} đã có phiếu bàn giao đang chờ xác nhận, không thể bàn giao trùng`
+          );
+        }
 
-  const transfer = await prisma.transfer.create({
-    data: {
-      code,
-      fromWarehouseId,
-      fromRoomId,
-      toWarehouseId,
-      toRoomId,
-      fromUserId: session.user.id,
-      toUserId,
-      notes,
-      items: { create: items },
-    },
-    include: {
-      items: { include: { lot: true } },
-      toWarehouse: true,
-      toRoom: true,
-    },
-  });
+        const code = await generateTransferCode(tx);
+        return tx.transfer.create({
+          data: {
+            code,
+            fromWarehouseId,
+            fromRoomId,
+            toWarehouseId,
+            toRoomId,
+            fromUserId: session.user.id,
+            toUserId,
+            notes,
+            items: { create: items },
+          },
+          include: {
+            items: { include: { lot: true } },
+            toWarehouse: true,
+            toRoom: true,
+          },
+        });
+      },
+      { isolationLevel: "Serializable" }
+    );
+  } catch (err) {
+    if (err instanceof DuplicateTransferError) {
+      return NextResponse.json({ message: err.message }, { status: 409 });
+    }
+    // Postgres huỷ 1 trong 2 transaction đụng nhau (write conflict) — báo lỗi rõ ràng để client thử lại,
+    // thay vì để lộ lỗi 500 chung chung.
+    if (isSerializationFailure(err)) {
+      return NextResponse.json(
+        { message: "Có người khác vừa bàn giao cùng lúc, vui lòng thử lại" },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   // Bàn giao từ Phòng tối → thông báo cho KHO_MO có phiếu chờ nhận.
   if (isFromDarkRoom) {
     await createAlert({
       type: "LOT_READY_TRANSFER",
       title: "Có phiếu bàn giao từ phòng tối chờ nhận",
-      message: `${session.user.name} đã gửi phiếu ${code} — ${items.length} lô từ phòng tối, chờ xác nhận nhập kho`,
+      message: `${session.user.name} đã gửi phiếu ${transfer.code} — ${items.length} lô từ phòng tối, chờ xác nhận nhập kho`,
       targetRole: "KHO_MO",
       relatedId: transfer.id,
       relatedType: "Transfer",
@@ -165,7 +209,7 @@ export async function POST(req: NextRequest) {
     await createAlert({
       type: "LOT_READY_TRANSFER",
       title: "Có phiếu bàn giao thành phẩm chờ nhận",
-      message: `${session.user.name} đã gửi phiếu ${code} — ${items.length} lô thành phẩm, chờ xác nhận nhập kho`,
+      message: `${session.user.name} đã gửi phiếu ${transfer.code} — ${items.length} lô thành phẩm, chờ xác nhận nhập kho`,
       targetRole: "KHO_THANH_PHAM",
       relatedId: transfer.id,
       relatedType: "Transfer",

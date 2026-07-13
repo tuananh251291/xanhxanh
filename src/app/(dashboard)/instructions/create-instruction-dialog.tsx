@@ -19,6 +19,12 @@ function nextWeekStart(): string {
   return format(startOfWeek(addWeeks(new Date(), 1), { weekStartsOn: 1 }), "yyyy-MM-dd");
 }
 
+// Tuần sớm nhất được phép chọn — tuần hiện tại (chưa trôi qua hết), không cho lùi về tuần trước. KY_THUAT
+// vẫn tự do đổi sang tuần bất kỳ từ tuần này trở đi, chỉ mặc định đề xuất tuần kế tiếp ở trên.
+function currentWeekStart(): Date {
+  return startOfWeek(new Date(), { weekStartsOn: 1 });
+}
+
 type MediumType = { id: string; code: string; name: string };
 type MotherLot = {
   id: string;
@@ -172,6 +178,16 @@ export default function CreateInstructionDialog({
 
   const onSubmit = async () => {
     if (!selectedShelf) { toast.error("Chọn giàn kệ nguồn"); return; }
+    // Để trống Tuần thực hiện khiến chỉ định không bao giờ tự kết thúc được (ensureInstructionsEnded
+    // lọc theo weekStart, bỏ qua bản ghi null) và NV cấy mô không nhập được nhật ký ngày (POST
+    // /api/daily-records chặn cứng nếu thiếu weekStart) — bắt buộc chọn ngay từ lúc tạo.
+    if (!weekStart) { toast.error("Chọn Tuần thực hiện"); return; }
+    // Không cho chọn tuần đã trôi qua — so theo tuần chứa ngày đã chọn (weekStartsOn: 1), không bắt
+    // buộc phải bấm đúng ngày Thứ 2, để KY_THUAT bấm đại 1 ngày trong tuần muốn chọn vẫn tính đúng.
+    if (startOfWeek(new Date(weekStart), { weekStartsOn: 1 }) < currentWeekStart()) {
+      toast.error("Không được chọn tuần đã trôi qua");
+      return;
+    }
     const usedRows = rowOutputs.filter((r) => r.qty > 0);
     if (usedRows.length === 0) { toast.error("Nhập số lượng dùng cho ít nhất 1 quy cách"); return; }
     for (const r of usedRows) {
@@ -328,7 +344,13 @@ export default function CreateInstructionDialog({
 
           <div className="space-y-1">
             <Label>Tuần thực hiện</Label>
-            <Input type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
+            <Input
+              type="date"
+              required
+              min={format(currentWeekStart(), "yyyy-MM-dd")}
+              value={weekStart}
+              onChange={(e) => setWeekStart(e.target.value)}
+            />
             {weekStart && (
               <p className="text-xs text-text-secondary">
                 Thứ 2, {format(new Date(weekStart), "dd/MM/yyyy", { locale: vi })} – Chủ nhật,{" "}

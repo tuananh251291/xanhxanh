@@ -18,7 +18,7 @@ const schema = z.object({
   categoryId: z.string().optional(),
   name: z.string().min(2),
   description: z.string().optional(),
-  transferWaitWeeks: z.coerce.number().int().min(1),
+  transferWaitWeeks: z.coerce.number().int().min(1).max(6, "Tối đa 6 tuần"),
   rootingWeeks: z.coerce.number().int().min(1),
 });
 
@@ -46,7 +46,7 @@ export default function PlantTypeDialog({
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as Resolver<FormData>,
-    defaultValues: plant ?? { transferWaitWeeks: 5, rootingWeeks: 5 },
+    defaultValues: plant ?? { transferWaitWeeks: 4, rootingWeeks: 3 },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -137,7 +137,7 @@ export default function PlantTypeDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label className="text-sm font-medium">Thời gian đợi cấy chuyển (tuần)</Label>
-              <Input {...register("transferWaitWeeks")} type="number" min={1} />
+              <Input {...register("transferWaitWeeks")} type="number" min={1} max={6} />
               {errors.transferWaitWeeks && <p className="text-xs text-destructive">{errors.transferWaitWeeks.message}</p>}
             </div>
             <div className="space-y-1">

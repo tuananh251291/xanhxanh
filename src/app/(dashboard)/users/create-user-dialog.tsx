@@ -23,6 +23,7 @@ const schema = z.object({
   email: z.string().email("Email không hợp lệ"),
   password: z.string().min(6, "Mật khẩu tối thiểu 6 ký tự"),
   role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"]),
+  code: z.string().min(1, "Nhập mã nhân viên"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -35,6 +36,20 @@ export default function CreateUserDialog() {
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
+
+  const onRoleChange = async (role: FormData["role"]) => {
+    setValue("role", role);
+    // Gợi ý mã kế tiếp theo vai trò để đỡ phải gõ từ đầu — Admin vẫn sửa lại được trước khi tạo.
+    try {
+      const res = await fetch(`/api/users/next-code?role=${role}`);
+      if (res.ok) {
+        const { code } = await res.json();
+        setValue("code", code);
+      }
+    } catch {
+      // Bỏ qua lỗi gợi ý — Admin vẫn nhập tay được.
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -86,7 +101,7 @@ export default function CreateUserDialog() {
           </div>
           <div className="space-y-1">
             <Label>Vai trò</Label>
-            <Select items={ROLE_LABELS} onValueChange={(v) => setValue("role", v as FormData["role"])}>
+            <Select items={ROLE_LABELS} onValueChange={(v) => onRoleChange(v as FormData["role"])}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>
@@ -97,6 +112,11 @@ export default function CreateUserDialog() {
               </SelectContent>
             </Select>
             {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
+          </div>
+          <div className="space-y-1">
+            <Label>Mã nhân viên</Label>
+            <Input {...register("code")} placeholder="VD: NVCM070" />
+            {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>

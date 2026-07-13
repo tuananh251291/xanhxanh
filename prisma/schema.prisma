@@ -87,6 +87,14 @@ enum SharedMotherPool {
   DUNG_HAN
 }
 
+// Phân loại Nhóm giàn kệ (ShelfGroup) dùng cho cơ chế xoay vòng — RA_RE = "Nhóm tuần ra rễ" (Phòng ra
+// rễ), MAU_ME = "Nhóm tuần mẫu mẹ" (kệ đã chia trong Phòng mẫu mẹ). Nhóm không gắn rotationKind vẫn dùng
+// bình thường cho mục đích gộp kệ tự do (groupId), không tham gia xoay vòng.
+enum ShelfGroupRotationKind {
+  RA_RE
+  MAU_ME
+}
+
 enum TransferStatus {
   PENDING
   CONFIRMED
@@ -111,6 +119,9 @@ enum AlertType {
   ORDER_PENDING_PACK
   MEDIUM_HANDOVER_READY
   MOTHER_LOT_READY
+  // Lô thành phẩm đang ở Phòng ra rễ đã đủ số tuần ra rễ riêng của mã cây (PlantType.rootingWeeks) — báo
+  // cho KHO_MO biết đến hạn tạo phiếu bàn giao sang Kho thành phẩm (xem src/lib/rooting-ready.ts).
+  ROOTING_LOT_READY
   MEDIUM_ORDER_CREATED
   CONTAMINATION_PROPOSAL
   // Kho mô vừa kiểm tra xong 1 phiếu bàn giao Phòng tối của NV luồng Đỏ/chưa cài đặt luồng — báo cho
@@ -122,6 +133,11 @@ enum AlertType {
   // NV bấm "Quên mật khẩu" ở trang đăng nhập — báo cho SUPER_ADMIN (targetRole) tự cấp lại mật khẩu
   // thủ công, báo riêng ngoài hệ thống (không gửi email/SMS tự động).
   PASSWORD_RESET_REQUESTED
+  // Tỉ lệ nhiễm mẫu mẹ sau ủ sáng (tổng mẫu mẹ nhiễm cộng dồn / tổng mẫu mẹ được cấp cho chỉ định)
+  // vượt ngưỡng Admin cấp cao cài đặt (mother_contamination_alert_pct) — kiểm tra lại ngay khi NV cấy mô
+  // lưu nhật ký hàng ngày (xem POST /api/daily-records), báo cho KHO_MO (targetRole) biết sớm trước khi
+  // nhận bàn giao thật.
+  MOTHER_CONTAMINATION_HIGH
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -321,8 +337,10 @@ model PlantType {
   name               String
   description        String?
   // Số tuần cố định (không phải khoảng min-max) do Admin cài đặt cho từng chi tiết loại cây.
-  transferWaitWeeks  Int      @default(5) // Thời gian đợi cấy chuyển (mẫu mẹ) — dùng tính Lot.expectedMoveAt khi stage = MAU_ME
-  rootingWeeks       Int      @default(5) // Thời gian ra rễ (thành phẩm) — dùng tính Lot.expectedMoveAt khi stage = THANH_PHAM
+  // Mặc định: 4 tuần cho mọi Loại cây, riêng MT (Monstera) là 6 tuần.
+  transferWaitWeeks  Int      @default(4) // Thời gian đợi cấy chuyển (mẫu mẹ) — dùng tính Lot.expectedMoveAt khi stage = MAU_ME
+  // Mặc định 3 tuần cho MỌI loại cây.
+  rootingWeeks       Int      @default(3) // Thời gian ra rễ (thành phẩm) — dùng tính Lot.expectedMoveAt khi stage = THANH_PHAM
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -481,17 +499,21 @@ model Shelf {
   // cấp cao (SUPER_ADMIN) mới cài đặt được (xem /settings/shelf-groups). Chọn theo từng kệ, không theo
   // block — có thể gộp kệ từ nhiều block/phòng/kho khác nhau vào cùng 1 Nhóm.
   groupId     String?
-  group       ShelfGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  // Chỉ dùng cho kệ Phòng ra rễ (SUPER_ADMIN cấu hình) — 1 trong 4 "Nhóm tuần ra rễ" xoay vòng, KHÔNG liên
-  // quan gì tới ShelfGroup/groupId ở trên. Cây ra rễ đưa vào kho tuần nào thì tự xếp vào đúng kệ có
-  // weekSlot = tuần đó (xem getCurrentWeekSlot trong src/lib/rooting-week-group.ts — công thức tuần
-  // liên tục mod 4, không cần lưu "nhóm đang active"). Sau 3 tuần, toàn bộ kệ cùng weekSlot đó "đạt
-  // xuất" — hệ thống đề xuất KHO_MO bàn giao hết sang kho thành phẩm để dọn trống, tuần thứ 4 kể từ
-  // lúc xếp thì weekSlot đó được tái sử dụng cho lứa mới. Cố định 3 tuần cho MỌI loại cây, không phụ
-  // thuộc rootingWeeks (field đó chỉ dùng tính Lot.expectedMoveAt, không liên quan cơ chế này).
-  weekSlot    Int?
-  // Tối đa được xếp trên kệ này — Phòng mẫu mẹ tính theo CỤM (mặc định 1800 nếu không nhập), Phòng ra
-  // rễ tính theo TÚI thành phẩm (T01/T05), không bắt buộc — null nghĩa là không giới hạn.
+  group       ShelfGroup? @relation("ShelfPhysicalGroup", fields: [groupId], references: [id], onDelete: SetNull)
+  // Nhóm xoay vòng (ShelfGroup có rotationKind = RA_RE hoặc MAU_ME) — SUPER_ADMIN gán kệ vào đúng 1
+  // trong các Nhóm đã tạo ở /settings/shelf-groups (xem "Quản lý kệ" ở đó), TÁCH BIỆT với groupId ở trên
+  // (1 kệ có thể vừa thuộc 1 Nhóm vật lý tự do vừa thuộc 1 Nhóm xoay vòng cùng lúc). Cây ra rễ/mẫu mẹ đưa
+  // vào kho tuần nào thì tự xếp vào đúng kệ thuộc Nhóm có rotationOrder = tuần đó (xem getCurrentWeekSlot
+  // trong src/lib/rooting-week-group.ts — công thức tuần liên tục mod N, N = tổng số Nhóm cùng
+  // rotationKind, không cần lưu "nhóm đang active"). rotationGroupId chỉ quyết định XẾP KỆ NÀO (dùng chung
+  // 1 lịch xoay vòng cho mọi mã cây trong kho) — KHÔNG dùng để tính "đến hạn chuyển kho thành phẩm"; hạn đó
+  // tính riêng theo Lot.expectedMoveAt (đã cộng đúng PlantType.rootingWeeks của từng lô lúc tạo — xem
+  // src/lib/rooting-ready.ts). Nhóm tuần mẫu mẹ tương tự dùng transferWaitWeeks riêng của từng mã cây —
+  // xem src/lib/mother-week-group.ts.
+  rotationGroupId String?
+  rotationGroup   ShelfGroup? @relation("ShelfRotationGroup", fields: [rotationGroupId], references: [id], onDelete: SetNull)
+  // Tối đa được xếp trên kệ này — tính theo TÚI cho cả Phòng mẫu mẹ (mặc định 600 nếu không nhập) lẫn
+  // Phòng ra rễ (túi thành phẩm T01/T05), không bắt buộc — null nghĩa là không giới hạn.
   capacity    Int?
   // Chỉ ràng buộc với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình) — 1 kệ chỉ xếp 1 mã cây và
   // gắn với 1 nhân viên cấy mô cụ thể. Kệ Phòng ra rễ không dùng 2 field này (luôn null).
@@ -525,12 +547,22 @@ model ShelfGroup {
   id        String   @id @default(cuid())
   name      String
   // Loại nhóm — nhập tự do, không bắt buộc, chỉ để Admin cấp cao tự phân loại/ghi chú thêm (VD "Khu
-  // sản xuất chính", "Khu dự trữ"...), không ràng buộc nghiệp vụ nào khác.
+  // sản xuất chính", "Khu dự trữ"...), không ràng buộc nghiệp vụ nào khác. Không dùng để xác định cơ chế
+  // xoay vòng (xem rotationKind bên dưới) — 1 Nhóm có thể vừa có type tự do vừa có rotationKind.
   type      String?
+  // Có giá trị = Nhóm này là 1 "khe" trong cơ chế xoay vòng Nhóm tuần ra rễ/Nhóm tuần mẫu mẹ (SUPER_ADMIN
+  // cấu hình qua /settings/shelf-groups) — xem Shelf.rotationGroupId. null = Nhóm gộp kệ tự do thông
+  // thường, không tham gia xoay vòng.
+  rotationKind  ShelfGroupRotationKind?
+  // Vị trí (1-based) trong chu kỳ xoay vòng của ĐÚNG rotationKind này — tổng số khe N = số Nhóm đang có
+  // cùng rotationKind (VD 4 Nhóm "Nhóm tuần ra rễ" → N=4, 6 Nhóm "Nhóm tuần mẫu mẹ" → N=6, không hard-code
+  // 4 như trước). Chỉ có ý nghĩa khi rotationKind khác null.
+  rotationOrder Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  shelves Shelf[]
+  shelves         Shelf[] @relation("ShelfPhysicalGroup")
+  rotationShelves Shelf[] @relation("ShelfRotationGroup")
 
   @@map("shelf_groups")
 }

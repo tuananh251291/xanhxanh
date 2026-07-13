@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getWeek, getISODay, format } from "date-fns";
-import type { UserRole } from "@prisma/client";
+import type { UserRole, Prisma } from "@prisma/client";
 
 // Tiền tố + độ dài số thứ tự cho mã nhân viên theo từng vai trò — Admin cao nhất và Admin dùng chung 1
 // dãy số "AD" (cùng nhóm quản trị). VD: AD01, NVKT01, NVCM001, NVK01, NVTP01, NVS01, NVMT01, NVDP01.
@@ -16,6 +16,8 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   DIEU_PHOI: { prefix: "NVDP", pad: 2 },
 };
 
+// Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,
+// duyệt hoặc sửa tài khoản, không còn tự động gán mã này.
 export async function generateUserCode(role: UserRole): Promise<string> {
   const { prefix, pad } = USER_CODE_FORMAT[role];
   const rolesSharingPrefix = (Object.keys(USER_CODE_FORMAT) as UserRole[])
@@ -32,12 +34,17 @@ export async function generateUserCode(role: UserRole): Promise<string> {
 // kệ nguồn (sau dấu "-" cuối cùng, VD "A01C05" của kệ "SXA-PS-A01C05") + ngày tạo "ddMMyy" (6 số, VD
 // 20/10/2026 → "201026"). VD đầy đủ: "CDAA01C05201026". Thêm hậu tố "-2", "-3"... nếu trùng (cùng kệ,
 // cùng ngày tạo 2 chỉ định).
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD nhập Excel hàng loạt chỉ định cấy ở
+// /api/data-import/instructions) để đọc thấy cả các dòng vừa tạo trước đó trong CÙNG transaction
+// (read-your-own-writes), tránh 2 dòng cùng batch (cùng kệ, cùng ngày) sinh trùng mã — giống hệt cách
+// generateTransferCode đã làm.
 export async function generateInstructionCode(params: {
   warehouseCode: string;
   shelfCode: string;
   date?: Date;
+  client?: Prisma.TransactionClient | typeof prisma;
 }): Promise<string> {
-  const { warehouseCode, shelfCode, date = new Date() } = params;
+  const { warehouseCode, shelfCode, date = new Date(), client = prisma } = params;
   const warehouseLetter = warehouseCode.split("-").pop() ?? warehouseCode;
   const rackCode = shelfCode.split("-").pop() ?? shelfCode;
   const dateStr = format(date, "ddMMyy");
@@ -45,17 +52,19 @@ export async function generateInstructionCode(params: {
 
   let candidate = base;
   let n = 1;
-  while (await prisma.plantingInstruction.findFirst({ where: { code: candidate } })) {
+  while (await client.plantingInstruction.findFirst({ where: { code: candidate } })) {
     n += 1;
     candidate = `${base}-${n}`;
   }
   return candidate;
 }
 
-export async function generateTransferCode(): Promise<string> {
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD POST /api/transfers) để tính mã kế tiếp
+// dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton như trước.
+export async function generateTransferCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
   const today = new Date();
   const prefix = `BG-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const last = await prisma.transfer.findFirst({
+  const last = await client.transfer.findFirst({
     where: { code: { startsWith: prefix } },
     orderBy: { code: "desc" },
   });
@@ -67,17 +76,25 @@ export async function generateTransferCode(): Promise<string> {
 // tuần/năm 4 số (VD "0726" = tuần 07 năm 2026, tính theo lịch tuần làm việc weekStartsOn: 1 dùng chung
 // toàn app). NHIỀU dòng Lot (khác stageCode, VD M03 và M05 của cùng 1 đợt cấy) có thể dùng chung 1 mã lô
 // — duy nhất theo (code, stageCode), không unique theo code riêng lẻ (xem @@unique trên model Lot).
+// Phần "gốc" của mã lô, tách riêng khỏi generateLotCode để nơi cần tự kiểm soát va chạm mã trong 1
+// transaction (VD nhập Excel hàng loạt — nhiều dòng có thể ra cùng base trước khi transaction commit,
+// nên không dùng được vòng lặp kiểm tra qua prisma singleton bên dưới) vẫn tính đúng cùng công thức.
+export function lotCodeBase(params: { plantTypeCode: string; staffCode: string; date?: Date }): string {
+  const { plantTypeCode, staffCode, date = new Date() } = params;
+  const staffNum = (staffCode.match(/\d+/)?.[0] ?? "000").slice(-3).padStart(3, "0");
+  const week = String(getWeek(date, { weekStartsOn: 1 })).padStart(2, "0");
+  const year = String(date.getFullYear()).slice(-2);
+  return `${plantTypeCode}${staffNum}${week}${year}`;
+}
+
 export async function generateLotCode(params: {
   plantTypeCode: string;
   staffCode: string;
   stageCode: string;
   date?: Date;
 }): Promise<string> {
-  const { plantTypeCode, staffCode, stageCode, date = new Date() } = params;
-  const staffNum = (staffCode.match(/\d+/)?.[0] ?? "000").slice(-3).padStart(3, "0");
-  const week = String(getWeek(date, { weekStartsOn: 1 })).padStart(2, "0");
-  const year = String(date.getFullYear()).slice(-2);
-  const base = `${plantTypeCode}${staffNum}${week}${year}`;
+  const { stageCode } = params;
+  const base = lotCodeBase(params);
 
   // Cùng mã lô (base) có thể đã tồn tại cho quy cách khác (VD M03 đã tạo trước, giờ tạo dòng M05) — vẫn
   // dùng lại đúng base đó. Chỉ khi (base, stageCode) này đã tồn tại rồi (VD lô cũ đã chuyển kệ, giờ tạo

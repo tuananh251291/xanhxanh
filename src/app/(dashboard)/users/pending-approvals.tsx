@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,17 +16,34 @@ type PendingUser = { id: string; code: string; name: string; email: string };
 export default function PendingApprovals({ users }: { users: PendingUser[] }) {
   const router = useRouter();
   const [roleMap, setRoleMap] = useState<Record<string, UserRole>>({});
+  const [codeMap, setCodeMap] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState<string | null>(null);
+
+  const onRoleChange = async (id: string, role: UserRole) => {
+    setRoleMap((prev) => ({ ...prev, [id]: role }));
+    // Gợi ý mã kế tiếp theo vai trò để đỡ phải gõ từ đầu — Admin vẫn sửa lại được trước khi duyệt.
+    try {
+      const res = await fetch(`/api/users/next-code?role=${role}`);
+      if (res.ok) {
+        const { code } = await res.json();
+        setCodeMap((prev) => ({ ...prev, [id]: code }));
+      }
+    } catch {
+      // Bỏ qua lỗi gợi ý — Admin vẫn nhập tay được.
+    }
+  };
 
   const approve = async (id: string) => {
     const role = roleMap[id];
+    const code = codeMap[id]?.trim();
     if (!role) { toast.error("Chọn vai trò trước khi duyệt"); return; }
+    if (!code) { toast.error("Nhập mã nhân viên trước khi duyệt"); return; }
     setProcessing(id);
     try {
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "APPROVED", role }),
+        body: JSON.stringify({ status: "APPROVED", role, code }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã duyệt tài khoản");
@@ -61,7 +79,7 @@ export default function PendingApprovals({ users }: { users: PendingUser[] }) {
               <p className="font-medium text-sm">{u.name}</p>
               <p className="text-xs text-text-secondary">{u.email} · {u.code}</p>
             </div>
-            <Select items={ROLE_LABELS} onValueChange={(v) => setRoleMap((prev) => ({ ...prev, [u.id]: v as UserRole }))}>
+            <Select items={ROLE_LABELS} onValueChange={(v) => onRoleChange(u.id, v as UserRole)}>
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>
@@ -71,6 +89,12 @@ export default function PendingApprovals({ users }: { users: PendingUser[] }) {
                 ))}
               </SelectContent>
             </Select>
+            <Input
+              className="w-full sm:w-32"
+              placeholder="Mã NV"
+              value={codeMap[u.id] ?? ""}
+              onChange={(e) => setCodeMap((prev) => ({ ...prev, [u.id]: e.target.value }))}
+            />
             <Button
               size="sm"
               className="bg-primary hover:bg-primary-hover"

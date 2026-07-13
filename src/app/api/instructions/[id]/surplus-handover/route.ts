@@ -29,6 +29,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (instruction.surplusHandedOverAt) {
     return NextResponse.json({ message: "Đã bàn giao MM dư cho chỉ định này rồi" }, { status: 409 });
   }
+  // Chưa từng xác nhận nhận mẫu mẹ (motherReceivedAt null) — nghĩa là NV cấy mô chưa hề động vào lô
+  // nguồn (Kho mô bàn giao trễ hoặc quên xác nhận), lô gốc vẫn còn nguyên trên kệ. Nếu vẫn tính toàn bộ
+  // inputMotherQuantity là "dư" và tạo lô mới bàn giao, sẽ tạo ra mẫu mẹ ẢO trùng với lô gốc chưa hề bị
+  // đụng tới — chặn hẳn trường hợp này thay vì tính sai.
+  if (!instruction.motherReceivedAt) {
+    return NextResponse.json(
+      { message: "Chỉ định này chưa từng được xác nhận nhận mẫu mẹ — không có gì để bàn giao dư" },
+      { status: 400 }
+    );
+  }
 
   // MM dư = tổng mẫu mẹ được cấp (đầu vào) trừ tổng "MM đã kiểm tra" đã nhập qua các ngày.
   const checkedAgg = await prisma.dailyRecord.aggregate({

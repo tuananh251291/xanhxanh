@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
-import { generateUserCode } from "@/lib/codes";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -11,6 +10,7 @@ const createSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"]),
+  code: z.string().min(1, "Nhập mã nhân viên"),
 });
 
 export async function GET() {
@@ -40,15 +40,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { name, email, password, role } = parsed.data;
+  const { name, email, password, role, code } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return NextResponse.json({ message: "Email đã tồn tại" }, { status: 409 });
   }
+  const codeOwner = await prisma.user.findUnique({ where: { code } });
+  if (codeOwner) {
+    return NextResponse.json({ message: "Mã nhân viên đã được dùng cho tài khoản khác" }, { status: 409 });
+  }
 
   const hashed = await bcrypt.hash(password, 10);
-  const code = await generateUserCode(role);
   const user = await prisma.user.create({
     data: { code, name, email, password: hashed, role, status: "APPROVED" },
     select: { id: true, code: true, name: true, email: true, role: true },

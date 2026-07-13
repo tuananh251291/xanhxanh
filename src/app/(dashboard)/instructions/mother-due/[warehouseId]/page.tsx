@@ -52,11 +52,17 @@ export default async function MotherDueWarehousePage({
   if (plantCodeFilter) {
     shelfWhere.plantType = { code: { contains: plantCodeFilter, mode: "insensitive" } };
   }
-  const lotWhere: Record<string, unknown> = { status: "ACTIVE" };
+  // Lô đã được dùng làm nguồn cho 1 chỉ định cấy (bất kể còn dư số lượng hay không) coi như đã xử lý
+  // xong — không tính vào "đến hạn cấy chuyển" nữa, giống hệt cách /mother-ready lọc
+  // (_count.instructionItems === 0). Thiếu điều kiện này khiến kệ vẫn hiện lại ở đây dù NV kỹ thuật đã
+  // tạo chỉ định xong cho lô mẫu mẹ trên kệ đó.
+  const lotWhere: Record<string, unknown> = { status: "ACTIVE", instructionItems: { none: {} } };
   if (dateFilter) {
     const d = new Date(dateFilter);
     if (!Number.isNaN(d.getTime())) {
-      shelfWhere.lots = { some: { status: "ACTIVE", expectedMoveAt: { gte: startOfDay(d), lte: endOfDay(d) } } };
+      shelfWhere.lots = {
+        some: { status: "ACTIVE", instructionItems: { none: {} }, expectedMoveAt: { gte: startOfDay(d), lte: endOfDay(d) } },
+      };
     }
   }
 

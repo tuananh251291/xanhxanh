@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sun } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import { STAGE_LABELS, motherClusterUnits } from "@/types";
+import { STAGE_LABELS, sumLotQuantity } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
@@ -151,12 +151,10 @@ export default async function KhoSangPage() {
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               {room.shelves.map((shelf) => {
-                const shelfMother = shelf.lots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
-                const shelfFinished = shelf.lots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
-                // Sức chứa kệ Phòng mẫu mẹ tính theo cụm (túi M03 × 3, túi M05 × 5) — xem motherClusterUnits.
-                const shelfClusters = shelf.lots
-                  .filter((l) => l.stage === "MAU_ME")
-                  .reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0) + shelfFinished;
+                const shelfMother = sumLotQuantity(shelf.lots.filter((l) => l.stage === "MAU_ME"));
+                const shelfFinished = sumLotQuantity(shelf.lots.filter((l) => l.stage === "THANH_PHAM"));
+                // Sức chứa kệ (Phòng mẫu mẹ lẫn Phòng ra rễ) tính theo túi — cộng thẳng quantity, không quy đổi.
+                const shelfUnits = shelfMother + shelfFinished;
                 return (
                   <Card key={shelf.id} className={shelf.lots.length === 0 ? "opacity-50" : ""}>
                     <CardHeader className="pb-2">
@@ -168,7 +166,7 @@ export default async function KhoSangPage() {
                         <div className="w-full bg-muted rounded-full h-1.5">
                           <div
                             className="bg-primary rounded-full h-1.5"
-                            style={{ width: `${Math.min(100, (shelfClusters / shelf.capacity) * 100)}%` }}
+                            style={{ width: `${Math.min(100, (shelfUnits / shelf.capacity) * 100)}%` }}
                           />
                         </div>
                       )}

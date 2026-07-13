@@ -97,18 +97,28 @@ export const FINISHED_SPEC_BAG_SIZE = {
   T05: 5,
 } as const;
 
-// Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — dùng để tính sức chứa
-// kệ Phòng mẫu mẹ (giới hạn 1800 cụm/kệ), KHÔNG áp dụng cho quy cách thành phẩm (T01/T05).
+// Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — CHỈ dùng để quy đổi năng
+// suất cấy (xem /api/leaderboard/weekly), KHÔNG dùng để tính sức chứa kệ Phòng mẫu mẹ nữa (kệ tính
+// thẳng theo túi, không quy đổi cụm — xem src/lib/shelf-assignment.ts). Không áp dụng cho thành phẩm (T01/T05).
 export const MOTHER_SPEC_BAG_SIZE = {
   M03: 3,
   M05: 5,
 } as const;
 
-// Quy đổi số lượng (đơn vị túi) của 1 lô mẫu mẹ sang số cụm mẫu mẹ thực tế chiếm chỗ trên kệ.
-// Lô không phải quy cách M03/M05 (VD: T01/T05, hoặc dữ liệu cũ không có stageCode) giữ nguyên quantity.
+// Quy đổi số lượng (đơn vị túi) của 1 lô mẫu mẹ sang số cụm mẫu mẹ thực tế — chỉ dùng cho bảng xếp
+// hạng năng suất tuần (leaderboard). Lô không phải quy cách M03/M05 (VD: T01/T05, hoặc dữ liệu cũ
+// không có stageCode) giữ nguyên quantity.
 export function motherClusterUnits(stageCode: string | null | undefined, quantity: number): number {
   const bagSize = MOTHER_SPEC_BAG_SIZE[stageCode as keyof typeof MOTHER_SPEC_BAG_SIZE];
   return bagSize ? quantity * bagSize : quantity;
+}
+
+// Tổng số túi đã dùng trên 1 kệ (hoặc bất kỳ danh sách lô nào) — nguồn tính DUY NHẤT dùng chung cho cả
+// thuật toán tự xếp kệ (src/lib/shelf-assignment.ts), validate khi chọn kệ tay (api/transfers/[id]),
+// lẫn mọi nơi hiển thị "Tồn/Sức chứa" (shelf-table.tsx, transfers/receive/page.tsx, inventory/kho-sang).
+// Lọc theo stage/status trước khi truyền vào đây nếu cần (VD chỉ lô MAU_ME, chỉ status ACTIVE).
+export function sumLotQuantity(lots: { quantity: number }[]): number {
+  return lots.reduce((sum, l) => sum + l.quantity, 0);
 }
 
 // Đánh dấu Transfer bàn giao "MM dư" (khi chỉ định kết thúc do hết thời gian) — dùng để PATCH
@@ -157,11 +167,13 @@ export const ALERT_TYPE_LABELS = {
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
   MOTHER_LOT_READY: "Mẫu mẹ đến tuổi cấy chuyển",
+  ROOTING_LOT_READY: "Lô ra rễ đến hạn chuyển kho thành phẩm",
   MEDIUM_ORDER_CREATED: "Có đơn đặt hàng môi trường mới",
   CONTAMINATION_PROPOSAL: "Đề xuất trồng/hủy hàng nhiễm",
   INSPECTION_RESULT_READY: "Có kết quả kiểm tra bàn giao",
   ACCOUNT_LOCKED: "Tài khoản bị khóa",
   PASSWORD_RESET_REQUESTED: "Yêu cầu cấp lại mật khẩu",
+  MOTHER_CONTAMINATION_HIGH: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng cao",
 } as const;
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).
@@ -189,12 +201,6 @@ export const MEDIUM_ORDER_DAY_STATUS_LABELS = {
   CONFIRMED: "Bàn giao thành công",
 } as const;
 
-export const ALERT_STATUS_LABELS = {
-  UNREAD: "Chưa đọc",
-  READ: "Đã đọc",
-  RESOLVED: "Đã xử lý",
-} as const;
-
 // Nguyên nhân KY_THUAT chọn khi xử lý alert lệch sản lượng (OUTPUT_DEVIATION) — bắt buộc chọn 1 trong 2.
 export const DEVIATION_CAUSE_LABELS = {
   KY_THUAT_SAI: "Do nhân viên kỹ thuật ra chỉ định sai",
@@ -211,6 +217,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/materials", label: "Vật tư", icon: "Boxes" },
     { href: "/settings/shelf-groups", label: "Nhóm giàn kệ", icon: "Layers" },
+    { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
@@ -232,6 +239,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
     { href: "/mother-ready", label: "Mẫu mẹ đạt chưa chỉ định", icon: "Sprout" },
+    { href: "/planting-check", label: "Kiểm tra tình trạng cấy", icon: "ClipboardCheck" },
     { href: "/reports/production", label: "Báo cáo SX", icon: "BarChart3" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
@@ -241,6 +249,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
     { href: "/product-handover", label: "Bàn giao sản phẩm", icon: "Send" },
+    { href: "/handover-record", label: "Ghi nhận bàn giao", icon: "PackageCheck" },
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

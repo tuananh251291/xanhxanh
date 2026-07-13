@@ -7,13 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PenLine, Loader2, Lock, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
-
-// Tiến độ cấy tính theo 6 ngày làm việc (Thứ 2 - Thứ 7) — Chủ nhật là ngày làm thêm tùy chọn nên
-// không cộng thêm chỉ tiêu (chặn mức chỉ tiêu ở đúng bằng chỉ tiêu Thứ 7 = tổng dự kiến cả tuần).
-const WORKING_DAYS_PER_WEEK = 6;
-type StageKey = "m03" | "m05" | "t05" | "t01";
-const STAGE_KEYS: StageKey[] = ["m03", "m05", "t05", "t01"];
+import { format, addDays, isSameDay, startOfWeek } from "date-fns";
+import { motherClusterUnits } from "@/types";
 
 type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
 type Instruction = {
@@ -22,6 +17,7 @@ type Instruction = {
   plantType: { name: string };
   weekStart: string | null;
   inputMotherQuantity: number;
+  expectedFinishedOutput: number | null;
   plannedT01Quantity: number | null;
   plannedT05Quantity: number | null;
   items: InstructionItem[];
@@ -60,10 +56,6 @@ const emptyForm: FormState = {
 const NUMBER_INPUT_CLASS = "w-20 text-right ml-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 const fmt = (n: number | null | undefined) => (n === null || n === undefined ? "—" : n.toLocaleString("vi-VN"));
-const renderPercent = (actual: number, plan: number | null | undefined) => {
-  if (plan === null || plan === undefined || plan === 0) return "—";
-  return `${Math.round((actual / plan) * 100)}%`;
-};
 
 export default function DailyRecordPage() {
   const [instructions, setInstructions] = useState<Instruction[]>([]);
@@ -72,7 +64,8 @@ export default function DailyRecordPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [targetPct, setTargetPct] = useState(80);
+  const [motherRatioTargetPct, setMotherRatioTargetPct] = useState(80);
+  const [finishedRatioTargetPct, setFinishedRatioTargetPct] = useState(80);
 
   const today = useMemo(() => new Date(), []);
   const currentWeekStart = useMemo(() => startOfWeek(today, { weekStartsOn: 1 }), [today]);
@@ -82,8 +75,10 @@ export default function DailyRecordPage() {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data: { key: string; value: string }[]) => {
-        const found = data.find((c) => c.key === "planting_ratio_target_pct");
-        if (found) setTargetPct(parseFloat(found.value) || 80);
+        const mother = data.find((c) => c.key === "mother_ratio_target_pct");
+        if (mother) setMotherRatioTargetPct(parseFloat(mother.value) || 80);
+        const finished = data.find((c) => c.key === "finished_ratio_target_pct");
+        if (finished) setFinishedRatioTargetPct(parseFloat(finished.value) || 80);
       });
   }, []);
 
@@ -101,8 +96,11 @@ export default function DailyRecordPage() {
   }, [currentWeekStart]);
 
   useEffect(() => {
-    if (!selectedId) { setRecords([]); return; }
-    setLoading(true);
+    if (!selectedId) {
+      Promise.resolve().then(() => setRecords([]));
+      return;
+    }
+    Promise.resolve().then(() => setLoading(true));
     fetch(`/api/daily-records?instructionId=${selectedId}`)
       .then((r) => r.json())
       .then((data) => setRecords(Array.isArray(data) ? data : []))
@@ -145,39 +143,40 @@ export default function DailyRecordPage() {
     { motherChecked: 0, motherContaminatedM03: 0, motherContaminatedM05: 0, motherUsed: 0, m03: 0, m05: 0, t05: 0, t01: 0 }
   );
 
-  // Hàng 10: số dự kiến của NV kỹ thuật đưa ra theo chỉ định cấy — MM đã kiểm tra/MM mẹ nhiễm không
-  // có số dự kiến tương ứng.
-  const expected = selectedInst
-    ? {
-        motherUsed: selectedInst.inputMotherQuantity,
-        m03: selectedInst.items.filter((i) => i.stageCode === "M03").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0),
-        m05: selectedInst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0),
-        t05: selectedInst.plannedT05Quantity ?? 0,
-        t01: selectedInst.plannedT01Quantity ?? 0,
-      }
-    : null;
-
-  // Tiến độ lũy kế tới hôm nay so với chỉ tiêu trung bình/ngày (dự kiến cả tuần / 6 ngày) — chỉ cần 1
-  // quy cách hụt dưới "Tỉ lệ cấy cần đạt" (targetPct, Admin cấu hình) là coi như cấy lệch chỉ định.
-  const elapsedDays = Math.min(differenceInCalendarDays(today, currentWeekStart) + 1, WORKING_DAYS_PER_WEEK);
-  const expectedToDate = expected
-    ? {
-        motherUsed: (expected.motherUsed / WORKING_DAYS_PER_WEEK) * elapsedDays,
-        m03: (expected.m03 / WORKING_DAYS_PER_WEEK) * elapsedDays,
-        m05: (expected.m05 / WORKING_DAYS_PER_WEEK) * elapsedDays,
-        t05: (expected.t05 / WORKING_DAYS_PER_WEEK) * elapsedDays,
-        t01: (expected.t01 / WORKING_DAYS_PER_WEEK) * elapsedDays,
-      }
-    : null;
-  const behindStages = expected
-    ? STAGE_KEYS.filter((key) => {
-        const target = expected[key];
-        if (!target) return false;
-        return totals[key] / expectedToDate![key] < targetPct / 100;
-      })
-    : [];
-
   const todayRecord = recordForDay(today);
+
+  // Tỉ lệ nhân MM (số cụm mẫu mẹ thành phẩm quy đổi / số mẫu mẹ đã sử dụng) và tỉ lệ ra thành phẩm (số
+  // cây ra rễ thành phẩm / số mẫu mẹ đã sử dụng), cộng dồn cả chỉ định + số đang nhập hôm nay (nếu chưa
+  // lưu) — so với tỉ lệ mục tiêu của chính chỉ định này (suy từ motherSampleRatio/rootingRatio KY_THUAT
+  // nhập lúc tạo chỉ định). Cả 2 tỉ lệ cùng thấp hơn ngưỡng % Admin cấu hình mới coi là nghi cấy sai chỉ
+  // định — khớp đúng thuật toán server ở /api/daily-records.
+  const pendingMotherUsed = !todayRecord ? Number(form.motherUsed) || 0 : 0;
+  const pendingM03 = !todayRecord ? Number(form.m03) || 0 : 0;
+  const pendingM05 = !todayRecord ? Number(form.m05) || 0 : 0;
+  const pendingT05 = !todayRecord ? Number(form.t05) || 0 : 0;
+  const pendingT01 = !todayRecord ? Number(form.t01) || 0 : 0;
+
+  const projectedMotherUsed = totals.motherUsed + pendingMotherUsed;
+  const projectedMotherClusters =
+    motherClusterUnits("M03", totals.m03 + pendingM03) + motherClusterUnits("M05", totals.m05 + pendingM05);
+  const projectedFinished = totals.t05 + totals.t01 + pendingT05 + pendingT01;
+
+  const targetMotherOutputClusters = selectedInst
+    ? selectedInst.items
+        .filter((i) => i.stageCode === "M03" || i.stageCode === "M05")
+        .reduce((s, i) => s + motherClusterUnits(i.stageCode, i.expectedMotherOutput ?? 0), 0)
+    : 0;
+  const targetMotherRatio = selectedInst && selectedInst.inputMotherQuantity > 0 ? targetMotherOutputClusters / selectedInst.inputMotherQuantity : 0;
+  const targetFinishedRatio =
+    selectedInst && selectedInst.inputMotherQuantity > 0 ? (selectedInst.expectedFinishedOutput ?? 0) / selectedInst.inputMotherQuantity : 0;
+
+  const actualMotherRatio = projectedMotherUsed > 0 ? projectedMotherClusters / projectedMotherUsed : 0;
+  const actualFinishedRatio = projectedMotherUsed > 0 ? projectedFinished / projectedMotherUsed : 0;
+  const motherRatioPct = targetMotherRatio > 0 ? (actualMotherRatio / targetMotherRatio) * 100 : null;
+  const finishedRatioPct = targetFinishedRatio > 0 ? (actualFinishedRatio / targetFinishedRatio) * 100 : null;
+  const motherRatioLow = motherRatioPct !== null && motherRatioPct < motherRatioTargetPct;
+  const finishedRatioLow = finishedRatioPct !== null && finishedRatioPct < finishedRatioTargetPct;
+  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && motherRatioLow && finishedRatioLow;
 
   // Tổng MM đã kiểm tra lũy kế (các ngày đã lưu + số đang nhập hôm nay) không được vượt quá số mẫu mẹ
   // được cấp cho chỉ định (inputMotherQuantity) — chặn nút Lưu nếu vượt, khớp validate ở API.
@@ -206,7 +205,11 @@ export default function DailyRecordPage() {
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Lưu dữ liệu hôm nay thành công!");
-      if (json.alert) toast.warning("⚠️ Bạn đang cấy lệch tiến độ so với chỉ định — đã gửi cảnh báo cho KY_THUAT");
+      if (json.alert) {
+        toast.warning(
+          `⚠️ Cấy lệch chỉ định — tỉ lệ nhân MM đạt ${Math.round(json.motherRatioPct)}%, tỉ lệ ra thành phẩm đạt ${Math.round(json.finishedRatioPct)}% (cần ≥${json.motherRatioTargetPct}% và ≥${json.finishedRatioTargetPct}%) — đã gửi cảnh báo cho KY_THUAT`
+        );
+      }
       if (json.ended) {
         toast.info(
           json.endReason === "MOTHER_USED_UP"
@@ -353,56 +356,39 @@ export default function DailyRecordPage() {
                       <td className="px-3 py-2 text-right">{fmt(totals.motherContaminatedM03)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherContaminatedM05)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherUsed)}</td>
-                      <td className={`px-3 py-2 text-right ${behindStages.includes("m03") ? "text-destructive" : ""}`}>{fmt(totals.m03)}</td>
-                      <td className={`px-3 py-2 text-right ${behindStages.includes("m05") ? "text-destructive" : ""}`}>{fmt(totals.m05)}</td>
-                      <td className={`px-3 py-2 text-right ${behindStages.includes("t05") ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
-                      <td className={`px-3 py-2 text-right ${behindStages.includes("t01") ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
-                    </tr>
-                    <tr className="border-b bg-warning-light font-semibold">
-                      <td className="px-3 py-2">Tổng dự kiến cần đạt đến thời điểm hiện tại</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.motherUsed)) : "—"}</td>
-                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.m03)) : "—"}</td>
-                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.m05)) : "—"}</td>
-                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.t05)) : "—"}</td>
-                      <td className="px-3 py-2 text-right">{expectedToDate ? fmt(Math.round(expectedToDate.t01)) : "—"}</td>
-                    </tr>
-                    {behindStages.length > 0 && (
-                      <tr className="border-b bg-danger-light">
-                        <td colSpan={9} className="px-3 py-2 text-sm font-bold text-destructive">
-                          <span className="flex items-center gap-1.5">
-                            <TriangleAlert className="w-4 h-4 shrink-0" />
-                            Bạn đang cấy lệch so với chỉ định cấy — Xem lại phần số màu đỏ
-                          </span>
-                        </td>
-                      </tr>
-                    )}
-                    <tr className="border-b bg-background font-semibold">
-                      <td className="px-3 py-2">Tổng dự kiến cần đạt đến hết tuần</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">{fmt(expected?.motherUsed)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(expected?.m03)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(expected?.m05)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(expected?.t05)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(expected?.t01)}</td>
-                    </tr>
-                    <tr className="font-semibold">
-                      <td className="px-3 py-2">% hoàn thành</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">—</td>
-                      <td className="px-3 py-2 text-right">{renderPercent(totals.motherUsed, expected?.motherUsed)}</td>
-                      <td className="px-3 py-2 text-right">{renderPercent(totals.m03, expected?.m03)}</td>
-                      <td className="px-3 py-2 text-right">{renderPercent(totals.m05, expected?.m05)}</td>
-                      <td className="px-3 py-2 text-right">{renderPercent(totals.t05, expected?.t05)}</td>
-                      <td className="px-3 py-2 text-right">{renderPercent(totals.t01, expected?.t01)}</td>
+                      <td className={`px-3 py-2 text-right ${motherRatioLow ? "text-destructive" : ""}`}>{fmt(totals.m03)}</td>
+                      <td className={`px-3 py-2 text-right ${motherRatioLow ? "text-destructive" : ""}`}>{fmt(totals.m05)}</td>
+                      <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
+                      <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {selectedInst && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className={`rounded-lg p-3 ${motherRatioLow ? "bg-danger-light" : "bg-background"}`}>
+                  <p className="text-xs text-text-secondary">Tỉ lệ nhân MM (cụm MM thành phẩm / MM sử dụng)</p>
+                  <p className={`text-lg font-bold ${motherRatioLow ? "text-destructive" : "text-foreground"}`}>
+                    {motherRatioPct === null ? "—" : `${Math.round(motherRatioPct)}%`}
+                    <span className="text-xs font-normal text-text-secondary ml-1">(cần ≥{motherRatioTargetPct}%)</span>
+                  </p>
+                </div>
+                <div className={`rounded-lg p-3 ${finishedRatioLow ? "bg-danger-light" : "bg-background"}`}>
+                  <p className="text-xs text-text-secondary">Tỉ lệ ra thành phẩm (cây ra rễ / MM sử dụng)</p>
+                  <p className={`text-lg font-bold ${finishedRatioLow ? "text-destructive" : "text-foreground"}`}>
+                    {finishedRatioPct === null ? "—" : `${Math.round(finishedRatioPct)}%`}
+                    <span className="text-xs font-normal text-text-secondary ml-1">(cần ≥{finishedRatioTargetPct}%)</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {isDeviating && (
+              <div className="mt-3 flex items-center gap-2 text-sm font-bold text-destructive bg-danger-light rounded p-3">
+                <TriangleAlert className="w-4 h-4 shrink-0" />
+                Bạn đang cấy lệch so với chỉ định cấy — cả 2 tỉ lệ trên đều thấp hơn ngưỡng cần đạt
               </div>
             )}
 

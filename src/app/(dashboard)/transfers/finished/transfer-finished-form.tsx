@@ -24,7 +24,8 @@ type PickableShelf = { id: string; code: string; name: string; warehouseName: st
 type CreatedTransfer = { id: string; code: string; transferredAt: string; shelves: ScannedShelf[] };
 
 type DueGroup = {
-  weekSlot: number;
+  groupId: string;
+  groupName: string;
   warehouseName: string;
   roomName: string;
   oldestEnteredAt: string;
@@ -117,7 +118,7 @@ export default function TransferFinishedForm({
 
   const selectDueGroup = (group: DueGroup) => {
     setRows(group.shelves.map((shelf) => ({ rowId: newRowId(), shelf })));
-    toast.success(`Đã chọn ${group.shelves.length} kệ của Nhóm tuần ra rễ ${group.weekSlot}`);
+    toast.success(`Đã chọn ${group.shelves.length} kệ của ${group.groupName}`);
   };
 
   const addRow = () => setRows((prev) => [...prev, newRow()]);
@@ -249,13 +250,13 @@ export default function TransferFinishedForm({
           {dueGroups.map((group) => {
             const lotCount = group.shelves.reduce((sum, s) => sum + s.lots.length, 0);
             return (
-              <Card key={`${group.roomName}-${group.weekSlot}`} className="border border-warning-light bg-warning-light">
+              <Card key={group.groupId} className="border border-warning-light bg-warning-light">
                 <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-warning-foreground shrink-0 mt-0.5" />
                     <div>
                       <p className="font-bold text-warning-foreground">
-                        Nhóm tuần ra rễ {group.weekSlot} đã đủ 3 tuần — cần bàn giao sang kho thành phẩm
+                        {group.groupName} đã đủ 3 tuần — cần bàn giao sang kho thành phẩm
                       </p>
                       <p className="text-sm text-warning-foreground/80">
                         {group.roomName} ({group.warehouseName}) · {group.shelves.length} kệ · {lotCount} lô · lô cũ nhất từ{" "}

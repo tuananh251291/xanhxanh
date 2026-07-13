@@ -32,13 +32,14 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   const inst = await prisma.plantingInstruction.findUnique({
     where: { id },
     include: {
-      plantType: { include: { category: true } },
+      plantType: true,
       createdBy: { select: { name: true } },
       assignedTo: { select: { name: true, code: true } },
       handedOverBy: { select: { name: true, workplaceWarehouse: { select: { name: true } } } },
       items: {
         include: {
           shelf: { include: { warehouse: { select: { name: true } } } },
+          lot: { select: { code: true } },
           motherMedium: { select: { code: true, name: true } },
           finishedMedium: { select: { code: true, name: true } },
         },
@@ -65,15 +66,13 @@ export default async function InstructionDetailPage({ params }: { params: Promis
 
   // Dữ liệu riêng cho "Phiếu chỉ định sản xuất"
   const weekEnd = inst.weekStart ? addDays(inst.weekStart, 6) : null;
-  const yearYY = format(inst.weekStart ?? inst.createdAt, "yy");
   const printRows = inst.items.map((item) => ({
     id: item.id,
-    maMauMe: `${inst.plantType.category.code}${yearYY}${item.stageCode ?? ""}`,
+    maMauMe: item.lot?.code ?? "—",
     slSach: item.quantity,
   }));
   const m03Total = inst.items.filter((i) => i.stageCode === "M03").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
   const m05Total = inst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
-  const totalMotherQty = printRows.reduce((s, r) => s + r.slSach, 0);
 
   return (
     <div className="space-y-6">
@@ -82,50 +81,32 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         <div className="pi-sheet">
           <header className="pi-header">
             <h1 className="pi-title">PHIẾU CHỈ ĐỊNH SẢN XUẤT</h1>
-            <p className="pi-code">
-              Số phiếu: <strong>{inst.code}</strong>
+            <p className="pi-range">
+              Từ ngày <strong>{inst.weekStart ? format(inst.weekStart, "dd/MM/yyyy") : "—"}</strong> đến ngày{" "}
+              <strong>{weekEnd ? format(weekEnd, "dd/MM/yyyy") : "—"}</strong>
             </p>
+            <div className="pi-header-info">
+              <span>
+                Số phiếu: <strong>{inst.code}</strong>
+              </span>
+              <span>
+                Ngày nhận mẫu:{" "}
+                <strong>{inst.motherReceivedAt ? format(inst.motherReceivedAt, "HH:mm dd/MM/yyyy") : "………………"}</strong>
+              </span>
+            </div>
+            <div className="pi-header-info">
+              <span>
+                Nhân viên: <strong>{inst.assignedTo?.name ?? "………………"}</strong>
+              </span>
+            </div>
             <p className="pi-legend">
               <strong>MM</strong>: Mẫu mẹ &nbsp;&nbsp; <strong>NV</strong>: Nhân viên &nbsp;&nbsp; <strong>SL</strong>: Số lượng
             </p>
           </header>
 
-          {/* Section 1 — Thông tin chung */}
+          {/* Section 1 — Thông tin giao nhận */}
           <section className="pi-section">
-            <h2 className="pi-section-title">1. Thông tin chung</h2>
-            <div className="pi-grid2">
-              <div className="pi-field">
-                <span className="pi-label">Mẫu mẹ</span>
-                <span className="pi-value">{inst.plantType.name}</span>
-              </div>
-              <div className="pi-field">
-                <span className="pi-label">Nhân viên</span>
-                <span className="pi-value">{inst.assignedTo?.name ?? "………………"}</span>
-              </div>
-              <div className="pi-field">
-                <span className="pi-label">Số lượng</span>
-                <span className="pi-value">{totalMotherQty.toLocaleString("vi-VN")}</span>
-              </div>
-              <div className="pi-field">
-                <span className="pi-label">Ngày nhận mẫu</span>
-                <span className="pi-value">
-                  {inst.motherReceivedAt ? format(inst.motherReceivedAt, "HH:mm dd/MM/yyyy") : "………………"}
-                </span>
-              </div>
-              <div className="pi-field">
-                <span className="pi-label">Từ ngày</span>
-                <span className="pi-value">{inst.weekStart ? format(inst.weekStart, "dd/MM/yyyy") : "—"}</span>
-              </div>
-              <div className="pi-field">
-                <span className="pi-label">Đến ngày</span>
-                <span className="pi-value">{weekEnd ? format(weekEnd, "dd/MM/yyyy") : "—"}</span>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 2 — Thông tin giao nhận */}
-          <section className="pi-section">
-            <h2 className="pi-section-title">2. Thông tin giao nhận</h2>
+            <h2 className="pi-section-title">1. Thông tin giao nhận</h2>
             <div className="pi-grid2">
               <div className="pi-field">
                 <span className="pi-label">Bên giao</span>
@@ -150,9 +131,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             </div>
           </section>
 
-          {/* Section 3 — Thông tin mẫu mẹ */}
+          {/* Section 2 — Thông tin mẫu mẹ */}
           <section className="pi-section">
-            <h2 className="pi-section-title">3. Thông tin mẫu mẹ</h2>
+            <h2 className="pi-section-title">2. Thông tin mẫu mẹ</h2>
             <div className="pi-card-stack">
               {printRows.length > 0 ? (
                 printRows.map((r) => (
@@ -160,6 +141,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                     <div className="pi-card-cell">
                       <span className="pi-label">Mã mẫu mẹ</span>
                       <span className="pi-value mono">{r.maMauMe}</span>
+                      <span className="pi-subvalue">
+                        {inst.plantType.code} · {inst.plantType.name}
+                      </span>
                     </div>
                     <div className="pi-card-cell">
                       <span className="pi-label">Số lượng bàn giao</span>
@@ -172,6 +156,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                   <div className="pi-card-cell">
                     <span className="pi-label">Mã mẫu mẹ</span>
                     <span className="pi-value">—</span>
+                    <span className="pi-subvalue">
+                      {inst.plantType.code} · {inst.plantType.name}
+                    </span>
                   </div>
                   <div className="pi-card-cell">
                     <span className="pi-label">Số lượng bàn giao</span>
@@ -182,9 +169,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             </div>
           </section>
 
-          {/* Section 4 — Chỉ định cấy */}
+          {/* Section 3 — Chỉ định cấy */}
           <section className="pi-section">
-            <h2 className="pi-section-title">4. Chỉ định cấy</h2>
+            <h2 className="pi-section-title">3. Chỉ định cấy</h2>
             {inst.notes && (
               <p className="pi-notes-text">
                 <strong>Ghi chú:</strong> {inst.notes}
@@ -212,7 +199,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             </table>
           </section>
 
-          {/* Section 5 — Lưu ý */}
+          {/* Lưu ý */}
           <section className="pi-section">
             <div className="pi-note">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -227,9 +214,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             </div>
           </section>
 
-          {/* Section 6 — Ký xác nhận */}
+          {/* Section 4 — Ký xác nhận */}
           <section className="pi-section">
-            <h2 className="pi-section-title">5. Ký xác nhận</h2>
+            <h2 className="pi-section-title">4. Ký xác nhận</h2>
             <div className="pi-sign-grid">
               <div className="pi-sign-col">
                 <p className="pi-role">Bên giao</p>
@@ -258,7 +245,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
           {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
         </Badge>
-        {inst.mediumOrder && (
+        {/* Đơn đặt hàng môi trường — nội bộ giữa KY_THUAT/KHO_MO/MOI_TRUONG/Admin, NV cấy mô không có
+            quyền xem trang /medium-orders/[id] nên cũng không hiện badge dẫn tới đó cho họ. */}
+        {inst.mediumOrder && role !== "CAY_MO" && (
           <Link href={`/medium-orders/${inst.mediumOrder.id}`}>
             <Badge variant="outline" className="cursor-pointer">
               Đơn MT: {inst.mediumOrder.confirmedAt ? MEDIUM_ORDER_STATUS_LABELS.IN_PROGRESS : MEDIUM_ORDER_STATUS_LABELS.UNCONFIRMED}

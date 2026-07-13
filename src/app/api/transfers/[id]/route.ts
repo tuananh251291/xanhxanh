@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { motherClusterUnits, SURPLUS_TRANSFER_TAG } from "@/types";
+import { SURPLUS_TRANSFER_TAG, sumLotQuantity } from "@/types";
 import { planShelfAssignments, planSurplusPlacement, ShelfAssignError } from "@/lib/shelf-assignment";
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
 import { generateLotCode } from "@/lib/codes";
@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         include: {
           lot: {
             include: {
-              plantType: { select: { code: true, name: true } },
+              plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
               instruction: { select: { assignedToId: true } },
             },
           },
@@ -58,7 +58,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const isSurplusTransfer = transfer.notes === SURPLUS_TRANSFER_TAG;
 
   // Bàn giao từ Phòng tối → Kho sáng: hệ thống tự chỉ định kệ (mẫu mẹ theo đúng NV phụ trách,
-  // tràn 1800 cụm thì dồn sang Kho mẫu mẹ chung; cây ra rễ vào Phòng ra rễ) — không cần KHO_MO chọn tay.
+  // tràn quá sức chứa kệ (tính theo túi, do SUPER_ADMIN cài đặt riêng từng kệ) thì dồn sang Kho mẫu
+  // mẹ chung; cây ra rễ vào Phòng ra rễ) — không cần KHO_MO chọn tay.
   if (isSurplusTransfer || transfer.fromRoom?.type === "PHONG_TOI") {
     const warehouseId = transfer.fromRoom?.warehouseId ?? transfer.fromWarehouseId;
     if (!warehouseId) return NextResponse.json({ message: "Không xác định được kho nguồn" }, { status: 400 });
@@ -219,8 +220,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Các loại bàn giao khác: vẫn chọn kệ thủ công như trước.
   const shelfMap = new Map(shelfAssignments?.map((a) => [a.lotId, a.shelfId]) ?? []);
 
-  // Nguyên tắc kệ Phòng mẫu mẹ: 1 kệ chỉ xếp 1 loại cây (nếu đã gán) và không vượt capacity —
-  // kiểm tra trước khi cam kết, tính cả các lô khác trong cùng đợt xác nhận này dồn vào cùng 1 kệ.
+  // Nguyên tắc kệ Phòng mẫu mẹ: 1 kệ chỉ xếp 1 loại cây (nếu đã gán) và không vượt capacity — kiểm tra
+  // trước khi cam kết, tính cả các lô khác trong cùng đợt xác nhận này dồn vào cùng 1 kệ. Kệ có thể
+  // chứa nhiều lô/quy cách cùng lúc (VD cả M03 lẫn M05), giới hạn duy nhất là capacity.
   if (shelfAssignments && shelfAssignments.length > 0) {
     const shelfIds = Array.from(new Set(shelfAssignments.map((a) => a.shelfId)));
     const shelves = await prisma.shelf.findMany({
@@ -229,7 +231,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     const shelfById = new Map(shelves.map((s) => [s.id, s]));
     const batchQtyByShelf = new Map<string, number>();
-    const claimedAssignedShelves = new Set<string>();
 
     for (const a of shelfAssignments) {
       const item = transfer.items.find((i) => i.lotId === a.lotId);
@@ -238,20 +239,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (shelf.plantTypeId && shelf.plantTypeId !== item.lot.plantTypeId) {
         return NextResponse.json({ message: `Kệ ${shelf.code} đã gán cho loại cây khác — không thể xếp lô ${item.lot.code}` }, { status: 409 });
       }
-      // Kệ Kho mẫu mẹ đã chia (có assignedStaffId) chỉ chứa đúng 1 lô ACTIVE — kể cả trong cùng đợt xác nhận này.
-      if (shelf.assignedStaffId) {
-        if (shelf.lots.length > 0 || claimedAssignedShelves.has(shelf.id)) {
-          return NextResponse.json({ message: `Kệ ${shelf.code} (Kho mẫu mẹ đã chia) đã có lô — mỗi kệ chỉ xếp 1 lô` }, { status: 409 });
-        }
-        claimedAssignedShelves.add(shelf.id);
-      }
-      const addUnits = motherClusterUnits(item.lot.stageCode, item.lot.quantity);
+      const addUnits = item.lot.quantity;
       batchQtyByShelf.set(a.shelfId, (batchQtyByShelf.get(a.shelfId) ?? 0) + addUnits);
     }
 
     for (const [shelfId, addQty] of batchQtyByShelf) {
       const shelf = shelfById.get(shelfId)!;
-      const existingQty = shelf.lots.reduce((s, l) => s + motherClusterUnits(l.stageCode, l.quantity), 0);
+      const existingQty = sumLotQuantity(shelf.lots);
       if (shelf.capacity && existingQty + addQty > shelf.capacity) {
         return NextResponse.json({ message: `Kệ ${shelf.code} không đủ chỗ (còn trống ${Math.max(0, shelf.capacity - existingQty)}/${shelf.capacity})` }, { status: 409 });
       }

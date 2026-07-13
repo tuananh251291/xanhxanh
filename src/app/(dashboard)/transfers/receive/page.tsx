@@ -10,7 +10,7 @@ import { PackageCheck, Loader2, Check, X, ChevronDown, ChevronUp, AlertTriangle 
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { motherClusterUnits, SURPLUS_TRANSFER_TAG } from "@/types";
+import { SURPLUS_TRANSFER_TAG, sumLotQuantity } from "@/types";
 
 type Shelf = {
   id: string;
@@ -314,22 +314,20 @@ export default function TransferReceivePage() {
                                   <p className="text-xs text-text-secondary bg-info-light rounded p-2">
                                     {isSurplus
                                       ? "Bàn giao MM dư (chỉ định đã kết thúc do hết thời gian) — hệ thống tự xếp thẳng vào Kho quá hạn trong Kho mẫu mẹ chung."
-                                      : "Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M03/M05) vào đúng kệ của nhân viên phụ trách trong Kho mẫu mẹ đã chia (dư quá 1800 cụm sẽ tự chuyển sang Kho đúng hạn), cây ra rễ vào Phòng ra rễ."}
+                                      : "Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M03/M05) vào đúng kệ của nhân viên phụ trách trong Kho mẫu mẹ đã chia (dư quá sức chứa kệ sẽ tự chuyển sang Kho đúng hạn), cây ra rễ vào Phòng ra rễ."}
                                   </p>
                                 ) : (
                                   <>
                                     <p className="text-sm font-medium text-foreground">Phân bổ kệ cho từng lô:</p>
                                     {t.items.map((item) => {
                                       const allShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
-                                      // Chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng loại cây của lô này, và còn đủ chỗ.
-                                      const itemUnits = motherClusterUnits(item.lot.stageCode, item.quantity);
+                                      // Chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng loại cây của lô này, và còn đủ chỗ (túi).
+                                      const itemUnits = item.quantity;
                                       const compatibleShelves = allShelves.filter((s) => {
-                                        const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
+                                        const used = sumLotQuantity(s.lots);
                                         const matchesPlantType = !s.plantType || s.plantType.id === item.lot.plantTypeId;
                                         const hasRoom = !s.capacity || used + itemUnits <= s.capacity;
-                                        // Kệ Kho mẫu mẹ đã chia chỉ nhận khi đang trống — mỗi kệ tối đa 1 lô.
-                                        const notOccupiedAssigned = !s.assignedStaffId || s.lots.length === 0;
-                                        return matchesPlantType && hasRoom && notOccupiedAssigned;
+                                        return matchesPlantType && hasRoom;
                                       });
                                       return (
                                         <div key={item.id} className="flex flex-wrap items-center gap-3 text-sm">
@@ -341,7 +339,7 @@ export default function TransferReceivePage() {
                                           </div>
                                           <Select
                                             items={compatibleShelves.map((s) => {
-                                              const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
+                                              const used = sumLotQuantity(s.lots);
                                               return {
                                                 value: s.id,
                                                 label: `${s.code} — ${s.name}${s.capacity ? ` (còn ${(s.capacity - used).toLocaleString("vi-VN")}/${s.capacity})` : ""}`,
@@ -355,7 +353,7 @@ export default function TransferReceivePage() {
                                             </SelectTrigger>
                                             <SelectContent>
                                               {compatibleShelves.map((s) => {
-                                                const used = s.lots.reduce((sum, l) => sum + motherClusterUnits(l.stageCode, l.quantity), 0);
+                                                const used = sumLotQuantity(s.lots);
                                                 return (
                                                   <SelectItem key={s.id} value={s.id}>
                                                     {s.code} — {s.name}{s.capacity ? ` (còn ${(s.capacity - used).toLocaleString("vi-VN")}/${s.capacity})` : ""}

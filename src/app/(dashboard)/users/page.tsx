@@ -185,7 +185,7 @@ export default async function UsersPage({
                           <td className="px-4 py-3">
                             {user.role && user.role !== "SUPER_ADMIN" ? (
                               <EditUserDialog
-                                user={{ id: user.id, name: user.name, email: user.email, role: user.role, isActive: user.isActive }}
+                                user={{ id: user.id, name: user.name, email: user.email, role: user.role, code: user.code, isActive: user.isActive }}
                               />
                             ) : (
                               <span className="text-xs text-text-muted">—</span>

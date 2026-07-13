@@ -13,9 +13,19 @@ const CONFIG_META: Record<string, { label: string; description: string; unit: st
   default_hold_days: { label: "Thời gian giữ đơn mặc định", description: "Số ngày sale giữ đơn trước khi hết hạn", unit: "ngày" },
   dark_room_days: { label: "Thời gian lưu phòng tối", description: "Số ngày cây ở phòng tối sau khi cấy", unit: "ngày" },
   contamination_alert_pct: { label: "Ngưỡng cảnh báo tỉ lệ nhiễm", description: "% tỉ lệ nhiễm để kích hoạt cảnh báo tự động", unit: "%" },
-  planting_ratio_target_pct: {
-    label: "Tỉ lệ cấy cần đạt",
-    description: "% tối thiểu giữa sản lượng cấy thực tế và sản lượng cần đạt tính theo tiến độ ngày (dự kiến cả tuần / 6 ngày) — nếu 1 trong các quy cách M03/M05/T05/T01 thấp hơn mức này sẽ cảnh báo lệch chỉ định cấy cho nhân viên kỹ thuật",
+  mother_contamination_alert_pct: {
+    label: "Tỉ lệ nhiễm sau ủ sáng",
+    description: "% tối đa giữa tổng mẫu mẹ nhiễm (M03+M05) cộng dồn và tổng mẫu mẹ được cấp cho chỉ định — vượt ngưỡng này sẽ báo cho Kho mô ngay khi nhân viên cấy mô lưu nhật ký hàng ngày",
+    unit: "%",
+  },
+  mother_ratio_target_pct: {
+    label: "Tỉ lệ nhân MM cần đạt",
+    description: "% tối thiểu giữa tỉ lệ nhân mẫu mẹ thực tế (số cụm mẫu mẹ thành phẩm / số mẫu mẹ đã sử dụng, cộng dồn cả chỉ định) so với tỉ lệ mục tiêu của chỉ định — cùng với 'Tỉ lệ ra thành phẩm cần đạt' đều thấp hơn mức này mới cảnh báo cấy lệch chỉ định cho nhân viên kỹ thuật",
+    unit: "%",
+  },
+  finished_ratio_target_pct: {
+    label: "Tỉ lệ ra thành phẩm cần đạt",
+    description: "% tối thiểu giữa tỉ lệ ra thành phẩm thực tế (số cây ra rễ thành phẩm / số mẫu mẹ đã sử dụng, cộng dồn cả chỉ định) so với tỉ lệ mục tiêu của chỉ định — cùng với 'Tỉ lệ nhân MM cần đạt' đều thấp hơn mức này mới cảnh báo cấy lệch chỉ định cho nhân viên kỹ thuật",
     unit: "%",
   },
 };

@@ -25,7 +25,7 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.role = (user as { role: UserRole | null }).role;
         token.status = (user as { status: UserStatus }).status;
-        token.id = user.id;
+        token.id = user.id as string;
         token.avatar = (user as { avatar?: string | null }).avatar ?? null;
         token.workplaceWarehouseId = (user as { workplaceWarehouseId?: string | null }).workplaceWarehouseId ?? null;
       }

@@ -2,7 +2,7 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import type { UserRole } from "@prisma/client";
+import type { UserRole, UserStatus } from "@prisma/client";
 import { authConfig } from "@/lib/auth.config";
 import { createAlert } from "@/lib/inventory";
 
@@ -21,8 +21,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role: UserRole | null }).role;
-        token.status = (user as { status: string }).status;
-        token.id = user.id;
+        token.status = (user as { status: UserStatus }).status;
+        token.id = user.id as string;
         token.avatar = (user as { avatar?: string | null }).avatar ?? null;
         token.workplaceWarehouseId = (user as { workplaceWarehouseId?: string | null }).workplaceWarehouseId ?? null;
         return token;

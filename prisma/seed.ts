@@ -96,56 +96,56 @@ async function main() {
   // Admin thêm/sửa chi tiết loại cây qua trang /plant-types sau này.
   const plantCategories = [
     {
-      code: "AL", name: "Alocasia", transferWaitWeeks: 4, rootingWeeks: 5,
+      code: "AL", name: "Alocasia", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Alocasia Odora", "Alocasia Amazonica", "Alocasia Polly", "Alocasia Frydek", "Alocasia Silver Dragon",
         "Alocasia Black Velvet", "Alocasia Cuprea", "Alocasia Zebrina",
       ],
     },
     {
-      code: "MT", name: "Monstera", transferWaitWeeks: 5, rootingWeeks: 6,
+      code: "MT", name: "Monstera", transferWaitWeeks: 6, rootingWeeks: 3,
       varieties: [
         "Monstera Siltepecana", "Monstera Deliciosa", "Monstera Adansonii", "Monstera Albo Variegata", "Monstera Thai Constellation",
         "Monstera Peru", "Monstera Obliqua", "Monstera Standleyana",
       ],
     },
     {
-      code: "PD", name: "Philodendron", transferWaitWeeks: 4, rootingWeeks: 5,
+      code: "PD", name: "Philodendron", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Philodendron Gloriosum", "Philodendron Birkin", "Philodendron Pink Princess", "Philodendron Selloum", "Philodendron Melanochrysum",
         "Philodendron Micans", "Philodendron Florida Ghost", "Philodendron White Knight",
       ],
     },
     {
-      code: "AT", name: "Anthurium", transferWaitWeeks: 6, rootingWeeks: 6,
+      code: "AT", name: "Anthurium", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Anthurium Regale", "Anthurium Crystallinum", "Anthurium Clarinervium", "Anthurium Warocqueanum", "Anthurium Veitchii",
         "Anthurium Andraeanum", "Anthurium Magnificum",
       ],
     },
     {
-      code: "HM", name: "Homa", transferWaitWeeks: 4, rootingWeeks: 5,
+      code: "HM", name: "Homa", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Homalomena Sanderiana", "Homalomena Rubescens", "Homalomena Emerald Gem", "Homalomena Selby", "Homalomena Maggy",
         "Homalomena Pink Diamond", "Homalomena Cordata",
       ],
     },
     {
-      code: "EP", name: "Epi", transferWaitWeeks: 4, rootingWeeks: 5,
+      code: "EP", name: "Epi", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Epipremnum Global Green", "Epipremnum Aureum", "Epipremnum Marble Queen", "Epipremnum N'Joy", "Epipremnum Pinnatum",
         "Epipremnum Cebu Blue", "Epipremnum Manjula",
       ],
     },
     {
-      code: "MS", name: "Musa", transferWaitWeeks: 5, rootingWeeks: 5,
+      code: "MS", name: "Musa", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Musa Acuminata", "Musa Basjoo", "Musa Velutina", "Musa Ornata", "Musa Siam Ruby",
         "Musa Zebrina", "Musa Thai Black",
       ],
     },
     {
-      code: "RH", name: "Raphidophora", transferWaitWeeks: 4, rootingWeeks: 5,
+      code: "RH", name: "Raphidophora", transferWaitWeeks: 4, rootingWeeks: 3,
       varieties: [
         "Raphidophora Foraminifera", "Raphidophora Tetrasperma", "Raphidophora Decursiva", "Raphidophora Korthalsii", "Raphidophora Hayi",
         "Raphidophora Pachyphylla", "Raphidophora Cryptantha",
@@ -164,7 +164,7 @@ async function main() {
       const code = `${pc.code}${String(seq).padStart(3, "0")}`;
       await prisma.plantType.upsert({
         where: { code },
-        update: { name: names[i] },
+        update: { name: names[i], transferWaitWeeks: pc.transferWaitWeeks, rootingWeeks: pc.rootingWeeks },
         create: {
           categoryId: category.id,
           seq,
@@ -180,9 +180,14 @@ async function main() {
 
   // Medium types
   const mediumTypes = [
-    { code: "MT001", name: "Môi trường MS cơ bản" },
-    { code: "MT002", name: "Môi trường MS + BAP 0.5" },
-    { code: "MT003", name: "Môi trường MS + IBA 1.0" },
+    { code: "24", name: "MT 24 thạch" },
+    { code: "25", name: "MT 24 thạch thêm than hoạt tính" },
+    { code: "26", name: "MT 24 nước" },
+    { code: "22", name: "MT 21 nước" },
+    { code: "21", name: "MT 21 thạch" },
+    { code: "23", name: "MT 23 thạch" },
+    { code: "10", name: "MT CTP Cơ bản" },
+    { code: "13", name: "MT CTP Nâng cao" },
   ];
   for (const mt of mediumTypes) {
     await prisma.mediumType.upsert({
@@ -250,9 +255,9 @@ async function main() {
   }
   console.log("✅ Rooms created");
 
-  // Shelves for phòng mẫu mẹ (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (SUPER_ADMIN chỉ định), tối đa
-  // 1800 cụm mẫu mẹ (quantity túi × 3 hoặc × 5 tùy quy cách M03/M05 — xem motherClusterUnits trong types/index.ts).
-  // Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
+  // Shelves for phòng mẫu mẹ (3x5 lưới mỗi phòng) — mỗi kệ chỉ xếp 1 mã cây (SUPER_ADMIN chỉ định), sức
+  // chứa tính thẳng theo TÚI (không quy đổi cụm) — 600 túi chỉ là giá trị demo mặc định, SUPER_ADMIN có
+  // thể sửa riêng từng kệ. Gán xoay vòng qua các loại cây đã tạo để có sẵn dữ liệu demo cho tính năng này.
   const psCaymoStaff = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
   let psShelfSeq = 0;
   const psShelfPlantType: Record<string, string> = {};
@@ -272,7 +277,7 @@ async function main() {
         psShelfPlantType[code] = plantType.id;
         await prisma.shelf.upsert({
           where: { code },
-          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 1800, block },
+          update: { plantTypeId: plantType.id, assignedStaffId: staff?.id, capacity: 600, block },
           create: {
             code,
             name: `Kệ ${rowLetter}${rowStr}C${colStr}`,
@@ -281,7 +286,7 @@ async function main() {
             rowNumber: row,
             colNumber: col,
             block,
-            capacity: 1800,
+            capacity: 600,
             plantTypeId: plantType.id,
             assignedStaffId: staff?.id,
           },

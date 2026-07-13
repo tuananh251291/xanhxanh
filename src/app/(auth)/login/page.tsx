@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Leaf, Loader2, KeyRound } from "lucide-react";
+import { Leaf, Loader2, KeyRound, LayoutList, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { randomGreetingQuote, randomGreetingBackground } from "@/lib/greetings";
 
@@ -103,6 +103,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [greetingQuote, setGreetingQuote] = useState<string | null>(null);
   const [greetingBg, setGreetingBg] = useState("");
+  const [showInterfaceChoice, setShowInterfaceChoice] = useState(false);
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -126,17 +127,64 @@ export default function LoginPage() {
         );
         setLoading(false);
       } else {
+        const freshSession = await getSession();
+        const userRole = freshSession?.user?.role;
         setGreetingBg(randomGreetingBackground());
         setGreetingQuote(randomGreetingQuote());
         setTimeout(() => {
-          router.push("/dashboard");
-          router.refresh();
+          if (userRole === "CAY_MO") {
+            setShowInterfaceChoice(true);
+          } else {
+            router.push("/dashboard");
+            router.refresh();
+          }
         }, GREETING_DURATION_MS);
       }
     } catch {
       setLoading(false);
     }
   };
+
+  if (showInterfaceChoice) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${greetingBg} p-4`}>
+        <div className="w-full max-w-2xl text-center animate-in fade-in zoom-in-95 duration-500">
+          <h1 className="text-2xl font-bold text-foreground mb-2">Chọn giao diện làm việc</h1>
+          <p className="text-text-secondary text-sm mb-8">Bạn có thể đổi lại bất cứ lúc nào</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                router.push("/dashboard-basic");
+                router.refresh();
+              }}
+              className="bg-card border border-border rounded-2xl p-6 text-left hover:border-primary hover:shadow-md transition-all"
+            >
+              <div className="bg-primary-light text-primary-strong p-3 rounded-xl w-fit mb-4">
+                <LayoutList className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-bold text-foreground mb-1">Giao diện cơ bản</h2>
+              <p className="text-sm text-text-secondary">Màn hình rút gọn, dễ thao tác, không có menu bên cạnh</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                router.push("/dashboard");
+                router.refresh();
+              }}
+              className="bg-card border border-border rounded-2xl p-6 text-left hover:border-primary hover:shadow-md transition-all"
+            >
+              <div className="bg-primary-light text-primary-strong p-3 rounded-xl w-fit mb-4">
+                <LayoutDashboard className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-bold text-foreground mb-1">Giao diện nâng cao</h2>
+              <p className="text-sm text-text-secondary">Đầy đủ chức năng và menu như hiện tại</p>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (greetingQuote) {
     return (

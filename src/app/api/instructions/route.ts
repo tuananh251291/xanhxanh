@@ -6,6 +6,7 @@ import { createAlert } from "@/lib/inventory";
 import { buildInstructionMediumNeeds, aggregateMediumOrderItems, getOrderWeekRange } from "@/lib/medium-orders";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
+import { startOfWeek } from "date-fns";
 
 // Mỗi dòng = 1 quy cách nguồn (M03 hoặc M05) được dùng, lấy từ 1 lô cụ thể trên 1 kệ. Một kệ có thể sinh
 // nhiều dòng nếu kệ đó có cả M03 và M05. Mỗi dòng tự có tỉ lệ + môi trường riêng — output KHÔNG dây chuyền
@@ -24,7 +25,10 @@ const shelfItemSchema = z.object({
 
 const createSchema = z.object({
   plantTypeId: z.string(),
-  weekStart: z.string().optional(),
+  // Bắt buộc — để trống khiến chỉ định không bao giờ tự kết thúc được (ensureInstructionsEnded lọc
+  // theo weekStart, bỏ qua bản ghi null) và NV cấy mô không nhập được nhật ký ngày (POST
+  // /api/daily-records chặn cứng nếu thiếu weekStart).
+  weekStart: z.string().min(1, "Cần chọn Tuần thực hiện"),
   notes: z.string().optional(),
   shelfItems: z.array(shelfItemSchema).min(1, "Cần chọn ít nhất 1 dòng quy cách nguồn"),
   // Kế hoạch phân bổ thành phẩm dự kiến theo quy cách đóng gói (T01/T05) — chỉ để đối chiếu sau này,
@@ -80,6 +84,13 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
   const { shelfItems, plantTypeId, weekStart, notes, plannedT01Quantity, plannedT05Quantity } = parsed.data;
+
+  // Không cho tạo chỉ định cho tuần đã trôi qua — so theo tuần chứa weekStart (weekStartsOn: 1), không
+  // bắt buộc weekStart phải đúng ngày Thứ 2. Chặn cả ở đây phòng khi client gửi thẳng lên (bỏ qua input
+  // date có min ở create-instruction-dialog.tsx).
+  if (startOfWeek(new Date(weekStart), { weekStartsOn: 1 }) < startOfWeek(new Date(), { weekStartsOn: 1 })) {
+    return NextResponse.json({ message: "Không được chọn tuần đã trôi qua" }, { status: 400 });
+  }
 
   // Chỉ định cấy chỉ được lấy nguồn từ kệ trong Phòng mẫu mẹ của Kho sản xuất — chặn ở server phòng khi
   // client gửi thẳng lên (bỏ qua dropdown đã lọc sẵn ở UI).

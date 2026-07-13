@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
-  PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck, FlaskConical, type LucideIcon,
+  PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck, FlaskConical, Bell, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
@@ -50,7 +50,7 @@ async function getCayMoStats(userId: string) {
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
 
-  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday] = await Promise.all([
+  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults] = await Promise.all([
     // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
     // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
     prisma.plantingInstruction.findFirst({
@@ -79,6 +79,11 @@ async function getCayMoStats(userId: string) {
         createdAt: { gte: todayStart, lte: todayEnd },
       },
     }),
+    // Luồng Đỏ (hoặc chưa cài đặt luồng) — Kho mô vừa kiểm tra xong 1 phiếu bàn giao, chưa xem kết quả.
+    // Luồng Xanh không phát sinh loại thông báo này (xem inspect/[transferId]/route.ts).
+    prisma.alert.count({
+      where: { userId, type: "INSPECTION_RESULT_READY", status: "UNREAD" },
+    }),
   ]);
 
   const now = new Date();
@@ -89,6 +94,7 @@ async function getCayMoStats(userId: string) {
     dailyRecordDone: !!dailyRecordToday,
     contaminationChecked: !hasOverdueDarkRoomLot,
     handoverDone: !!handoverToday,
+    unreadInspectionResults,
   };
 }
 
@@ -443,6 +449,22 @@ function CayMoDashboard({
       </div>
       <GreetingBanner />
 
+      {stats.unreadInspectionResults > 0 && (
+        <Link href="/handover-record" className="block">
+          <Card className="border border-warning bg-warning-light">
+            <CardContent className="py-4 flex items-center gap-3">
+              <Bell className="w-5 h-5 text-warning-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-warning-foreground">
+                  Có {stats.unreadInspectionResults} phiếu bàn giao đã có kết quả kiểm tra
+                </p>
+                <p className="text-xs text-warning-foreground/80">Bấm để xem số lượng được ghi nhận</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
       <ProductivityLeaderboard />
 
       <Card>
@@ -450,40 +472,57 @@ function CayMoDashboard({
           <CardTitle className="text-base">Công việc hôm nay</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <TaskRow
-            href="/my-instructions"
-            icon={PackageCheck}
-            title="1. Nhận bàn giao mẫu mẹ"
-            description="Xác nhận đã nhận mẫu mẹ từ Kho mô"
-            done={stats.motherReceived}
-          />
-          <TaskRow
-            href="/daily-record"
-            icon={PenLine}
-            title="2. Cập nhật số liệu cấy"
-            description="Nhập nhật ký cấy mô trong ngày"
-            done={stats.dailyRecordDone}
-          />
-          <TaskRow
-            href="/my-dark-room"
-            icon={Moon}
-            title="3. Kiểm tra nhiễm phòng tối"
-            description="Kiểm tra và báo cáo nhiễm các lô trong phòng tối"
-            done={stats.contaminationChecked}
-          />
-          <TaskRow
-            href="/product-handover"
-            icon={Send}
-            title="4. Bàn giao sản phẩm"
-            description="Bàn giao lô từ phòng tối cho Kho mô"
-            done={stats.handoverDone}
-          />
+          {cayMoTasks(stats).map((task, i) => (
+            <TaskRow key={task.key} href={task.href} icon={task.icon} title={`${i + 1}. ${task.title}`} description={task.description} done={task.done} />
+          ))}
         </CardContent>
       </Card>
 
       <TodayChecklist />
     </div>
   );
+}
+
+// "Nhận bàn giao mẫu mẹ" chỉ bật lại (Chưa hoàn thành) khi có chỉ định MỚI được bàn giao — không tự
+// reset theo ngày như 3 việc còn lại (xem getCayMoStats) — nên sau khi xác nhận xong, ẩn hẳn khỏi danh
+// sách thay vì hiện badge "Đã hoàn thành" cả tuần, tránh nhầm là việc cần làm lại mỗi ngày. 3 việc còn
+// lại vẫn hiện kèm badge như cũ vì chúng tự reset "Chưa hoàn thành" vào ngày hôm sau.
+function cayMoTasks(stats: Awaited<ReturnType<typeof getCayMoStats>>) {
+  return [
+    {
+      key: "mother",
+      href: "/my-instructions",
+      icon: PackageCheck,
+      title: "Nhận bàn giao mẫu mẹ",
+      description: "Xác nhận đã nhận mẫu mẹ từ Kho mô",
+      done: stats.motherReceived,
+      hideWhenDone: true,
+    },
+    {
+      key: "daily-record",
+      href: "/daily-record",
+      icon: PenLine,
+      title: "Cập nhật số liệu cấy",
+      description: "Nhập nhật ký cấy mô trong ngày",
+      done: stats.dailyRecordDone,
+    },
+    {
+      key: "dark-room",
+      href: "/my-dark-room",
+      icon: Moon,
+      title: "Kiểm tra nhiễm phòng tối",
+      description: "Kiểm tra và báo cáo nhiễm các lô trong phòng tối",
+      done: stats.contaminationChecked,
+    },
+    {
+      key: "handover",
+      href: "/product-handover",
+      icon: Send,
+      title: "Bàn giao sản phẩm",
+      description: "Bàn giao lô từ phòng tối cho Kho mô",
+      done: stats.handoverDone,
+    },
+  ].filter((task) => !(task.hideWhenDone && task.done));
 }
 
 function TaskRow({
@@ -548,7 +587,7 @@ function KyThuatDashboard({
             countLabel={`${stats.instructionDone}/${stats.instructionTotal} lô`}
           />
           <WeeklyTaskRow
-            href="/alerts"
+            href="/planting-check"
             icon={ClipboardCheck}
             title="2. Kiểm tra tình trạng cấy"
             deadline="Xử lý các chỉ định lệch % vượt ngưỡng — cần hoàn thiện trong tuần"

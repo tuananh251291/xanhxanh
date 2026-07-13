@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { WAREHOUSE_TYPE_LABELS, WAREHOUSE_TYPE_COLORS, ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
 import type { WarehouseType, RoomType } from "@prisma/client";
 import AddMarketRoomDialog from "./add-market-room-dialog";
-import AddShelvesDialog from "./add-shelves-dialog";
 import RoomAccessDialog from "./room-access-dialog";
 import ShelfTable from "./shelf-table";
 
@@ -28,7 +27,7 @@ type ShelfData = {
   assignedStaff: Staff | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   allowedCodes: string[];
-  weekSlot: number | null;
+  rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
   lots: { quantity: number; stageCode: string }[];
 };
 type RoomData = {
@@ -60,16 +59,14 @@ type WarehouseData = {
 };
 
 function RoomCard({
-  room, wh, expanded, onToggle, saleUsers, caymoStaff, canManageStaffAndPlant, canMoveRoom, onDeleted,
+  room, wh, expanded, onToggle, saleUsers, canManageStaffAndPlant, onDeleted,
 }: {
   room: RoomData;
   wh: WarehouseData;
   expanded: boolean;
   onToggle: () => void;
   saleUsers: { id: string; name: string; email: string }[];
-  caymoStaff: Staff[];
   canManageStaffAndPlant: boolean;
-  canMoveRoom: boolean;
   onDeleted: () => void;
 }) {
   const isDarkRoom = room.type === "PHONG_TOI" || room.type === "PHONG_NHIEM";
@@ -125,7 +122,7 @@ function RoomCard({
                 <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
               </Button>
             </Link>
-          ) : (
+          ) : NO_SHELF_ROOM_TYPES.has(room.type) ? (
             <Button
               type="button"
               size="sm"
@@ -136,6 +133,14 @@ function RoomCard({
               {!expanded && <Search className="w-3.5 h-3.5 mr-1.5" />}
               {expanded ? "Thu gọn" : "Xem chi tiết"}
             </Button>
+          ) : (
+            // Phòng mẫu mẹ/Phòng ra rễ có thể có hàng trăm kệ — xổ inline sẽ rất dài, nên chuyển hẳn
+            // sang trang riêng có phân trang (xem /warehouses/rooms/[roomId]) thay vì expand tại chỗ.
+            <Link href={`/warehouses/rooms/${room.id}`}>
+              <Button type="button" size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
+              </Button>
+            </Link>
           )}
           {canManageStaffAndPlant && (
             <Button
@@ -152,40 +157,11 @@ function RoomCard({
           )}
         </div>
       </div>
-      {!isDarkRoom && expanded && (
+      {!isDarkRoom && expanded && NO_SHELF_ROOM_TYPES.has(room.type) && (
         <div className="px-4 pb-4 space-y-3">
-          {NO_SHELF_ROOM_TYPES.has(room.type) ? (
-            <p className="text-text-muted text-sm text-center py-3">
-              Kho thành phẩm không quản lý theo giàn kệ — xem tồn kho tại trang Tồn kho thành phẩm
-            </p>
-          ) : (
-            <>
-              {canMoveRoom && (
-                <div className="flex justify-end">
-                  <AddShelvesDialog
-                    roomId={room.id}
-                    roomCode={room.code}
-                    roomType={room.type as "PHONG_MAU_ME" | "PHONG_RA_RE"}
-                    caymoStaff={caymoStaff}
-                    canAssignStaff={canManageStaffAndPlant}
-                  />
-                </div>
-              )}
-              {room.shelves.length === 0 ? (
-                <p className="text-text-muted text-sm text-center py-3">Chưa có giàn kệ nào</p>
-              ) : (
-                <ShelfTable
-                  shelves={room.shelves}
-                  currentRoomId={room.id}
-                  currentRoomType={room.type}
-                  staffOptions={caymoStaff}
-                  canManageStaffAndPlant={canManageStaffAndPlant}
-                  canMoveRoom={canMoveRoom}
-                  moveableRooms={wh.rooms.filter((r) => r.type === "PHONG_MAU_ME" || r.type === "PHONG_RA_RE")}
-                />
-              )}
-            </>
-          )}
+          <p className="text-text-muted text-sm text-center py-3">
+            Kho thành phẩm không quản lý theo giàn kệ — xem tồn kho tại trang Tồn kho thành phẩm
+          </p>
         </div>
       )}
     </div>

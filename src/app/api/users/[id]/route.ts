@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateUserCode } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { isAdminRole } from "@/types";
 import bcrypt from "bcryptjs";
@@ -14,7 +13,7 @@ const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE"
 const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG"] as const;
 
 const patchSchema = z.union([
-  z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES) }),
+  z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
   z.object({ status: z.literal("REJECTED") }),
   z.object({ workplaceWarehouseId: z.string().nullable() }),
   z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
@@ -24,6 +23,7 @@ const patchSchema = z.union([
     name: z.string().min(2),
     email: z.string().email(),
     role: z.enum(ROLES),
+    code: z.string().min(1, "Nhập mã nhân viên"),
     isActive: z.boolean(),
     password: z.string().min(6).optional(),
   }),
@@ -140,10 +140,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ message: "Không thể sửa tài khoản Admin cao nhất qua đây" }, { status: 403 });
     }
 
-    const { name, email, role, isActive, password } = parsed.data;
+    const { name, email, role, code, isActive, password } = parsed.data;
     const emailOwner = await prisma.user.findUnique({ where: { email } });
     if (emailOwner && emailOwner.id !== id) {
       return NextResponse.json({ message: "Email đã được dùng bởi tài khoản khác" }, { status: 409 });
+    }
+    const codeOwner = await prisma.user.findUnique({ where: { code } });
+    if (codeOwner && codeOwner.id !== id) {
+      return NextResponse.json({ message: "Mã nhân viên đã được dùng cho tài khoản khác" }, { status: 409 });
     }
 
     const updated = await prisma.user.update({
@@ -152,9 +156,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         name,
         email,
         role,
+        code,
         isActive,
-        // Đổi vai trò thì mã cũ không còn đúng định dạng nữa (tiền tố theo vai trò) — sinh mã mới.
-        ...(role !== target.role ? { code: await generateUserCode(role) } : {}),
         ...(password ? { password: await bcrypt.hash(password, 10) } : {}),
       },
       select: { id: true, code: true, name: true, email: true, role: true, isActive: true },
@@ -167,13 +170,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Chỉ Admin cao nhất mới có quyền duyệt tài khoản" }, { status: 403 });
   }
 
-  // Vai trò chỉ được chọn lúc duyệt — sinh mã thật theo đúng định dạng vai trò ở đây, thay cho mã tạm
-  // "TEMPxxxx" gán lúc đăng ký (xem generateUserCode).
-  const data = "role" in parsed.data ? { ...parsed.data, code: await generateUserCode(parsed.data.role) } : parsed.data;
+  // Vai trò + mã nhân viên chỉ được chọn/nhập lúc duyệt, thay cho mã tạm "TEMPxxxx" gán lúc đăng ký.
+  // Admin nhập tay mã cố định (VD theo danh sách nhân sự có sẵn) thay vì hệ thống tự sinh, để không bị
+  // lệch với mã đã cấp sẵn từ trước ở nơi khác.
+  if ("role" in parsed.data) {
+    const codeOwner = await prisma.user.findUnique({ where: { code: parsed.data.code } });
+    if (codeOwner && codeOwner.id !== id) {
+      return NextResponse.json({ message: "Mã nhân viên đã được dùng cho tài khoản khác" }, { status: 409 });
+    }
+  }
 
   const user = await prisma.user.update({
     where: { id },
-    data,
+    data: parsed.data,
     select: { id: true, code: true, name: true, email: true, role: true, status: true },
   });
 
