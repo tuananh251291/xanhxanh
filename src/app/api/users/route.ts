@@ -11,6 +11,10 @@ const createSchema = z.object({
   password: z.string().min(6),
   role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
+  // Chỉ áp dụng khi tạo tài khoản SALE — gán sẵn kho thành phẩm làm việc (Phòng khả dụng xem mặc định)
+  // và các Phòng thị trường được cấp quyền xem thêm, tránh phải cấu hình lại ở 2 chỗ khác sau khi tạo.
+  workplaceWarehouseId: z.string().optional(),
+  marketRoomIds: z.array(z.string()).optional(),
 });
 
 export async function GET() {
@@ -40,7 +44,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { name, email, password, role, code } = parsed.data;
+  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds } = parsed.data;
+
+  if (workplaceWarehouseId !== undefined && role !== "SALE") {
+    return NextResponse.json({ message: "Kho thành phẩm làm việc chỉ áp dụng khi tạo tài khoản Sale" }, { status: 400 });
+  }
+  if (marketRoomIds !== undefined && role !== "SALE") {
+    return NextResponse.json({ message: "Phòng thị trường chỉ áp dụng khi tạo tài khoản Sale" }, { status: 400 });
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -51,10 +62,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Mã nhân viên đã được dùng cho tài khoản khác" }, { status: 409 });
   }
 
+  if (workplaceWarehouseId) {
+    const warehouse = await prisma.warehouse.findUnique({ where: { id: workplaceWarehouseId }, select: { type: true } });
+    if (!warehouse || warehouse.type !== "THANH_PHAM") {
+      return NextResponse.json({ message: "Địa điểm làm việc phải là kho thành phẩm" }, { status: 400 });
+    }
+  }
+  if (marketRoomIds && marketRoomIds.length > 0) {
+    const rooms = await prisma.room.findMany({ where: { id: { in: marketRoomIds } }, select: { id: true, type: true } });
+    if (rooms.length !== marketRoomIds.length || rooms.some((r) => r.type !== "PHONG_THI_TRUONG")) {
+      return NextResponse.json({ message: "Danh sách Phòng thị trường không hợp lệ" }, { status: 400 });
+    }
+  }
+
   const hashed = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({
-    data: { code, name, email, password: hashed, role, status: "APPROVED" },
-    select: { id: true, code: true, name: true, email: true, role: true },
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: { code, name, email, password: hashed, role, status: "APPROVED", workplaceWarehouseId },
+      select: { id: true, code: true, name: true, email: true, role: true },
+    });
+    if (marketRoomIds && marketRoomIds.length > 0) {
+      await tx.roomAccess.createMany({ data: marketRoomIds.map((roomId) => ({ userId: created.id, roomId })) });
+    }
+    return created;
   });
 
   return NextResponse.json(user, { status: 201 });

@@ -109,6 +109,17 @@ enum OrderStatus {
   CANCELLED
 }
 
+// Thị trường xuất hàng của đơn — nhãn hiển thị tiếng Việt xem MARKET_LABELS trong src/types/index.ts.
+enum OrderMarket {
+  NOI_DIA
+  DONG_NAM_A
+  EU
+  US
+  AUS
+  NHAT
+  HAN_QUOC
+}
+
 enum AlertType {
   CONTAMINATION_HIGH
   OUTPUT_DEVIATION
@@ -138,6 +149,10 @@ enum AlertType {
   // lưu nhật ký hàng ngày (xem POST /api/daily-records), báo cho KHO_MO (targetRole) biết sớm trước khi
   // nhận bàn giao thật.
   MOTHER_CONTAMINATION_HIGH
+  // Phiếu nhập hàng từ nhà cung cấp cho phép trả hàng (Supplier.allowsReturn) — báo Kho thành phẩm
+  // (targetRole) cần kiểm tra lại trước hạn (receipt.createdAt + supplier.returnWindowDays ngày) để
+  // phát hiện thêm cây không đạt phát sinh sau nhận hàng (xem GoodsReceiptItem, trang /goods-receipts).
+  GOODS_RECEIPT_RETURN_DUE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -191,9 +206,12 @@ model User {
   // Khác null = tài khoản đang bị khóa do đăng nhập sai quá 5 lần — chặn đăng nhập dù đúng mật khẩu.
   // Chỉ SUPER_ADMIN mở khóa lại được (PATCH /api/users/[id] { unlockAccount: true }).
   lockedAt DateTime?
-  // Địa điểm làm việc — chỉ áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG, ràng buộc mỗi NV chỉ làm việc với
-  // đúng 1 kho sản xuất (SAN_XUAT). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho.
-  // Chỉ SUPER_ADMIN được sửa field này.
+  // Địa điểm làm việc — áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG (ràng buộc 1 kho sản xuất/SAN_XUAT) và
+  // SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng khả dụng ở đó, xem thêm RoomAccess cho
+  // các Phòng thị trường được cấp quyền riêng). KHO_THANH_PHAM cũng gán được 1 kho THÀNH PHẨM nhưng
+  // CHỈ mang tính hiển thị/lưu trữ — không giới hạn phạm vi thao tác (xem getFinishedAvailableRooms ở
+  // src/lib/processing.ts). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho. Chỉ
+  // SUPER_ADMIN được sửa field này.
   workplaceWarehouseId String?
   workplaceWarehouse    Warehouse? @relation(fields: [workplaceWarehouseId], references: [id])
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), do NV kho mô phụ trách cùng kho sản xuất cài
@@ -225,6 +243,10 @@ model User {
   inspectedLots        Lot[]                 @relation("LotInspectedBy")
   transferInspectionsPerformed TransferInspection[] @relation("TransferInspectedBy")
   materialIntakes      MaterialIntake[]
+  processingTickets    ProcessingTicket[]
+  orderProcessingRequestsCompleted OrderProcessingRequest[]
+  goodsReceipts        GoodsReceipt[]
+  goodsReceiptItemsReturned GoodsReceiptItem[] @relation("GoodsReceiptItemReturnedBy")
 
   @@map("users")
 }
@@ -349,6 +371,9 @@ model PlantType {
   plantingInstructions PlantingInstruction[]
   shelves              Shelf[]
   contaminationProposals ContaminationProposal[]
+  processingTickets    ProcessingTicket[]
+  orderProcessingRequests OrderProcessingRequest[]
+  goodsReceiptItems    GoodsReceiptItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -407,6 +432,77 @@ model MaterialIntake {
 }
 
 // ============================================================
+// SUPPLIERS (nhà cung cấp) — mã/tên do Admin cấp cao (SUPER_ADMIN) tạo, Kho thành phẩm chọn khi nhập
+// hàng ngoài (GoodsReceipt).
+// ============================================================
+
+model Supplier {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  // Nhà cung cấp có cho phép trả hàng hay không — nếu có, Kho thành phẩm phải "kiểm tra" lại trong vòng
+  // returnWindowDays ngày kể từ ngày nhập (GoodsReceipt.createdAt) để phát hiện thêm cây không đạt phát
+  // sinh sau khi nhận hàng (xem GoodsReceiptItem). returnWindowDays chỉ có ý nghĩa khi allowsReturn = true.
+  allowsReturn     Boolean @default(false)
+  returnWindowDays Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  goodsReceipts GoodsReceipt[]
+
+  @@map("suppliers")
+}
+
+// 1 lần Kho thành phẩm nhận hàng từ nhà cung cấp ngoài — khác Transfer (nội bộ giữa các phòng/kho).
+// roomId = Phòng khả dụng nhận hàng; phần "đạt" cộng thẳng vào đó (tồn thực tế + tồn khả dụng đều tăng),
+// phần "không đạt" cộng vào Phòng theo dõi CÙNG kho (tồn thực tế tăng vì trang tồn thực tế cộng gộp mọi
+// phòng, nhưng tồn khả dụng KHÔNG tăng vì trang tồn khả dụng chỉ đọc Phòng khả dụng — xem
+// POST /api/goods-receipts).
+model GoodsReceipt {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id])
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  items GoodsReceiptItem[]
+
+  @@map("goods_receipts")
+}
+
+// 1 dòng = 1 loại cây trong phiếu nhập hàng. quantityPassed = quantityDelivered - quantityRejected,
+// tính sẵn lúc tạo và lưu lại để giữ lịch sử đúng ngay cả khi sau này đổi cách tính.
+model GoodsReceiptItem {
+  id                String       @id @default(cuid())
+  receiptId         String
+  receipt           GoodsReceipt @relation(fields: [receiptId], references: [id])
+  plantTypeId       String
+  plantType         PlantType    @relation(fields: [plantTypeId], references: [id])
+  quantityDelivered Int
+  quantityRejected  Int
+  quantityPassed    Int
+
+  // Trả hàng (chỉ áp dụng khi Supplier.allowsReturn) — Kho thành phẩm "kiểm tra" trong vòng
+  // Supplier.returnWindowDays ngày kể từ receipt.createdAt, phát hiện thêm cây không đạt trong số đã
+  // tính "đạt" lúc nhập, trả lại nhà cung cấp: trừ thẳng khỏi lô đã cộng ở Phòng khả dụng (giảm cả tồn
+  // thực tế lẫn tồn khả dụng vì hàng rời khỏi kho thật — khác phần "không đạt" ban đầu vẫn nằm nguyên
+  // trong Phòng theo dõi). returnedAt khác null nghĩa là đã kiểm tra xong (kể cả khi returnQuantity = 0
+  // — kiểm tra không phát hiện thêm lỗi vẫn tính là đã xử lý xong).
+  returnQuantity Int?
+  returnedAt     DateTime?
+  returnedById   String?
+  returnedBy     User?     @relation("GoodsReceiptItemReturnedBy", fields: [returnedById], references: [id])
+
+  @@map("goods_receipt_items")
+}
+
+// ============================================================
 // WAREHOUSES
 // ============================================================
 
@@ -456,6 +552,9 @@ model Room {
   transfersFromRoom Transfer[] @relation("TransferFromRoom")
   transfersToRoom   Transfer[] @relation("TransferToRoom")
   roomAccess        RoomAccess[]
+  processingTickets ProcessingTicket[]
+  orderProcessingRequests OrderProcessingRequest[]
+  goodsReceipts     GoodsReceipt[]
 
   @@map("rooms")
 }
@@ -618,6 +717,9 @@ model Lot {
   contaminations      ContaminationRecord[]
   instructionItems    PlantingInstructionItem[]
   inspectionItems     LotInspectionItem[]
+  processingOutputTickets ProcessingTicket[]
+  processingInputRows     ProcessingTicketInputLot[]
+  orderProcessingRequestsAsSource OrderProcessingRequest[]
 
   @@unique([code, stageCode])
   @@map("lots")
@@ -999,11 +1101,13 @@ model Order {
   code            String      @unique
   saleId          String
   sale            User        @relation(fields: [saleId], references: [id])
-  customerName    String
-  customerPhone   String?
-  customerAddress String?
+  customerCode    String
+  market          OrderMarket
   status          OrderStatus @default(DRAFT)
   holdUntil       DateTime?
+  // Sale tự ước lượng lúc tạm giữ đơn — chỉ để tham khảo lên kế hoạch, không ràng buộc nghiệp vụ (khác
+  // holdUntil, vốn quyết định lúc nào đơn tự hủy).
+  expectedShipAt  DateTime?
   confirmedAt     DateTime?
   shippedAt       DateTime?
   cancelledAt     DateTime?
@@ -1012,6 +1116,7 @@ model Order {
   updatedAt       DateTime    @updatedAt
 
   items OrderItem[]
+  processingRequests OrderProcessingRequest[]
 
   @@map("orders")
 }
@@ -1022,11 +1127,104 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id])
   lotId     String
   lot       Lot     @relation(fields: [lotId], references: [id])
+  // Số thực sự cần cho đơn — bằng `quantity` ở dòng bình thường (null). Khác null khi dòng này là bù
+  // túi từ 1 quy cách khác (VD thiếu 21 cây T01, bù từ 1 lô T05 phải mở nguyên túi 25 cây): `quantity`
+  // giữ NGUYÊN CẢ TÚI (25, đã trừ khỏi tồn khả dụng ngay lúc Tạm giữ — xem POST /api/orders), còn
+  // `neededQuantity` (21) là phần thật sự dùng cho đơn; `quantity - neededQuantity` là phần dư, chỉ quy
+  // đổi sang T01 lúc Xác nhận đơn (xem PATCH /api/orders/[id] action=confirm).
+  neededQuantity Int?
   quantity  Int
   unitPrice Float?
   notes     String?
 
+  processingRequest OrderProcessingRequest?
+
   @@map("order_items")
+}
+
+enum OrderProcessingRequestStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+// Yêu cầu tách túi phát sinh ngay khi Sale tạm giữ đơn (HELD) mà 1 OrderItem cần trừ tồn thật không
+// tròn quy cách túi (VD cần 2 cây nhưng lô nguồn là T05/túi 5 cây) — chưa trừ gì cả lúc PENDING (tồn
+// thực chỉ đổi khi Kho thành phẩm bấm "Hoàn thành": trừ sourceLot theo deductQuantity, cộng surplus
+// vào 1 lô T01 khả dụng). Trong lúc PENDING, tồn khả dụng vẫn trừ neededQuantity qua HELD-netting bình
+// thường; một khi COMPLETED, dòng này bị loại khỏi HELD-netting (xem getAvailableLots) vì tồn thực đã
+// giảm thật, tránh trừ đôi. CANCELLED khi đơn hết hạn/hủy trong lúc còn PENDING.
+model OrderProcessingRequest {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  orderId         String
+  order           Order     @relation(fields: [orderId], references: [id])
+  orderItemId     String    @unique
+  orderItem       OrderItem @relation(fields: [orderItemId], references: [id])
+  roomId          String
+  room            Room      @relation(fields: [roomId], references: [id])
+  plantTypeId     String
+  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
+  sourceLotId     String
+  sourceLot       Lot       @relation(fields: [sourceLotId], references: [id])
+  sourceStageCode String
+  neededQuantity  Int
+  bagSize         Int
+  deductQuantity  Int
+  surplusQuantity Int
+  status          OrderProcessingRequestStatus @default(PENDING)
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  completedById   String?
+  completedBy     User?     @relation(fields: [completedById], references: [id])
+
+  @@map("order_processing_requests")
+}
+
+// ============================================================
+// PROCESSING TICKETS (Kho thành phẩm — "Xử lý cây")
+// ============================================================
+
+// Phiếu xử lý — chuyển đổi 1 lượng cây từ quy cách này sang quy cách khác trong cùng 1 Phòng khả dụng
+// (VD tách túi T10 thành T01 sau khi xử lý lá vàng). Tồn kho trừ/cộng NGAY khi tạo phiếu (phiếu là biên
+// bản ghi việc đã xử lý xong, không có luồng "đang xử lý" chờ duyệt) — dueAt chỉ là mốc SLA để theo dõi.
+model ProcessingTicket {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  roomId          String
+  room            Room      @relation(fields: [roomId], references: [id])
+  plantTypeId     String
+  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
+  inputStageCode  String
+  inputQuantity   Int
+  outputStageCode String
+  outputQuantity  Int
+  // Lô đầu ra luôn tồn tại ngay sau khi tạo phiếu — hoặc cộng dồn vào lô ACTIVE cùng loại cây + quy
+  // cách đã có sẵn trong phòng, hoặc tạo lô mới nếu chưa có (xem POST /api/processing-tickets).
+  outputLotId     String
+  outputLot       Lot       @relation(fields: [outputLotId], references: [id])
+  notes           String?
+  dueAt           DateTime?
+  createdById     String
+  createdBy       User      @relation(fields: [createdById], references: [id])
+  createdAt       DateTime  @default(now())
+
+  inputLots ProcessingTicketInputLot[]
+
+  @@map("processing_tickets")
+}
+
+// Ghi lại đã trừ từ (các) lô đầu vào nào, bao nhiêu — audit trail cho việc phân bổ FIFO khi 1 phiếu
+// phải trừ từ nhiều lô mới đủ số lượng đầu vào yêu cầu.
+model ProcessingTicketInputLot {
+  id                 String           @id @default(cuid())
+  processingTicketId String
+  processingTicket   ProcessingTicket @relation(fields: [processingTicketId], references: [id])
+  lotId              String
+  lot                Lot              @relation(fields: [lotId], references: [id])
+  quantity           Int
+
+  @@map("processing_ticket_input_lots")
 }
 
 // ============================================================

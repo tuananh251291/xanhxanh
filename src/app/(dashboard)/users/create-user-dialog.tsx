@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -24,18 +25,28 @@ const schema = z.object({
   password: z.string().min(6, "Mật khẩu tối thiểu 6 ký tự"),
   role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
+  workplaceWarehouseId: z.string().optional(),
+  marketRoomIds: z.array(z.string()).optional(),
 });
 
 type FormData = z.infer<typeof schema>;
 
+type MarketRoom = { id: string; name: string; warehouseName: string };
+type ThanhPhamWarehouse = { id: string; code: string; name: string; rooms: { id: string; name: string; type: string }[] };
+
 export default function CreateUserDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [thanhPhamWarehouses, setThanhPhamWarehouses] = useState<ThanhPhamWarehouse[]>([]);
   const router = useRouter();
 
-  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
+    defaultValues: { marketRoomIds: [] },
   });
+
+  const role = watch("role");
+  const marketRoomIds = watch("marketRoomIds") ?? [];
 
   const onRoleChange = async (role: FormData["role"]) => {
     setValue("role", role);
@@ -49,15 +60,36 @@ export default function CreateUserDialog() {
     } catch {
       // Bỏ qua lỗi gợi ý — Admin vẫn nhập tay được.
     }
+
+    // Sale làm việc với Kho thành phẩm (không phải Kho sản xuất) — nạp danh sách kho + Phòng thị trường
+    // để gán sẵn lúc tạo, tránh phải cấu hình lại ở trang Người dùng/Kho & Kệ sau khi tạo xong.
+    if (role === "SALE" && thanhPhamWarehouses.length === 0) {
+      try {
+        const res = await fetch("/api/warehouses?type=THANH_PHAM");
+        if (res.ok) setThanhPhamWarehouses(await res.json());
+      } catch {
+        // Bỏ qua lỗi nạp danh sách — Admin vẫn gán được sau qua trang Người dùng/Kho & Kệ.
+      }
+    }
   };
+
+  const toggleMarketRoom = (roomId: string) => {
+    const next = marketRoomIds.includes(roomId) ? marketRoomIds.filter((id) => id !== roomId) : [...marketRoomIds, roomId];
+    setValue("marketRoomIds", next);
+  };
+
+  const marketRooms: MarketRoom[] = thanhPhamWarehouses.flatMap((w) =>
+    w.rooms.filter((r) => r.type === "PHONG_THI_TRUONG").map((r) => ({ id: r.id, name: r.name, warehouseName: w.name }))
+  );
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
+      const payload = data.role === "SALE" ? data : { ...data, workplaceWarehouseId: undefined, marketRoomIds: undefined };
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -96,7 +128,7 @@ export default function CreateUserDialog() {
           </div>
           <div className="space-y-1">
             <Label>Mật khẩu</Label>
-            <Input {...register("password")} type="password" placeholder="Tối thiểu 6 ký tự" />
+            <Input {...register("password")} type="password" autoComplete="new-password" placeholder="Tối thiểu 6 ký tự" />
             {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
           </div>
           <div className="space-y-1">
@@ -118,6 +150,44 @@ export default function CreateUserDialog() {
             <Input {...register("code")} placeholder="VD: NVCM070" />
             {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
           </div>
+
+          {role === "SALE" && (
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-1">
+                <Label>Kho thành phẩm làm việc</Label>
+                <Select
+                  items={thanhPhamWarehouses.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))}
+                  onValueChange={(v) => setValue("workplaceWarehouseId", v as string)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn kho thành phẩm (không bắt buộc)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {thanhPhamWarehouses.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>{w.name} ({w.code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Phòng thị trường được xem thêm</Label>
+                {marketRooms.length === 0 ? (
+                  <p className="text-xs text-text-muted">Chưa có Phòng thị trường nào trong hệ thống.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {marketRooms.map((r) => (
+                      <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox checked={marketRoomIds.includes(r.id)} onCheckedChange={() => toggleMarketRoom(r.id)} />
+                        {r.name} ({r.warehouseName})
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>
               Hủy

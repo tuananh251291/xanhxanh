@@ -28,6 +28,7 @@ export const authConfig: NextAuthConfig = {
         token.id = user.id as string;
         token.avatar = (user as { avatar?: string | null }).avatar ?? null;
         token.workplaceWarehouseId = (user as { workplaceWarehouseId?: string | null }).workplaceWarehouseId ?? null;
+        token.holdDays = (user as { holdDays?: number | null }).holdDays ?? null;
       }
       return token;
     },
@@ -38,6 +39,7 @@ export const authConfig: NextAuthConfig = {
         session.user.id = token.id as string;
         session.user.avatar = (token.avatar as string | null) ?? null;
         session.user.workplaceWarehouseId = (token.workplaceWarehouseId as string | null) ?? null;
+        session.user.holdDays = (token.holdDays as number | null) ?? null;
       }
       return session;
     },

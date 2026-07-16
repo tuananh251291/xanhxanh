@@ -37,15 +37,17 @@ export default async function ThanhPhamInventoryPage() {
     orderBy: [{ warehouse: { name: "asc" } }, { type: "asc" }],
   });
 
-  // Không theo dõi theo mã lô — cộng gộp số lượng theo quy cách T01/T05 cho mỗi phòng.
+  // Không theo dõi theo mã lô — cộng gộp số lượng theo quy cách T01/T05/T10 cho mỗi phòng. T10 chỉ phát
+  // sinh trong Kho thành phẩm (đóng gói lại từ T01/T05), không sản xuất trực tiếp từ Phòng ra rễ.
   const roomStageTotals = (lots: { quantity: number; stageCode: string }[]) =>
     lots.reduce(
       (acc, l) => {
         if (l.stageCode === "T01") acc.t01 += l.quantity;
         else if (l.stageCode === "T05") acc.t05 += l.quantity;
+        else if (l.stageCode === "T10") acc.t10 += l.quantity;
         return acc;
       },
-      { t01: 0, t05: 0 }
+      { t01: 0, t05: 0, t10: 0 }
     );
 
   const totalLots = rooms.flatMap((r) => r.lots);
@@ -68,7 +70,8 @@ export default async function ThanhPhamInventoryPage() {
           <Package className="w-6 h-6 text-primary-strong" /> Tồn kho thành phẩm
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Tổng: {totalLots.length} lô · {totalQuantity.toLocaleString("vi-VN")} cây
+          Tồn thực tế — số lượng vật lý thật trong kho. Tổng: {totalLots.length} lô ·{" "}
+          {totalQuantity.toLocaleString("vi-VN")} cây
         </p>
       </div>
 
@@ -85,7 +88,7 @@ export default async function ThanhPhamInventoryPage() {
 
       {rooms.map((room) => {
         const Icon = ROOM_TYPE_ICONS[room.type] ?? Package;
-        const { t01, t05 } = roomStageTotals(room.lots);
+        const { t01, t05, t10 } = roomStageTotals(room.lots);
         return (
           <Card key={room.id}>
             <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -95,6 +98,7 @@ export default async function ThanhPhamInventoryPage() {
                 <Badge variant="secondary">{ROOM_TYPE_LABELS[room.type]}</Badge>
                 <Badge variant="outline" className="text-xs">T01: {t01.toLocaleString("vi-VN")}</Badge>
                 <Badge variant="outline" className="text-xs">T05: {t05.toLocaleString("vi-VN")}</Badge>
+                {t10 > 0 && <Badge variant="outline" className="text-xs">T10: {t10.toLocaleString("vi-VN")}</Badge>}
               </div>
               <Link href={`/inventory/thanh-pham/${room.id}`}>
                 <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">

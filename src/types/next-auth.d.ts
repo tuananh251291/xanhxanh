@@ -11,6 +11,7 @@ declare module "next-auth" {
       status: UserStatus;
       avatar: string | null;
       workplaceWarehouseId: string | null;
+      holdDays: number | null;
     };
   }
   interface User {
@@ -18,6 +19,7 @@ declare module "next-auth" {
     status: UserStatus;
     avatar?: string | null;
     workplaceWarehouseId?: string | null;
+    holdDays?: number | null;
   }
 }
 
@@ -28,5 +30,6 @@ declare module "next-auth/jwt" {
     id: string;
     avatar: string | null;
     workplaceWarehouseId: string | null;
+    holdDays: number | null;
   }
 }

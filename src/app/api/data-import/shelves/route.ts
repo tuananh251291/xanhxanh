@@ -230,6 +230,10 @@ export async function POST(req: NextRequest) {
     stageEntries: { stageCode: string; quantity: number }[];
     plantType?: ResolvedPlantType;
     staffCode?: string | null;
+    // Có giá trị khi mã kệ trùng với 1 kệ đã bị xóa (isActive: false) — xóa kệ hiện tại là xóa mềm nên
+    // code (unique) vẫn còn bị chiếm, không thể tạo hàng mới cùng mã; phải hồi sinh (update) đúng hàng cũ
+    // đó thay vì tạo mới, và ghi đè lại toàn bộ thuộc tính theo dữ liệu trong file (coi như tạo lại từ đầu).
+    reactivateShelfId?: string;
   };
 
   // ---- Giai đoạn 1: validate toàn bộ, không ghi DB ----
@@ -272,8 +276,8 @@ export async function POST(req: NextRequest) {
       errors.push({ row: parsed.row, label: parsed.position, message: "Tên kệ trùng với 1 dòng khác trong file" });
       continue;
     }
-    const existing = await prisma.shelf.findUnique({ where: { code }, select: { id: true } });
-    if (existing) {
+    const existing = await prisma.shelf.findUnique({ where: { code }, select: { id: true, isActive: true } });
+    if (existing?.isActive) {
       errors.push({
         row: parsed.row,
         label: parsed.position,
@@ -449,6 +453,7 @@ export async function POST(req: NextRequest) {
       stageEntries,
       plantType: resolvedPlantType,
       staffCode: resolvedStaffCode,
+      reactivateShelfId: existing?.id,
     });
   }
 
@@ -458,22 +463,28 @@ export async function POST(req: NextRequest) {
     const claimedLotCodes = new Set<string>();
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
-        const shelf = await tx.shelf.create({
-          data: {
-            code: vr.code,
-            name: vr.name,
-            warehouseId: vr.warehouseId,
-            roomId: vr.roomId,
-            rowNumber: vr.rowNumber,
-            colNumber: vr.colNumber,
-            block: vr.block,
-            capacity: vr.capacity,
-            plantTypeId: vr.plantTypeId,
-            assignedStaffId: vr.assignedStaffId,
-            sharedMotherPool: vr.sharedMotherPool,
-            rotationGroupId: vr.rotationGroupId,
-          },
-        });
+        const shelfData = {
+          name: vr.name,
+          warehouseId: vr.warehouseId,
+          roomId: vr.roomId,
+          rowNumber: vr.rowNumber,
+          colNumber: vr.colNumber,
+          block: vr.block,
+          capacity: vr.capacity,
+          plantTypeId: vr.plantTypeId,
+          assignedStaffId: vr.assignedStaffId,
+          sharedMotherPool: vr.sharedMotherPool,
+          rotationGroupId: vr.rotationGroupId,
+        };
+        // Mã trùng 1 kệ đã bị xóa mềm (isActive: false) — hồi sinh đúng hàng đó (reset lại mọi thuộc
+        // tính theo dữ liệu file, kể cả groupId/allowedCodes vốn không nằm trong form nhập) thay vì tạo
+        // hàng mới, vì code là unique constraint nên không thể có 2 hàng cùng mã dù hàng cũ đã ẩn.
+        const shelf = vr.reactivateShelfId
+          ? await tx.shelf.update({
+              where: { id: vr.reactivateShelfId },
+              data: { ...shelfData, isActive: true, groupId: null, allowedCodes: [] },
+            })
+          : await tx.shelf.create({ data: { code: vr.code, ...shelfData } });
 
         if (vr.plantType) {
           for (const entry of vr.stageEntries) {

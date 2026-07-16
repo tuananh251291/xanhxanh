@@ -46,12 +46,13 @@ export default async function ThanhPhamRoomPage({
     select: { quantity: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } } },
   });
 
-  // Không theo dõi theo mã lô — cộng gộp số lượng theo loại cây, tách riêng quy cách T01/T05.
-  const aggMap = new Map<string, { code: string; name: string; t01: number; t05: number }>();
+  // Không theo dõi theo mã lô — cộng gộp số lượng theo loại cây, tách riêng quy cách T01/T05/T10.
+  const aggMap = new Map<string, { code: string; name: string; t01: number; t05: number; t10: number }>();
   for (const lot of lots) {
-    const existing = aggMap.get(lot.plantTypeId) ?? { code: lot.plantType.code, name: lot.plantType.name, t01: 0, t05: 0 };
+    const existing = aggMap.get(lot.plantTypeId) ?? { code: lot.plantType.code, name: lot.plantType.name, t01: 0, t05: 0, t10: 0 };
     if (lot.stageCode === "T01") existing.t01 += lot.quantity;
     else if (lot.stageCode === "T05") existing.t05 += lot.quantity;
+    else if (lot.stageCode === "T10") existing.t10 += lot.quantity;
     aggMap.set(lot.plantTypeId, existing);
   }
   const aggregated = Array.from(aggMap.values()).sort((a, b) => a.code.localeCompare(b.code));
@@ -97,6 +98,7 @@ export default async function ThanhPhamRoomPage({
                       <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Loại cây</th>
                       <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T01</th>
                       <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T05</th>
+                      <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T10</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -106,6 +108,7 @@ export default async function ThanhPhamRoomPage({
                         <td className="px-3 py-2">{row.name}</td>
                         <td className="px-3 py-2 text-right font-medium">{row.t01.toLocaleString("vi-VN")}</td>
                         <td className="px-3 py-2 text-right font-medium">{row.t05.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-2 text-right font-medium">{row.t10.toLocaleString("vi-VN")}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -103,10 +103,22 @@ alerts
 
 ## Quy tắc tồn kho
 
-- **Tồn khả dụng** = tồn thực − tổng số lượng trong đơn HELD
-- Đơn HELD: trừ tồn khả dụng (không trừ thực)
-- Đơn CONFIRMED: trừ tồn thực
-- Đơn quá hạn holdUntil: tự động CANCELLED, hoàn tồn khả dụng
+- **Tồn khả dụng** (Sale dùng để kiểm tra nhu cầu KH) = tồn thực − tổng số lượng trong đơn HELD hoặc
+  CONFIRMED (cả 2 đều chưa xuất kho, vẫn coi là đang giữ chỗ — trừ dòng đã có Yêu cầu xử lý cây
+  COMPLETED, xem dưới, tồn thực đã giảm thật nên không trừ đôi)
+- **Tồn thực tế** (Kho thành phẩm dùng để biết số lượng vật lý thật trong kho) = `Lot.quantity`
+- Đơn HELD (Sale tạm giữ): trừ tồn khả dụng, KHÔNG trừ tồn thực, Kho thành phẩm CHƯA biết gì về đơn
+- Sale "Xác nhận" (đơn chuyển HELD → CONFIRMED): vẫn KHÔNG trừ tồn thực. Đây là lúc DUY NHẤT phát sinh
+  Yêu cầu xử lý cây (PENDING) cho dòng cần tách/ghép túi (số lượng không tròn quy cách túi nguồn) và
+  báo cho Kho thành phẩm (alert ORDER_PENDING_PACK) — trước khi xác nhận, Kho thành phẩm không thấy đơn
+- Kho thành phẩm "Hoàn thành xử lý" (trang Xử lý cây): trừ tồn thực ở quy cách nguồn theo nguyên túi đã
+  mở (deductQuantity), cộng phần dư (surplusQuantity) vào quy cách T01 — đây là lúc tồn thực đổi cho
+  dòng cần tách túi
+- Kho thành phẩm "Xuất kho" (trang Sắp đơn hàng, đơn chuyển CONFIRMED → SHIPPED): trừ tồn thực đúng số
+  lượng đơn cho các dòng KHÔNG cần xử lý (dòng đã xử lý xong thì không trừ lại). Chặn xuất kho nếu đơn
+  còn Yêu cầu xử lý PENDING
+- Đơn HELD quá hạn holdUntil: tự động CANCELLED, hoàn tồn khả dụng (đơn đã CONFIRMED thì không tự huỷ
+  theo holdUntil nữa — Sale đã chốt); Yêu cầu xử lý cây PENDING của đơn bị huỷ cũng tự CANCELLED theo
 
 ## Tài khoản demo
 

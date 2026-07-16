@@ -9,7 +9,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   CAY_MO: "NV Cấy mô",
   KHO_MO: "NV Kho",
   KHO_THANH_PHAM: "NV Kho thành phẩm",
-  SALE: "Sale",
+  SALE: "Nhân viên bán hàng",
   MOI_TRUONG: "NV Môi trường",
   DIEU_PHOI: "NV Điều phối",
 };
@@ -89,12 +89,14 @@ export const MOTHER_SPEC_LABELS = {
 export const FINISHED_SPEC_LABELS = {
   T01: "T01 — túi 1 cây",
   T05: "T05 — túi 5 cây",
+  T10: "T10 — túi 10 cây",
 } as const;
 
 // Số cây trong 1 túi theo quy cách — dùng để quy đổi số cây sang số túi (VD: T05 → chia 5)
 export const FINISHED_SPEC_BAG_SIZE = {
   T01: 1,
   T05: 5,
+  T10: 10,
 } as const;
 
 // Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — CHỈ dùng để quy đổi năng
@@ -143,6 +145,26 @@ export const ORDER_STATUS_LABELS = {
   CANCELLED: "Đã hủy",
 } as const;
 
+// Cam = đang giữ, xanh (primary) = đã xác nhận — dùng chung cho mọi nơi hiển thị badge trạng thái đơn.
+export const ORDER_STATUS_COLORS: Record<string, string> = {
+  DRAFT: "bg-muted text-foreground",
+  HELD: "bg-warning-light text-warning-foreground",
+  CONFIRMED: "bg-primary-light text-primary-strong",
+  SHIPPED: "bg-success-light text-success-foreground",
+  CANCELLED: "bg-danger-light text-destructive",
+};
+
+// Thị trường xuất hàng của đơn (Order.market) — danh sách cố định, không liên kết Phòng thị trường/tồn kho.
+export const MARKET_LABELS = {
+  NOI_DIA: "Nội địa",
+  DONG_NAM_A: "Đông Nam Á",
+  EU: "EU",
+  US: "US",
+  AUS: "AUS",
+  NHAT: "Nhật",
+  HAN_QUOC: "Hàn Quốc",
+} as const;
+
 export const INSTRUCTION_STATUS_LABELS = {
   DRAFT: "Nháp",
   ACTIVE: "Đang thực hiện",
@@ -174,6 +196,7 @@ export const ALERT_TYPE_LABELS = {
   ACCOUNT_LOCKED: "Tài khoản bị khóa",
   PASSWORD_RESET_REQUESTED: "Yêu cầu cấp lại mật khẩu",
   MOTHER_CONTAMINATION_HIGH: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng cao",
+  GOODS_RECEIPT_RETURN_DUE: "Phiếu nhập hàng cần kiểm tra trả hàng",
 } as const;
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).
@@ -216,6 +239,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/materials", label: "Vật tư", icon: "Boxes" },
+    { href: "/suppliers", label: "Nhà cung cấp", icon: "Truck" },
     { href: "/settings/shelf-groups", label: "Nhóm giàn kệ", icon: "Layers" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
@@ -269,14 +293,18 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
-    { href: "/inventory/thanh-pham", label: "Tồn kho TP", icon: "Package" },
+    { href: "/inventory/available", label: "Xem tồn khả dụng", icon: "PackageCheck" },
+    { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
+    { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
+    { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   SALE: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/available", label: "Xem tồn khả dụng", icon: "Package" },
-    { href: "/orders", label: "Đơn hàng", icon: "ShoppingCart" },
+    { href: "/orders", label: "Kiểm tra đáp ứng", icon: "ShoppingCart" },
+    { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   MOI_TRUONG: [

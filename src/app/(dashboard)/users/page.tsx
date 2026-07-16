@@ -16,11 +16,13 @@ import CreateUserDialog from "./create-user-dialog";
 import EditUserDialog from "./edit-user-dialog";
 import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
-import WorkplaceCell from "./workplace-cell";
-import PlantingCapacityCell from "./planting-capacity-cell";
+import UserEditableFields from "./user-editable-fields";
 import UnlockAccountCell from "./unlock-account-cell";
 
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG"] as const;
+// KHO_THANH_PHAM gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác —
+// xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM"] as const;
+const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM"] as const;
 const PAGE_SIZE = 7;
 
 export default async function UsersPage({
@@ -41,7 +43,7 @@ export default async function UsersPage({
     ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { code: { contains: search, mode: "insensitive" } }] }
     : {};
 
-  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses] = await Promise.all([
+  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses] = await Promise.all([
     prisma.user.count(),
     prisma.user.findMany({
       where: { status: "PENDING" },
@@ -57,6 +59,7 @@ export default async function UsersPage({
     }),
     prisma.rolePermission.findMany(),
     prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.warehouse.findMany({ where: { type: "THANH_PHAM", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
@@ -128,6 +131,8 @@ export default async function UsersPage({
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vai trò</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vị trí làm việc</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Năng lực cấy</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Giữ đơn (ngày)</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Lưu</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Đăng nhập</th>
                       {canApprove && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
                     </tr>
@@ -147,30 +152,22 @@ export default async function UsersPage({
                             <Badge variant="secondary">Chưa gán</Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          {user.role && WORKPLACE_ROLES.includes(user.role as (typeof WORKPLACE_ROLES)[number]) ? (
-                            canApprove ? (
-                              <WorkplaceCell userId={user.id} currentWarehouseId={user.workplaceWarehouseId} warehouseOptions={sanXuatWarehouses} />
-                            ) : (
-                              <span className="text-xs text-text-secondary">
-                                {user.workplaceWarehouse ? `${user.workplaceWarehouse.name} (${user.workplaceWarehouse.code})` : "Chưa gán"}
-                              </span>
-                            )
-                          ) : (
-                            <span className="text-xs text-text-muted">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {user.role === "CAY_MO" ? (
-                            canEditCapacity ? (
-                              <PlantingCapacityCell userId={user.id} currentValue={user.plantingCapacity} />
-                            ) : (
-                              <span className="text-xs text-text-secondary">{user.plantingCapacity.toLocaleString("vi-VN")}</span>
-                            )
-                          ) : (
-                            <span className="text-xs text-text-muted">—</span>
-                          )}
-                        </td>
+                        <UserEditableFields
+                          userId={user.id}
+                          role={user.role}
+                          canApprove={canApprove}
+                          canEditCapacity={canEditCapacity}
+                          isWorkplaceRole={!!user.role && WORKPLACE_ROLES.includes(user.role as (typeof WORKPLACE_ROLES)[number])}
+                          workplaceWarehouseId={user.workplaceWarehouseId}
+                          workplaceWarehouse={user.workplaceWarehouse}
+                          warehouseOptions={
+                            user.role && THANH_PHAM_WORKPLACE_ROLES.includes(user.role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
+                              ? thanhPhamWarehouses
+                              : sanXuatWarehouses
+                          }
+                          plantingCapacity={user.plantingCapacity}
+                          holdDays={user.holdDays}
+                        />
                         <td className="px-4 py-3">
                           {user.lockedAt ? (
                             <div className="flex items-center gap-2">
@@ -185,7 +182,17 @@ export default async function UsersPage({
                           <td className="px-4 py-3">
                             {user.role && user.role !== "SUPER_ADMIN" ? (
                               <EditUserDialog
-                                user={{ id: user.id, name: user.name, email: user.email, role: user.role, code: user.code, isActive: user.isActive }}
+                                user={{
+                                  id: user.id,
+                                  name: user.name,
+                                  email: user.email,
+                                  role: user.role,
+                                  code: user.code,
+                                  isActive: user.isActive,
+                                  workplaceWarehouseId: user.workplaceWarehouseId,
+                                }}
+                                sanXuatWarehouses={sanXuatWarehouses}
+                                thanhPhamWarehouses={thanhPhamWarehouses}
                               />
                             ) : (
                               <span className="text-xs text-text-muted">—</span>
@@ -196,7 +203,7 @@ export default async function UsersPage({
                     ))}
                     {users.length === 0 && (
                       <tr>
-                        <td colSpan={canApprove ? 8 : 7} className="px-4 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={canApprove ? 10 : 9} className="px-4 py-8 text-center text-sm text-text-muted">
                           Không tìm thấy nhân viên phù hợp
                         </td>
                       </tr>

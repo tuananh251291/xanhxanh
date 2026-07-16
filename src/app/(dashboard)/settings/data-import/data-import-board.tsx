@@ -1,6 +1,6 @@
 "use client";
 
-import { UploadCloud, Users, Layers, Sprout, ClipboardList, Send, Leaf } from "lucide-react";
+import { UploadCloud, Users, Layers, Sprout, ClipboardList, Send, Leaf, PenLine } from "lucide-react";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 
 export default function DataImportBoard() {
@@ -74,8 +74,17 @@ export default function DataImportBoard() {
       />
 
       <ExcelImportCard
+        icon={<PenLine className="w-5 h-5" />}
+        title="7. Cập nhật dữ liệu cấy"
+        description="Bù dữ liệu cấy hàng ngày (nhật ký cấy) cho chỉ định đang thực hiện — mỗi dòng là 1 ngày của 1 chỉ định, tự tạo lô vào Phòng tối của NV phụ trách. Cần chỉ định đã có ở mục 6."
+        templateUrl="/api/data-import/daily-records"
+        uploadUrl="/api/data-import/daily-records"
+        successLabel={(n) => `Đã nhập dữ liệu cho ${n} ngày`}
+      />
+
+      <ExcelImportCard
         icon={<Send className="w-5 h-5" />}
-        title="7. Phiếu bàn giao đang treo"
+        title="8. Phiếu bàn giao đang treo"
         description="Nhập các phiếu bàn giao đang chờ xác nhận (PENDING) ngoài đời — cần lô nguồn đã có trong hệ thống (mục 5)."
         templateUrl="/api/data-import/transfers"
         uploadUrl="/api/data-import/transfers"

@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
+import { isSerializationFailure } from "@/lib/prisma-errors";
 import { z } from "zod";
 
 class DuplicateTransferError extends Error {}
-
-// Postgres huỷ 1 trong 2 transaction Serializable đụng nhau bằng lỗi write conflict — Prisma bọc lại
-// thành PrismaClientKnownRequestError mã P2034 ("Transaction failed due to a write conflict...").
-function isSerializationFailure(err: unknown): boolean {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034";
-}
 
 // toWarehouseId/toRoomId để trống khi bàn giao "phòng tối → kho sáng": đích cụ thể (Phòng mẫu mẹ hay
 // Phòng ra rễ, kệ nào) do hệ thống tự chỉ định lúc KHO_MO xác nhận (xem PATCH /api/transfers/[id]),

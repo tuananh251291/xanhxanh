@@ -223,6 +223,10 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 placeholder="email@company.com"
+                // Trình duyệt (gợi ý mật khẩu/autofill) tự chèn style caret-color vào input này SAU khi
+                // HTML từ server đã gửi xong — không phải do code, không cách nào khớp trước — tắt cảnh
+                // báo hydration-mismatch riêng cho input này thay vì để hiện false-positive mỗi lần tải.
+                suppressHydrationWarning
                 {...register("email")}
               />
               {errors.email && (
@@ -238,6 +242,7 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 placeholder="••••••••"
+                suppressHydrationWarning
                 {...register("password")}
               />
               {errors.password && (

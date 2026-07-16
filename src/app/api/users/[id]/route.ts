@@ -9,8 +9,12 @@ import { z } from "zod";
 const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"] as const;
 
 // Chỉ NV kho mô/cấy mô/môi trường mới bị ràng buộc làm việc với đúng 1 kho sản xuất — NV kỹ thuật
-// làm việc được ở mọi kho nên không gán field này.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG"] as const;
+// làm việc được ở mọi kho nên không gán field này. NV bán hàng (SALE) cũng dùng field này nhưng ràng
+// buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên dưới. NV kho
+// thành phẩm (KHO_THANH_PHAM) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ —
+// KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm như trước (xem
+// getFinishedAvailableRooms ở src/lib/processing.ts).
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM"] as const;
 
 const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
@@ -18,6 +22,7 @@ const patchSchema = z.union([
   z.object({ workplaceWarehouseId: z.string().nullable() }),
   z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
   z.object({ plantingCapacity: z.number().int().positive() }),
+  z.object({ holdDays: z.number().int().positive().nullable() }),
   z.object({ unlockAccount: z.literal(true) }),
   z.object({
     name: z.string().min(2),
@@ -46,13 +51,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
     if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
     if (!target.role || !WORKPLACE_ROLES.includes(target.role as (typeof WORKPLACE_ROLES)[number])) {
-      return NextResponse.json({ message: "Chỉ áp dụng cho NV kho mô, cấy mô, môi trường" }, { status: 400 });
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV kho mô, cấy mô, môi trường, bán hàng, kho thành phẩm" }, { status: 400 });
     }
     const { workplaceWarehouseId } = parsed.data;
+    // NV bán hàng và NV kho thành phẩm làm việc với 1 Kho THÀNH PHẨM — các vai trò còn lại vẫn là Kho
+    // sản xuất như trước.
+    const requiredType = target.role === "SALE" || target.role === "KHO_THANH_PHAM" ? "THANH_PHAM" : "SAN_XUAT";
     if (workplaceWarehouseId) {
       const warehouse = await prisma.warehouse.findUnique({ where: { id: workplaceWarehouseId }, select: { type: true } });
-      if (!warehouse || warehouse.type !== "SAN_XUAT") {
-        return NextResponse.json({ message: "Địa điểm làm việc phải là kho sản xuất" }, { status: 400 });
+      if (!warehouse || warehouse.type !== requiredType) {
+        return NextResponse.json(
+          { message: requiredType === "THANH_PHAM" ? "Địa điểm làm việc phải là kho thành phẩm" : "Địa điểm làm việc phải là kho sản xuất" },
+          { status: 400 }
+        );
       }
     }
     const updated = await prisma.user.update({
@@ -110,6 +121,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { plantingCapacity },
       select: { id: true, code: true, name: true, plantingCapacity: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Năng lực giữ đơn — số ngày giữ đơn (holdUntil = ngày tạo + số này) khi NV bán hàng "Tạm giữ đơn
+  // hàng", chỉ ADMIN/SUPER_ADMIN cài đặt được. Null = chưa cấu hình, chặn không cho giữ đơn (xem POST
+  // /api/orders).
+  if ("holdDays" in parsed.data) {
+    if (!isAdminRole(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin/Admin cao nhất mới có quyền cài đặt năng lực giữ đơn" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "SALE") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV bán hàng" }, { status: 400 });
+    }
+    const { holdDays } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { holdDays },
+      select: { id: true, code: true, name: true, holdDays: true },
     });
     return NextResponse.json(updated);
   }

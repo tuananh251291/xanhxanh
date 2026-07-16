@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
-  PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck, FlaskConical, Bell, type LucideIcon,
+  PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
+  FlaskConical, Bell, Recycle, Eye, RotateCcw, type LucideIcon,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, isAdminRole } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -32,16 +33,28 @@ async function getAdminStats() {
   return { totalLots, activeLots, pendingOrders, totalUsers, recentAlerts };
 }
 
-async function getSaleStats(userId: string) {
+async function getSaleStats(userId: string, workplaceWarehouseId: string | null) {
+  // "Tồn khả dụng" ở đây phải khớp đúng phạm vi trang /inventory/available (Phòng khả dụng của kho
+  // được gán + các Phòng thị trường đã được cấp quyền riêng qua RoomAccess) — không đếm toàn hệ thống.
+  const accessibleRooms = await prisma.room.findMany({
+    where: {
+      OR: [
+        ...(workplaceWarehouseId ? [{ warehouseId: workplaceWarehouseId, type: "PHONG_KHA_DUNG" as const }] : []),
+        { type: "PHONG_THI_TRUONG" as const, roomAccess: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+
   const [myOrders, availableLots] = await Promise.all([
     prisma.order.findMany({
       where: { saleId: userId, status: { in: ["HELD", "CONFIRMED"] } },
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
-    prisma.lot.count({
-      where: { status: "ACTIVE", stage: "THANH_PHAM" },
-    }),
+    accessibleRooms.length > 0
+      ? prisma.lot.count({ where: { status: "ACTIVE", roomId: { in: accessibleRooms.map((r) => r.id) } } })
+      : 0,
   ]);
   return { myOrders, availableLots };
 }
@@ -296,6 +309,41 @@ async function getKhoMoStats() {
   return { pendingTransfers, activeLots };
 }
 
+// Công việc hàng ngày của Kho thành phẩm — 3 việc lặp lại mỗi ngày, tính theo số lượng đang chờ xử lý
+// (không có khái niệm "hoàn thành %" như KY_THUAT/KHO_MO vì đây là hàng đợi liên tục, không có deadline
+// cố định trong ngày).
+async function getKhoThanhPhamDailyStats() {
+  const [packOrdersCount, hanTuiLots, processingPendingCount] = await Promise.all([
+    prisma.order.count({ where: { status: "CONFIRMED" } }),
+    prisma.lot.findMany({
+      where: { status: "ACTIVE", room: { type: "PHONG_HAN_TUI" } },
+      select: { quantity: true },
+    }),
+    prisma.orderProcessingRequest.count({ where: { status: "PENDING" } }),
+  ]);
+  return {
+    packOrdersCount,
+    hanTuiQuantity: hanTuiLots.reduce((s, l) => s + l.quantity, 0),
+    processingPendingCount,
+  };
+}
+
+// Công việc hàng tuần của Kho thành phẩm. "Đề xuất Trồng/Hủy" và "Trả hàng nhà cung cấp" chưa có trang
+// nghiệp vụ riêng cho Kho thành phẩm (xem TODO.md) — tạm hiện dạng "Sắp ra mắt", không có href.
+async function getKhoThanhPhamWeeklyStats() {
+  const [contaminationPendingCount, theoDoiLots] = await Promise.all([
+    prisma.contaminationRecord.count({ where: { confirmedAt: null, lot: { stage: "THANH_PHAM" } } }),
+    prisma.lot.findMany({
+      where: { status: "ACTIVE", room: { type: "PHONG_THEO_DOI" } },
+      select: { quantity: true },
+    }),
+  ]);
+  return {
+    contaminationPendingCount,
+    theoDoiQuantity: theoDoiLots.reduce((s, l) => s + l.quantity, 0),
+  };
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   const role = session?.user?.role as UserRole;
@@ -307,7 +355,7 @@ export default async function DashboardPage() {
   }
 
   if (role === "SALE") {
-    const stats = await getSaleStats(userId);
+    const stats = await getSaleStats(userId, session?.user?.workplaceWarehouseId ?? null);
     return <SaleDashboard stats={stats} userName={session?.user?.name ?? ""} />;
   }
 
@@ -321,8 +369,12 @@ export default async function DashboardPage() {
   }
 
   if (role === "KHO_THANH_PHAM") {
-    const stats = await getKhoMoStats();
-    return <KhoDashboard stats={stats} role={role} />;
+    const [stats, dailyStats, weeklyStats] = await Promise.all([
+      getKhoMoStats(),
+      getKhoThanhPhamDailyStats(),
+      getKhoThanhPhamWeeklyStats(),
+    ]);
+    return <KhoDashboard stats={stats} dailyStats={dailyStats} weeklyStats={weeklyStats} role={role} />;
   }
 
   if (role === "CAY_MO") {
@@ -400,7 +452,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
-        <p className="text-text-secondary text-sm mt-1">Nhân viên sale</p>
+        <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS.SALE}</p>
       </div>
       <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -419,7 +471,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
                 <div key={order.id} className="flex items-center justify-between p-3 bg-background rounded-lg">
                   <div>
                     <p className="text-sm font-medium">{order.code}</p>
-                    <p className="text-xs text-text-secondary">{order.customerName}</p>
+                    <p className="text-xs text-text-secondary">{order.customerCode} · {MARKET_LABELS[order.market]}</p>
                   </div>
                   <Badge variant={order.status === "HELD" ? "secondary" : "default"}>
                     {ORDER_STATUS_LABELS[order.status]}
@@ -779,7 +831,14 @@ function MoiTruongDashboard({
   );
 }
 
-function KhoDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getKhoMoStats>>; role: UserRole }) {
+function KhoDashboard({
+  stats, dailyStats, weeklyStats, role,
+}: {
+  stats: Awaited<ReturnType<typeof getKhoMoStats>>;
+  dailyStats: Awaited<ReturnType<typeof getKhoThanhPhamDailyStats>>;
+  weeklyStats: Awaited<ReturnType<typeof getKhoThanhPhamWeeklyStats>>;
+  role: UserRole;
+}) {
   const mauMe = stats.activeLots.find((l) => l.stage === "MAU_ME");
   const thanhPham = stats.activeLots.find((l) => l.stage === "THANH_PHAM");
   return (
@@ -794,8 +853,120 @@ function KhoDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getKho
         <StatCard title="Lô mẫu mẹ đang lưu" value={mauMe?._count ?? 0} icon={Sun} color="green" subtitle={`${mauMe?._sum?.quantity ?? 0} bình`} />
         <StatCard title="Lô thành phẩm đang lưu" value={thanhPham?._count ?? 0} icon={Package} color="blue" subtitle={`${thanhPham?._sum?.quantity ?? 0} bình`} />
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Công việc hàng ngày</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <QueueTaskRow
+            href="/orders/pack"
+            icon={PackageOpen}
+            title="1. Sắp đơn hàng"
+            description="Đơn đã xác nhận, chờ đóng gói/xuất kho"
+            count={dailyStats.packOrdersCount}
+            unit="đơn"
+          />
+          <QueueTaskRow
+            href="/inventory/thanh-pham"
+            icon={Package}
+            title="2. Hàn túi"
+            description="Số lượng đang chờ ở Phòng hàn túi (xem tồn kho — trang thao tác riêng chưa có)"
+            count={dailyStats.hanTuiQuantity}
+            unit="cây"
+          />
+          <QueueTaskRow
+            href="/processing"
+            icon={Recycle}
+            title="3. Xử lý cây"
+            description="Yêu cầu tách túi từ đơn hàng đang chờ xử lý"
+            count={dailyStats.processingPendingCount}
+            unit="yêu cầu"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Công việc hàng tuần</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <QueueTaskRow
+            href="/contamination"
+            icon={AlertTriangle}
+            title="1. Kiểm tra nhiễm"
+            description="Báo cáo nhiễm lô thành phẩm đang chờ xác nhận"
+            count={weeklyStats.contaminationPendingCount}
+            unit="báo cáo"
+          />
+          <QueueTaskRow
+            icon={AlertTriangle}
+            title="2. Đề xuất Trồng/Hủy"
+            description="Đề xuất xử lý lô thành phẩm nhiễm — trang riêng cho Kho thành phẩm chưa ra mắt"
+          />
+          <QueueTaskRow
+            href="/inventory/thanh-pham"
+            icon={Eye}
+            title="3. Kiểm tra cây theo dõi"
+            description="Số lượng đang lưu ở Phòng theo dõi (xem tồn kho — trang thao tác riêng chưa có)"
+            count={weeklyStats.theoDoiQuantity}
+            unit="cây"
+          />
+          <QueueTaskRow
+            icon={RotateCcw}
+            title="4. Trả hàng nhà cung cấp"
+            description="Nghiệp vụ trả hàng cho nhà cung cấp — chưa ra mắt"
+          />
+        </CardContent>
+      </Card>
+
       <TodayChecklist />
     </div>
+  );
+}
+
+// Hàng đợi việc liên tục (không có deadline/% hoàn thành trong ngày như WeeklyTaskRow) — chỉ hiện số
+// lượng đang chờ. Không truyền `href` khi tính năng chưa có trang riêng: hiện dạng "Sắp ra mắt", không
+// bấm được, để không dẫn nhầm sang trang không liên quan.
+function QueueTaskRow({
+  href, icon: Icon, title, description, count, unit,
+}: {
+  href?: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  count?: number;
+  unit?: string;
+}) {
+  const hasCount = count !== undefined;
+  const isEmpty = hasCount && count === 0;
+  const badgeClass = !hasCount
+    ? "bg-muted text-text-muted"
+    : isEmpty
+      ? "bg-primary-light text-primary-strong"
+      : "bg-warning-light text-warning-foreground";
+  const content = (
+    <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`p-2.5 rounded-xl shrink-0 ${!hasCount ? "bg-muted text-text-muted" : isEmpty ? "bg-primary-light text-primary-strong" : "bg-warning-light text-warning-foreground"}`}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground truncate">{title}</p>
+          <p className="text-xs text-text-secondary truncate">{description}</p>
+        </div>
+      </div>
+      <Badge className={`shrink-0 ${badgeClass}`}>
+        {hasCount ? `${count.toLocaleString("vi-VN")} ${unit}` : "Sắp ra mắt"}
+      </Badge>
+    </div>
+  );
+
+  if (!href) return content;
+  return (
+    <Link href={href} className="block hover:bg-primary-light rounded-lg transition-colors">
+      {content}
+    </Link>
   );
 }
 

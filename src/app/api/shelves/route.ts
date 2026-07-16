@@ -143,36 +143,73 @@ export async function POST(req: NextRequest) {
   const { createdCount, skippedCodes } = await prisma.$transaction(async (tx) => {
     const existing = await tx.shelf.findMany({
       where: { code: { in: grid.map((s) => s.code) } },
-      select: { code: true },
+      select: { id: true, code: true, isActive: true },
     });
-    const existingCodes = new Set(existing.map((s) => s.code));
-    const toInsert = grid.filter((s) => !existingCodes.has(s.code));
+    // Kệ đã bị xóa mềm (isActive: false) vẫn chiếm mã (code là unique constraint) — không được coi là
+    // "đã tồn tại" như kệ đang hoạt động, phải hồi sinh (update) đúng hàng đó thay vì bỏ qua, nếu không
+    // Admin xóa kệ xong sẽ không tạo lại được kệ cùng mã (dù qua form lưới này hay Excel).
+    const activeCodes = new Set(existing.filter((s) => s.isActive).map((s) => s.code));
+    const inactiveIdByCode = new Map(existing.filter((s) => !s.isActive).map((s) => [s.code, s.id]));
+    const toInsert = grid.filter((s) => !activeCodes.has(s.code) && !inactiveIdByCode.has(s.code));
+    const toReactivate = grid.filter((s) => inactiveIdByCode.has(s.code));
+
+    const shelfData = (s: (typeof grid)[number]) => ({
+      name: s.name,
+      warehouseId: room.warehouseId,
+      roomId: room.id,
+      rowNumber: s.rowNumber,
+      colNumber: s.colNumber,
+      block: s.block,
+      // Cả Phòng mẫu mẹ lẫn Phòng ra rễ đều tính sức chứa theo TÚI, không có giá trị mặc định nào
+      // — luôn lấy đúng số Admin cấp cao đã nhập cho từng kệ; để trống nghĩa là không giới hạn.
+      capacity: capacity ?? null,
+      assignedStaffId: assignedStaffId ?? null,
+      sharedMotherPool: assignedStaffId ? null : (sharedMotherPool ?? null),
+      plantTypeId: plantTypeId ?? null,
+    });
 
     if (toInsert.length > 0) {
       await tx.shelf.createMany({
-        data: toInsert.map((s) => ({
-          code: s.code,
-          name: s.name,
-          warehouseId: room.warehouseId,
-          roomId: room.id,
-          rowNumber: s.rowNumber,
-          colNumber: s.colNumber,
-          block: s.block,
-          // Cả Phòng mẫu mẹ lẫn Phòng ra rễ đều tính sức chứa theo TÚI, không có giá trị mặc định nào
-          // — luôn lấy đúng số Admin cấp cao đã nhập cho từng kệ; để trống nghĩa là không giới hạn.
-          capacity: capacity ?? null,
-          assignedStaffId: assignedStaffId ?? null,
-          sharedMotherPool: assignedStaffId ? null : (sharedMotherPool ?? null),
-          plantTypeId: plantTypeId ?? null,
-        })),
+        data: toInsert.map((s) => ({ code: s.code, ...shelfData(s) })),
+      });
+    }
+    for (const s of toReactivate) {
+      await tx.shelf.update({
+        where: { id: inactiveIdByCode.get(s.code)! },
+        data: { ...shelfData(s), isActive: true, groupId: null, rotationGroupId: null, allowedCodes: [] },
       });
     }
 
     return {
-      createdCount: toInsert.length,
-      skippedCodes: grid.filter((s) => existingCodes.has(s.code)).map((s) => s.code),
+      createdCount: toInsert.length + toReactivate.length,
+      skippedCodes: grid.filter((s) => activeCodes.has(s.code)).map((s) => s.code),
     };
   });
 
   return NextResponse.json({ createdCount, skippedCodes }, { status: 201 });
+}
+
+const bulkDeleteSchema = z.object({
+  ids: z.array(z.string()).min(1, "Cần chọn ít nhất 1 kệ"),
+});
+
+// Xóa hàng loạt giàn kệ — cùng quyền hạn + kiểu xóa mềm (isActive: false) như DELETE /api/shelves/[id],
+// chỉ khác ở chỗ nhận 1 mảng id thay vì xóa từng kệ 1 request (xem ShelfTable — chọn nhiều kệ bằng
+// checkbox rồi xóa 1 lần).
+export async function DELETE(req: NextRequest) {
+  const session = await auth();
+  if (session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cấp cao mới được xóa giàn kệ" }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const parsed = bulkDeleteSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
+
+  const { count } = await prisma.shelf.updateMany({
+    where: { id: { in: parsed.data.ids } },
+    data: { isActive: false },
+  });
+
+  return NextResponse.json({ success: true, count });
 }

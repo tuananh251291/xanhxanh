@@ -7,7 +7,8 @@ export async function getAvailableQuantity(lotId: string): Promise<number> {
   const held = await prisma.orderItem.aggregate({
     where: {
       lotId,
-      order: { status: "HELD" },
+      order: { status: { in: ["HELD", "CONFIRMED"] } },
+      OR: [{ processingRequest: null }, { processingRequest: { status: { not: "COMPLETED" } } }],
     },
     _sum: { quantity: true },
   });

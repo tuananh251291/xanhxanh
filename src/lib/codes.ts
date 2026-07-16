@@ -143,10 +143,51 @@ export async function generateMediumOrderCode(): Promise<string> {
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
 
-export async function generateOrderCode(): Promise<string> {
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD POST /api/orders tạo đơn "Tạm giữ") để
+// tính mã kế tiếp dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
+export async function generateOrderCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
   const today = new Date();
-  const prefix = `DH-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const last = await prisma.order.findFirst({
+  const prefix = `DHKT-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.order.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD POST /api/processing-tickets) để tính mã
+// kế tiếp dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
+export async function generateProcessingTicketCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `XL-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.processingTicket.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD PATCH /api/orders/[id] lúc xác nhận đơn)
+// để tính mã kế tiếp dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
+export async function generateOrderProcessingRequestCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `YC-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.orderProcessingRequest.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (POST /api/goods-receipts) để tính mã kế tiếp
+// dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
+export async function generateGoodsReceiptCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `NH-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.goodsReceipt.findFirst({
     where: { code: { startsWith: prefix } },
     orderBy: { code: "desc" },
   });

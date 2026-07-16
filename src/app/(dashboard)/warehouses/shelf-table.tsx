@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Package, Trash2 } from "lucide-react";
+import { QrCode, Package, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -160,6 +161,8 @@ export default function ShelfTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [assignStaffTarget, setAssignStaffTarget] = useState<Shelf | null>(null);
   const [assignStaffValue, setAssignStaffValue] = useState<{ value: string; label: string } | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const router = useRouter();
   const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
   const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
@@ -257,6 +260,46 @@ export default function ShelfTable({
     } finally { setDeletingId(null); }
   };
 
+  const toggleSelect = (shelfId: string, checked: boolean) => {
+    setSelected((prev) => ({ ...prev, [shelfId]: checked }));
+  };
+
+  const toggleSelectAll = (rows: Shelf[], checked: boolean) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const s of rows) next[s.id] = checked;
+      return next;
+    });
+  };
+
+  const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+
+  const deleteSelectedShelves = async () => {
+    const targets = shelves.filter((s) => selected[s.id]);
+    if (targets.length === 0) return;
+    const totalQty = targets.reduce((sum, s) => sum + sumLotQuantity(s.lots), 0);
+    const totalLots = targets.reduce((sum, s) => sum + s.lots.length, 0);
+    const confirmMsg = totalLots > 0
+      ? `Xóa ${targets.length} giàn kệ đã chọn? Trong đó có ${totalLots} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} cây/túi) — xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động.`
+      : `Xóa ${targets.length} giàn kệ đã chọn?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/shelves", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: targets.map((s) => s.id) }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã xóa ${targets.length} giàn kệ`);
+      setSelected({});
+      router.refresh();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const confirmAssignToDaChia = async () => {
     if (!assignStaffTarget || !assignStaffValue || assignStaffValue.value === "NONE" || !motherRoom) return;
     await patchShelf(
@@ -315,6 +358,11 @@ export default function ShelfTable({
     }, {});
     return (
       <tr key={shelf.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+        {canManageStaffAndPlant && (
+          <td className="px-3 py-2 w-8">
+            <Checkbox checked={!!selected[shelf.id]} onCheckedChange={(v) => toggleSelect(shelf.id, v === true)} />
+          </td>
+        )}
         <td className="px-3 py-2 whitespace-nowrap">
           <button
             className="flex items-center gap-1.5 text-left"
@@ -522,6 +570,14 @@ export default function ShelfTable({
       <table className="w-full">
         <thead>
           <tr className="bg-primary-light">
+            {canManageStaffAndPlant && (
+              <th className="px-3 py-2 w-8">
+                <Checkbox
+                  checked={rows.length > 0 && rows.every((s) => selected[s.id])}
+                  onCheckedChange={(v) => toggleSelectAll(rows, v === true)}
+                />
+              </th>
+            )}
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
             {!isMauMeRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần ra rễ</th>}
             {isMauMeRoom && (
@@ -562,6 +618,34 @@ export default function ShelfTable({
 
   return (
     <>
+      {canManageStaffAndPlant && shelves.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-sm">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => toggleSelectAll(shelves, selectedIds.length < shelves.length)}
+          >
+            {selectedIds.length < shelves.length ? `Chọn tất cả (${shelves.length} kệ)` : "Bỏ chọn tất cả"}
+          </Button>
+          {selectedIds.length > 0 && (
+            <>
+              <span className="text-text-secondary">Đã chọn {selectedIds.length} kệ</span>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={bulkDeleting}
+                onClick={deleteSelectedShelves}
+              >
+                {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 mr-1.5" />}
+                Xóa đã chọn
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       {isMauMeRoom && section ? (
         renderTable(shelves, section === "CHUNG")
       ) : isMauMeRoom ? (

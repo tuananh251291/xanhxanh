@@ -24,16 +24,28 @@ const ASSIGNABLE_ROLE_LABELS = Object.fromEntries(
   ASSIGNABLE_ROLES.map((r) => [r, ROLE_LABELS[r]])
 ) as Record<(typeof ASSIGNABLE_ROLES)[number], string>;
 
+// Đồng bộ với WORKPLACE_ROLES ở users/page.tsx và src/app/api/users/[id]/route.ts. KHO_THANH_PHAM gán
+// được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác.
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM"] as const;
+const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM"] as const;
+const NO_WAREHOUSE = "NONE";
+
+// Chỉ để báo hiệu "tài khoản đã có mật khẩu", KHÔNG phản ánh số ký tự thật — mật khẩu chỉ lưu dạng
+// băm (bcrypt) nên không có cách nào biết lại độ dài gốc. Bấm vào ô sẽ tự xoá hết để nhập mật khẩu mới.
+const PASSWORD_PLACEHOLDER = "•".repeat(10);
+
 const schema = z.object({
   name: z.string().min(2, "Tên tối thiểu 2 ký tự"),
   email: z.string().email("Email không hợp lệ"),
   role: z.enum(ASSIGNABLE_ROLES),
   code: z.string().min(1, "Nhập mã nhân viên"),
   isActive: z.boolean(),
-  password: z.union([z.string().min(6, "Mật khẩu tối thiểu 6 ký tự"), z.literal("")]).optional(),
+  password: z.string(),
 });
 
 type FormData = z.infer<typeof schema>;
+
+type WarehouseOption = { id: string; code: string; name: string };
 
 type EditableUser = {
   id: string;
@@ -42,11 +54,21 @@ type EditableUser = {
   role: (typeof ASSIGNABLE_ROLES)[number];
   code: string;
   isActive: boolean;
+  workplaceWarehouseId?: string | null;
 };
 
-export default function EditUserDialog({ user }: { user: EditableUser }) {
+export default function EditUserDialog({
+  user,
+  sanXuatWarehouses,
+  thanhPhamWarehouses,
+}: {
+  user: EditableUser;
+  sanXuatWarehouses: WarehouseOption[];
+  thanhPhamWarehouses: WarehouseOption[];
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [workplaceWarehouseId, setWorkplaceWarehouseId] = useState(user.workplaceWarehouseId ?? NO_WAREHOUSE);
   const router = useRouter();
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
@@ -57,13 +79,17 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
       role: user.role,
       code: user.code,
       isActive: user.isActive,
-      password: "",
+      password: PASSWORD_PLACEHOLDER,
     },
   });
 
   const role = watch("role");
   const isActive = watch("isActive");
   const prevRoleRef = useRef(user.role);
+  const isWorkplaceRole = WORKPLACE_ROLES.includes(role as (typeof WORKPLACE_ROLES)[number]);
+  const warehouseOptions = THANH_PHAM_WORKPLACE_ROLES.includes(role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
+    ? thanhPhamWarehouses
+    : sanXuatWarehouses;
 
   const onRoleChange = async (newRole: FormData["role"]) => {
     setValue("role", newRole);
@@ -71,8 +97,12 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
     // Đổi lại về đúng vai trò gốc thì trả lại mã gốc thay vì để mã gợi ý cũ.
     if (newRole === prevRoleRef.current) return;
     prevRoleRef.current = newRole;
+    // Vai trò mới có thể dùng khác loại kho (VD từ Cấy mô sang Sale) — reset lựa chọn để Admin chọn
+    // lại tường minh thay vì lỡ giữ nguyên 1 kho không hợp lệ với vai trò mới.
+    setWorkplaceWarehouseId(NO_WAREHOUSE);
     if (newRole === user.role) {
       setValue("code", user.code);
+      setWorkplaceWarehouseId(user.workplaceWarehouseId ?? NO_WAREHOUSE);
       return;
     }
     try {
@@ -87,6 +117,16 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
   };
 
   const onSubmit = async (data: FormData) => {
+    // Còn nguyên placeholder (chưa bấm vào) hoặc đã xoá về rỗng (bấm vào rồi đổi ý) → không đổi mật khẩu.
+    let newPassword: string | undefined;
+    if (data.password !== PASSWORD_PLACEHOLDER && data.password.length > 0) {
+      if (data.password.length < 6) {
+        toast.error("Mật khẩu tối thiểu 6 ký tự");
+        return;
+      }
+      newPassword = data.password;
+    }
+
     setLoading(true);
     try {
       const res = await fetch(`/api/users/${user.id}`, {
@@ -98,7 +138,7 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
           role: data.role,
           code: data.code,
           isActive: data.isActive,
-          ...(data.password ? { password: data.password } : {}),
+          ...(newPassword ? { password: newPassword } : {}),
         }),
       });
       if (!res.ok) {
@@ -106,6 +146,26 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
         toast.error(err.message ?? "Có lỗi xảy ra");
         return;
       }
+
+      // Địa điểm làm việc dùng API riêng (PATCH { workplaceWarehouseId }) — chỉ gửi khi vai trò cuối
+      // cùng còn thuộc nhóm có địa điểm làm việc và giá trị thực sự thay đổi.
+      const isFinalWorkplaceRole = WORKPLACE_ROLES.includes(data.role as (typeof WORKPLACE_ROLES)[number]);
+      const workplaceChanged = workplaceWarehouseId !== (user.workplaceWarehouseId ?? NO_WAREHOUSE);
+      if (isFinalWorkplaceRole && workplaceChanged) {
+        const wpRes = await fetch(`/api/users/${user.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workplaceWarehouseId: workplaceWarehouseId === NO_WAREHOUSE ? null : workplaceWarehouseId }),
+        });
+        if (!wpRes.ok) {
+          const err = await wpRes.json();
+          toast.error(err.message ?? "Đã cập nhật tài khoản nhưng không đổi được địa điểm làm việc");
+          setOpen(false);
+          router.refresh();
+          return;
+        }
+      }
+
       toast.success("Đã cập nhật tài khoản");
       setOpen(false);
       router.refresh();
@@ -115,7 +175,17 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) { reset(); prevRoleRef.current = user.role; } }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (v) {
+          reset();
+          prevRoleRef.current = user.role;
+          setWorkplaceWarehouseId(user.workplaceWarehouseId ?? NO_WAREHOUSE);
+        }
+      }}
+    >
       <DialogTrigger render={<Button variant="ghost" size="sm" />}>
         <Pencil className="w-3.5 h-3.5 mr-1" /> Chỉnh sửa
       </DialogTrigger>
@@ -135,9 +205,16 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
           </div>
           <div className="space-y-1">
-            <Label>Mật khẩu mới (để trống nếu không đổi)</Label>
-            <Input {...register("password")} type="password" placeholder="Tối thiểu 6 ký tự" />
-            {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+            <Label>Mật khẩu mới (để nguyên nếu không đổi)</Label>
+            <Input
+              {...register("password")}
+              type="password"
+              autoComplete="new-password"
+              placeholder="Tối thiểu 6 ký tự"
+              onFocus={(e) => {
+                if (e.target.value === PASSWORD_PLACEHOLDER) setValue("password", "");
+              }}
+            />
           </div>
           <div className="space-y-1">
             <Label>Vai trò</Label>
@@ -158,6 +235,26 @@ export default function EditUserDialog({ user }: { user: EditableUser }) {
             <Input {...register("code")} placeholder="VD: NVCM070" />
             {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
           </div>
+          {isWorkplaceRole && (
+            <div className="space-y-1">
+              <Label>Vị trí làm việc</Label>
+              <Select
+                items={[{ value: NO_WAREHOUSE, label: "— Chưa gán —" }, ...warehouseOptions.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))]}
+                value={workplaceWarehouseId}
+                onValueChange={(v) => setWorkplaceWarehouseId(v as string)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn địa điểm làm việc" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_WAREHOUSE}>— Chưa gán —</SelectItem>
+                  {warehouseOptions.map((w) => (
+                    <SelectItem key={w.id} value={w.id}>{w.name} ({w.code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Checkbox id="edit-user-active" checked={isActive} onCheckedChange={(v) => setValue("isActive", v === true)} />
             <Label htmlFor="edit-user-active" className="cursor-pointer">Tài khoản đang hoạt động</Label>
