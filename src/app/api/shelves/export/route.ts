@@ -5,7 +5,7 @@ import ExcelJS from "exceljs";
 import { styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 
 const STAGE_CODE_HINT: Record<"PHONG_MAU_ME" | "PHONG_RA_RE", string> = {
-  PHONG_MAU_ME: "M03/M05",
+  PHONG_MAU_ME: "M05",
   PHONG_RA_RE: "T01/T05",
 };
 const ROTATION_KIND: Record<"PHONG_MAU_ME" | "PHONG_RA_RE", "MAU_ME" | "RA_RE"> = {
@@ -63,8 +63,8 @@ export async function GET(req: NextRequest) {
 
   const workbook = new ExcelJS.Workbook();
 
-  // 1 kệ có thể có NHIỀU lô ACTIVE cùng lúc (nhiều quy cách khác nhau, VD cả M03 lẫn M05) ở CẢ 2 loại
-  // phòng — cột "Số lượng" luôn mang nghĩa "số lượng lô MỚI cần ghi nhận thêm" (POST /api/shelves/import
+  // 1 kệ có thể có NHIỀU lô ACTIVE cùng lúc (VD Phòng ra rễ có cả T01 lẫn T05) ở CẢ 2 loại phòng — cột
+  // "Số lượng" luôn mang nghĩa "số lượng lô MỚI cần ghi nhận thêm" (POST /api/shelves/import
   // luôn tạo lô mới, không có khái niệm "sửa lô hiện tại"), nên KHÔNG điền sẵn (để trống khi xuất), tổng
   // số hiện có chỉ hiện ở cột tham khảo riêng cho khỏi nhầm là "sửa số cũ".
   const sheet = workbook.addWorksheet("Giàn kệ");
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
   helpSheet.addRow({
     type: "Ghi chú",
     code: "",
-    name: "1 kệ có thể chứa nhiều lô/quy cách cùng lúc (VD cả M03 lẫn M05) — cột Số lượng là số lượng lô MỚI cần thêm, không phải sửa số cũ. Giới hạn duy nhất là sức chứa (capacity) của kệ.",
+    name: "1 kệ có thể chứa nhiều lô/quy cách cùng lúc (VD Phòng ra rễ có cả T01 lẫn T05) — cột Số lượng là số lượng lô MỚI cần thêm, không phải sửa số cũ. Giới hạn duy nhất là sức chứa (capacity) của kệ.",
   });
 
   addGuideSheet(workbook, [

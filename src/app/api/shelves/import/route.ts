@@ -10,7 +10,7 @@ import { sumLotQuantity } from "@/types";
 
 const MAX_CODE_ATTEMPTS = 50;
 const STAGE_CODES_BY_ROOM: Record<"PHONG_MAU_ME" | "PHONG_RA_RE", Set<string>> = {
-  PHONG_MAU_ME: new Set(["M03", "M05"]),
+  PHONG_MAU_ME: new Set(["M05"]),
   PHONG_RA_RE: new Set(["T01", "T05"]),
 };
 const ROTATION_KIND_BY_ROOM: Record<"PHONG_MAU_ME" | "PHONG_RA_RE", "MAU_ME" | "RA_RE"> = {
@@ -41,9 +41,9 @@ type ValidRow = {
 // Nhập Excel hàng loạt cho giàn kệ 1 phòng (Phòng mẫu mẹ hoặc Phòng ra rễ) — gán mã cây/mã NV/nhóm
 // tuần + tạo lô theo số lượng điền trong file. Phòng mẫu mẹ: mã cây/mã NV lưu thẳng vào Shelf; Phòng ra
 // rễ: 2 cột này chỉ dùng để sinh lô mới (Shelf không có 2 field đó ở phòng đó). Cả 2 loại phòng đều
-// dùng chung 1 quy tắc: 1 kệ có thể chứa nhiều lô ACTIVE cùng lúc (nhiều quy cách khác nhau, VD cả
-// M03 lẫn M05), luôn TẠO MỚI 1 lô khi có số lượng — không có khái niệm "sửa lô hiện tại" — giới hạn
-// duy nhất là sức chứa còn lại của kệ (capacity, đơn vị túi).
+// dùng chung 1 quy tắc: 1 kệ có thể chứa nhiều lô ACTIVE cùng lúc (nhiều quy cách khác nhau, VD Phòng
+// ra rễ có cả T01 lẫn T05), luôn TẠO MỚI 1 lô khi có số lượng — không có khái niệm "sửa lô hiện tại" —
+// giới hạn duy nhất là sức chứa còn lại của kệ (capacity, đơn vị cụm ở Phòng mẫu mẹ / cây ở Phòng ra rễ).
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "SUPER_ADMIN") {
@@ -126,8 +126,8 @@ export async function POST(req: NextRequest) {
   // ---- Giai đoạn 1: validate toàn bộ, không ghi DB ----
   const errors: RowError[] = [];
   const validRows: ValidRow[] = [];
-  // Cộng dồn số lượng đã "giữ chỗ" cho cùng 1 kệ qua nhiều dòng trong CÙNG 1 file (VD 1 dòng M03 + 1
-  // dòng M05 cho cùng 1 mã kệ) — vì shelf được đọc lại từ DB riêng cho từng dòng, không tự thấy được
+  // Cộng dồn số lượng đã "giữ chỗ" cho cùng 1 kệ qua nhiều dòng trong CÙNG 1 file (VD 1 dòng T01 + 1
+  // dòng T05 cho cùng 1 mã kệ) — vì shelf được đọc lại từ DB riêng cho từng dòng, không tự thấy được
   // dòng trước đó trong cùng file đã cộng thêm bao nhiêu.
   const claimedShelfUsage = new Map<string, number>();
 
@@ -337,7 +337,10 @@ export async function POST(req: NextRequest) {
               initialQuantity: vr.quantity!,
               status: "ACTIVE",
               enteredAt: new Date(),
-              expectedMoveAt: addWeeks(new Date(), isMauMe ? vr.plantType.transferWaitWeeks : vr.plantType.rootingWeeks),
+              // Mẫu mẹ: không còn tính expectedMoveAt từ ngày vào kệ — hạn cấy chuyển tự tính theo Nhóm
+              // tuần mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups), giàn chưa gán Nhóm thì
+              // không có hạn.
+              expectedMoveAt: isMauMe ? null : addWeeks(new Date(), vr.plantType.rootingWeeks),
             },
           });
         }

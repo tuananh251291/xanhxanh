@@ -1,12 +1,22 @@
 import { prisma } from "@/lib/prisma";
-import { getCurrentWeekSlot } from "@/lib/rooting-week-group";
-import { sumLotQuantity } from "@/types";
+import { getCurrentWeekSlot, isoWeekStringToMonday, ROOTING_ROTATION_START_WEEK_KEY } from "@/lib/rooting-week-group";
+import { getSystemConfig } from "@/lib/inventory";
+import { sumLotQuantity, MOTHER_SPEC_BAG_SIZE } from "@/types";
+
+// Làm tròn xuống bội số của 1 túi (đơn vị vật lý không tách rời) khi phải chia 1 lô mẫu mẹ (M05)
+// ra nhiều kệ do tràn sức chứa — sức chứa/tồn kệ tính theo CỤM (xem MOTHER_SPEC_BAG_SIZE ở src/types),
+// nhưng phần đặt lên từng kệ vẫn phải là nguyên túi. Không áp dụng cho THANH_PHAM (đã tính theo cây,
+// không có khái niệm "túi" khi xếp Phòng ra rễ).
+function roundDownToBag(amount: number, stageCode: string): number {
+  const bagSize = MOTHER_SPEC_BAG_SIZE[stageCode as keyof typeof MOTHER_SPEC_BAG_SIZE] ?? 1;
+  return Math.floor(Math.max(0, amount) / bagSize) * bagSize;
+}
 
 export class ShelfAssignError extends Error {}
 
 // Kệ "chung" khớp mã cây nếu ít nhất 1 chuỗi trong allowedCodes ("Cho phép xếp") là TIỀN TỐ của mã chi
 // tiết loại cây (VD "MT" khớp mọi mã MT001/MT005/MT041..., "MT041" chỉ khớp đúng mã đó).
-function matchesAllowedCodes(allowedCodes: string[], plantTypeCode: string): boolean {
+export function matchesAllowedCodes(allowedCodes: string[], plantTypeCode: string): boolean {
   return allowedCodes.some((code) => plantTypeCode.startsWith(code));
 }
 
@@ -30,9 +40,13 @@ type ShelfCandidate = {
   assignedStaffId: string | null;
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   allowedCodes: string[]; // "Cho phép xếp" — chỉ có ý nghĩa với kệ chung trong Phòng mẫu mẹ
-  rotationGroupId: string | null; // Nhóm tuần ra rễ — chỉ có ý nghĩa với PHONG_RA_RE, xem getCurrentWeekSlot
+  // Nhóm tuần — PHONG_RA_RE dùng để chọn "khe tuần hiện tại" (xem getCurrentWeekSlot); PHONG_MAU_ME
+  // dùng để mở rộng "kệ đã chia" của 1 NV sang TẤT CẢ các Nhóm tuần mẫu mẹ khác của đúng NV đó, xét theo
+  // vòng tuần hoàn (xem planShelfAssignments bên dưới) trước khi coi là dư và tràn sang Kho mẫu mẹ chung.
+  rotationGroupId: string | null;
+  rotationOrder: number | null; // thứ tự vòng tuần hoàn của Nhóm tuần (ShelfGroup.rotationOrder), null nếu chưa thuộc Nhóm nào
   roomType: "PHONG_MAU_ME" | "PHONG_RA_RE";
-  used: number; // số túi hiện có (cả PHONG_MAU_ME lẫn PHONG_RA_RE đều tính theo túi)
+  used: number; // PHONG_RA_RE tính theo cây; PHONG_MAU_ME tính theo cụm (xem MOTHER_SPEC_BAG_SIZE)
 };
 
 export type ShelfPlacement = {
@@ -40,21 +54,32 @@ export type ShelfPlacement = {
   lot: LotForAssign;
   shelfId: string;
   shelfCode: string;
-  quantity: number; // số túi đặt vào kệ này (có thể nhỏ hơn lot.quantity nếu bị chia do tràn sức chứa kệ)
-  pool: "OWNED" | "SHARED" | "RA_RE";
+  quantity: number; // đơn vị theo lot.stage — cây (THANH_PHAM/Phòng ra rễ) hoặc cụm (MAU_ME) — có thể
+  // nhỏ hơn lot.quantity nếu bị chia do tràn sức chứa kệ (luôn làm tròn nguyên túi khi chia MAU_ME)
+  // MANUAL = KHO_MO tự nhập kệ + số lượng (bỏ qua thuật toán), chỉ áp dụng cho mẫu mẹ — xem
+  // confirmStageManual (src/lib/receive-phong-toi.ts).
+  pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
 };
 
 /**
  * Nguyên tắc bàn giao Phòng tối → Kho sáng (KHO_MO xác nhận nhận):
  * - Cây ra rễ (THANH_PHAM) → xếp vào kệ Phòng ra rễ, ưu tiên kệ đang dùng ít nhất; nếu kệ có sức chứa
- *   (đơn vị túi) và không đủ chỗ, phần dư tự tràn sang kệ trống kế tiếp (chia lô thành nhiều dòng xếp
+ *   (đơn vị cây) và không đủ chỗ, phần dư tự tràn sang kệ trống kế tiếp (chia lô thành nhiều dòng xếp
  *   kệ). Kệ không đặt sức chứa (capacity = null) coi như không giới hạn.
- * - Mẫu mẹ (MAU_ME, M03/M05) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
+ * - Mẫu mẹ (MAU_ME, M05) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
  *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây). Sức chứa kệ Phòng
- *   mẫu mẹ tính theo TÚI (giống Phòng ra rễ), không quy đổi cụm. Kệ đã chia có thể chứa đồng thời cả
- *   M03 lẫn M05 (không còn giới hạn 1 lô/kệ) — chỉ giới hạn bởi sức chứa còn lại (capLeft), giống hệt
- *   cách xếp cây ra rễ. Phần dư vượt sức chứa kệ của NV đó mới tràn sang 1 kệ Phòng mẫu mẹ chưa gán
- *   nhân viên (Kho mẫu mẹ chung) khớp "Cho phép xếp". Hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
+ *   mẫu mẹ tính theo CỤM (Lot.quantity của M05 luôn là cụm) — khi phải chia 1 lô ra nhiều kệ do
+ *   tràn sức chứa, phần đặt lên mỗi kệ luôn làm tròn xuống nguyên túi (roundDownToBag) vì túi là đơn vị
+ *   vật lý không tách rời. Kệ đã chia có thể chứa nhiều lô cùng lúc (không còn giới hạn 1 lô/kệ)
+ *   — chỉ giới hạn bởi sức chứa còn lại (capLeft), giống hệt cách xếp cây ra rễ.
+ *   Nếu kệ được tìm thấy đầu tiên đã đầy, KHÔNG coi ngay là dư — hệ thống xếp tiếp sang TẤT CẢ các Nhóm
+ *   tuần mẫu mẹ KHÁC cũng của đúng NV đó, đúng mã cây (VD 1 NV có 8 kệ chia 4 Nhóm tuần MM1-MM4, mỗi
+ *   nhóm 2 kệ), theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ tìm thấy đầu tiên, tăng dần theo
+ *   rotationOrder rồi quay lại từ đầu nếu hết vòng — VD kệ đầu tiên thuộc MM2 thì thứ tự xét là
+ *   MM2 → MM3 → MM4 → MM1 (mỗi Nhóm chỉ xét 1 lượt). Kệ chưa thuộc Nhóm tuần nào (rotationGroupId =
+ *   null) thì chỉ xếp đúng 1 kệ đó, giữ hành vi cũ. Chỉ khi hết TẤT CẢ các Nhóm của NV đó (đúng mã cây)
+ *   mà vẫn còn dư mới thật sự tràn sang 1 kệ Phòng mẫu mẹ chưa gán nhân viên (Kho mẫu mẹ chung) khớp
+ *   "Cho phép xếp". Hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
  */
 export async function planShelfAssignments(
   transferItems: { lotId: string; lot: LotForAssign }[],
@@ -65,6 +90,7 @@ export async function planShelfAssignments(
     include: {
       room: { select: { type: true } },
       lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
+      rotationGroup: { select: { rotationOrder: true } },
     },
   });
   // Chỉ áp dụng lọc Nhóm tuần ra rễ nếu có ít nhất 1 Nhóm xoay vòng (rotationKind=RA_RE) đã được
@@ -76,9 +102,14 @@ export async function planShelfAssignments(
     where: { rotationKind: "RA_RE" },
     select: { id: true, rotationOrder: true },
   });
-  const currentGroup = raReGroups.length > 0
-    ? raReGroups.find((g) => g.rotationOrder === getCurrentWeekSlot(raReGroups.length))
-    : undefined;
+  let currentGroup: { id: string; rotationOrder: number | null } | undefined;
+  if (raReGroups.length > 0) {
+    const startWeekValue = await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "");
+    const epochMonday = startWeekValue ? isoWeekStringToMonday(startWeekValue) : null;
+    currentGroup = raReGroups.find(
+      (g) => g.rotationOrder === (epochMonday ? getCurrentWeekSlot(raReGroups.length, new Date(), epochMonday) : getCurrentWeekSlot(raReGroups.length))
+    );
+  }
   const rootingUsesRotationGroup = shelves.some(
     (s) => s.room?.type === "PHONG_RA_RE" && s.rotationGroupId !== null
   );
@@ -92,6 +123,7 @@ export async function planShelfAssignments(
     sharedMotherPool: s.sharedMotherPool,
     allowedCodes: s.allowedCodes,
     rotationGroupId: s.rotationGroupId,
+    rotationOrder: s.rotationGroup?.rotationOrder ?? null,
     roomType: s.room!.type as "PHONG_MAU_ME" | "PHONG_RA_RE",
     used: sumLotQuantity(s.lots),
   }));
@@ -139,16 +171,67 @@ export async function planShelfAssignments(
     let remainingBags = lot.quantity;
 
     if (ownerStaffId) {
-      const owned = candidates.find(
+      const primaryOwned = candidates.find(
         (c) => c.roomType === "PHONG_MAU_ME" && c.assignedStaffId === ownerStaffId && c.plantTypeId === lot.plantTypeId
       );
-      if (owned) {
-        const capLeft = (owned.capacity ?? Infinity) - (usedById.get(owned.id) ?? 0);
-        const placeBags = Math.max(0, Math.min(capLeft, remainingBags));
-        if (placeBags > 0) {
-          placements.push({ lotId, lot, shelfId: owned.id, shelfCode: owned.code, quantity: placeBags, pool: "OWNED" });
-          usedById.set(owned.id, (usedById.get(owned.id) ?? 0) + placeBags);
-          remainingBags -= placeBags;
+      if (primaryOwned) {
+        // Kệ đầu tiên tìm được đầy thì thử tiếp sang các Nhóm tuần mẫu mẹ KHÁC cũng của đúng NV này,
+        // đúng mã cây — theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ tìm thấy đầu tiên, tăng dần
+        // rotationOrder rồi quay lại từ Nhóm nhỏ nhất nếu hết vòng (VD kệ đầu tiên ở Nhóm rotationOrder=2,
+        // có 4 Nhóm order 1-4 -> thứ tự xét Nhóm: 2,3,4,1) — mỗi Nhóm chỉ xét 1 lượt/lượt quay (xem vòng
+        // lặp while bên dưới). Chỉ hết sạch mọi Nhóm của NV đó mới thật sự coi là dư. Kệ chưa gán Nhóm
+        // tuần nào thì chỉ xét đúng 1 kệ đó, giữ hành vi cũ.
+        let orderedOwnedShelves: ShelfCandidate[];
+        if (primaryOwned.rotationGroupId) {
+          const groupedOwnedShelves = candidates.filter(
+            (c) =>
+              c.roomType === "PHONG_MAU_ME" &&
+              c.assignedStaffId === ownerStaffId &&
+              c.plantTypeId === lot.plantTypeId &&
+              c.rotationGroupId !== null
+          );
+          const groupOrderById = new Map<string, number>();
+          for (const c of groupedOwnedShelves) {
+            if (c.rotationGroupId !== null && c.rotationOrder !== null && !groupOrderById.has(c.rotationGroupId)) {
+              groupOrderById.set(c.rotationGroupId, c.rotationOrder);
+            }
+          }
+          const primaryOrder = primaryOwned.rotationOrder ?? 0;
+          // Nhóm có rotationOrder >= Nhóm hiện tại xét trước (theo thứ tự tăng dần); Nhóm có
+          // rotationOrder nhỏ hơn coi như "đã qua 1 vòng", xét sau cùng — tạo hiệu ứng vòng tuần hoàn.
+          const orderedGroupIds = Array.from(groupOrderById.entries())
+            .sort(([, orderA], [, orderB]) => {
+              const rankA = orderA >= primaryOrder ? orderA : orderA + 1_000_000;
+              const rankB = orderB >= primaryOrder ? orderB : orderB + 1_000_000;
+              return rankA - rankB;
+            })
+            .map(([groupId]) => groupId);
+          orderedOwnedShelves = orderedGroupIds.flatMap((groupId) =>
+            groupedOwnedShelves.filter((c) => c.rotationGroupId === groupId)
+          );
+        } else {
+          orderedOwnedShelves = [primaryOwned];
+        }
+
+        // Quay vòng THẬT SỰ qua danh sách Nhóm đã sắp — hết 1 lượt mà vẫn còn dư thì quay lại từ đầu
+        // danh sách tiếp tục lượt kế tiếp, không giới hạn cứng "mỗi Nhóm chỉ xét 1 lần". Cần thế vì sức
+        // chứa các Nhóm không cố định — mẫu mẹ của tuần trước tới hạn sẽ được xuất đi (bàn giao/cấy lại),
+        // nên 1 kệ đang đầy lúc đầu vòng có thể vừa kịp trống ra ngay trong lúc đang xếp. Chỉ dừng vòng
+        // lặp khi remainingBags = 0 (xếp xong) hoặc 1 lượt trọn vẹn không xếp thêm được cụm nào (capacity
+        // thật sự đã hết ở mọi Nhóm — dừng để không treo vòng lặp vô hạn thật).
+        let madeProgressThisLap = orderedOwnedShelves.length > 0;
+        while (remainingBags > 0 && madeProgressThisLap) {
+          madeProgressThisLap = false;
+          for (const shelf of orderedOwnedShelves) {
+            if (remainingBags <= 0) break;
+            const capLeft = (shelf.capacity ?? Infinity) - (usedById.get(shelf.id) ?? 0);
+            const placeBags = roundDownToBag(Math.min(capLeft, remainingBags), lot.stageCode);
+            if (placeBags <= 0) continue;
+            placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "OWNED" });
+            usedById.set(shelf.id, (usedById.get(shelf.id) ?? 0) + placeBags);
+            remainingBags -= placeBags;
+            madeProgressThisLap = true;
+          }
         }
       }
     }
@@ -240,7 +323,7 @@ export async function planSurplusPlacement(
     for (const shelf of pool) {
       if (remainingBags <= 0) break;
       const capLeft = (shelf.capacity ?? Infinity) - (usedById.get(shelf.id) ?? 0);
-      const placeBags = Math.max(0, Math.min(capLeft, remainingBags));
+      const placeBags = roundDownToBag(Math.min(capLeft, remainingBags), lot.stageCode);
       if (placeBags <= 0) continue;
       placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "SHARED" });
       usedById.set(shelf.id, (usedById.get(shelf.id) ?? 0) + placeBags);

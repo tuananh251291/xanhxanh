@@ -1,19 +1,19 @@
-import { differenceInCalendarWeeks } from "date-fns";
+// Key lưu trong SystemConfig (xem src/lib/inventory.ts getSystemConfig) — giá trị là chuỗi tuần ISO 8601
+// dạng "YYYY-Www" (VD "2026-W27") do input type="week" sinh ra, đánh dấu tuần thực tế đầu tiên được coi
+// là Nhóm tuần ra rễ 1. Xem src/app/api/settings/rotation-start-week/route.ts. Toán học xoay vòng
+// (isoWeekStringToMonday, getCurrentWeekSlot) dùng chung với Nhóm tuần mẫu mẹ — xem src/lib/week-rotation.ts.
+import { getCurrentWeekSlot, isoWeekStringToMonday } from "@/lib/week-rotation";
+import { getSystemConfig } from "@/lib/inventory";
 
-// Thứ 2 cố định làm mốc — chỉ dùng để tính số tuần liên tục trôi qua, không mang ý nghĩa nghiệp vụ gì.
-const EPOCH_MONDAY = new Date(2024, 0, 1);
+export { isoWeekStringToMonday, getCurrentWeekSlot } from "@/lib/week-rotation";
 
-// Khe nào (Thứ 2 - Chủ nhật) trong chu kỳ N tuần liên tục thì được coi là "hiện tại" — N = tổng số Nhóm
-// xoay vòng cùng loại (rotationKind) đang được SUPER_ADMIN cấu hình tại /settings/shelf-groups (xem
-// ShelfGroup.rotationOrder), KHÔNG còn hard-code 4 như trước (Nhóm tuần ra rễ và Nhóm tuần mẫu mẹ có thể
-// có số khe khác nhau, VD 4 và 6). Xoay vòng đều đặn theo tuần liên tục mod N, không cần lưu "nhóm đang
-// active" — tính lại y hệt mỗi lần gọi, ổn định qua các lần restart server, không lệch khi qua năm mới.
-// Đây CHỈ quyết định xếp kệ nào (planShelfAssignments) — KHÔNG liên quan tới việc tính "đến hạn chuyển
-// kho thành phẩm" (xem summarizeRootingWeekGroups bên dưới, dựa trên Lot.expectedMoveAt riêng từng lô).
-export function getCurrentWeekSlot(totalSlots: number, date: Date = new Date()): number {
-  if (totalSlots <= 0) return 1;
-  const weekIndex = differenceInCalendarWeeks(date, EPOCH_MONDAY, { weekStartsOn: 1 });
-  return (((weekIndex % totalSlots) + totalSlots) % totalSlots) + 1;
+export const ROOTING_ROTATION_START_WEEK_KEY = "rooting_rotation_start_week";
+
+// Đọc mốc "Tuần khởi đầu của Nhóm tuần ra rễ 1" đã cấu hình (nếu có) — dùng làm epochMonday truyền vào
+// summarizeRootingWeekGroups để tính isDue theo lịch. undefined nếu SUPER_ADMIN chưa cấu hình gì.
+export async function getRootingRotationEpoch(): Promise<Date | undefined> {
+  const value = await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "");
+  return value ? (isoWeekStringToMonday(value) ?? undefined) : undefined;
 }
 
 export type RootingWeekGroupStatus = {
@@ -28,20 +28,32 @@ export type RootingWeekGroupStatus = {
 };
 
 // Tổng hợp theo Nhóm xoay vòng (rotationGroup) cho các kệ Phòng ra rễ của 1 kho — kệ chưa gán Nhóm nào bị
-// bỏ qua hoàn toàn, không tính vào bất kỳ nhóm nào. "Đạt xuất" = nhóm có ít nhất 1 lô đã đến hạn chuyển kho
-// thành phẩm theo ĐÚNG thời gian ra rễ của mã cây lô đó (Lot.expectedMoveAt, cộng PlantType.rootingWeeks
-// riêng từng mã cây lúc tạo lô — xem src/app/api/daily-records/route.ts) — KHÔNG dùng 1 hằng số tuần chung
-// cho mọi mã cây như trước, vì mỗi mã cây có thời gian ra rễ khác nhau.
+// bỏ qua hoàn toàn, không tính vào bất kỳ nhóm nào.
+//
+// "Đạt xuất" (isDue) tính THUẦN theo lịch xoay vòng — KHÔNG còn dựa vào Lot.expectedMoveAt/ngày nhập lô
+// của từng lô nữa (đổi theo yêu cầu: đã có Nhóm tuần ra rễ gắn với tuần thật cụ thể qua "Tuần khởi đầu
+// của Nhóm tuần ra rễ 1", không cần theo dõi ngày lô riêng lẻ). Một Nhóm được coi là "đạt xuất" khi
+// rotationOrder của Nhóm khớp với getCurrentWeekSlot(totalSlots, ..., epochMonday) — totalSlots = tổng số
+// Nhóm xoay vòng RA_RE đang cấu hình (giống hệt N dùng để chọn "khe tuần hiện tại" lúc xếp kệ lô mới, xem
+// src/lib/shelf-assignment.ts, để 2 nơi luôn đồng bộ cùng 1 lịch). Nhóm chưa có lô nào (rỗng) vẫn không
+// được coi là "đạt xuất" dù đúng lịch — tránh hiện thẻ cảnh báo trống không có gì để bàn giao.
 export function summarizeRootingWeekGroups(
   shelves: {
     id: string;
     code: string;
     name: string;
     rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
-    lots: { quantity: number; enteredAt: Date; expectedMoveAt: Date | null }[];
+    lots: { quantity: number; enteredAt: Date }[];
   }[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  totalSlots = 0,
+  epochMonday?: Date
 ): RootingWeekGroupStatus[] {
+  // Chỉ tính "khe hiện tại" khi ĐÃ cấu hình epochMonday — getCurrentWeekSlot tự có epoch mặc định (không
+  // mang ý nghĩa nghiệp vụ) nếu không truyền, nên phải chặn tường minh ở đây thay vì để lọt qua, tránh báo
+  // "đạt xuất" dựa trên 1 mốc vô nghĩa khi SUPER_ADMIN chưa cấu hình "Tuần khởi đầu của Nhóm tuần ra rễ 1".
+  const currentSlot = totalSlots > 0 && epochMonday ? getCurrentWeekSlot(totalSlots, now, epochMonday) : null;
+
   const byGroup = new Map<string, RootingWeekGroupStatus>();
   for (const shelf of shelves) {
     if (!shelf.rotationGroup) continue;
@@ -61,9 +73,14 @@ export function summarizeRootingWeekGroups(
       entry.lotCount += 1;
       entry.totalQuantity += lot.quantity;
       if (!entry.oldestEnteredAt || lot.enteredAt < entry.oldestEnteredAt) entry.oldestEnteredAt = lot.enteredAt;
-      if (lot.expectedMoveAt !== null && lot.expectedMoveAt.getTime() <= now.getTime()) entry.isDue = true;
     }
     byGroup.set(key, entry);
+  }
+
+  if (currentSlot !== null) {
+    for (const entry of byGroup.values()) {
+      entry.isDue = entry.rotationOrder === currentSlot && entry.lotCount > 0;
+    }
   }
 
   return Array.from(byGroup.values()).sort((a, b) => (a.rotationOrder ?? 0) - (b.rotationOrder ?? 0));

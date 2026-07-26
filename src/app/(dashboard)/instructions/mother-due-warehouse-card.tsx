@@ -2,9 +2,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Search, Warehouse as WarehouseIcon } from "lucide-react";
 import Link from "next/link";
-import type { MotherDueWarehouseSummary } from "@/lib/mother-week-group";
+import { format } from "date-fns";
+import { getMotherDueDeadline, type MotherDueWarehouseSummary } from "@/lib/mother-week-group";
 
 export default function MotherDueWarehouseCard({ warehouse }: { warehouse: MotherDueWarehouseSummary }) {
+  const deadline = getMotherDueDeadline();
   return (
     <Card>
       <CardContent className="py-4">
@@ -14,10 +16,10 @@ export default function MotherDueWarehouseCard({ warehouse }: { warehouse: Mothe
             <div>
               <p className="font-bold text-primary-strong flex items-center gap-1.5">
                 <WarehouseIcon className="w-4 h-4" />
-                {warehouse.warehouseName} - Danh sách kệ đã đến hạn cấy chuyển — {warehouse.shelves.length} kệ cần đưa ra chỉ định cấy
+                {warehouse.warehouseName} - Danh sách kệ sắp đến hạn cấy chuyển — {warehouse.shelves.length} kệ cần đưa ra chỉ định cấy
               </p>
               <p className="text-sm text-text-secondary">
-                {warehouse.lotCount} lô · {warehouse.totalQuantity.toLocaleString("vi-VN")} mẫu mẹ
+                {warehouse.lotCount} lô · {warehouse.totalQuantity.toLocaleString("vi-VN")} mẫu mẹ · cần xuất trước Thứ 5 ({format(deadline, "dd/MM/yyyy")})
               </p>
             </div>
             <Link href={`/instructions/mother-due/${warehouse.warehouseId}`}>

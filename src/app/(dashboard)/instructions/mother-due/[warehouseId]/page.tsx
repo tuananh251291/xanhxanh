@@ -10,7 +10,8 @@ import Link from "next/link";
 import { startOfDay, endOfDay } from "date-fns";
 import { isAdminRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
-import { summarizeMotherWeekGroups } from "@/lib/mother-week-group";
+import { summarizeMotherWeekGroups, getMotherDueDeadline, getMotherRotationEpoch } from "@/lib/mother-week-group";
+import { format } from "date-fns";
 import CreateInstructionDialog from "../../create-instruction-dialog";
 
 export default async function MotherDueWarehousePage({
@@ -52,41 +53,46 @@ export default async function MotherDueWarehousePage({
   if (plantCodeFilter) {
     shelfWhere.plantType = { code: { contains: plantCodeFilter, mode: "insensitive" } };
   }
-  // Lô đã được dùng làm nguồn cho 1 chỉ định cấy (bất kể còn dư số lượng hay không) coi như đã xử lý
-  // xong — không tính vào "đến hạn cấy chuyển" nữa, giống hệt cách /mother-ready lọc
-  // (_count.instructionItems === 0). Thiếu điều kiện này khiến kệ vẫn hiện lại ở đây dù NV kỹ thuật đã
-  // tạo chỉ định xong cho lô mẫu mẹ trên kệ đó.
-  const lotWhere: Record<string, unknown> = { status: "ACTIVE", instructionItems: { none: {} } };
+  // Lô đã được dùng làm nguồn cho 1 chỉ định cấy CÒN HIỆU LỰC (bất kể còn dư số lượng hay không) coi
+  // như đã có chủ — không tính vào "đến hạn cấy chuyển" nữa, giống hệt cách /mother-ready lọc. Chỉ định
+  // đã hủy (CANCELLED) không còn giữ chỗ — lô lại hiện ra bình thường. Thiếu điều kiện này khiến kệ vẫn
+  // hiện lại ở đây dù NV kỹ thuật đã tạo chỉ định xong cho lô mẫu mẹ trên kệ đó.
+  const notLockedByActiveInstruction = { instruction: { status: { in: ["ACTIVE", "DRAFT"] } } };
+  const lotWhere: Record<string, unknown> = { status: "ACTIVE", instructionItems: { none: notLockedByActiveInstruction } };
   if (dateFilter) {
     const d = new Date(dateFilter);
     if (!Number.isNaN(d.getTime())) {
       shelfWhere.lots = {
-        some: { status: "ACTIVE", instructionItems: { none: {} }, expectedMoveAt: { gte: startOfDay(d), lte: endOfDay(d) } },
+        some: { status: "ACTIVE", instructionItems: { none: notLockedByActiveInstruction }, expectedMoveAt: { gte: startOfDay(d), lte: endOfDay(d) } },
       };
     }
   }
 
-  const shelves = await prisma.shelf.findMany({
-    where: shelfWhere,
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      rowNumber: true,
-      colNumber: true,
-      block: true,
-      warehouse: { select: { id: true, code: true, name: true } },
-      rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
-      plantType: { select: { code: true } },
-      lots: { where: lotWhere, select: { quantity: true, expectedMoveAt: true } },
-    },
-  });
+  const [shelves, motherEpochMonday] = await Promise.all([
+    prisma.shelf.findMany({
+      where: shelfWhere,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        rowNumber: true,
+        colNumber: true,
+        block: true,
+        warehouse: { select: { id: true, code: true, name: true } },
+        rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
+        plantType: { select: { code: true, transferWaitWeeks: true } },
+        lots: { where: lotWhere, select: { quantity: true, expectedMoveAt: true } },
+      },
+    }),
+    getMotherRotationEpoch(),
+  ]);
 
-  const dueShelves = summarizeMotherWeekGroups(shelves)
+  const dueShelves = summarizeMotherWeekGroups(shelves, new Date(), motherEpochMonday)
     .filter((g) => g.isDue)
     .flatMap((g) => g.shelves);
 
   const hasFilters = !!(dateFilter || shelfFilter || plantCodeFilter);
+  const deadline = getMotherDueDeadline();
 
   // Sắp theo block (chữ hàng + số hàng, VD "A01") rồi tới cột — rowNumber một mình không đủ để xếp
   // đúng thứ tự A, B, C... (2 hàng khác chữ cái có thể trùng rowNumber), xem src/lib/mother-week-group.ts.
@@ -105,9 +111,9 @@ export default async function MotherDueWarehousePage({
         </Link>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <WarehouseIcon className="w-5 h-5 text-primary-strong" />
-          {warehouse.name} — kệ đến hạn cấy chuyển
+          {warehouse.name} — kệ sắp đến hạn cấy chuyển
         </h1>
-        <p className="text-text-secondary text-sm mt-1">{dueShelves.length} kệ</p>
+        <p className="text-text-secondary text-sm mt-1">{dueShelves.length} kệ · cần xuất trước Thứ 5 ({format(deadline, "dd/MM/yyyy")})</p>
       </div>
 
       <Card>

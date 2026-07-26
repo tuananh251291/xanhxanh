@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Package, Trash2, Loader2 } from "lucide-react";
+import { QrCode, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -68,8 +68,9 @@ function parseAllowedCodes(raw: string): string[] {
     .filter(Boolean);
 }
 
-// Sức chứa (đơn vị túi) — Admin cấp cao cài đặt số ban đầu lúc tạo kệ (xem add-shelves-dialog.tsx),
-// sửa lại sau tại đây. Để trống = không giới hạn (lưu null).
+// Sức chứa — Admin cấp cao cài đặt số ban đầu lúc tạo kệ (xem add-shelves-dialog.tsx), sửa lại sau tại
+// đây. Đơn vị theo room type: Phòng mẫu mẹ tính theo cụm, Phòng ra rễ tính theo cây (xem đơn vị hiển
+// thị kèm ở renderRow). Để trống = không giới hạn (lưu null).
 function CapacityCell({
   shelfId, initialCapacity, disabled, onSave,
 }: {
@@ -130,6 +131,7 @@ export default function ShelfTable({
   currentRoomId,
   currentRoomType,
   staffOptions = [],
+  plantTypeOptions = [],
   rotationGroupOptions = [],
   canManageStaffAndPlant = false,
   canMoveRoom = false,
@@ -140,6 +142,7 @@ export default function ShelfTable({
   currentRoomId: string | null;
   currentRoomType: RoomType | null;
   staffOptions?: Staff[];
+  plantTypeOptions?: PlantType[];
   // Danh sách Nhóm tuần (RA_RE cho Phòng ra rễ, MAU_ME cho Phòng mẫu mẹ "đã chia") để gán trực tiếp ở
   // đây — caller (rooms/[roomId]/shelf-list-view.tsx) tự chọn đúng rotationKind theo room.type.
   rotationGroupOptions?: { id: string; name: string }[];
@@ -161,12 +164,20 @@ export default function ShelfTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [assignStaffTarget, setAssignStaffTarget] = useState<Shelf | null>(null);
   const [assignStaffValue, setAssignStaffValue] = useState<{ value: string; label: string } | null>(null);
+  const [assignPlantTypeValue, setAssignPlantTypeValue] = useState<{ value: string; label: string } | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const router = useRouter();
   const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
   const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
-  const motherRoom = moveableRooms.find((r) => r.type === "PHONG_MAU_ME");
+  // moveableRooms (prop) đã bị loại sẵn phòng HIỆN TẠI (xem rooms/[roomId]/shelf-list-view.tsx) — nên
+  // nếu đang đứng ở chính Phòng mẫu mẹ thì tìm "phòng khác cùng loại PHONG_MAU_ME" trong danh sách đó
+  // sẽ luôn ra rỗng (không có phòng mẫu mẹ thứ 2), khiến 2 lựa chọn "Kho mẫu mẹ chung"/"Kho mẫu mẹ đã
+  // chia" biến mất hoàn toàn, chỉ còn "Phòng ra rễ" (phòng thật sự khác nên không bị loại). Chuyển
+  // chung/đã chia là ĐỔI CÁCH PHÂN LOẠI trong CHÍNH Phòng mẫu mẹ đang đứng (không đổi roomId) — nên khi
+  // đang ở Phòng mẫu mẹ phải dùng thẳng currentRoomId, chỉ cần tra moveableRooms khi đang ở phòng khác
+  // (VD Phòng ra rễ) muốn chuyển hẳn sang Phòng mẫu mẹ.
+  const motherRoomId = isMauMeRoom ? currentRoomId : (moveableRooms.find((r) => r.type === "PHONG_MAU_ME")?.id ?? null);
   const raReRoom = moveableRooms.find((r) => r.type === "PHONG_RA_RE");
 
   // Danh sách gõ-tìm cho combobox "Nhân viên phụ trách" — gõ tên/mã sẽ tự lọc gợi ý.
@@ -176,6 +187,16 @@ export default function ShelfTable({
       ...staffOptions.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })),
     ],
     [staffOptions]
+  );
+
+  // Danh sách gõ-tìm cho combobox "Mã cây" (Kho mẫu mẹ đã chia) — gõ mã hoặc tên sẽ tự lọc gợi ý, giống
+  // hệt combobox "Nhân viên phụ trách" ở trên.
+  const plantTypeComboboxOptions = useMemo(
+    () => [
+      { value: "NONE", label: "— Chưa gán mã cây —" },
+      ...plantTypeOptions.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })),
+    ],
+    [plantTypeOptions]
   );
 
   const patchShelf = async (shelfId: string, body: Record<string, unknown>, successMsg: string) => {
@@ -246,8 +267,9 @@ export default function ShelfTable({
 
   const deleteShelf = async (shelf: Shelf) => {
     const totalQty = sumLotQuantity(shelf.lots);
+    const unit = isMauMeRoom ? "cụm" : "cây";
     const confirmMsg = shelf.lots.length > 0
-      ? `Giàn kệ ${shelf.name} đang có ${shelf.lots.length} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} cây/túi). Xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động. Bạn có chắc chắn muốn xóa?`
+      ? `Giàn kệ ${shelf.name} đang có ${shelf.lots.length} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} ${unit}). Xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động. Bạn có chắc chắn muốn xóa?`
       : `Xóa giàn kệ ${shelf.name}?`;
     if (!window.confirm(confirmMsg)) return;
 
@@ -279,8 +301,9 @@ export default function ShelfTable({
     if (targets.length === 0) return;
     const totalQty = targets.reduce((sum, s) => sum + sumLotQuantity(s.lots), 0);
     const totalLots = targets.reduce((sum, s) => sum + s.lots.length, 0);
+    const bulkUnit = isMauMeRoom ? "cụm" : "cây";
     const confirmMsg = totalLots > 0
-      ? `Xóa ${targets.length} giàn kệ đã chọn? Trong đó có ${totalLots} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} cây/túi) — xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động.`
+      ? `Xóa ${targets.length} giàn kệ đã chọn? Trong đó có ${totalLots} lô cây (tổng ${totalQty.toLocaleString("vi-VN")} ${bulkUnit}) — xóa kệ sẽ không xóa dữ liệu lô nhưng kệ sẽ biến mất khỏi danh sách đang hoạt động.`
       : `Xóa ${targets.length} giàn kệ đã chọn?`;
     if (!window.confirm(confirmMsg)) return;
 
@@ -301,14 +324,15 @@ export default function ShelfTable({
   };
 
   const confirmAssignToDaChia = async () => {
-    if (!assignStaffTarget || !assignStaffValue || assignStaffValue.value === "NONE" || !motherRoom) return;
+    if (!assignStaffTarget || !assignStaffValue || assignStaffValue.value === "NONE" || !assignPlantTypeValue || !motherRoomId) return;
     await patchShelf(
       assignStaffTarget.id,
-      { roomId: motherRoom.id, assignedStaffId: assignStaffValue.value },
+      { roomId: motherRoomId, assignedStaffId: assignStaffValue.value, plantTypeId: assignPlantTypeValue.value },
       `Đã chuyển kệ ${assignStaffTarget.name} sang Kho mẫu mẹ đã chia`
     );
     setAssignStaffTarget(null);
     setAssignStaffValue(null);
+    setAssignPlantTypeValue(null);
   };
 
   type MoveTarget = { key: string; label: string; action: () => void };
@@ -328,15 +352,21 @@ export default function ShelfTable({
     const inDaChia = isMauMeRoom && !isChungSection;
     const inChung = isMauMeRoom && isChungSection;
     const inRaRe = !isMauMeRoom;
-    if (!inChung && motherRoom) {
+    if (!inChung && motherRoomId) {
       targets.push({
         key: "CHUNG",
         label: "Kho mẫu mẹ chung",
+        // Bỏ gán cả nhân viên lẫn mã cây riêng — kệ "chung" dùng "Cho phép xếp" (allowedCodes) thay cho
+        // plantTypeId, giữ plantTypeId cũ sẽ gây hiểu nhầm dù không hiển thị ở bảng "chung".
         action: () =>
-          patchShelf(shelf.id, { roomId: motherRoom.id, assignedStaffId: null }, `Đã chuyển kệ ${shelf.name} sang Kho mẫu mẹ chung`),
+          patchShelf(
+            shelf.id,
+            { roomId: motherRoomId, assignedStaffId: null, plantTypeId: null },
+            `Đã chuyển kệ ${shelf.name} sang Kho mẫu mẹ chung`
+          ),
       });
     }
-    if (!inDaChia && motherRoom) {
+    if (!inDaChia && motherRoomId) {
       targets.push({ key: "DA_CHIA", label: "Kho mẫu mẹ đã chia", action: () => setAssignStaffTarget(shelf) });
     }
     if (!inRaRe && raReRoom) {
@@ -384,8 +414,35 @@ export default function ShelfTable({
           <>
             {!isChungSection && (
               <>
-                <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
-                  {shelf.plantType?.name ?? "—"}
+                <td className="px-3 py-2 min-w-[160px]">
+                  {canManageStaffAndPlant ? (
+                    <Combobox
+                      items={plantTypeComboboxOptions}
+                      value={shelf.plantType ? plantTypeComboboxOptions.find((o) => o.value === shelf.plantType!.id) ?? null : null}
+                      isItemEqualToValue={(a, b) => a.value === b.value}
+                      disabled={savingId === shelf.id}
+                      onValueChange={(v) =>
+                        v && patchShelf(shelf.id, { plantTypeId: v.value === "NONE" ? null : v.value }, "Đã cập nhật mã cây cho kệ")
+                      }
+                    >
+                      <ComboboxInputGroup className="w-full h-8">
+                        <ComboboxInput className="text-xs" placeholder="Gõ mã hoặc tên cây…" />
+                        <ComboboxTrigger />
+                      </ComboboxInputGroup>
+                      <ComboboxContent>
+                        <ComboboxEmpty>Không tìm thấy loại cây</ComboboxEmpty>
+                        <ComboboxList>
+                          {(item: { value: string; label: string }) => (
+                            <ComboboxItem key={item.value} value={item} className="text-xs">
+                              {item.label}
+                            </ComboboxItem>
+                          )}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  ) : (
+                    <span className="text-xs text-text-secondary">{shelf.plantType?.name ?? "—"}</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 min-w-[160px]">
                   {canManageStaffAndPlant ? (
@@ -431,7 +488,7 @@ export default function ShelfTable({
               {Object.keys(bagsBySpec).length === 0
                 ? "—"
                 : Object.entries(bagsBySpec)
-                    .map(([spec, qty]) => `${spec}: ${qty} túi`)
+                    .map(([spec, qty]) => `${spec}: ${qty} cụm`)
                     .join(" · ")}
             </td>
             {isChungSection && (
@@ -475,7 +532,6 @@ export default function ShelfTable({
         )}
         <td className="px-3 py-2 min-w-[140px]">
           <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <Package className="w-3 h-3 text-primary-strong shrink-0" />
             <span>{used.toLocaleString("vi-VN")} /</span>
             {canManageStaffAndPlant ? (
               <CapacityCell
@@ -487,7 +543,7 @@ export default function ShelfTable({
             ) : (
               <span>{shelf.capacity ?? "Không giới hạn"}</span>
             )}
-            <span>túi</span>
+            <span>{isMauMeRoom ? "cụm" : "cây"}</span>
           </div>
           {usage !== null && (
             <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -589,7 +645,7 @@ export default function ShelfTable({
                     <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần mẫu mẹ</th>
                   </>
                 )}
-                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số túi M03/M05</th>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số cụm M05</th>
                 {isChungSection && (
                   <>
                     <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Kho quá hạn/đúng hạn</th>
@@ -697,7 +753,7 @@ export default function ShelfTable({
       <Dialog
         open={!!assignStaffTarget}
         onOpenChange={(open) => {
-          if (!open) { setAssignStaffTarget(null); setAssignStaffValue(null); }
+          if (!open) { setAssignStaffTarget(null); setAssignStaffValue(null); setAssignPlantTypeValue(null); }
         }}
       >
         <DialogContent className="max-w-sm">
@@ -705,41 +761,67 @@ export default function ShelfTable({
             <DialogTitle>Chuyển kệ {assignStaffTarget?.name} sang Kho mẫu mẹ đã chia</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-xs text-text-secondary">Chọn nhân viên phụ trách cho kệ này:</p>
-            <Combobox
-              items={staffComboboxOptions.filter((o) => o.value !== "NONE")}
-              value={assignStaffValue}
-              isItemEqualToValue={(a, b) => a.value === b.value}
-              onValueChange={(v) => setAssignStaffValue(v)}
-            >
-              <ComboboxInputGroup className="w-full h-9">
-                <ComboboxInput className="text-sm" placeholder="Gõ tên hoặc mã NV…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy nhân viên</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: { value: string; label: string }) => (
-                    <ComboboxItem key={item.value} value={item} className="text-sm">
-                      {item.label}
-                    </ComboboxItem>
-                  )}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <div className="space-y-1.5">
+              <p className="text-xs text-text-secondary">Chọn nhân viên phụ trách cho kệ này:</p>
+              <Combobox
+                items={staffComboboxOptions.filter((o) => o.value !== "NONE")}
+                value={assignStaffValue}
+                isItemEqualToValue={(a, b) => a.value === b.value}
+                onValueChange={(v) => setAssignStaffValue(v)}
+              >
+                <ComboboxInputGroup className="w-full h-9">
+                  <ComboboxInput className="text-sm" placeholder="Gõ tên hoặc mã NV…" />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Không tìm thấy nhân viên</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: { value: string; label: string }) => (
+                      <ComboboxItem key={item.value} value={item} className="text-sm">
+                        {item.label}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-text-secondary">Chọn mã cây cho kệ này (kệ đã chia chỉ nhận đúng 1 mã cây):</p>
+              <Combobox
+                items={plantTypeComboboxOptions.filter((o) => o.value !== "NONE")}
+                value={assignPlantTypeValue}
+                isItemEqualToValue={(a, b) => a.value === b.value}
+                onValueChange={(v) => setAssignPlantTypeValue(v)}
+              >
+                <ComboboxInputGroup className="w-full h-9">
+                  <ComboboxInput className="text-sm" placeholder="Gõ mã hoặc tên cây…" />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Không tìm thấy loại cây</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: { value: string; label: string }) => (
+                      <ComboboxItem key={item.value} value={item} className="text-sm">
+                        {item.label}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => { setAssignStaffTarget(null); setAssignStaffValue(null); }}
+                onClick={() => { setAssignStaffTarget(null); setAssignStaffValue(null); setAssignPlantTypeValue(null); }}
               >
                 Hủy
               </Button>
               <Button
                 type="button"
                 size="sm"
-                disabled={!assignStaffValue || savingId === assignStaffTarget?.id}
+                disabled={!assignStaffValue || !assignPlantTypeValue || savingId === assignStaffTarget?.id}
                 onClick={confirmAssignToDaChia}
               >
                 Xác nhận

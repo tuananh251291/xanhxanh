@@ -15,7 +15,7 @@ import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import AssignStaffCell from "./assign-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
-import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse } from "@/lib/mother-week-group";
+import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse, getMotherRotationEpoch } from "@/lib/mother-week-group";
 import MotherDueWarehouseCard from "./mother-due-warehouse-card";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
@@ -78,8 +78,9 @@ export default async function InstructionsPage({
   // thanh tìm kiếm ở đây để trang chính tập trung vào nhóm mẫu mẹ đến hạn + tạo chỉ định mới).
   const collapseList = canCreateInstruction;
 
-  // Nhóm tuần mẫu mẹ đã đến hạn cấy chuyển (ít nhất 1 lô trên kệ trong nhóm đã tới Lot.expectedMoveAt) —
-  // gộp hiển thị theo tuần để KY_THUAT nhìn theo đợt thay vì lục từng kệ lẻ, xem src/lib/mother-week-group.ts.
+  // Nhóm tuần mẫu mẹ SẮP đến hạn cấy chuyển trong vòng 1 tuần tới (ít nhất 1 lô trên kệ trong nhóm sẽ
+  // tới Lot.expectedMoveAt trong tuần lịch kế tiếp) — báo trước để KY_THUAT kịp ra chỉ định trước Thứ 5,
+  // gộp hiển thị theo tuần để nhìn theo đợt thay vì lục từng kệ lẻ, xem src/lib/mother-week-group.ts.
   // Chỉ tính "đạt hạn" theo từng lô thực tế, Nhóm chỉ là nhãn gộp hiển thị/chọn nhanh.
   const motherDueGroups = canCreateInstruction
     ? summarizeMotherWeekGroups(
@@ -94,15 +95,20 @@ export default async function InstructionsPage({
             block: true,
             warehouse: { select: { id: true, code: true, name: true } },
             rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
-            plantType: { select: { code: true } },
-            // Lô đã dùng làm nguồn cho 1 chỉ định cấy coi như đã xử lý xong — loại khỏi "đến hạn cấy
-            // chuyển", giống hệt điều kiện ở /instructions/mother-due/[warehouseId] và /mother-ready.
+            plantType: { select: { code: true, transferWaitWeeks: true } },
+            // Lô đã dùng làm nguồn cho 1 chỉ định cấy CÒN HIỆU LỰC (ACTIVE/DRAFT) coi như đã "có chủ" —
+            // loại khỏi "đến hạn cấy chuyển", giống hệt điều kiện ở /instructions/mother-due/[warehouseId]
+            // và /mother-ready. Chỉ định đã hủy (CANCELLED) hoặc kết thúc theo cách khác không còn giữ
+            // chỗ nữa — lô lại hiện ra bình thường (giống hệt điều kiện availableForInstruction ở
+            // /api/lots, để 2 nơi luôn đồng bộ 1 quy tắc "lô nào đang thật sự có chủ").
             lots: {
-              where: { status: "ACTIVE", instructionItems: { none: {} } },
+              where: { status: "ACTIVE", instructionItems: { none: { instruction: { status: { in: ["ACTIVE", "DRAFT"] } } } } },
               select: { quantity: true, expectedMoveAt: true },
             },
           },
-        })
+        }),
+        new Date(),
+        await getMotherRotationEpoch()
       ).filter((g) => g.isDue)
     : [];
   // Chia lại danh sách kệ đến hạn theo khu Sản xuất (từng kho SAN_XUAT) thay vì gộp chung 1 danh sách —

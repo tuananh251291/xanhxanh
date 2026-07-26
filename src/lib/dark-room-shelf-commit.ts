@@ -1,17 +1,23 @@
 import type { Prisma } from "@prisma/client";
-import { addWeeks } from "date-fns";
+import { addWeeks, startOfWeek } from "date-fns";
 import { generateLotCode } from "@/lib/codes";
 import type { ShelfPlacement } from "@/lib/shelf-assignment";
 
 // Hạn "đến lịch cấy chuyển/chuyển kho thành phẩm" tính từ đúng lúc lô LÊN KỆ (Kho sáng), không phải lúc
 // nhập dữ liệu cấy ở Phòng tối — vì Phòng tối còn giữ lô vài ngày trước khi Kho mô xác nhận nhận lên kệ,
 // nếu tính từ lúc nhập dữ liệu thì hạn sẽ đến sớm hơn thực tế NV cần theo dõi trên kệ.
+// Cây ra rễ (THANH_PHAM): tính từ ĐẦU TUẦN lúc lên kệ (Thứ 2), không phải đúng giờ phút bàn giao — vì
+// lô lên kệ nằm trong đúng Nhóm tuần ra rễ của tuần đó (xem planShelfAssignments), nên mọi lô cùng vào 1
+// Nhóm trong cùng 1 tuần phải dùng CHUNG đúng 1 hạn xuất (VD Nhóm bắt đầu nhận ở tuần 27, ra rễ 3 tuần
+// thì mọi lô trong nhóm đó đều hạn tuần 30), không lệch nhau vài ngày dù bàn giao khác thời điểm trong
+// tuần. Mẫu mẹ (MAU_ME) không đổi — vẫn tính từ đúng thời điểm bàn giao như cũ.
 function computeExpectedMoveAt(
   stage: "MAU_ME" | "THANH_PHAM",
   plantType: { rootingWeeks: number; transferWaitWeeks: number },
   enteredAt: Date
 ): Date {
-  return addWeeks(enteredAt, stage === "MAU_ME" ? plantType.transferWaitWeeks : plantType.rootingWeeks);
+  if (stage === "MAU_ME") return addWeeks(enteredAt, plantType.transferWaitWeeks);
+  return addWeeks(startOfWeek(enteredAt, { weekStartsOn: 1 }), plantType.rootingWeeks);
 }
 
 // Áp dụng kết quả planShelfAssignments/planSurplusPlacement vào DB: gán shelfId + enteredAt mới cho lô

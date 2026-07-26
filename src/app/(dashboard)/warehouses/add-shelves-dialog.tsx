@@ -220,7 +220,7 @@ export default function AddShelvesDialog({
             <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm hàng
           </Button>
           <div className="space-y-1">
-            <Label>Sức chứa mỗi kệ (túi)</Label>
+            <Label>Sức chứa mỗi kệ ({isMauMe ? "cụm" : "cây"})</Label>
             <Input
               type="number"
               min={1}

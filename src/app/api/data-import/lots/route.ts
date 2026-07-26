@@ -9,7 +9,7 @@ import { resolveShelfAttributeUpdate, type ShelfAttributeUpdateData } from "@/li
 import { sumLotQuantity } from "@/types";
 
 const MAX_CODE_ATTEMPTS = 50;
-const FINISHED_ROOM_TYPES = ["PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
+const FINISHED_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
 
 type RowError = { row: number; label: string; message: string };
 
@@ -42,7 +42,6 @@ export async function GET() {
     { header: "Mã NV cấy mô phụ trách", key: "staffCode", width: 18 },
     { header: "Ngày nhập lô", key: "enteredAt", width: 14 },
     { header: "Mã lô (để trống = tự sinh)", key: "lotCode", width: 20 },
-    { header: "Số lượng M03", key: "quantityM03", width: 14 },
     { header: "Số lượng M05", key: "quantityM05", width: 14 },
     { header: "Số lượng T01", key: "quantityT01", width: 14 },
     { header: "Số lượng T05", key: "quantityT05", width: 14 },
@@ -54,7 +53,7 @@ export async function GET() {
     plantTypeCode: plantTypes[0]?.code ?? "MT001",
     staffCode: staff[0]?.code ?? "NVCM010",
     enteredAt: "01/07/2026",
-    quantityM03: 300,
+    quantityM05: 300,
   });
   styleExampleRow(sheet.getRow(2));
 
@@ -71,10 +70,11 @@ export async function GET() {
   helpSheet.addRow({});
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Tải lên chỉ THÊM lô mới — không xoá/sửa lô đã có trong hệ thống." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã vị trí: gõ mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "M03/M05 chỉ dùng cho kệ Phòng mẫu mẹ. T01/T05 dùng cho kệ Phòng ra rễ hoặc phòng kho TP." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "M05 chỉ dùng cho kệ Phòng mẫu mẹ. T01/T05 dùng cho kệ Phòng ra rễ hoặc phòng kho TP." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV cấy mô chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền cả 2 cột Số lượng phù hợp với vị trí (VD cả M03 lẫn M05 cho 1 kệ mẫu mẹ, hoặc cả T01 lẫn T05) để tạo đồng thời 2 lô — miễn tổng không vượt sức chứa (capacity) của kệ." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền cả 2 cột Số lượng phù hợp với vị trí (VD cả T01 lẫn T05 cho 1 kệ ra rễ) để tạo đồng thời 2 lô — miễn tổng không vượt sức chứa (capacity) của kệ." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã lô (nếu điền) chỉ áp dụng được khi dòng đó CHỈ có đúng 1 cột Số lượng — cần 2 mã lô riêng cho 2 quy cách thì tách thành 2 dòng." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Với kệ Phòng mẫu mẹ: Ngày nhập lô không còn dùng để tính hạn cấy chuyển — hạn tự tính theo Nhóm tuần mẫu mẹ đã gán cho giàn kệ đích (nếu giàn chưa gán Nhóm thì không có hạn)." });
 
   addGuideSheet(workbook, [
     { column: "Mã vị trí (kệ hoặc phòng kho TP)", required: true, description: "Mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm — hệ thống tự phân biệt." },
@@ -82,7 +82,7 @@ export async function GET() {
     { column: "Mã NV cấy mô phụ trách", required: false, description: "Chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." },
     { column: "Ngày nhập lô", required: true, description: "Định dạng dd/mm/yyyy." },
     { column: "Mã lô (để trống = tự sinh)", required: false, description: "Để trống để hệ thống tự sinh mã theo quy tắc chuẩn, hoặc gõ tay mã lô có sẵn ngoài đời — chỉ áp dụng khi dòng chỉ có đúng 1 cột Số lượng." },
-    { column: "Số lượng M03 / M05 / T01 / T05", required: false, description: "Bắt buộc điền ÍT NHẤT 1 trong 2 cột phù hợp với vị trí (M03/M05 cho kệ Phòng mẫu mẹ, T01/T05 cho kệ Phòng ra rễ/phòng kho TP) — có thể điền cả 2 cùng lúc để tạo 2 lô, tổng không vượt sức chứa của kệ." },
+    { column: "Số lượng M05 / T01 / T05", required: false, description: "Bắt buộc điền ÍT NHẤT 1 cột phù hợp với vị trí (M05 cho kệ Phòng mẫu mẹ, T01/T05 cho kệ Phòng ra rễ/phòng kho TP) — có thể điền cả T01 lẫn T05 cùng lúc để tạo 2 lô, tổng không vượt sức chứa của kệ." },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -124,7 +124,6 @@ export async function POST(req: NextRequest) {
     staffCode?: string;
     enteredAtRaw: ExcelJS.CellValue;
     lotCode?: string;
-    quantityM03?: string;
     quantityM05?: string;
     quantityT01?: string;
     quantityT05?: string;
@@ -142,10 +141,9 @@ export async function POST(req: NextRequest) {
       staffCode: cellText(row.getCell(3).value) || undefined,
       enteredAtRaw: row.getCell(4).value,
       lotCode: cellText(row.getCell(5).value) || undefined,
-      quantityM03: cellText(row.getCell(6).value) || undefined,
-      quantityM05: cellText(row.getCell(7).value) || undefined,
-      quantityT01: cellText(row.getCell(8).value) || undefined,
-      quantityT05: cellText(row.getCell(9).value) || undefined,
+      quantityM05: cellText(row.getCell(6).value) || undefined,
+      quantityT01: cellText(row.getCell(7).value) || undefined,
+      quantityT05: cellText(row.getCell(8).value) || undefined,
     });
   });
 
@@ -216,11 +214,11 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Mỗi vị trí chỉ có 2 quy cách hợp lệ (M03/M05 cho kệ mẫu mẹ, T01/T05 cho kệ ra rễ/phòng kho TP) —
+    // Mỗi vị trí chỉ có quy cách hợp lệ riêng (M05 cho kệ mẫu mẹ, T01/T05 cho kệ ra rễ/phòng kho TP) —
     // điền nhầm cột của quy cách còn lại coi là lỗi nhập nhầm cột, báo rõ thay vì âm thầm bỏ qua.
     const wrongCols: [string, string | undefined][] = isMauMeShelf
       ? [["T01", parsed.quantityT01], ["T05", parsed.quantityT05]]
-      : [["M03", parsed.quantityM03], ["M05", parsed.quantityM05]];
+      : [["M05", parsed.quantityM05]];
     const wrongFilled = wrongCols.find(([, raw]) => !!raw);
     if (wrongFilled) {
       errors.push({ row: parsed.row, label: parsed.location, message: `Cột Số lượng ${wrongFilled[0]} không dùng được cho vị trí này` });
@@ -228,7 +226,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ownCols: [string, string | undefined][] = isMauMeShelf
-      ? [["M03", parsed.quantityM03], ["M05", parsed.quantityM05]]
+      ? [["M05", parsed.quantityM05]]
       : [["T01", parsed.quantityT01], ["T05", parsed.quantityT05]];
     const stageEntries: StageEntry[] = [];
     let stageError = false;
@@ -273,8 +271,8 @@ export async function POST(req: NextRequest) {
 
     let shelfUpdateData: ShelfAttributeUpdateData | undefined;
     if (shelf) {
-      // Sức chứa (capacity) áp dụng cho CẢ kệ Phòng mẫu mẹ lẫn Phòng ra rễ như nhau — 1 kệ có thể chứa
-      // nhiều quy cách cùng lúc (mẫu mẹ: M03+M05, ra rễ: T01+T05), giới hạn duy nhất là capacity. Cộng
+      // Sức chứa (capacity) áp dụng cho CẢ kệ Phòng mẫu mẹ lẫn Phòng ra rễ như nhau — 1 kệ ra rễ có thể
+      // chứa nhiều quy cách cùng lúc (T01+T05), giới hạn duy nhất là capacity. Cộng
       // dồn theo claimedShelfUsage vì cùng 1 kệ có thể xuất hiện ở nhiều dòng trong CÙNG 1 file import.
       const totalQuantity = stageEntries.reduce((s, e) => s + e.quantity, 0);
       const used = sumLotQuantity(shelf.lots) + (claimedShelfUsage.get(shelf.id) ?? 0);
@@ -329,11 +327,11 @@ export async function POST(req: NextRequest) {
       stageEntries[0].lotCodeOverride = parsed.lotCode;
     }
 
-    const expectedMoveAt = isMauMeShelf
-      ? addWeeks(enteredAt, plantType.transferWaitWeeks)
-      : isRaReShelf
-        ? addWeeks(enteredAt, plantType.rootingWeeks)
-        : null;
+    // Mẫu mẹ (MAU_ME): KHÔNG còn tính expectedMoveAt từ Ngày nhập lô — "đạt hạn cấy chuyển" giờ tính
+    // thuần theo Nhóm tuần mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups ở
+    // src/lib/mother-week-group.ts), không phụ thuộc ngày lô cụ thể vào kệ. Ngày nhập lô vẫn bắt buộc
+    // điền vì còn dùng để sắp thứ tự rút FIFO khi dồn/xếp lại giàn (xem moveMotherStock).
+    const expectedMoveAt = isRaReShelf ? addWeeks(enteredAt, plantType.rootingWeeks) : null;
 
     validRows.push({
       row: parsed.row,

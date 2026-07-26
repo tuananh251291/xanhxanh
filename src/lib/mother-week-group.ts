@@ -1,3 +1,19 @@
+import { addWeeks, startOfWeek, addDays } from "date-fns";
+import { getCurrentWeekSlot, isoWeekStringToMonday } from "@/lib/week-rotation";
+import { getSystemConfig } from "@/lib/inventory";
+
+// Key lưu trong SystemConfig — giá trị là chuỗi tuần ISO 8601 dạng "YYYY-Www" (VD "2026-W27"), đánh dấu
+// tuần thực tế đầu tiên được coi là Nhóm tuần mẫu mẹ 1. Xem src/app/api/settings/rotation-start-week/route.ts
+// và src/lib/rooting-week-group.ts (ROOTING_ROTATION_START_WEEK_KEY — cùng cơ chế, khác rotationKind).
+export const MOTHER_ROTATION_START_WEEK_KEY = "mother_rotation_start_week";
+
+// Đọc mốc "Tuần khởi đầu của Nhóm tuần mẫu mẹ 1" đã cấu hình (nếu có) — dùng làm motherEpochMonday
+// truyền vào summarizeMotherWeekGroups để tính scheduledDue. undefined nếu SUPER_ADMIN chưa cấu hình gì.
+export async function getMotherRotationEpoch(): Promise<Date | undefined> {
+  const value = await getSystemConfig(MOTHER_ROTATION_START_WEEK_KEY, "");
+  return value ? (isoWeekStringToMonday(value) ?? undefined) : undefined;
+}
+
 export type MotherWeekGroupShelf = {
   id: string;
   code: string;
@@ -16,6 +32,13 @@ export type MotherWeekGroupShelf = {
   quantity: number;
 };
 
+// Hạn chót thực tế của thông báo báo trước 1 tuần (xem summarizeMotherWeekGroups) — Thứ 5 của tuần đang
+// xem thông báo (KHÔNG phải Thứ 5 của tuần thật sự đến hạn cấy chuyển), để NV kỹ thuật còn vài ngày
+// chuẩn bị chỉ định trước khi tuần đến hạn bắt đầu.
+export function getMotherDueDeadline(now: Date = new Date()): Date {
+  return addDays(startOfWeek(now, { weekStartsOn: 1 }), 3);
+}
+
 export type MotherWeekGroupStatus = {
   groupId: string;
   groupName: string;
@@ -27,10 +50,19 @@ export type MotherWeekGroupStatus = {
 };
 
 // Tổng hợp theo Nhóm xoay vòng (rotationGroup, rotationKind = MAU_ME) cho các kệ "đã chia" (Phòng mẫu
-// mẹ) của 1 kho — kệ chưa gán Nhóm nào bị bỏ qua hoàn toàn. "Đạt hạn cấy chuyển" = Nhóm có ít nhất 1 lô
-// đã đến hạn cấy chuyển theo ĐÚNG thời gian đợi cấy chuyển của mã cây lô đó (Lot.expectedMoveAt, cộng
-// PlantType.transferWaitWeeks riêng từng mã cây lúc tạo lô — xem src/lib/mother-ready.ts) — KHÔNG dùng 1
-// hằng số tuần chung cho mọi mã cây, giống cách summarizeRootingWeekGroups xử lý Nhóm tuần ra rễ.
+// mẹ) của 1 kho — kệ chưa gán Nhóm nào bị bỏ qua hoàn toàn.
+//
+// "Đạt hạn cấy chuyển" (isDue) tính THUẦN theo lịch xoay vòng — KHÔNG còn dựa vào Lot.expectedMoveAt/ngày
+// nhập lô nữa (đổi theo yêu cầu: đã có Nhóm tuần mẫu mẹ gắn với tuần thật cụ thể qua "Tuần khởi đầu của
+// Nhóm tuần mẫu mẹ 1", không cần theo dõi ngày lô riêng lẻ). N (số khe xoay vòng) = Thời gian đợi cấy
+// chuyển của mã cây gán cho Nhóm đó (lấy từ kệ đầu tiên có gán mã cây — theo quy ước 1 Nhóm tuần mẫu mẹ
+// chỉ chứa 1 mã cây duy nhất, xem comment tại Shelf.rotationGroupId, nên mọi lô cùng Nhóm luôn cùng thời
+// gian đợi). 1 Nhóm được coi là "đạt hạn" khi rotationOrder khớp getCurrentWeekSlot ở TUẦN NÀY hoặc TUẦN
+// SAU (báo trước 1 tuần cho NV kỹ thuật kịp ra chỉ định trước khi tuần đến hạn thật sự bắt đầu — giữ đúng
+// tinh thần báo trước như trước đây, hạn chót hiển thị vẫn là Thứ 5 của tuần đang xem, xem
+// getMotherDueDeadline/src/lib/mother-ready.ts). Nhóm chưa có lô nào (rỗng) vẫn không được coi là "đạt
+// hạn" dù đúng lịch — tránh hiện thẻ cảnh báo trống không có gì để tạo chỉ định. Luôn isDue=false nếu
+// không truyền motherEpochMonday (SUPER_ADMIN chưa cấu hình "Tuần khởi đầu của Nhóm tuần mẫu mẹ 1").
 export function summarizeMotherWeekGroups(
   shelves: {
     id: string;
@@ -41,11 +73,22 @@ export function summarizeMotherWeekGroups(
     block: string | null;
     warehouse: { id: string; code: string; name: string };
     rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
-    plantType: { code: string } | null;
-    lots: { quantity: number; expectedMoveAt: Date | null }[];
+    plantType: { code: string; transferWaitWeeks?: number } | null;
+    lots: { quantity: number }[];
   }[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  motherEpochMonday?: Date
 ): MotherWeekGroupStatus[] {
+  // Thời gian đợi cấy chuyển (số khe xoay vòng N) của 1 Nhóm — lấy từ mã cây của kệ ĐẦU TIÊN trong Nhóm
+  // có gán mã cây (theo quy ước 1 Nhóm chỉ chứa 1 mã cây, xem comment trên).
+  const transferWaitWeeksByGroup = new Map<string, number>();
+  for (const shelf of shelves) {
+    if (!shelf.rotationGroup || !shelf.plantType?.transferWaitWeeks) continue;
+    if (!transferWaitWeeksByGroup.has(shelf.rotationGroup.id)) {
+      transferWaitWeeksByGroup.set(shelf.rotationGroup.id, shelf.plantType.transferWaitWeeks);
+    }
+  }
+
   const byGroup = new Map<string, MotherWeekGroupStatus>();
   for (const shelf of shelves) {
     if (!shelf.rotationGroup) continue;
@@ -83,9 +126,18 @@ export function summarizeMotherWeekGroups(
     for (const lot of shelf.lots) {
       entry.lotCount += 1;
       entry.totalQuantity += lot.quantity;
-      if (lot.expectedMoveAt !== null && lot.expectedMoveAt.getTime() <= now.getTime()) entry.isDue = true;
     }
     byGroup.set(key, entry);
+  }
+
+  if (motherEpochMonday) {
+    for (const entry of byGroup.values()) {
+      const totalSlots = transferWaitWeeksByGroup.get(entry.groupId);
+      if (!totalSlots || entry.rotationOrder === null || entry.lotCount === 0) continue;
+      const currentSlot = getCurrentWeekSlot(totalSlots, now, motherEpochMonday);
+      const nextWeekSlot = getCurrentWeekSlot(totalSlots, addWeeks(now, 1), motherEpochMonday);
+      entry.isDue = entry.rotationOrder === currentSlot || entry.rotationOrder === nextWeekSlot;
+    }
   }
 
   return Array.from(byGroup.values()).sort((a, b) => (a.rotationOrder ?? 0) - (b.rotationOrder ?? 0));

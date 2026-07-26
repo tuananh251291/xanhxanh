@@ -11,8 +11,8 @@ import { resolveShelfAttributeUpdate } from "@/lib/shelf-attribute-update";
 // Nhóm tuần ra rễ/Nhóm tuần mẫu mẹ (rotationGroupId) KHÔNG sửa ở đây nữa — SUPER_ADMIN gán kệ vào Nhóm
 // qua /settings/shelf-groups (xem /api/shelf-groups/[id]/shelves), route này chỉ tự bỏ gán khi chuyển
 // kệ sang phòng khác loại.
-// capacity (đơn vị túi, áp dụng cho cả 2 loại phòng) — SUPER_ADMIN sửa lại sau khi tạo kệ, null =
-// không giới hạn.
+// capacity (Phòng mẫu mẹ tính theo cụm, Phòng ra rễ tính theo cây) — SUPER_ADMIN sửa lại sau khi tạo
+// kệ, null = không giới hạn.
 const patchSchema = z.object({
   plantTypeId: z.string().nullable().optional(),
   assignedStaffId: z.string().nullable().optional(),
@@ -58,16 +58,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // Không cho đặt sức chứa thấp hơn tổng số lượng các lô ACTIVE đang có trên kệ — kệ giờ có thể tích
-  // luỹ nhiều lô/quy cách cùng lúc (VD cả M03 lẫn M05) nên tổng tồn có thể lớn hơn trước.
+  // luỹ nhiều lô/quy cách cùng lúc (VD Phòng ra rễ có cả T01 lẫn T05) nên tổng tồn có thể lớn hơn trước. Đơn vị: Phòng
+  // mẫu mẹ tính theo cụm, Phòng ra rễ tính theo cây (xem MOTHER_SPEC_BAG_SIZE ở src/types).
   if (capacity != null) {
-    const agg = await prisma.lot.aggregate({
-      where: { shelfId: id, status: "ACTIVE" },
-      _sum: { quantity: true },
-    });
+    const [agg, shelfRoom] = await Promise.all([
+      prisma.lot.aggregate({ where: { shelfId: id, status: "ACTIVE" }, _sum: { quantity: true } }),
+      prisma.shelf.findUnique({ where: { id }, select: { room: { select: { type: true } } } }),
+    ]);
     const used = agg._sum.quantity ?? 0;
+    const capacityUnit = shelfRoom?.room?.type === "PHONG_MAU_ME" ? "cụm" : "cây";
     if (used > capacity) {
       return NextResponse.json(
-        { message: `Sức chứa mới (${capacity}) nhỏ hơn số lượng đang có trên kệ (${used} túi)` },
+        { message: `Sức chứa mới (${capacity}) nhỏ hơn số lượng đang có trên kệ (${used} ${capacityUnit})` },
         { status: 400 }
       );
     }
@@ -119,8 +121,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (groupOf(currentRoomType, current.assignedStaffId) !== groupOf(targetRoomType, targetAssignedStaffId)) {
       const totalQty = current.lots.reduce((s, l) => s + l.quantity, 0);
       if (totalQty > 0) {
+        const moveUnit = currentRoomType === "PHONG_MAU_ME" ? "cụm" : "cây";
         return NextResponse.json(
-          { message: `Kệ đang còn ${totalQty} túi trong lô — chỉ chuyển được sang nhóm khác khi tồn kệ bằng 0` },
+          { message: `Kệ đang còn ${totalQty} ${moveUnit} trong lô — chỉ chuyển được sang nhóm khác khi tồn kệ bằng 0` },
           { status: 400 }
         );
       }

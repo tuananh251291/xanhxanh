@@ -13,6 +13,8 @@ import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS, isAdminRole } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
+import EditInstructionDialog from "../edit-instruction-dialog";
+import CancelInstructionButton from "../cancel-instruction-button";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-muted text-text-secondary",
@@ -175,6 +177,10 @@ export default async function InstructionsListPage({
                               <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
                             </Button>
                           </Link>
+                          {/* Chỉ sửa/hủy được TRƯỚC khi Kho mô bàn giao — bàn giao rồi coi như đã chốt,
+                              xem PATCH /api/instructions/[id] nhánh "edit"/"cancelInstruction". */}
+                          {!inst.handedOverAt && <EditInstructionDialog instructionId={inst.id} />}
+                          {!inst.handedOverAt && <CancelInstructionButton instructionId={inst.id} instructionCode={inst.code} />}
                           <Link href={`/instructions/${inst.id}`} target="_blank">
                             <Button variant="ghost" size="sm" title="In phiếu chỉ định"><Printer className="w-4 h-4" /></Button>
                           </Link>

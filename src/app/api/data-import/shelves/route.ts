@@ -65,11 +65,10 @@ export async function GET() {
     { header: "Phân loại kệ (chỉ Phòng mẫu mẹ)", key: "pool", width: 26 },
     { header: "Kho quá hạn/đúng hạn (chỉ khi Phân loại = Kho mẫu mẹ chung)", key: "sharedPool", width: 32 },
     { header: "Tên kệ (VD: A01C09 — không cần gõ chữ \"Kệ\")", key: "position", width: 30 },
-    { header: "Sức chứa (túi)", key: "capacity", width: 16 },
+    { header: "Sức chứa (cụm ở Phòng mẫu mẹ / cây ở Phòng ra rễ)", key: "capacity", width: 30 },
     { header: "Mã cây", key: "plantTypeCode", width: 12 },
     { header: "Mã NV phụ trách (bắt buộc nếu Phân loại = Kho mẫu mẹ đã chia)", key: "staffCode", width: 30 },
     { header: "Nhóm tuần", key: "rotationGroup", width: 18 },
-    { header: "Số lượng M03 ban đầu", key: "quantityM03", width: 18 },
     { header: "Số lượng M05 ban đầu", key: "quantityM05", width: 18 },
     { header: "Số lượng T01 ban đầu", key: "quantityT01", width: 18 },
     { header: "Số lượng T05 ban đầu", key: "quantityT05", width: 18 },
@@ -85,7 +84,7 @@ export async function GET() {
       capacity: 600,
       plantTypeCode: plantTypes[0]?.code ?? "MT001",
       staffCode: staff[0]?.code ?? "NVCM010",
-      quantityM03: 300,
+      quantityM05: 300,
     });
     styleExampleRow(sheet.getRow(2));
   }
@@ -108,7 +107,7 @@ export async function GET() {
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Tên kệ nhập theo định dạng {Hàng}{Số hàng 2 số}C{Số cột} (VD A01C09) — Mã kệ, Hàng/Block, Số hàng, Số cột đều TỰ SUY RA từ đúng giá trị này, không cần nhập riêng." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã kệ tự sinh (từ Tên kệ) phải CHƯA tồn tại — nếu muốn sửa kệ đã có, dùng \"Xuất/Nhập Excel\" ở trang Kho & Kệ." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Phân loại/Kho quá hạn-đúng hạn/Mã NV phụ trách chỉ áp dụng khi Loại phòng = Phòng mẫu mẹ — bỏ trống ở Phòng ra rễ." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền nhiều cột Số lượng cùng lúc (VD cả M03 lẫn M05) để tạo đồng thời nhiều lô cho 1 kệ mới, miễn tổng không vượt Sức chứa." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền nhiều cột Số lượng cùng lúc (VD cả T01 lẫn T05 cho Phòng ra rễ) để tạo đồng thời nhiều lô cho 1 kệ mới, miễn tổng không vượt Sức chứa." });
 
   addGuideSheet(workbook, [
     { column: "Mã kho sản xuất", required: true, description: "Mã kho sản xuất đang hoạt động, xem sheet Danh mục." },
@@ -116,11 +115,11 @@ export async function GET() {
     { column: "Phân loại kệ (chỉ Phòng mẫu mẹ)", required: false, description: '"Kho mẫu mẹ chung" hoặc "Kho mẫu mẹ đã chia" — chỉ áp dụng khi Loại phòng = Phòng mẫu mẹ.' },
     { column: "Kho quá hạn/đúng hạn (chỉ khi Phân loại = Kho mẫu mẹ chung)", required: false, description: '"Quá hạn" hoặc "Đúng hạn" — chỉ điền khi Phân loại = Kho mẫu mẹ chung.' },
     { column: "Tên kệ (VD: A01C09)", required: true, description: "Định dạng {Hàng}{Số hàng 2 số}C{Số cột}, VD A01C09 — Mã kệ/Hàng-Block/Số hàng/Số cột tự suy ra từ đây." },
-    { column: "Sức chứa (túi)", required: false, description: "Số nguyên dương. Để trống = không giới hạn." },
+    { column: "Sức chứa (cụm ở Phòng mẫu mẹ / cây ở Phòng ra rễ)", required: false, description: "Số nguyên dương. Để trống = không giới hạn." },
     { column: "Mã cây", required: false, description: "Bắt buộc nếu có điền Số lượng ban đầu ở các cột sau." },
     { column: "Mã NV phụ trách (bắt buộc nếu Phân loại = Kho mẫu mẹ đã chia)", required: false, description: "Mã NV Cấy mô — bắt buộc khi Phân loại kệ = Kho mẫu mẹ đã chia." },
     { column: "Nhóm tuần", required: false, description: "Tên Nhóm giàn kệ xoay vòng đã tạo trước (xem sheet Danh mục), đúng loại (mẫu mẹ/ra rễ) theo Loại phòng." },
-    { column: "Số lượng M03/M05/T01/T05 ban đầu", required: false, description: "Có thể điền nhiều cột cùng lúc để tạo đồng thời nhiều lô cho 1 kệ mới — tổng không vượt Sức chứa. M03/M05 chỉ dùng cho Phòng mẫu mẹ, T01/T05 chỉ dùng cho Phòng ra rễ." },
+    { column: "Số lượng M05/T01/T05 ban đầu", required: false, description: "Có thể điền nhiều cột cùng lúc để tạo đồng thời nhiều lô cho 1 kệ mới — tổng không vượt Sức chứa. M05 chỉ dùng cho Phòng mẫu mẹ, T01/T05 chỉ dùng cho Phòng ra rễ." },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -166,7 +165,6 @@ export async function POST(req: NextRequest) {
     plantTypeCode?: string;
     staffCode?: string;
     rotationGroupName?: string;
-    quantityM03?: string;
     quantityM05?: string;
     quantityT01?: string;
     quantityT05?: string;
@@ -188,10 +186,9 @@ export async function POST(req: NextRequest) {
       plantTypeCode: cellText(row.getCell(7).value) || undefined,
       staffCode: cellText(row.getCell(8).value) || undefined,
       rotationGroupName: cellText(row.getCell(9).value) || undefined,
-      quantityM03: cellText(row.getCell(10).value) || undefined,
-      quantityM05: cellText(row.getCell(11).value) || undefined,
-      quantityT01: cellText(row.getCell(12).value) || undefined,
-      quantityT05: cellText(row.getCell(13).value) || undefined,
+      quantityM05: cellText(row.getCell(10).value) || undefined,
+      quantityT01: cellText(row.getCell(11).value) || undefined,
+      quantityT05: cellText(row.getCell(12).value) || undefined,
     });
   });
 
@@ -390,7 +387,7 @@ export async function POST(req: NextRequest) {
     // nhầm cột, báo rõ thay vì âm thầm bỏ qua.
     const wrongRoomStageCols: [string, string | undefined][] = isMauMe
       ? [["T01", parsed.quantityT01], ["T05", parsed.quantityT05]]
-      : [["M03", parsed.quantityM03], ["M05", parsed.quantityM05]];
+      : [["M05", parsed.quantityM05]];
     const wrongFilled = wrongRoomStageCols.find(([, raw]) => !!raw);
     if (wrongFilled) {
       errors.push({
@@ -402,7 +399,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ownRoomStageCols: [string, string | undefined][] = isMauMe
-      ? [["M03", parsed.quantityM03], ["M05", parsed.quantityM05]]
+      ? [["M05", parsed.quantityM05]]
       : [["T01", parsed.quantityT01], ["T05", parsed.quantityT05]];
     const stageEntries: { stageCode: string; quantity: number }[] = [];
     let stageError = false;
@@ -428,7 +425,7 @@ export async function POST(req: NextRequest) {
         errors.push({
           row: parsed.row,
           label: parsed.position,
-          message: `Tổng số lượng ban đầu (${totalQuantity}) vượt quá sức chứa kệ (${capacityVal} túi)`,
+          message: `Tổng số lượng ban đầu (${totalQuantity}) vượt quá sức chứa kệ (${capacityVal} ${isMauMe ? "cụm" : "cây"})`,
         });
         continue;
       }
@@ -513,7 +510,10 @@ export async function POST(req: NextRequest) {
                 initialQuantity: entry.quantity,
                 status: "ACTIVE",
                 enteredAt: new Date(),
-                expectedMoveAt: addWeeks(new Date(), vr.isMauMe ? vr.plantType.transferWaitWeeks : vr.plantType.rootingWeeks),
+                // Mẫu mẹ: không còn tính expectedMoveAt từ ngày vào kệ — hạn cấy chuyển tự tính theo
+                // Nhóm tuần mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups), giàn chưa gán Nhóm
+                // thì không có hạn.
+                expectedMoveAt: vr.isMauMe ? null : addWeeks(new Date(), vr.plantType.rootingWeeks),
               },
             });
           }

@@ -71,7 +71,6 @@ export default async function InstructionDetailPage({ params }: { params: Promis
     maMauMe: item.lot?.code ?? "—",
     slSach: item.quantity,
   }));
-  const m03Total = inst.items.filter((i) => i.stageCode === "M03").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
   const m05Total = inst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
 
   return (
@@ -146,7 +145,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                       </span>
                     </div>
                     <div className="pi-card-cell">
-                      <span className="pi-label">Số lượng bàn giao</span>
+                      <span className="pi-label">Số lượng bàn giao (cụm)</span>
                       <span className="pi-value">{r.slSach.toLocaleString("vi-VN")}</span>
                     </div>
                   </div>
@@ -181,16 +180,14 @@ export default async function InstructionDetailPage({ params }: { params: Promis
               <thead>
                 <tr>
                   <th>Quy cách</th>
-                  <th>SL M03</th>
-                  <th>SL M05</th>
-                  <th>SL T01</th>
-                  <th>SL T05</th>
+                  <th>SL M05 (cụm)</th>
+                  <th>SL T01 (cây)</th>
+                  <th>SL T05 (cây)</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="pi-total">
-                  <td className="pi-left">SL dự kiến trả (túi)</td>
-                  <td>{m03Total.toLocaleString("vi-VN")}</td>
+                  <td className="pi-left">SL dự kiến trả</td>
                   <td>{m05Total.toLocaleString("vi-VN")}</td>
                   <td>{(inst.plannedT01Quantity ?? 0).toLocaleString("vi-VN")}</td>
                   <td>{(inst.plannedT05Quantity ?? 0).toLocaleString("vi-VN")}</td>
@@ -278,7 +275,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                     <tr key={lot.id} className="border-b hover:bg-muted">
                       <td className="px-4 py-2 font-mono text-info-foreground">{lot.code}</td>
                       <td className="px-4 py-2"><Badge variant="secondary">{STAGE_LABELS[lot.stage]}</Badge></td>
-                      <td className="px-4 py-2 font-medium">{lot.quantity.toLocaleString("vi-VN")}</td>
+                      <td className="px-4 py-2 font-medium">
+                        {lot.quantity.toLocaleString("vi-VN")} {lot.stage === "MAU_ME" ? "cụm" : "cây"}
+                      </td>
                       <td className="px-4 py-2 text-text-secondary">{lot.shelf ? `${lot.shelf.warehouse.name} - ${lot.shelf.name ?? lot.shelf.code}` : "Chưa có kệ"}</td>
                       <td className="px-4 py-2 text-text-secondary">{format(lot.enteredAt, "dd/MM/yyyy", { locale: vi })}</td>
                     </tr>
@@ -301,7 +300,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                   <tr className="border-b bg-background">
                     <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Ngày</th>
                     <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">NV</th>
-                    <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Mẫu mẹ dùng</th>
+                    <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Mẫu mẹ dùng (cụm)</th>
                     <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Chi tiết</th>
                   </tr>
                 </thead>
@@ -312,7 +311,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                       <td className="px-4 py-2">{rec.staff.name}</td>
                       <td className="px-4 py-2">{rec.motherUsed.toLocaleString("vi-VN")}</td>
                       <td className="px-4 py-2 text-text-secondary">
-                        {rec.items.map((item) => `${STAGE_LABELS[item.stage]}: ${item.quantityCreated.toLocaleString("vi-VN")}`).join(" / ")}
+                        {rec.items
+                          .map((item) => `${STAGE_LABELS[item.stage]}: ${item.quantityCreated.toLocaleString("vi-VN")} ${item.stage === "MAU_ME" ? "cụm" : "cây"}`)
+                          .join(" / ")}
                       </td>
                     </tr>
                   ))}

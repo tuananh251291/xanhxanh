@@ -57,7 +57,7 @@ export const ROOM_TYPE_LABELS = {
   PHONG_RA_RE: "Phòng ra rễ",
   PHONG_TOI: "Phòng tối",
   PHONG_NHIEM: "Phòng Nhiễm",
-  PHONG_KHA_DUNG: "Phòng khả dụng",
+  PHONG_DAT_TIEU_CHUAN: "Phòng đạt tiêu chuẩn",
   PHONG_THEO_DOI: "Phòng theo dõi",
   PHONG_HAN_TUI: "Phòng hàn túi",
   PHONG_THI_TRUONG: "Phòng thị trường",
@@ -68,7 +68,7 @@ export const ROOM_TYPE_COLORS = {
   PHONG_RA_RE: "bg-lime-100 text-lime-800",
   PHONG_TOI: "bg-gray-800 text-white",
   PHONG_NHIEM: "bg-red-100 text-red-800",
-  PHONG_KHA_DUNG: "bg-green-100 text-green-800",
+  PHONG_DAT_TIEU_CHUAN: "bg-green-100 text-green-800",
   PHONG_THEO_DOI: "bg-orange-100 text-orange-800",
   PHONG_HAN_TUI: "bg-purple-100 text-purple-800",
   PHONG_THI_TRUONG: "bg-cyan-100 text-cyan-800",
@@ -79,10 +79,10 @@ export const STAGE_LABELS = {
   THANH_PHAM: "Thành phẩm",
 } as const;
 
-// Quy cách mẫu mẹ (cụm chồi) — gắn trên Lot.stageCode khi stage = MAU_ME
+// Quy cách mẫu mẹ (túi cụm) — gắn trên Lot.stageCode khi stage = MAU_ME. Chỉ còn 1 quy cách M05 (đã bỏ
+// M03 — dữ liệu M03 cũ đã được gộp sang M05, xem prisma/migrate-m03-to-m05.ts).
 export const MOTHER_SPEC_LABELS = {
-  M03: "M03 — cụm 3 chồi",
-  M05: "M05 — cụm 5 chồi",
+  M05: "M05 — túi 5 cụm",
 } as const;
 
 // Quy cách đóng gói thành phẩm (túi) — gắn trên Lot.stageCode khi stage = THANH_PHAM
@@ -99,25 +99,17 @@ export const FINISHED_SPEC_BAG_SIZE = {
   T10: 10,
 } as const;
 
-// Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — CHỈ dùng để quy đổi năng
-// suất cấy (xem /api/leaderboard/weekly), KHÔNG dùng để tính sức chứa kệ Phòng mẫu mẹ nữa (kệ tính
-// thẳng theo túi, không quy đổi cụm — xem src/lib/shelf-assignment.ts). Không áp dụng cho thành phẩm (T01/T05).
+// Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — Lot.quantity của M05 LUÔN
+// tính thẳng theo cụm (đơn vị nhỏ nhất, giống T01/T05/T10 tính theo cây), bagSize này chỉ dùng khi cần
+// biết 1 lô chiếm bao nhiêu túi VẬT LÝ (VD làm tròn khi xếp kệ — xem src/lib/shelf-assignment.ts).
 export const MOTHER_SPEC_BAG_SIZE = {
-  M03: 3,
   M05: 5,
 } as const;
 
-// Quy đổi số lượng (đơn vị túi) của 1 lô mẫu mẹ sang số cụm mẫu mẹ thực tế — chỉ dùng cho bảng xếp
-// hạng năng suất tuần (leaderboard). Lô không phải quy cách M03/M05 (VD: T01/T05, hoặc dữ liệu cũ
-// không có stageCode) giữ nguyên quantity.
-export function motherClusterUnits(stageCode: string | null | undefined, quantity: number): number {
-  const bagSize = MOTHER_SPEC_BAG_SIZE[stageCode as keyof typeof MOTHER_SPEC_BAG_SIZE];
-  return bagSize ? quantity * bagSize : quantity;
-}
-
-// Tổng số túi đã dùng trên 1 kệ (hoặc bất kỳ danh sách lô nào) — nguồn tính DUY NHẤT dùng chung cho cả
-// thuật toán tự xếp kệ (src/lib/shelf-assignment.ts), validate khi chọn kệ tay (api/transfers/[id]),
-// lẫn mọi nơi hiển thị "Tồn/Sức chứa" (shelf-table.tsx, transfers/receive/page.tsx, inventory/kho-sang).
+// Tổng số lượng đã dùng trên 1 kệ (hoặc bất kỳ danh sách lô nào) — đơn vị theo room type (cây ở Phòng ra
+// rễ, cụm ở Phòng mẫu mẹ) — nguồn tính DUY NHẤT dùng chung cho cả thuật toán tự xếp kệ
+// (src/lib/shelf-assignment.ts), validate khi chọn kệ tay (api/transfers/[id]), lẫn mọi nơi hiển thị
+// "Tồn/Sức chứa" (shelf-table.tsx, transfers/receive/page.tsx, inventory/kho-sang).
 // Lọc theo stage/status trước khi truyền vào đây nếu cần (VD chỉ lô MAU_ME, chỉ status ACTIVE).
 export function sumLotQuantity(lots: { quantity: number }[]): number {
   return lots.reduce((sum, l) => sum + l.quantity, 0);
@@ -188,7 +180,7 @@ export const ALERT_TYPE_LABELS = {
   LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
-  MOTHER_LOT_READY: "Mẫu mẹ đến tuổi cấy chuyển",
+  MOTHER_LOT_READY: "Mẫu mẹ sắp đến tuổi cấy chuyển",
   ROOTING_LOT_READY: "Lô ra rễ đến hạn chuyển kho thành phẩm",
   MEDIUM_ORDER_CREATED: "Có đơn đặt hàng môi trường mới",
   CONTAMINATION_PROPOSAL: "Đề xuất trồng/hủy hàng nhiễm",
@@ -197,6 +189,7 @@ export const ALERT_TYPE_LABELS = {
   PASSWORD_RESET_REQUESTED: "Yêu cầu cấp lại mật khẩu",
   MOTHER_CONTAMINATION_HIGH: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng cao",
   GOODS_RECEIPT_RETURN_DUE: "Phiếu nhập hàng cần kiểm tra trả hàng",
+  ORDER_PROCESSING_SHORTFALL: "Xử lý cây thiếu hụt so với đơn hàng",
 } as const;
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).
@@ -283,6 +276,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },
+    { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
+    { href: "/mother-shelf-assign", label: "Gán mã cây & NV mẫu mẹ", icon: "Users" },
+    { href: "/mother-stock-reshelf", label: "Sắp xếp kho mẫu mẹ", icon: "ArrowLeftRight" },
     { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
@@ -293,7 +289,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
-    { href: "/inventory/available", label: "Xem tồn khả dụng", icon: "PackageCheck" },
+    { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
@@ -302,7 +298,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   SALE: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/inventory/available", label: "Xem tồn khả dụng", icon: "Package" },
+    { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "Package" },
     { href: "/orders", label: "Kiểm tra đáp ứng", icon: "ShoppingCart" },
     { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

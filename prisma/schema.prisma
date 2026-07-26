@@ -44,7 +44,7 @@ enum RoomType {
   // Phòng nhiễm — 1 phòng/kho sản xuất, không quản lý theo giàn kệ. Chưa gắn logic nghiệp vụ (placeholder).
   PHONG_NHIEM
   // Kho thành phẩm
-  PHONG_KHA_DUNG
+  PHONG_DAT_TIEU_CHUAN
   PHONG_THEO_DOI
   PHONG_HAN_TUI
   PHONG_THI_TRUONG
@@ -62,6 +62,10 @@ enum LotStatus {
   DESTROYED
   PLANTED
   SOLD
+  // Lô "ảo" đại diện hàng dự kiến từ 1 Kế hoạch nhập kho (GoodsReceipt.status = PLANNED) — chưa có
+  // hàng thật, không xuất hiện ở các trang tồn kho ACTIVE (mọi query hiện có đều lọc status: ACTIVE sẵn).
+  // Chuyển thành ACTIVE khi Kho thành phẩm xác nhận số liệu thật (xem PATCH /api/goods-receipts/[id]/confirm).
+  PLANNED
 }
 
 enum InstructionStatus {
@@ -123,6 +127,11 @@ enum OrderMarket {
 enum AlertType {
   CONTAMINATION_HIGH
   OUTPUT_DEVIATION
+  // Kho thành phẩm "Hoàn thành xử lý" 1 Yêu cầu xử lý đơn hàng nhưng số lượng thực tế thu được
+  // (actualOutputQuantity) thấp hơn số thực cần (neededQuantity) — báo cho đúng Sale sở hữu đơn đó
+  // (userId) biết đơn có thể thiếu hàng, khác OUTPUT_DEVIATION (chỉ dành riêng cho KY_THUAT/lệch tiến độ
+  // cấy, có luồng chọn nguyên nhân xử lý riêng — không dùng chung để tránh lẫn 2 luồng).
+  ORDER_PROCESSING_SHORTFALL
   ORDER_EXPIRING
   ORDER_EXPIRED
   STOCK_LOW
@@ -207,9 +216,9 @@ model User {
   // Chỉ SUPER_ADMIN mở khóa lại được (PATCH /api/users/[id] { unlockAccount: true }).
   lockedAt DateTime?
   // Địa điểm làm việc — áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG (ràng buộc 1 kho sản xuất/SAN_XUAT) và
-  // SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng khả dụng ở đó, xem thêm RoomAccess cho
+  // SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng đạt tiêu chuẩn ở đó, xem thêm RoomAccess cho
   // các Phòng thị trường được cấp quyền riêng). KHO_THANH_PHAM cũng gán được 1 kho THÀNH PHẨM nhưng
-  // CHỈ mang tính hiển thị/lưu trữ — không giới hạn phạm vi thao tác (xem getFinishedAvailableRooms ở
+  // CHỈ mang tính hiển thị/lưu trữ — không giới hạn phạm vi thao tác (xem getFinishedQualifiedRooms ở
   // src/lib/processing.ts). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho. Chỉ
   // SUPER_ADMIN được sửa field này.
   workplaceWarehouseId String?
@@ -245,7 +254,8 @@ model User {
   materialIntakes      MaterialIntake[]
   processingTickets    ProcessingTicket[]
   orderProcessingRequestsCompleted OrderProcessingRequest[]
-  goodsReceipts        GoodsReceipt[]
+  goodsReceipts        GoodsReceipt[] @relation("GoodsReceiptCreatedBy")
+  goodsReceiptsConfirmed GoodsReceipt[] @relation("GoodsReceiptConfirmedBy")
   goodsReceiptItemsReturned GoodsReceiptItem[] @relation("GoodsReceiptItemReturnedBy")
 
   @@map("users")
@@ -314,7 +324,21 @@ model ChecklistItem {
   completedAt  DateTime?
   createdAt    DateTime          @default(now())
 
+  logs ChecklistItemLog[]
+
   @@map("checklist_items")
+}
+
+// Lịch sử mỗi lần đổi trạng thái hoàn thành của 1 ChecklistItem — ghi lại vĩnh viễn, không sửa/xoá,
+// để báo cáo cũ không bị viết lại khi NV tick/bỏ tick sau này. completed = trạng thái SAU khi đổi.
+model ChecklistItemLog {
+  id        String        @id @default(cuid())
+  itemId    String
+  item      ChecklistItem @relation(fields: [itemId], references: [id])
+  completed Boolean
+  changedAt DateTime      @default(now())
+
+  @@map("checklist_item_logs")
 }
 
 // Ngưỡng % hoàn thành tối thiểu/ngày theo từng vai trò — Admin cấu hình, dùng để tô cảnh báo trên báo cáo.
@@ -454,11 +478,24 @@ model Supplier {
   @@map("suppliers")
 }
 
+enum GoodsReceiptStatus {
+  // Kế hoạch nhập kho — chưa có hàng thật, chỉ ước tính (xem GoodsReceiptItem.plannedLotId). Không cộng
+  // gì vào tồn thực tế/tồn đạt tiêu chuẩn cho tới khi CONFIRMED.
+  PLANNED
+  // Đã có hàng thật — hành vi immediate-effect như trước khi có PLANNED (mặc định cho phiếu tạo theo
+  // luồng "Đã có hàng thật" cũ, và cho phiếu PLANNED sau khi Kho thành phẩm xác nhận số liệu).
+  CONFIRMED
+  // Kế hoạch bị huỷ (hàng không về) — chỉ áp dụng được khi đang PLANNED và chưa có đơn nào giữ chỗ dựa
+  // vào lô ảo của kế hoạch này (xem PATCH /api/goods-receipts/[id]/confirm action=cancel).
+  CANCELLED
+}
+
 // 1 lần Kho thành phẩm nhận hàng từ nhà cung cấp ngoài — khác Transfer (nội bộ giữa các phòng/kho).
-// roomId = Phòng khả dụng nhận hàng; phần "đạt" cộng thẳng vào đó (tồn thực tế + tồn khả dụng đều tăng),
+// roomId = Phòng đạt tiêu chuẩn nhận hàng; phần "đạt" cộng thẳng vào đó (tồn thực tế + tồn đạt tiêu chuẩn đều tăng),
 // phần "không đạt" cộng vào Phòng theo dõi CÙNG kho (tồn thực tế tăng vì trang tồn thực tế cộng gộp mọi
-// phòng, nhưng tồn khả dụng KHÔNG tăng vì trang tồn khả dụng chỉ đọc Phòng khả dụng — xem
-// POST /api/goods-receipts).
+// phòng, nhưng tồn đạt tiêu chuẩn KHÔNG tăng vì trang tồn đạt tiêu chuẩn chỉ đọc Phòng đạt tiêu chuẩn — xem
+// POST /api/goods-receipts). status mặc định CONFIRMED (hành vi cũ, immediate-effect) — chỉ khác khi tạo
+// dưới dạng "Kế hoạch nhập kho" (status PLANNED, xem GoodsReceiptItem.plannedLotId).
 model GoodsReceipt {
   id          String   @id @default(cuid())
   code        String   @unique
@@ -467,9 +504,17 @@ model GoodsReceipt {
   roomId      String
   room        Room     @relation(fields: [roomId], references: [id])
   createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdBy   User     @relation("GoodsReceiptCreatedBy", fields: [createdById], references: [id])
   notes       String?
   createdAt   DateTime @default(now())
+
+  status        GoodsReceiptStatus @default(CONFIRMED)
+  // Chỉ có giá trị khi status = PLANNED — ngày dự kiến hàng thật về, dùng tính khả dụng tương lai cho đơn
+  // hàng (xem Lot.expectedDate, src/lib/order-availability.ts).
+  expectedDate  DateTime?
+  confirmedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?    @relation("GoodsReceiptConfirmedBy", fields: [confirmedById], references: [id])
 
   items GoodsReceiptItem[]
 
@@ -477,21 +522,34 @@ model GoodsReceipt {
 }
 
 // 1 dòng = 1 loại cây trong phiếu nhập hàng. quantityPassed = quantityDelivered - quantityRejected,
-// tính sẵn lúc tạo và lưu lại để giữ lịch sử đúng ngay cả khi sau này đổi cách tính.
+// tính sẵn lúc tạo và lưu lại để giữ lịch sử đúng ngay cả khi sau này đổi cách tính. Với dòng thuộc phiếu
+// PLANNED, 3 số lượng này ban đầu chỉ là ƯỚC TÍNH (quantityDelivered = quantityPassed = estimate,
+// quantityRejected = 0) và bị GHI ĐÈ bằng số liệu thật lúc xác nhận (không giữ riêng 2 bộ số — kế hoạch
+// coi như chưa từng "đạt/không đạt" gì cho tới khi hàng về thật).
 model GoodsReceiptItem {
   id                String       @id @default(cuid())
   receiptId         String
   receipt           GoodsReceipt @relation(fields: [receiptId], references: [id])
   plantTypeId       String
   plantType         PlantType    @relation(fields: [plantTypeId], references: [id])
+  // Quy cách thành phẩm nhận (T01/T05/T10) — quyết định lô "đạt"/"không đạt" của dòng này cộng vào đâu.
+  // Dữ liệu cũ trước khi có field này luôn ngầm định T01 (hành vi hard-code trước đây).
+  stageCode         String       @default("T01")
   quantityDelivered Int
   quantityRejected  Int
   quantityPassed    Int
 
+  // Chỉ có giá trị khi receipt.status = PLANNED (hoặc từng là PLANNED) — liên kết 1-1 tới lô "ảo"
+  // (Lot.status = PLANNED) mà dòng kế hoạch này tạo ra, để lúc xác nhận biết chính xác cần điều chỉnh lô
+  // nào (không gộp theo phòng/quy cách như luồng nhập hàng thật, vì nhiều kế hoạch cùng phòng/quy cách
+  // phải tách biệt cho tới khi confirm — xem PATCH /api/goods-receipts/[id]/confirm).
+  plannedLotId String? @unique
+  plannedLot   Lot?    @relation(fields: [plannedLotId], references: [id])
+
   // Trả hàng (chỉ áp dụng khi Supplier.allowsReturn) — Kho thành phẩm "kiểm tra" trong vòng
   // Supplier.returnWindowDays ngày kể từ receipt.createdAt, phát hiện thêm cây không đạt trong số đã
-  // tính "đạt" lúc nhập, trả lại nhà cung cấp: trừ thẳng khỏi lô đã cộng ở Phòng khả dụng (giảm cả tồn
-  // thực tế lẫn tồn khả dụng vì hàng rời khỏi kho thật — khác phần "không đạt" ban đầu vẫn nằm nguyên
+  // tính "đạt" lúc nhập, trả lại nhà cung cấp: trừ thẳng khỏi lô đã cộng ở Phòng đạt tiêu chuẩn (giảm cả tồn
+  // thực tế lẫn tồn đạt tiêu chuẩn vì hàng rời khỏi kho thật — khác phần "không đạt" ban đầu vẫn nằm nguyên
   // trong Phòng theo dõi). returnedAt khác null nghĩa là đã kiểm tra xong (kể cả khi returnQuantity = 0
   // — kiểm tra không phát hiện thêm lỗi vẫn tính là đã xử lý xong).
   returnQuantity Int?
@@ -528,7 +586,7 @@ model Warehouse {
 
 // ============================================================
 // ROOMS — cả kho sản xuất (phòng sáng/phòng tối) và kho thành phẩm
-// (phòng khả dụng/theo dõi/hàn túi/thị trường) đều dùng model này.
+// (phòng đạt tiêu chuẩn/theo dõi/hàn túi/thị trường) đều dùng model này.
 // ============================================================
 
 model Room {
@@ -554,6 +612,7 @@ model Room {
   roomAccess        RoomAccess[]
   processingTickets ProcessingTicket[]
   orderProcessingRequests OrderProcessingRequest[]
+  orderProcessingRequestsAsTarget OrderProcessingRequest[] @relation("OrderProcessingRequestTarget")
   goodsReceipts     GoodsReceipt[]
 
   @@map("rooms")
@@ -673,8 +732,8 @@ model ShelfGroup {
 model Lot {
   id              String     @id @default(cuid())
   // Không unique riêng lẻ — mã lô = mã cây + mã NV cấy + mã tuần/năm (VD "AL001003" + "0726"), NHIỀU lô có
-  // thể dùng chung 1 mã nếu cùng chỉ định/tuần nhưng khác quy cách (M03 và M05 vẫn là 2 dòng Lot riêng,
-  // chỉ đính cùng mã lô để NV nhìn biết chúng thuộc cùng 1 đợt cấy). Duy nhất theo (code, stageCode).
+  // thể dùng chung 1 mã nếu cùng chỉ định/tuần nhưng khác quy cách (VD M05 và T05 vẫn là 2 dòng Lot
+  // riêng, chỉ đính cùng mã lô để NV nhìn biết chúng thuộc cùng 1 đợt cấy). Duy nhất theo (code, stageCode).
   code            String
   plantTypeId     String
   plantType       PlantType  @relation(fields: [plantTypeId], references: [id])
@@ -694,6 +753,11 @@ model Lot {
 
   enteredAt       DateTime   @default(now())
   expectedMoveAt  DateTime?
+  // Chỉ có giá trị khi status = PLANNED — ngày dự kiến hàng thật về, lấy từ GoodsReceipt.expectedDate lúc
+  // tạo Kế hoạch nhập kho. Dùng so sánh với Order.expectedShipAt để quyết định lô này có tính vào khả
+  // dụng cho 1 đơn hàng cụ thể hay không (xem getQualifiedLots ở src/lib/order-availability.ts). Xoá về
+  // null khi lô được xác nhận chuyển ACTIVE.
+  expectedDate    DateTime?
 
   // Kiểm tra nhiễm phòng tối cá nhân — null = Chưa kiểm tra, khác null = Đã kiểm tra (cùng convention
   // với ContaminationRecord.confirmedAt). Bắt buộc trước khi được chọn bàn giao từ phòng tối.
@@ -720,6 +784,9 @@ model Lot {
   processingOutputTickets ProcessingTicket[]
   processingInputRows     ProcessingTicketInputLot[]
   orderProcessingRequestsAsSource OrderProcessingRequest[]
+  // Ngược của GoodsReceiptItem.plannedLotId — chỉ có giá trị khi lô này là lô "ảo" do 1 Kế hoạch nhập
+  // kho tạo ra (status = PLANNED).
+  goodsReceiptPlan GoodsReceiptItem?
 
   @@unique([code, stageCode])
   @@map("lots")
@@ -804,7 +871,7 @@ model PlantingInstructionItem {
   shelf         Shelf               @relation(fields: [shelfId], references: [id])
   lotId         String?
   lot           Lot?                @relation(fields: [lotId], references: [id])
-  stageCode     String? // "M3" | "M5"
+  stageCode     String? // "M05" (chỉ còn 1 quy cách mẫu mẹ, đã bỏ M03)
   quantity      Int
 
   motherSampleRatio      Float?
@@ -854,13 +921,13 @@ model MediumOrder {
   @@map("medium_orders")
 }
 
-// 1 dòng = 1 quy cách (M03/M05/T01/T05) cần pha cho đơn này, kèm mã môi trường tương ứng — hiển thị
+// 1 dòng = 1 quy cách (M05/T01/T05) cần pha cho đơn này, kèm mã môi trường tương ứng — hiển thị
 // ở đầu trang chi tiết đơn để MOI_TRUONG biết cần pha bao nhiêu, loại nào.
 model MediumOrderItem {
   id           String      @id @default(cuid())
   orderId      String
   order        MediumOrder @relation(fields: [orderId], references: [id])
-  stageCode    String // "M03" | "M05" | "T01" | "T05"
+  stageCode    String // "M05" | "T01" | "T05"
   mediumTypeId String
   mediumType   MediumType  @relation(fields: [mediumTypeId], references: [id])
   quantity     Int
@@ -870,14 +937,14 @@ model MediumOrderItem {
 
 // 1 dòng = 1 ngày trong tuần pha (8 dòng/đơn, xem MediumOrder.weekStart/weekEnd). MOI_TRUONG điền số
 // đã pha mỗi ngày rồi bấm "Bàn giao" (handedOverAt) — khoá không sửa số được nữa; KHO_MO xác nhận
-// (confirmedAt) mới coi là "Bàn giao thành công".
+// (confirmedAt) mới coi là "Bàn giao thành công". Chỉ còn 1 quy cách mẫu mẹ (M05) — đã bỏ field m03
+// (gộp vào m05 khi migrate, xem prisma/migrate-m03-to-m05.ts).
 model MediumOrderDay {
   id      String      @id @default(cuid())
   orderId String
   order   MediumOrder @relation(fields: [orderId], references: [id])
   date    DateTime
 
-  m03 Int @default(0)
   m05 Int @default(0)
   t01 Int @default(0)
   t05 Int @default(0)
@@ -905,8 +972,9 @@ model DailyRecord {
   motherUsed    Int
   // "MM đã kiểm tra" / "MM mẹ nhiễm" trên bảng nhập liệu tuần của NV cấy mô — nhập tay mỗi ngày,
   // không suy ra được từ ContaminationRecord (model đó theo dõi nhiễm ở cấp Lot, khác cấp/khác lúc).
+  // Chỉ còn 1 quy cách mẫu mẹ (M05) — đã bỏ field motherContaminatedM03 (gộp vào field này khi migrate,
+  // xem prisma/migrate-m03-to-m05.ts), tên field giữ nguyên "M05" để không phải đổi khắp codebase.
   motherChecked         Int         @default(0)
-  motherContaminatedM03 Int         @default(0)
   motherContaminatedM05 Int         @default(0)
   notes         String?
   createdAt     DateTime            @default(now())
@@ -982,7 +1050,7 @@ model ContaminationProposal {
 
 model LotInspection {
   id                   String   @id @default(cuid())
-  // Lot.code của "lô sản phẩm" được kiểm tra — 1 phiếu gộp tất cả quy cách (M03/M05/T01/T05) cùng
+  // Lot.code của "lô sản phẩm" được kiểm tra — 1 phiếu gộp tất cả quy cách (M05/T01/T05) cùng
   // sinh ra trong 1 lần nhập số liệu cấy (xem generateProductLotCode).
   code                 String
   staffId              String
@@ -1129,7 +1197,7 @@ model OrderItem {
   lot       Lot     @relation(fields: [lotId], references: [id])
   // Số thực sự cần cho đơn — bằng `quantity` ở dòng bình thường (null). Khác null khi dòng này là bù
   // túi từ 1 quy cách khác (VD thiếu 21 cây T01, bù từ 1 lô T05 phải mở nguyên túi 25 cây): `quantity`
-  // giữ NGUYÊN CẢ TÚI (25, đã trừ khỏi tồn khả dụng ngay lúc Tạm giữ — xem POST /api/orders), còn
+  // giữ NGUYÊN CẢ TÚI (25, đã trừ khỏi tồn đạt tiêu chuẩn ngay lúc Tạm giữ — xem POST /api/orders), còn
   // `neededQuantity` (21) là phần thật sự dùng cho đơn; `quantity - neededQuantity` là phần dư, chỉ quy
   // đổi sang T01 lúc Xác nhận đơn (xem PATCH /api/orders/[id] action=confirm).
   neededQuantity Int?
@@ -1151,8 +1219,8 @@ enum OrderProcessingRequestStatus {
 // Yêu cầu tách túi phát sinh ngay khi Sale tạm giữ đơn (HELD) mà 1 OrderItem cần trừ tồn thật không
 // tròn quy cách túi (VD cần 2 cây nhưng lô nguồn là T05/túi 5 cây) — chưa trừ gì cả lúc PENDING (tồn
 // thực chỉ đổi khi Kho thành phẩm bấm "Hoàn thành": trừ sourceLot theo deductQuantity, cộng surplus
-// vào 1 lô T01 khả dụng). Trong lúc PENDING, tồn khả dụng vẫn trừ neededQuantity qua HELD-netting bình
-// thường; một khi COMPLETED, dòng này bị loại khỏi HELD-netting (xem getAvailableLots) vì tồn thực đã
+// vào 1 lô T01 đạt tiêu chuẩn). Trong lúc PENDING, tồn đạt tiêu chuẩn vẫn trừ neededQuantity qua HELD-netting bình
+// thường; một khi COMPLETED, dòng này bị loại khỏi HELD-netting (xem getQualifiedLots) vì tồn thực đã
 // giảm thật, tránh trừ đôi. CANCELLED khi đơn hết hạn/hủy trong lúc còn PENDING.
 model OrderProcessingRequest {
   id              String    @id @default(cuid())
@@ -1163,6 +1231,13 @@ model OrderProcessingRequest {
   orderItem       OrderItem @relation(fields: [orderItemId], references: [id])
   roomId          String
   room            Room      @relation(fields: [roomId], references: [id])
+  // Chỉ có giá trị khi sourceLot đang ở Kho hàn túi/Theo dõi (không phải Phòng đạt tiêu chuẩn) — Phòng
+  // đạt tiêu chuẩn ĐÍCH mà số lượng dư (nếu có) sẽ được cộng vào lúc hoàn thành, vì phòng nguồn
+  // (roomId ở trên) không phải phòng bán được nên không thể cộng dư ngược lại đó như tier "mở túi"
+  // thường (xem PATCH /api/order-processing-requests/[id]). null = dùng luôn sourceLot.roomId như cũ
+  // (tier mở túi trong Phòng đạt tiêu chuẩn, không đổi phòng).
+  targetRoomId    String?
+  targetRoom      Room?     @relation("OrderProcessingRequestTarget", fields: [targetRoomId], references: [id])
   plantTypeId     String
   plantType       PlantType @relation(fields: [plantTypeId], references: [id])
   sourceLotId     String
@@ -1170,8 +1245,17 @@ model OrderProcessingRequest {
   sourceStageCode String
   neededQuantity  Int
   bagSize         Int
+  // Kế hoạch lúc giữ đơn — deductQuantity đã bao gồm cả phần bù tròn túi lẫn dự phòng hao hụt 5% (nếu
+  // có, chỉ áp dụng cho tier quy đổi quy cách trong Phòng đạt tiêu chuẩn — xem orders/check/route.ts),
+  // surplusQuantity = deductQuantity - neededQuantity (không tách riêng field dự phòng).
   deductQuantity  Int
   surplusQuantity Int
+  // Số liệu THẬT thủ kho nhập lúc "Hoàn thành" — có thể khác kế hoạch. actualSurplusQuantity trả về
+  // ĐÚNG quy cách nguồn (sourceStageCode), khác surplusQuantity kế hoạch (quy về T01) — xem PATCH
+  // /api/order-processing-requests/[id]. null = chưa hoàn thành.
+  actualDeductQuantity  Int?
+  actualOutputQuantity  Int?
+  actualSurplusQuantity Int?
   status          OrderProcessingRequestStatus @default(PENDING)
   createdAt       DateTime  @default(now())
   completedAt     DateTime?
@@ -1185,7 +1269,7 @@ model OrderProcessingRequest {
 // PROCESSING TICKETS (Kho thành phẩm — "Xử lý cây")
 // ============================================================
 
-// Phiếu xử lý — chuyển đổi 1 lượng cây từ quy cách này sang quy cách khác trong cùng 1 Phòng khả dụng
+// Phiếu xử lý — chuyển đổi 1 lượng cây từ quy cách này sang quy cách khác trong cùng 1 Phòng đạt tiêu chuẩn
 // (VD tách túi T10 thành T01 sau khi xử lý lá vàng). Tồn kho trừ/cộng NGAY khi tạo phiếu (phiếu là biên
 // bản ghi việc đã xử lý xong, không có luồng "đang xử lý" chờ duyệt) — dueAt chỉ là mốc SLA để theo dõi.
 model ProcessingTicket {

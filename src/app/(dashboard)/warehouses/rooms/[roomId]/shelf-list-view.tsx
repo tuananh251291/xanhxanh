@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Search, ChevronLeft, ChevronRight, Layers } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import ShelfTable from "../../shelf-table";
+import RotationStartWeekForm from "./rotation-start-week-form";
 
 const PAGE_SIZE = 8;
 
@@ -50,7 +51,7 @@ export default async function ShelfListView({
       : {}),
   };
 
-  const [filteredTotal, shelves, caymoStaff, moveableRooms, rotationGroupOptions] = await Promise.all([
+  const [filteredTotal, shelves, caymoStaff, moveableRooms, rotationGroupOptions, plantTypeOptions] = await Promise.all([
     prisma.shelf.count({ where: shelfWhere }),
     prisma.shelf.findMany({
       where: shelfWhere,
@@ -77,6 +78,9 @@ export default async function ShelfListView({
       select: { id: true, name: true },
       orderBy: { rotationOrder: "asc" },
     }),
+    // Gán mã cây trực tiếp tại bảng kệ (Kho mẫu mẹ đã chia, xem shelf-table.tsx) — chỉ có ý nghĩa với
+    // Phòng mẫu mẹ, nhưng cứ fetch chung ở đây cho gọn (component tự ẩn cột khi không phải Phòng mẫu mẹ).
+    prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
@@ -106,20 +110,25 @@ export default async function ShelfListView({
 
       <Card>
         <CardContent className="pt-4">
-          <form className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Tìm theo giàn kệ</Label>
-              <Input type="text" name="q" defaultValue={search} placeholder="VD: H01C01 hoặc Kệ H01" className="w-64" />
-            </div>
-            <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
-              <Search className="w-4 h-4 mr-1" /> Tìm kiếm
-            </Button>
-            {search && (
-              <Link href={basePath}>
-                <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
-              </Link>
+          <div className="flex flex-wrap items-end gap-6">
+            <form className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Tìm theo giàn kệ</Label>
+                <Input type="text" name="q" defaultValue={search} placeholder="VD: H01C01 hoặc Kệ H01" className="w-64" />
+              </div>
+              <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
+                <Search className="w-4 h-4 mr-1" /> Tìm kiếm
+              </Button>
+              {search && (
+                <Link href={basePath}>
+                  <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
+                </Link>
+              )}
+            </form>
+            {canManageStaffAndPlant && (
+              <RotationStartWeekForm kind={room.type === "PHONG_RA_RE" ? "RA_RE" : "MAU_ME"} />
             )}
-          </form>
+          </div>
         </CardContent>
       </Card>
 
@@ -134,6 +143,7 @@ export default async function ShelfListView({
           currentRoomId={room.id}
           currentRoomType={room.type}
           staffOptions={caymoStaff}
+          plantTypeOptions={plantTypeOptions}
           rotationGroupOptions={rotationGroupOptions}
           canManageStaffAndPlant={canManageStaffAndPlant}
           canMoveRoom={canMoveRoom}
