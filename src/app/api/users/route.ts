@@ -11,7 +11,7 @@ const createSchema = z.object({
   password: z.string().min(6),
   role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
-  // Chỉ áp dụng khi tạo tài khoản SALE — gán sẵn kho thành phẩm làm việc (Phòng khả dụng xem mặc định)
+  // Chỉ áp dụng khi tạo tài khoản SALE — gán sẵn kho thành phẩm làm việc (Phòng đạt tiêu chuẩn xem mặc định)
   // và các Phòng thị trường được cấp quyền xem thêm, tránh phải cấu hình lại ở 2 chỗ khác sau khi tạo.
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),

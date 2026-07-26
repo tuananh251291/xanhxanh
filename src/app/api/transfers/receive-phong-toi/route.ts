@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
-import { lotSelect, buildStagePreview, confirmStage, type PendingItem } from "@/lib/receive-phong-toi";
+import { lotSelect, buildStagePreview, confirmStage, confirmStageManual, type PendingItem } from "@/lib/receive-phong-toi";
 import { z } from "zod";
 
 // Danh sách phiếu bàn giao Phòng tối đang chờ (chưa xếp hết) của 1 NV luồng Xanh, gộp mọi Transfer
@@ -76,6 +76,9 @@ export async function GET() {
 const confirmSchema = z.object({
   staffId: z.string(),
   stage: z.enum(["THANH_PHAM", "MAU_ME"]),
+  // Có mặt = KHO_MO chọn tự nhập kệ (bỏ qua nguyên tắc), chỉ hợp lệ khi stage = MAU_ME — xem
+  // confirmStageManual (src/lib/receive-phong-toi.ts).
+  manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().positive() })).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -87,7 +90,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = confirmSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { staffId, stage } = parsed.data;
+  const { staffId, stage, manualPlacements } = parsed.data;
+  if (manualPlacements && stage !== "MAU_ME") {
+    return NextResponse.json({ message: "Chỉ hỗ trợ tự nhập kệ cho mẫu mẹ" }, { status: 400 });
+  }
 
   // Xác thực lại luồng phía server — không tin bộ lọc phía client.
   const staff = await prisma.user.findUnique({
@@ -106,7 +112,9 @@ export async function POST(req: NextRequest) {
 
   let placements;
   try {
-    placements = await confirmStage(matchingItems, workplaceWarehouseId);
+    placements = manualPlacements
+      ? await confirmStageManual(matchingItems, manualPlacements, workplaceWarehouseId)
+      : await confirmStage(matchingItems, workplaceWarehouseId);
   } catch (e) {
     if (e instanceof ShelfAssignError) return NextResponse.json({ message: e.message }, { status: 409 });
     throw e;

@@ -16,7 +16,6 @@ type OrderItem = { id: string; stageCode: string; quantity: number; mediumType: 
 type OrderDay = {
   id: string;
   date: string;
-  m03: number;
   m05: number;
   t01: number;
   t05: number;
@@ -34,8 +33,8 @@ type Order = {
   days: OrderDay[];
 };
 
-type QuantityField = "m03" | "m05" | "t01" | "t05";
-const FIELDS: QuantityField[] = ["m03", "m05", "t01", "t05"];
+type QuantityField = "m05" | "t01" | "t05";
+const FIELDS: QuantityField[] = ["m05", "t01", "t05"];
 
 const NUMBER_INPUT_CLASS = "block w-20 text-center mx-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
@@ -61,7 +60,7 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       if (!res.ok) { setOrder(null); return; }
       const data: Order = await res.json();
       setOrder(data);
-      setDrafts(Object.fromEntries(data.days.map((d) => [d.id, { m03: String(d.m03), m05: String(d.m05), t01: String(d.t01), t05: String(d.t05) }])));
+      setDrafts(Object.fromEntries(data.days.map((d) => [d.id, { m05: String(d.m05), t01: String(d.t01), t05: String(d.t05) }])));
     } finally {
       setLoading(false);
     }
@@ -119,8 +118,8 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
   if (!order) return <p className="text-sm text-text-muted text-center py-12">Không tìm thấy đơn</p>;
 
   const totals = order.days.reduce(
-    (acc, d) => ({ m03: acc.m03 + d.m03, m05: acc.m05 + d.m05, t01: acc.t01 + d.t01, t05: acc.t05 + d.t05 }),
-    { m03: 0, m05: 0, t01: 0, t05: 0 }
+    (acc, d) => ({ m05: acc.m05 + d.m05, t01: acc.t01 + d.t01, t05: acc.t05 + d.t05 }),
+    { m05: 0, t01: 0, t05: 0 }
   );
 
   return (
@@ -170,7 +169,6 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
               <thead>
                 <tr className="bg-primary-light text-primary-strong">
                   <th className="px-3 py-2 text-left whitespace-nowrap font-bold text-base">Ngày</th>
-                  <th className="px-3 py-2 text-center font-bold text-base">M03</th>
                   <th className="px-3 py-2 text-center font-bold text-base">M05</th>
                   <th className="px-3 py-2 text-center font-bold text-base">T01</th>
                   <th className="px-3 py-2 text-center font-bold text-base">T05</th>
@@ -223,7 +221,6 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                 })}
                 <tr className="border-b bg-info-light font-semibold">
                   <td className="px-3 py-2">Tổng cộng</td>
-                  <td className="px-3 py-2 text-center">{totals.m03.toLocaleString("vi-VN")}</td>
                   <td className="px-3 py-2 text-center">{totals.m05.toLocaleString("vi-VN")}</td>
                   <td className="px-3 py-2 text-center">{totals.t01.toLocaleString("vi-VN")}</td>
                   <td className="px-3 py-2 text-center">{totals.t05.toLocaleString("vi-VN")}</td>

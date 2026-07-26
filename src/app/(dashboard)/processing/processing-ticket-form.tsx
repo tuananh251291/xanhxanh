@@ -39,37 +39,41 @@ export default function ProcessingTicketForm({ rooms, plantTypes }: { rooms: Roo
   const [outputQuantity, setOutputQuantity] = useState("");
   const [notes, setNotes] = useState("");
   const [dueAt, setDueAt] = useState("");
-  const [available, setAvailable] = useState<number | null>(null);
-  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  // Kết quả tồn khả dụng gắn với đúng tổ hợp (phòng, loại cây, quy cách) đã fetch — so khớp requestKey ở
+  // dưới để biết đang "loading" hay đã có kết quả, không cần state loading riêng (tránh gọi setState đồng
+  // bộ ngay trong effect, vi phạm react-hooks/set-state-in-effect).
+  const [availableResult, setAvailableResult] = useState<{ key: string; value: number | null } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
 
   const roomOptions: ComboOption[] = rooms.map((r) => ({ value: r.id, label: `${r.warehouse.name} — ${r.name}` }));
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
 
+  const requestKey = roomId && plantTypeId && inputStageCode ? `${roomId}::${plantTypeId}::${inputStageCode}` : null;
+
   useEffect(() => {
-    if (!roomId || !plantTypeId || !inputStageCode) {
-      setAvailable(null);
-      return;
-    }
+    if (!requestKey) return;
     let cancelled = false;
-    setLoadingAvailable(true);
     fetch(`/api/processing-tickets/available-quantity?roomId=${roomId}&plantTypeId=${plantTypeId}&stageCode=${inputStageCode}`)
       .then((res) => res.json())
-      .then((json) => { if (!cancelled) setAvailable(typeof json.available === "number" ? json.available : null); })
-      .finally(() => { if (!cancelled) setLoadingAvailable(false); });
+      .then((json) => {
+        if (!cancelled) setAvailableResult({ key: requestKey, value: typeof json.available === "number" ? json.available : null });
+      });
     return () => { cancelled = true; };
-  }, [roomId, plantTypeId, inputStageCode]);
+  }, [requestKey, roomId, plantTypeId, inputStageCode]);
+
+  const displayedAvailable = availableResult?.key === requestKey ? availableResult.value : null;
+  const loadingAvailable = !!requestKey && availableResult?.key !== requestKey;
 
   const reset = () => {
     setRoomId(""); setPlantTypeId(""); setInputStageCode("T10"); setInputQuantity("");
-    setOutputStageCode("T01"); setOutputQuantity(""); setNotes(""); setDueAt(""); setAvailable(null);
+    setOutputStageCode("T01"); setOutputQuantity(""); setNotes(""); setDueAt(""); setAvailableResult(null);
   };
 
   const submit = async () => {
     const inputQty = Number(inputQuantity);
     const outputQty = Number(outputQuantity);
-    if (!roomId) { toast.error("Chọn Phòng khả dụng"); return; }
+    if (!roomId) { toast.error("Chọn Phòng đạt tiêu chuẩn"); return; }
     if (!plantTypeId) { toast.error("Chọn loại cây"); return; }
     if (!inputQty || inputQty <= 0) { toast.error("Nhập số lượng đầu vào hợp lệ"); return; }
     if (!outputQty || outputQty <= 0) { toast.error("Nhập số lượng đầu ra hợp lệ"); return; }
@@ -103,8 +107,8 @@ export default function ProcessingTicketForm({ rooms, plantTypes }: { rooms: Roo
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label>Phòng khả dụng *</Label>
-            <Select items={roomOptions} value={roomId || undefined} onValueChange={(v) => setRoomId(v as string)}>
+            <Label>Phòng đạt tiêu chuẩn *</Label>
+            <Select items={roomOptions} value={roomId} onValueChange={(v) => setRoomId(v as string)}>
               <SelectTrigger className="w-full"><SelectValue placeholder="Chọn phòng" /></SelectTrigger>
               <SelectContent>
                 {roomOptions.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
@@ -149,7 +153,11 @@ export default function ProcessingTicketForm({ rooms, plantTypes }: { rooms: Roo
               <Label>Số lượng *</Label>
               <Input type="number" min={1} value={inputQuantity} onChange={(e) => setInputQuantity(e.target.value)} placeholder="0" />
               <p className="text-xs text-text-secondary">
-                {loadingAvailable ? "Đang tải tồn khả dụng…" : available !== null ? `Tồn khả dụng: ${available.toLocaleString("vi-VN")} cây` : "Chọn phòng, loại cây, quy cách để xem tồn khả dụng"}
+                {loadingAvailable
+                  ? "Đang tải tồn đạt tiêu chuẩn…"
+                  : displayedAvailable !== null
+                    ? `Tồn đạt tiêu chuẩn: ${displayedAvailable.toLocaleString("vi-VN")} cây`
+                    : "Chọn phòng, loại cây, quy cách để xem tồn đạt tiêu chuẩn"}
               </p>
             </div>
           </div>

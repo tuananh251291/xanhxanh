@@ -19,7 +19,18 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: { include: { lot: { select: { id: true, stageCode: true, roomId: true, plantTypeId: true } } } } },
+    include: {
+      items: {
+        include: {
+          lot: {
+            select: {
+              id: true, stageCode: true, roomId: true, plantTypeId: true,
+              room: { select: { type: true, warehouseId: true } },
+            },
+          },
+        },
+      },
+    },
   });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   if (order.saleId !== user.id) {
@@ -32,12 +43,35 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   let processingRequestCount = 0;
 
   await prisma.$transaction(async (tx) => {
+    // Cache Phòng đạt tiêu chuẩn đích theo kho — nhiều dòng cùng đơn có thể cùng kho, tránh tra lại.
+    const targetRoomCache = new Map<string, string | null>();
+
     for (const item of order.items) {
-      // OrderItem.neededQuantity khác null nghĩa là dòng này đã bù túi từ lúc Tạm giữ (xem POST
+      // OrderItem.neededQuantity khác null nghĩa là dòng này cần xử lý từ lúc Tạm giữ (xem POST
       // /api/orders) — quantity lúc đó đã là CẢ TÚI tròn sẵn (VD 25), neededQuantity là phần thật cần
       // (VD 21). Không tính lại bagSize/deductQuantity từ quantity như trước (sẽ sai vì quantity giờ
       // luôn là bội số của bagSize) — chỉ cần suy ra bagSize để hiển thị, phần dư = quantity - needed.
       if (item.neededQuantity === null) continue;
+
+      // Nguồn ở Kho hàn túi/Theo dõi (không phải Phòng đạt tiêu chuẩn) — cần biết trước Phòng đạt tiêu
+      // chuẩn ĐÍCH cùng kho để lúc "Hoàn thành xử lý" cộng đúng chỗ (xem PATCH
+      // /api/order-processing-requests/[id]) — phòng nguồn không phải phòng bán được nên không thể cộng
+      // dư ngược lại đó như tier "mở túi" thường trong Phòng đạt tiêu chuẩn.
+      let targetRoomId: string | null = null;
+      if (item.lot.room!.type !== "PHONG_DAT_TIEU_CHUAN") {
+        const warehouseId = item.lot.room!.warehouseId;
+        if (!targetRoomCache.has(warehouseId)) {
+          const targetRoom = await tx.room.findFirst({
+            where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
+            select: { id: true },
+          });
+          targetRoomCache.set(warehouseId, targetRoom?.id ?? null);
+        }
+        targetRoomId = targetRoomCache.get(warehouseId) ?? null;
+        if (!targetRoomId) {
+          throw new Error(`Kho chứa lô ${item.lot.stageCode} chưa có Phòng đạt tiêu chuẩn — liên hệ Admin trước khi xác nhận`);
+        }
+      }
 
       const bagSize = FINISHED_SPEC_BAG_SIZE[item.lot.stageCode as keyof typeof FINISHED_SPEC_BAG_SIZE] ?? 1;
       const code = await generateOrderProcessingRequestCode(tx);
@@ -47,6 +81,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
           orderId: order.id,
           orderItemId: item.id,
           roomId: item.lot.roomId!,
+          targetRoomId,
           plantTypeId: item.lot.plantTypeId,
           sourceLotId: item.lot.id,
           sourceStageCode: item.lot.stageCode,
@@ -78,8 +113,8 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
 
 // "Xóa đơn tạm giữ" — Sale tự huỷ đơn của mình khi còn HELD (VD khách đổi ý trước khi xác nhận), xử lý
 // giống hệt đơn hết hạn holdUntil tự động CANCELLED (xem ensureExpiredOrdersCancelled ở
-// src/lib/order-lifecycle.ts): chỉ đổi status, KHÔNG đụng tới Lot.quantity — vì mọi phép tính tồn khả
-// dụng chỉ trừ đơn đang HELD/CONFIRMED, chuyển sang CANCELLED là tự động "hoàn tồn khả dụng" ngay.
+// src/lib/order-lifecycle.ts): chỉ đổi status, KHÔNG đụng tới Lot.quantity — vì mọi phép tính tồn đạt
+// tiêu chuẩn chỉ trừ đơn đang HELD/CONFIRMED, chuyển sang CANCELLED là tự động "hoàn tồn đạt tiêu chuẩn" ngay.
 // Đơn HELD chưa từng phát sinh Yêu cầu xử lý cây (chỉ tạo lúc "Xác nhận") nên không cần huỷ theo.
 async function cancelOrder(orderId: string, user: { id: string; role: string | null }) {
   if (user.role !== "SALE") {
@@ -115,7 +150,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
     include: {
       items: {
         include: {
-          lot: { select: { id: true, stageCode: true, quantity: true } },
+          lot: { select: { id: true, stageCode: true, quantity: true, status: true } },
           processingRequest: { select: { status: true } },
         },
       },
@@ -130,6 +165,16 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
   if (pendingCount > 0) {
     return NextResponse.json(
       { message: `Còn ${pendingCount} yêu cầu xử lý cây chưa hoàn thành — hoàn thành tại trang Xử lý cây trước khi xuất kho` },
+      { status: 400 }
+    );
+  }
+
+  // Dòng trỏ vào lô "ảo" (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts) chưa có hàng
+  // thật — chặn xuất kho, báo Kho thành phẩm xác nhận số liệu thật của kế hoạch trước (trang Nhập hàng).
+  const plannedCount = order.items.filter((i) => !i.processingRequest && i.lot.status === "PLANNED").length;
+  if (plannedCount > 0) {
+    return NextResponse.json(
+      { message: `Còn ${plannedCount} dòng đang chờ hàng dự kiến về thật — xác nhận Kế hoạch nhập kho tại trang Nhập hàng trước khi xuất kho` },
       { status: 400 }
     );
   }

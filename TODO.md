@@ -147,7 +147,7 @@
 - [x] Session tự làm mới role/status/isActive từ DB mỗi request (không cần đăng xuất/đăng nhập lại khi Admin duyệt/đổi quyền/khóa tài khoản)
 
 ### 2.12 Cơ cấu Kho → Phòng → Kệ, phân quyền "Phòng thị trường" (Admin)
-- [x] Đổi cấu trúc: `Warehouse` (Sản xuất | Thành phẩm) → `Room` (6 loại: Phòng sáng/Phòng tối cho sản xuất; Phòng khả dụng/Phòng theo dõi/Phòng hạn túi/Phòng thị trường cho thành phẩm) → `Shelf`
+- [x] Đổi cấu trúc: `Warehouse` (Sản xuất | Thành phẩm) → `Room` (6 loại: Phòng sáng/Phòng tối cho sản xuất; Phòng đạt tiêu chuẩn/Phòng theo dõi/Phòng hạn túi/Phòng thị trường cho thành phẩm) → `Shelf`
 - [x] Dialog thêm "Phòng thị trường" trên `/warehouses` (`add-market-room-dialog.tsx`)
 - [x] Dialog gán quyền xem theo từng Phòng thị trường cho nhân viên SALE (`room-access-dialog.tsx`) + API `/api/rooms/[id]/access`
 - [x] Rà soát các trang tồn kho/báo cáo còn lọc theo `Warehouse.type` cũ (2026-07-05): các trang
@@ -155,7 +155,7 @@
       `Room.type` chi tiết chứ không dừng ở `Warehouse.type` thô. Phát hiện 1 lỗi thật: **trang
       `/inventory/thanh-pham` được liệt kê trong menu KHO_THANH_PHAM (và TODO đánh dấu xong từ trước)
       nhưng chưa từng được tạo — bấm vào ra lỗi 404.** Đã viết trang này (theo đúng mẫu `/inventory/kho-sang`,
-      liệt kê tồn theo từng Phòng khả dụng/theo dõi/hạn túi/thị trường + tổng hợp theo loại cây). Cũng xóa
+      liệt kê tồn theo từng Phòng đạt tiêu chuẩn/theo dõi/hạn túi/thị trường + tổng hợp theo loại cây). Cũng xóa
       luôn tham số `warehouseType` chết trong `GET /api/lots` (không còn nơi nào gọi, sót lại từ trước khi
       tách Room — mọi nơi đã chuyển sang dùng `roomType`).
 
@@ -288,7 +288,7 @@
 
 ## Phase 3 — Bán hàng & kho thành phẩm
 
-- [ ] Trang `/inventory/available` — tồn khả dụng (SALE xem)
+- [ ] Trang `/inventory/dat-tieu-chuan` — tồn đạt tiêu chuẩn (SALE xem)
 - [ ] Trang `/orders` — tạo/quản lý đơn hàng
 - [ ] Logic holdUntil: tự động cancel khi quá hạn
 - [ ] Trang `/orders/pack` — sắp đơn đã xác nhận (KHO_THANH_PHAM)

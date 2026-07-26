@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getInspectionDueAt } from "@/lib/inspection";
-import { startOfDay, endOfDay, subDays, format } from "date-fns";
+import { startOfDay, endOfDay, subDays, format, startOfWeek, endOfWeek, differenceInCalendarDays } from "date-fns";
 
 const STREAK_LOOKBACK_DAYS = 365;
 const DAYS_PER_LEVEL = 5;
+// Khớp MIN_DAYS_SINCE_PLANTED của handover-simple-form.tsx — 1 lô chỉ "sẵn sàng bàn giao" sau đủ số
+// ngày ủ tối thiểu này.
+const MIN_DAYS_SINCE_PLANTED_FOR_HANDOVER = 7;
 
 export type QuestKey = "motherReceived" | "dailyRecordDone" | "contaminationChecked" | "handoverDone";
 
@@ -79,13 +82,17 @@ function buildBadges(bestStreak: number, level: number): MilestoneBadge[] {
 }
 
 export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStats> {
-  const todayStart = startOfDay(new Date());
-  const todayEnd = endOfDay(new Date());
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
   const [
     pendingMotherReceipt,
+    activeInstructionThisWeek,
     dailyRecordToday,
-    uninspectedDarkRoomLots,
+    darkRoomLots,
     handoverToday,
     unreadInspectionResults,
     recentRecordDates,
@@ -93,17 +100,25 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     prisma.plantingInstruction.findFirst({
       where: { assignedToId: userId, handedOverAt: { not: null }, motherReceivedAt: null },
     }),
+    // Dùng để quest "Cập nhật số liệu cấy" không bị kẹt "Chưa xong" khi tuần này chưa/không còn chỉ định
+    // nào đang active — NV không có gì để nhập (daily-record-simple-form.tsx tự ẩn form nếu rỗng), nên
+    // coi như đã xong thay vì báo lỗi oan.
+    prisma.plantingInstruction.findFirst({
+      where: { assignedToId: userId, status: "ACTIVE", weekStart: { gte: weekStart, lte: weekEnd } },
+    }),
     prisma.dailyRecord.findFirst({
       where: { staffId: userId, recordDate: { gte: todayStart, lte: todayEnd } },
     }),
+    // Lấy TẤT CẢ lô đang ở phòng tối cá nhân (không chỉ lô chưa kiểm tra) — dùng chung cho 2 quest:
+    // "Kiểm tra nhiễm" (lô chưa kiểm tra và đã quá hạn) và "Bàn giao sản phẩm" (lô đã đủ điều kiện bàn
+    // giao — đã kiểm tra hết + đủ ngày ủ tối thiểu, khớp readyGroups của handover-simple-form.tsx).
     prisma.lot.findMany({
       where: {
         status: "ACTIVE",
         instruction: { assignedToId: userId },
-        inspectedAt: null,
         room: { type: "PHONG_TOI" },
       },
-      select: { enteredAt: true },
+      select: { code: true, enteredAt: true, inspectedAt: true },
     }),
     prisma.transfer.findFirst({
       where: {
@@ -121,8 +136,24 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     }),
   ]);
 
-  const now = new Date();
-  const hasOverdueDarkRoomLot = uninspectedDarkRoomLots.some((lot) => getInspectionDueAt(lot.enteredAt) <= now);
+  const hasOverdueDarkRoomLot = darkRoomLots.some(
+    (lot) => !lot.inspectedAt && getInspectionDueAt(lot.enteredAt) <= now
+  );
+
+  // Nhóm theo mã lô (1 mã = 1 lô sản phẩm của 1 ngày cấy, xem generateProductLotCode) — khớp đúng cách
+  // handover-simple-form.tsx nhóm lô để xác định "sẵn sàng bàn giao": mọi lô cùng mã phải đã kiểm tra
+  // nhiễm xong VÀ đã đủ số ngày ủ tối thiểu.
+  const darkRoomGroups = new Map<string, typeof darkRoomLots>();
+  for (const lot of darkRoomLots) {
+    const group = darkRoomGroups.get(lot.code);
+    if (group) group.push(lot);
+    else darkRoomGroups.set(lot.code, [lot]);
+  }
+  const hasReadyForHandoverGroup = Array.from(darkRoomGroups.values()).some(
+    (group) =>
+      group.every((l) => l.inspectedAt) &&
+      differenceInCalendarDays(now, group[0].enteredAt) >= MIN_DAYS_SINCE_PLANTED_FOR_HANDOVER
+  );
 
   const quests: Quest[] = [
     {
@@ -137,7 +168,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       title: "Cập nhật số liệu cấy",
       description: "Nhập nhật ký cấy mô trong ngày",
       href: "/dashboard-basic/cap-nhat-so-lieu",
-      done: !!dailyRecordToday,
+      done: !activeInstructionThisWeek || !!dailyRecordToday,
     },
     {
       key: "contaminationChecked",
@@ -151,7 +182,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       title: "Bàn giao sản phẩm",
       description: "Bàn giao lô từ phòng tối cho Kho mô",
       href: "/dashboard-basic/ban-giao",
-      done: !!handoverToday,
+      done: !hasReadyForHandoverGroup || !!handoverToday,
     },
   ];
 

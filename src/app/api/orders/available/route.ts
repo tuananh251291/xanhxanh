@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getAccessibleRoomIds, getAvailableLots } from "@/lib/order-availability";
+import { getAccessibleRoomIds, getQualifiedLots } from "@/lib/order-availability";
 
 const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
 
-// Tra nhanh tồn khả dụng cho 1 tổ hợp loại cây + quy cách — dùng để hiện "Số lượng khả dụng" ngay khi
+// Tra nhanh tồn đạt tiêu chuẩn cho 1 tổ hợp loại cây + quy cách — dùng để hiện "Số lượng đạt tiêu chuẩn" ngay khi
 // Sale chọn loại cây/quy cách trên form Check, không cần đợi nhập số lượng nhu cầu rồi bấm "Check"
 // (khác POST /api/orders/check, vốn cần cả số lượng để tính đề xuất thay thế quy cách khác).
 export async function GET(req: NextRequest) {
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
 
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
-  const lots = await getAvailableLots(roomIds, plantTypeId, stageCode);
+  const lots = await getQualifiedLots(roomIds, plantTypeId, stageCode);
   const available = lots.reduce((s, l) => s + l.available, 0);
 
   return NextResponse.json({ available });

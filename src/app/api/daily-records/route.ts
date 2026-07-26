@@ -5,17 +5,14 @@ import { generateProductLotCode } from "@/lib/codes";
 import { createAlert, getSystemConfig } from "@/lib/inventory";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { addToContaminationRoom } from "@/lib/contamination-room";
-import { motherClusterUnits } from "@/types";
 import { z } from "zod";
-import { addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
+import { addDays, addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 
 const schema = z.object({
   instructionId: z.string(),
   motherChecked: z.number().int().min(0),
-  motherContaminatedM03: z.number().int().min(0),
   motherContaminatedM05: z.number().int().min(0),
   motherUsed: z.number().int().min(0),
-  m03: z.number().int().min(0),
   m05: z.number().int().min(0),
   t05: z.number().int().min(0),
   t01: z.number().int().min(0),
@@ -32,7 +29,7 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { instructionId, motherChecked, motherContaminatedM03, motherContaminatedM05, motherUsed, m03, m05, t05, t01, notes } = parsed.data;
+  const { instructionId, motherChecked, motherContaminatedM05, motherUsed, m05, t05, t01, notes } = parsed.data;
 
   const instruction = await prisma.plantingInstruction.findUnique({
     where: { id: instructionId },
@@ -64,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   // Tổng "MM đã kiểm tra" lũy kế cả tuần (Thứ 2 - Chủ nhật, tức toàn bộ DailyRecord của chỉ định vì 1
   // chỉ định = đúng 1 tuần) không được vượt quá số mẫu mẹ được cấp cho chỉ định (inputMotherQuantity —
-  // đã là tổng cộng dồn từ mọi dòng quy cách nguồn M03/M05, xem PlantingInstruction) — chặn cứng, không
+  // đã là tổng cộng dồn từ mọi dòng quy cách nguồn M05, xem PlantingInstruction) — chặn cứng, không
   // cho lưu nếu vượt.
   const checkedAgg = await prisma.dailyRecord.aggregate({
     where: { instructionId },
@@ -73,7 +70,7 @@ export async function POST(req: NextRequest) {
   const cumulativeChecked = (checkedAgg._sum.motherChecked ?? 0) + motherChecked;
   if (cumulativeChecked > instruction.inputMotherQuantity) {
     return NextResponse.json({
-      message: `Tổng MM đã kiểm tra (${cumulativeChecked}) vượt quá số mẫu mẹ được cấp cho chỉ định (${instruction.inputMotherQuantity})`,
+      message: `Tổng MM đã kiểm tra (${cumulativeChecked} cụm) vượt quá số mẫu mẹ được cấp cho chỉ định (${instruction.inputMotherQuantity} cụm)`,
     }, { status: 400 });
   }
 
@@ -87,7 +84,6 @@ export async function POST(req: NextRequest) {
   const personalRoom = await getOrCreatePersonalDarkRoom(session.user.id, warehouseId);
 
   const items = ([
-    { stage: "MAU_ME" as const, stageCode: "M03" as const, quantityCreated: m03 },
     { stage: "MAU_ME" as const, stageCode: "M05" as const, quantityCreated: m05 },
     { stage: "THANH_PHAM" as const, stageCode: "T05" as const, quantityCreated: t05 },
     { stage: "THANH_PHAM" as const, stageCode: "T01" as const, quantityCreated: t01 },
@@ -132,7 +128,6 @@ export async function POST(req: NextRequest) {
       recordDate: today,
       motherUsed,
       motherChecked,
-      motherContaminatedM03,
       motherContaminatedM05,
       notes,
       items: { create: recordItems },
@@ -142,17 +137,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Mẫu mẹ nhiễm phát hiện lúc kiểm tra hằng ngày → cộng dồn vào Phòng nhiễm của đúng kho, theo quy
-  // cách (M03/M05 tách riêng, không suy luận tỉ lệ).
-  await addToContaminationRoom(prisma, {
-    warehouseId,
-    warehouseCode,
-    plantTypeId: instruction.plantTypeId,
-    plantTypeCode: instruction.plantType.code,
-    stage: "MAU_ME",
-    stageCode: "M03",
-    quantity: motherContaminatedM03,
-  });
+  // Mẫu mẹ nhiễm phát hiện lúc kiểm tra hằng ngày → cộng dồn vào Phòng nhiễm của đúng kho.
   await addToContaminationRoom(prisma, {
     warehouseId,
     warehouseCode,
@@ -163,26 +148,35 @@ export async function POST(req: NextRequest) {
     quantity: motherContaminatedM05,
   });
 
-  // Tỉ lệ nhiễm mẫu mẹ sau ủ sáng — tổng mẫu mẹ nhiễm (M03+M05) cộng dồn mọi ngày của chỉ định này so
-  // với tổng mẫu mẹ được cấp (inputMotherQuantity), kiểm tra lại ngay mỗi lần lưu nhật ký — vượt ngưỡng
-  // Admin cấp cao cài đặt (mother_contamination_alert_pct, xem Cài đặt) thì báo cho KHO_MO biết sớm,
-  // trước cả khi có phiếu bàn giao thật, để chủ động xử lý khi nhận.
+  // Tỉ lệ nhiễm mẫu mẹ sau ủ sáng — tổng mẫu mẹ nhiễm cộng dồn mọi ngày của chỉ định này so với tổng
+  // mẫu mẹ được cấp (inputMotherQuantity), kiểm tra lại ngay mỗi lần lưu nhật ký — vượt ngưỡng Admin cấp
+  // cao cài đặt (mother_contamination_alert_pct, xem Cài đặt) thì báo cho KHO_MO biết sớm, trước cả khi
+  // có phiếu bàn giao thật, để chủ động xử lý khi nhận.
   const motherContaminationPct = parseFloat(await getSystemConfig("mother_contamination_alert_pct", "10")) || 10;
   const contaminatedAgg = await prisma.dailyRecord.aggregate({
     where: { instructionId },
-    _sum: { motherContaminatedM03: true, motherContaminatedM05: true },
+    _sum: { motherContaminatedM05: true },
   });
-  const totalContaminated = (contaminatedAgg._sum.motherContaminatedM03 ?? 0) + (contaminatedAgg._sum.motherContaminatedM05 ?? 0);
+  const totalContaminated = contaminatedAgg._sum.motherContaminatedM05 ?? 0;
   const motherContaminationRate = instruction.inputMotherQuantity > 0 ? (totalContaminated / instruction.inputMotherQuantity) * 100 : 0;
   if (motherContaminationRate > motherContaminationPct) {
-    await createAlert({
-      type: "MOTHER_CONTAMINATION_HIGH",
-      title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
-      message: `Chỉ định ${instruction.code}: mẫu mẹ nhiễm ${totalContaminated}/${instruction.inputMotherQuantity} (${Math.round(motherContaminationRate)}%) — vượt ngưỡng ${motherContaminationPct}%`,
-      targetRole: "KHO_MO",
-      relatedId: instructionId,
-      relatedType: "PlantingInstruction",
+    // Chặn spam: mỗi chỉ định chỉ giữ tối đa 1 alert CHƯA ĐỌC loại này tại 1 thời điểm — nếu tỉ lệ nhiễm
+    // vẫn vượt ngưỡng ở lần lưu nhật ký tiếp theo (VD ngày sau) mà KHO_MO chưa kịp đọc alert cũ, không
+    // tạo thêm bản ghi trùng; KHO_MO đọc/xử lý xong (đổi status khỏi UNREAD) thì lần lệch tiếp theo mới
+    // tạo alert mới.
+    const existingContaminationAlert = await prisma.alert.findFirst({
+      where: { type: "MOTHER_CONTAMINATION_HIGH", relatedId: instructionId, status: "UNREAD" },
     });
+    if (!existingContaminationAlert) {
+      await createAlert({
+        type: "MOTHER_CONTAMINATION_HIGH",
+        title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
+        message: `Chỉ định ${instruction.code}: mẫu mẹ nhiễm ${totalContaminated}/${instruction.inputMotherQuantity} (${Math.round(motherContaminationRate)}%) — vượt ngưỡng ${motherContaminationPct}%`,
+        targetRole: "KHO_MO",
+        relatedId: instructionId,
+        relatedType: "PlantingInstruction",
+      });
+    }
   }
 
   // Tổng "MM sử dụng" lũy kế cả chỉ định — dùng chung cho cả cảnh báo lệch chỉ định (bên dưới) lẫn kiểm
@@ -197,25 +191,27 @@ export async function POST(req: NextRequest) {
   // cấu hình so với tỉ lệ mục tiêu của chính chỉ định này (suy từ motherSampleRatio/rootingRatio KY_THUAT
   // nhập lúc tạo chỉ định) — chỉ 1 trong 2 tỉ lệ thấp thì chưa đủ căn cứ kết luận cấy sai (VD tỉ lệ nhân MM
   // thấp nhưng ra thành phẩm vẫn đạt thì có thể do khác biệt tự nhiên, không phải lỗi thao tác):
-  // - Tỉ lệ nhân MM = số cụm mẫu mẹ thành phẩm (M03/M05, quy đổi cụm) / số mẫu mẹ đã sử dụng.
+  // - Tỉ lệ nhân MM = số cụm mẫu mẹ thành phẩm (M05) / số mẫu mẹ đã sử dụng.
   // - Tỉ lệ ra thành phẩm = số cây ra rễ thành phẩm (T05+T01) / số mẫu mẹ đã sử dụng.
   const motherRatioTargetPct = parseFloat(await getSystemConfig("mother_ratio_target_pct", "80")) || 80;
   const finishedRatioTargetPct = parseFloat(await getSystemConfig("finished_ratio_target_pct", "80")) || 80;
 
+  // expectedMotherOutput đã tính thẳng theo cụm — không cần quy đổi thêm.
   const targetMotherOutputClusters = instruction.items
-    .filter((i) => i.stageCode === "M03" || i.stageCode === "M05")
-    .reduce((s, i) => s + motherClusterUnits(i.stageCode, i.expectedMotherOutput ?? 0), 0);
+    .filter((i) => i.stageCode === "M05")
+    .reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
   const targetMotherRatio = instruction.inputMotherQuantity > 0 ? targetMotherOutputClusters / instruction.inputMotherQuantity : 0;
   const targetFinishedRatio = instruction.inputMotherQuantity > 0 ? (instruction.expectedFinishedOutput ?? 0) / instruction.inputMotherQuantity : 0;
 
   const producedItems = await prisma.dailyRecordItem.findMany({
     where: { dailyRecord: { instructionId } },
-    include: { lot: { select: { stageCode: true } } },
+    select: { stage: true, quantityCreated: true },
   });
   let actualMotherOutputClusters = 0;
   let actualFinishedOutput = 0;
   for (const i of producedItems) {
-    if (i.stage === "MAU_ME") actualMotherOutputClusters += motherClusterUnits(i.lot.stageCode, i.quantityCreated);
+    // quantityCreated đã tính thẳng theo cụm (M05) — không cần quy đổi thêm.
+    if (i.stage === "MAU_ME") actualMotherOutputClusters += i.quantityCreated;
     else actualFinishedOutput += i.quantityCreated;
   }
   const actualMotherRatio = totalMotherUsed > 0 ? actualMotherOutputClusters / totalMotherUsed : 0;
@@ -230,27 +226,47 @@ export async function POST(req: NextRequest) {
     motherRatioPct < motherRatioTargetPct && finishedRatioPct < finishedRatioTargetPct
   ) {
     alert = true;
-    await createAlert({
-      type: "OUTPUT_DEVIATION",
-      title: "Cấy lệch tiến độ so với chỉ định",
-      message: `Chỉ định ${instruction.code}: tỉ lệ nhân MM đạt ${Math.round(motherRatioPct)}% (cần ≥${motherRatioTargetPct}%), tỉ lệ ra thành phẩm đạt ${Math.round(finishedRatioPct)}% (cần ≥${finishedRatioTargetPct}%) so với mục tiêu chỉ định`,
-      targetRole: "KY_THUAT",
-      relatedId: instructionId,
-      relatedType: "PlantingInstruction",
+    // Chặn spam: mỗi chỉ định (1 chỉ định = đúng 1 tuần) chỉ TẠO TỐI ĐA 1 alert loại này trong suốt vòng
+    // đời của nó — không lọc theo status (khác MOTHER_CONTAMINATION_HIGH ở trên, vốn cho phép báo lại sau
+    // khi đã đọc). Lý do: alert này bắt buộc chọn nguyên nhân mới coi là RESOLVED (xem PATCH
+    // /api/alerts), còn "Đã xem" ở trang Thông báo chỉ chuyển READ (không chọn nguyên nhân) — nếu chặn
+    // trùng theo status: "UNREAD" thì CẢ 2 cách (xử lý thật SỰ lẫn chỉ bấm "Đã xem" cho có) đều làm mất
+    // dấu "đã từng báo", khiến ngày hôm sau lệch tiếp lại tạo thêm alert mới — đúng thứ đang muốn tránh.
+    // Chỉ cần đã từng tồn tại 1 alert cho chỉ định này (dù đã xử lý/đã đọc/chưa đọc) thì không tạo thêm.
+    const existingDeviationAlert = await prisma.alert.findFirst({
+      where: { type: "OUTPUT_DEVIATION", relatedId: instructionId },
     });
+    if (!existingDeviationAlert) {
+      // Gắn userId = đúng NV kỹ thuật đã TẠO chỉ định này (không broadcast targetRole cho cả phòng) — chỉ
+      // người tạo mới thấy alert này ở trang Thông báo/Kiểm tra tình trạng cấy và mới đủ quyền PATCH
+      // /api/alerts để chọn nguyên nhân xử lý (route đó tự chặn nếu alert.userId khác session hiện tại,
+      // xem src/app/api/alerts/route.ts) — tránh NV kỹ thuật khác âm thầm xử lý hộ, làm sai điểm đánh giá cá
+      // nhân (checkPercent) của đúng người phụ trách chỉ định.
+      await createAlert({
+        type: "OUTPUT_DEVIATION",
+        title: "Cấy lệch tiến độ so với chỉ định",
+        message: `Chỉ định ${instruction.code}: tỉ lệ nhân MM đạt ${Math.round(motherRatioPct)}% (cần ≥${motherRatioTargetPct}%), tỉ lệ ra thành phẩm đạt ${Math.round(finishedRatioPct)}% (cần ≥${finishedRatioTargetPct}%) so với mục tiêu chỉ định`,
+        userId: instruction.createdById,
+        relatedId: instructionId,
+        relatedType: "PlantingInstruction",
+      });
+    }
   }
 
   // Tự động chuyển chỉ định sang "Kết thúc" ngay khi thao tác Lưu, nếu xảy ra 1 trong 2 trường hợp:
   // 1. Đã dùng hết mẫu mẹ được cấp (tổng "MM sử dụng" >= inputMotherQuantity) — ưu tiên kiểm tra trước
   //    vì trường hợp này không còn dư gì để bàn giao.
-  // 2. Hôm nay là Chủ nhật của tuần chỉ định — chỉ kiểm tra tại đúng thời điểm Lưu này (không có cơ chế
-  //    quét nền/cron), nên nếu NV không lưu vào đúng Chủ nhật thì chỉ định sẽ không tự kết thúc qua đây.
+  // 2. Hôm nay là Thứ 7 hoặc Chủ nhật của tuần chỉ định — Thứ 7 là ngày làm việc chính thức, Chủ nhật là
+  //    ngày làm thêm (có thể có hoặc không), nên chấp nhận lưu vào 1 trong 2 ngày này là đủ coi như hết
+  //    tuần. Chỉ kiểm tra tại đúng thời điểm Lưu này (không có cơ chế quét nền/cron), nên nếu NV không lưu
+  //    vào đúng 2 ngày này thì chỉ định sẽ không tự kết thúc qua đây.
   let ended = false;
   let endReason: "MOTHER_USED_UP" | "TIME_UP" | null = null;
   if (instruction.status !== "ENDED") {
+    const saturday = addDays(weekEnd, -1);
     if (totalMotherUsed >= instruction.inputMotherQuantity) {
       endReason = "MOTHER_USED_UP";
-    } else if (isSameDay(today, weekEnd)) {
+    } else if (isSameDay(today, saturday) || isSameDay(today, weekEnd)) {
       endReason = "TIME_UP";
     }
 

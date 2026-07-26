@@ -43,7 +43,7 @@ export async function GET() {
   sheet.addRow({
     group: "VD1",
     lotCode: "MT001010726",
-    stageCode: "M03",
+    stageCode: "M05",
     quantity: 50,
     destCode: warehouses[0]?.code ?? "SX-A",
     fromStaffCode: staff[0]?.code ?? "NVCM010",
@@ -72,7 +72,7 @@ export async function GET() {
   addGuideSheet(workbook, [
     { column: "Nhóm phiếu (tự đặt, gộp nhiều dòng)", required: true, description: "Chuỗi tự đặt (không phải mã phiếu thật) — nhiều dòng cùng giá trị này gộp thành 1 phiếu bàn giao nhiều lô." },
     { column: "Mã lô", required: true, description: "Mã lô đang ACTIVE, chưa có phiếu bàn giao PENDING khác." },
-    { column: "Quy cách (nếu mã lô trùng nhiều quy cách)", required: false, description: "Chỉ cần điền nếu Mã lô trùng giữa nhiều quy cách (M03/M05/T01/T05)." },
+    { column: "Quy cách (nếu mã lô trùng nhiều quy cách)", required: false, description: "Chỉ cần điền nếu Mã lô trùng giữa nhiều quy cách (M05/T01/T05)." },
     { column: "Số lượng", required: true, description: "Số nguyên dương." },
     { column: "Mã kho/phòng đích", required: true, description: "Chỉ cần điền ở dòng đầu tiên của mỗi Nhóm phiếu — mã kho hoặc mã phòng, xem sheet Danh mục." },
     { column: "Mã NV gửi", required: true, description: "Chỉ cần điền ở dòng đầu tiên của mỗi Nhóm phiếu." },

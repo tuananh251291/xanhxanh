@@ -19,7 +19,7 @@ export default async function AvailableInventoryRoomPage({
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/inventory/available"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/inventory/dat-tieu-chuan"))) redirect("/dashboard");
 
   const { roomId } = await params;
   const sp = await searchParams;
@@ -34,9 +34,9 @@ export default async function AvailableInventoryRoomPage({
   });
   if (!room) notFound();
 
-  // Chỉ xem được: (a) đúng Phòng khả dụng của kho thành phẩm mình phụ trách, hoặc (b) Phòng thị trường
+  // Chỉ xem được: (a) đúng Phòng đạt tiêu chuẩn của kho thành phẩm mình phụ trách, hoặc (b) Phòng thị trường
   // đã được Admin cấp quyền riêng (RoomAccess) — chặn Sale gõ tay roomId của kho không được cấp quyền.
-  const isHome = room.type === "PHONG_KHA_DUNG" && room.warehouseId === workplaceWarehouseId;
+  const isHome = room.type === "PHONG_DAT_TIEU_CHUAN" && room.warehouseId === workplaceWarehouseId;
   const hasMarketAccess =
     room.type === "PHONG_THI_TRUONG" &&
     (await prisma.roomAccess.findUnique({ where: { userId_roomId: { userId, roomId: room.id } } })) !== null;
@@ -59,7 +59,7 @@ export default async function AvailableInventoryRoomPage({
     },
   });
 
-  // Tồn khả dụng = tồn thực − tổng số lượng đã bị giữ bởi đơn HELD (CLAUDE.md "Quy tắc tồn kho").
+  // Tồn đạt tiêu chuẩn = tồn thực − tổng số lượng đã bị giữ bởi đơn HELD (CLAUDE.md "Quy tắc tồn kho").
   const netQuantity = (lot: { quantity: number; orderItems: { quantity: number }[] }) =>
     lot.quantity - lot.orderItems.reduce((s, i) => s + i.quantity, 0);
 
@@ -79,12 +79,12 @@ export default async function AvailableInventoryRoomPage({
   const pageRows = aggregated.slice((page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + PAGE_SIZE);
 
   const Icon = isHome ? PackageCheck : Globe;
-  const pageHref = (p: number) => `/inventory/available/${room.id}?page=${p}`;
+  const pageHref = (p: number) => `/inventory/dat-tieu-chuan/${room.id}?page=${p}`;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/inventory/available">
+        <Link href="/inventory/dat-tieu-chuan">
           <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
         <div className="min-w-0 flex-1">

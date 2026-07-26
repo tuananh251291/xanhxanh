@@ -11,10 +11,10 @@ import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 
 const PAGE_SIZE = 12;
-const FINISHED_ROOM_TYPES: RoomType[] = ["PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"];
+const FINISHED_ROOM_TYPES: RoomType[] = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"];
 
 const ROOM_TYPE_ICONS: Partial<Record<RoomType, typeof Package>> = {
-  PHONG_KHA_DUNG: PackageCheck,
+  PHONG_DAT_TIEU_CHUAN: PackageCheck,
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
   PHONG_THI_TRUONG: Globe,

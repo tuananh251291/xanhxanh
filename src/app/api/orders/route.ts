@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { addDays } from "date-fns";
 import { generateOrderCode } from "@/lib/codes";
-import { getAccessibleRoomIds, getAvailableLots } from "@/lib/order-availability";
+import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { z } from "zod";
 
@@ -13,8 +13,9 @@ const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
 const createSchema = z.object({
   customerCode: z.string().min(1, "Cần nhập mã khách hàng"),
   market: z.enum(["NOI_DIA", "DONG_NAM_A", "EU", "US", "AUS", "NHAT", "HAN_QUOC"], { message: "Cần chọn thị trường" }),
-  // Sale tự ước lượng lúc giữ đơn — chỉ để tham khảo lên kế hoạch, không ràng buộc gì (khác holdUntil).
-  expectedShipAt: z.string().optional(),
+  // Bắt buộc — quyết định lô "ảo" nào (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts)
+  // được tính vào khả dụng lúc giữ đơn, không chỉ để tham khảo như trước.
+  expectedShipAt: z.string().min(1, "Cần chọn ngày xuất dự kiến"),
   notes: z.string().optional(),
   items: z
     .array(
@@ -31,7 +32,7 @@ const createSchema = z.object({
     .min(1, "Cần ít nhất 1 dòng để giữ đơn"),
 });
 
-// "Tạm giữ đơn hàng" — tạo Order (status HELD) + OrderItem gắn vào từng lô cụ thể. Đọc lại tồn khả dụng
+// "Tạm giữ đơn hàng" — tạo Order (status HELD) + OrderItem gắn vào từng lô cụ thể. Đọc lại tồn đạt tiêu chuẩn
 // NGAY TRONG transaction (không tin số đã Check trước đó, vì tồn có thể đã đổi do người khác giữ/kho
 // vừa cập nhật) — thiếu tới đâu báo lỗi rõ tới đó, rollback toàn bộ nếu có 1 dòng không đủ.
 // Mức cô lập Serializable (giống transfers/route.ts) — nếu không có, 2 request giữ đơn cùng lúc cho
@@ -62,7 +63,12 @@ export async function POST(req: NextRequest) {
   }
 
   const { customerCode, market, expectedShipAt, notes, items } = parsed.data;
+  const shipDate = new Date(expectedShipAt);
+  if (Number.isNaN(shipDate.getTime())) {
+    return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
+  }
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
+  const inProgressRoomIds = await getInProgressRoomIds(session.user.workplaceWarehouseId);
 
   try {
     const order = await prisma.$transaction(
@@ -76,7 +82,7 @@ export async function POST(req: NextRequest) {
             saleId: session.user.id,
             customerCode,
             market,
-            expectedShipAt: expectedShipAt ? new Date(expectedShipAt) : null,
+            expectedShipAt: shipDate,
             notes,
             status: "HELD",
             holdUntil,
@@ -84,14 +90,21 @@ export async function POST(req: NextRequest) {
         });
 
         for (const item of items) {
-          const lots = await getAvailableLots(roomIds, item.plantTypeId, item.stageCode, tx);
+          // Dòng cần xử lý (bù túi trong Phòng đạt tiêu chuẩn HOẶC chuyển từ Kho hàn túi/Theo dõi — cả 2
+          // đều sinh Yêu cầu xử lý cây lúc Xác nhận, xem confirmOrder) được tìm trong CẢ Phòng đạt tiêu
+          // chuẩn/thị trường lẫn Kho hàn túi/Theo dõi (tier 3). Dòng thường (không cần xử lý) CHỈ được
+          // tìm trong Phòng đạt tiêu chuẩn/thị trường — không bao giờ được lấy thẳng từ Kho hàn túi/Theo
+          // dõi vì hàng ở đó chưa đạt chuẩn/chưa đóng gói, phải qua xử lý trước.
+          const searchRoomIds = item.neededQuantity !== undefined ? [...roomIds, ...inProgressRoomIds] : roomIds;
+          const lots = await getQualifiedLots(searchRoomIds, item.plantTypeId, item.stageCode, tx, { shipDate });
 
           if (item.neededQuantity !== undefined) {
-            // Bù túi — phải lấy NGUYÊN item.quantity (đã tròn túi, VD 25) từ ĐÚNG 1 lô duy nhất, vì đây
+            // Cần xử lý — phải lấy NGUYÊN item.quantity (đã tròn túi, VD 25) từ ĐÚNG 1 lô duy nhất, vì đây
             // ánh xạ 1-1 sang 1 Yêu cầu xử lý sau này (1 sourceLotId — xem PATCH /api/orders/[id] action
-            // confirm), không tách nhiều lô như trường hợp thường ("mở túi" là thao tác vật lý trên 1 lô
-            // cụ thể). Trừ NGAY khỏi tồn khả dụng qua OrderItem (giống mọi dòng HELD khác) — không đụng
-            // Lot.quantity thật, chỉ thật sự trừ/cộng khi Kho thành phẩm bấm "Hoàn thành xử lý".
+            // confirm), không tách nhiều lô như trường hợp thường ("mở túi"/"chuyển phòng" là thao tác vật
+            // lý trên 1 lô cụ thể). Trừ NGAY khỏi tồn đạt tiêu chuẩn qua OrderItem (giống mọi dòng HELD
+            // khác) — không đụng Lot.quantity thật, chỉ thật sự trừ/cộng khi Kho thành phẩm bấm "Hoàn
+            // thành xử lý".
             const lot = lots.find((l) => l.available >= item.quantity);
             if (!lot) {
               throw new Error(

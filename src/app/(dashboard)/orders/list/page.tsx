@@ -142,7 +142,7 @@ export default async function OrdersListPage() {
 
       <OrdersTable
         title="Đơn tạm giữ"
-        description="Đang giữ chỗ tồn kho — xác nhận khi khách đồng ý mua, hoặc xóa để trả lại tồn khả dụng ngay."
+        description="Đang giữ chỗ tồn kho — xác nhận khi khách đồng ý mua, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
         orders={heldOrders}
         showHoldUntil
         showActions

@@ -98,7 +98,9 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                 <tr className="bg-primary-light">
                   <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Chỉ số</th>
                   {meta.columns.map((col) => (
-                    <th key={col.stageCode} className="text-center px-4 py-3 text-primary-strong font-bold text-base">{col.stageCode}</th>
+                    <th key={col.stageCode} className="text-center px-4 py-3 text-primary-strong font-bold text-base">
+                      {col.stageCode} ({col.stageCode.startsWith("M") ? "cụm" : "cây"})
+                    </th>
                   ))}
                 </tr>
               </thead>

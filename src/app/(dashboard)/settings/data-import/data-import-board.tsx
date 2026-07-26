@@ -67,7 +67,7 @@ export default function DataImportBoard() {
       <ExcelImportCard
         icon={<ClipboardList className="w-5 h-5" />}
         title="6. Chỉ định cấy đang hoạt động"
-        description="Nhập các chỉ định cấy đang thực hiện dở ngoài đời — mỗi dòng là 1 chỉ định với 1 quy cách nguồn (M03/M05) duy nhất, cần đã có lô nguồn (mục 5) trên kệ."
+        description="Nhập các chỉ định cấy đang thực hiện dở ngoài đời — mỗi dòng là 1 chỉ định với 1 quy cách nguồn (M05) duy nhất, cần đã có lô nguồn (mục 5) trên kệ. Chỉ định &quot;Đang thực hiện&quot; có thể kèm luôn dữ liệu cấy hàng ngày (thêm dòng cùng Mã chỉ định để nhập nhiều ngày) thay vì phải dùng riêng mục 7."
         templateUrl="/api/data-import/instructions"
         uploadUrl="/api/data-import/instructions"
         successLabel={(n) => `Đã tạo ${n} chỉ định cấy`}

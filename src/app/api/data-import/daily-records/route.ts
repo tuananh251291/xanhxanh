@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
-import { addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay, format } from "date-fns";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { generateProductLotCode } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { addToContaminationRoom } from "@/lib/contamination-room";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
+import { parseDailyRecordNumbers, computeEndReason, applyDailyRecordDay, type DailyRecordDayNumbers } from "@/lib/daily-record-import";
 
 type RowError = { row: number; label: string; message: string };
 
@@ -40,14 +39,12 @@ export async function GET() {
   sheet.columns = [
     { header: "Mã chỉ định", key: "instructionCode", width: 22 },
     { header: "Ngày nhập liệu", key: "recordDate", width: 14 },
-    { header: "MM đã kiểm tra", key: "motherChecked", width: 16 },
-    { header: "MM nhiễm M03", key: "motherContaminatedM03", width: 14 },
-    { header: "MM nhiễm M05", key: "motherContaminatedM05", width: 14 },
-    { header: "MM sử dụng", key: "motherUsed", width: 14 },
-    { header: "M03 mới cấy", key: "m03", width: 14 },
-    { header: "M05 mới cấy", key: "m05", width: 14 },
-    { header: "T05 thành phẩm", key: "t05", width: 14 },
-    { header: "T01 thành phẩm", key: "t01", width: 14 },
+    { header: "MM đã kiểm tra (cụm)", key: "motherChecked", width: 18 },
+    { header: "MM nhiễm (cụm)", key: "motherContaminatedM05", width: 16 },
+    { header: "MM sử dụng (cụm)", key: "motherUsed", width: 16 },
+    { header: "M05 mới cấy (cụm)", key: "m05", width: 16 },
+    { header: "T05 thành phẩm (cây)", key: "t05", width: 16 },
+    { header: "T01 thành phẩm (cây)", key: "t01", width: 16 },
     { header: "Ghi chú", key: "notes", width: 24 },
   ];
   sheet.getRow(1).font = { bold: true };
@@ -56,11 +53,9 @@ export async function GET() {
     instructionCode: instructions[0]?.code ?? "CDAA01C05201026",
     recordDate: "13/07/2026",
     motherChecked: 100,
-    motherContaminatedM03: 2,
-    motherContaminatedM05: 0,
+    motherContaminatedM05: 2,
     motherUsed: 98,
-    m03: 20,
-    m05: 15,
+    m05: 35,
     t05: 10,
     t01: 5,
   });
@@ -93,14 +88,12 @@ export async function GET() {
   addGuideSheet(workbook, [
     { column: "Mã chỉ định", required: true, description: "Mã chỉ định cấy đang \"Nháp\"/\"Đang thực hiện\", xem sheet Danh mục." },
     { column: "Ngày nhập liệu", required: true, description: "Định dạng dd/mm/yyyy — phải trong tuần thực hiện của chỉ định, không được ở tương lai." },
-    { column: "MM đã kiểm tra", required: false, description: "Số nguyên không âm. Để trống = 0. Cộng dồn mọi ngày không được vượt số mẫu mẹ được cấp cho chỉ định." },
-    { column: "MM nhiễm M03", required: false, description: "Số nguyên không âm. Để trống = 0 — cộng dồn vào Phòng nhiễm của kho." },
-    { column: "MM nhiễm M05", required: false, description: "Số nguyên không âm. Để trống = 0 — cộng dồn vào Phòng nhiễm của kho." },
-    { column: "MM sử dụng", required: false, description: "Số nguyên không âm. Để trống = 0 — dùng để tự động kết thúc chỉ định khi đạt/vượt số mẫu mẹ được cấp." },
-    { column: "M03 mới cấy", required: false, description: "Số nguyên không âm — số lượng mẫu mẹ M03 mới nhân được trong ngày. Để trống = 0." },
-    { column: "M05 mới cấy", required: false, description: "Số nguyên không âm — số lượng mẫu mẹ M05 mới nhân được trong ngày. Để trống = 0." },
-    { column: "T05 thành phẩm", required: false, description: "Số nguyên không âm — số cây ra rễ T05 mới trong ngày. Để trống = 0." },
-    { column: "T01 thành phẩm", required: false, description: "Số nguyên không âm — số cây ra rễ T01 mới trong ngày. Để trống = 0." },
+    { column: "MM đã kiểm tra (cụm)", required: false, description: "Số nguyên không âm, tính theo CỤM (không phải túi). Để trống = 0. Cộng dồn mọi ngày không được vượt số mẫu mẹ được cấp cho chỉ định." },
+    { column: "MM nhiễm (cụm)", required: false, description: "Số nguyên không âm, tính theo cụm. Để trống = 0 — cộng dồn vào Phòng nhiễm của kho." },
+    { column: "MM sử dụng (cụm)", required: false, description: "Số nguyên không âm, tính theo cụm. Để trống = 0 — dùng để tự động kết thúc chỉ định khi đạt/vượt số mẫu mẹ được cấp." },
+    { column: "M05 mới cấy (cụm)", required: false, description: "Số nguyên không âm, tính theo cụm — số lượng mẫu mẹ M05 mới nhân được trong ngày. Để trống = 0." },
+    { column: "T05 thành phẩm (cây)", required: false, description: "Số nguyên không âm, tính theo cây — số cây ra rễ T05 mới trong ngày. Để trống = 0." },
+    { column: "T01 thành phẩm (cây)", required: false, description: "Số nguyên không âm, tính theo cây — số cây ra rễ T01 mới trong ngày. Để trống = 0." },
     { column: "Ghi chú", required: false, description: "Ghi chú tự do cho ngày này." },
   ]);
 
@@ -141,10 +134,8 @@ export async function POST(req: NextRequest) {
     instructionCode: string;
     recordDate: Date | null;
     motherChecked?: string;
-    motherContaminatedM03?: string;
     motherContaminatedM05?: string;
     motherUsed?: string;
-    m03?: string;
     m05?: string;
     t05?: string;
     t01?: string;
@@ -162,14 +153,12 @@ export async function POST(req: NextRequest) {
       instructionCode,
       recordDate: recordDateParsed ?? null,
       motherChecked: cellText(row.getCell(3).value) || undefined,
-      motherContaminatedM03: cellText(row.getCell(4).value) || undefined,
-      motherContaminatedM05: cellText(row.getCell(5).value) || undefined,
-      motherUsed: cellText(row.getCell(6).value) || undefined,
-      m03: cellText(row.getCell(7).value) || undefined,
-      m05: cellText(row.getCell(8).value) || undefined,
-      t05: cellText(row.getCell(9).value) || undefined,
-      t01: cellText(row.getCell(10).value) || undefined,
-      notes: cellText(row.getCell(11).value) || undefined,
+      motherContaminatedM05: cellText(row.getCell(4).value) || undefined,
+      motherUsed: cellText(row.getCell(5).value) || undefined,
+      m05: cellText(row.getCell(6).value) || undefined,
+      t05: cellText(row.getCell(7).value) || undefined,
+      t01: cellText(row.getCell(8).value) || undefined,
+      notes: cellText(row.getCell(9).value) || undefined,
     });
   });
 
@@ -200,7 +189,6 @@ export async function POST(req: NextRequest) {
     warehouseCode: string | null;
   };
 
-  type StageItem = { stage: "MAU_ME" | "THANH_PHAM"; stageCode: "M03" | "M05" | "T05" | "T01"; quantity: number };
   type ValidRow = {
     row: number;
     label: string;
@@ -208,11 +196,7 @@ export async function POST(req: NextRequest) {
     instructionCode: string;
     assignedToId: string;
     recordDate: Date;
-    motherChecked: number;
-    motherContaminatedM03: number;
-    motherContaminatedM05: number;
-    motherUsed: number;
-    stageItems: StageItem[];
+    numbers: DailyRecordDayNumbers;
     notes?: string;
     plantTypeId: string;
     plantTypeCode: string;
@@ -334,40 +318,19 @@ export async function POST(req: NextRequest) {
       cumulativeMotherUsed.set(inst.id, agg._sum.motherUsed ?? 0);
     }
 
-    const numericFields: [string, string | undefined][] = [
-      ["MM đã kiểm tra", parsed.motherChecked],
-      ["MM nhiễm M03", parsed.motherContaminatedM03],
-      ["MM nhiễm M05", parsed.motherContaminatedM05],
-      ["MM sử dụng", parsed.motherUsed],
-      ["M03 mới cấy", parsed.m03],
-      ["M05 mới cấy", parsed.m05],
-      ["T05 thành phẩm", parsed.t05],
-      ["T01 thành phẩm", parsed.t01],
-    ];
-    const numericValues: number[] = [];
-    let numericError = false;
-    for (const [label, raw] of numericFields) {
-      if (!raw) {
-        numericValues.push(0);
-        continue;
-      }
-      const n = Number(raw);
-      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
-        errors.push({ row: parsed.row, label: parsed.instructionCode, message: `${label} phải là số nguyên không âm` });
-        numericError = true;
-        break;
-      }
-      numericValues.push(n);
+    const numbersResult = parseDailyRecordNumbers(parsed);
+    if ("error" in numbersResult) {
+      errors.push({ row: parsed.row, label: parsed.instructionCode, message: numbersResult.error });
+      continue;
     }
-    if (numericError) continue;
-    const [motherChecked, motherContaminatedM03, motherContaminatedM05, motherUsed, m03, m05, t05, t01] = numericValues;
+    const { numbers } = numbersResult;
 
-    const newMotherChecked = (cumulativeMotherChecked.get(inst.id) ?? 0) + motherChecked;
+    const newMotherChecked = (cumulativeMotherChecked.get(inst.id) ?? 0) + numbers.motherChecked;
     if (newMotherChecked > inst.inputMotherQuantity) {
       errors.push({
         row: parsed.row,
         label: parsed.instructionCode,
-        message: `Tổng MM đã kiểm tra (${newMotherChecked}) vượt quá số mẫu mẹ được cấp cho chỉ định (${inst.inputMotherQuantity})`,
+        message: `Tổng MM đã kiểm tra (${newMotherChecked} cụm) vượt quá số mẫu mẹ được cấp cho chỉ định (${inst.inputMotherQuantity} cụm)`,
       });
       continue;
     }
@@ -380,22 +343,8 @@ export async function POST(req: NextRequest) {
       personalRoomCache.set(roomCacheKey, personalRoomId);
     }
 
-    const stageItems: StageItem[] = (
-      [
-        { stage: "MAU_ME" as const, stageCode: "M03" as const, quantity: m03 },
-        { stage: "MAU_ME" as const, stageCode: "M05" as const, quantity: m05 },
-        { stage: "THANH_PHAM" as const, stageCode: "T05" as const, quantity: t05 },
-        { stage: "THANH_PHAM" as const, stageCode: "T01" as const, quantity: t01 },
-      ]
-    ).filter((i) => i.quantity > 0);
-
-    const newMotherUsed = (cumulativeMotherUsed.get(inst.id) ?? 0) + motherUsed;
-    let endReason: "MOTHER_USED_UP" | "TIME_UP" | null = null;
-    if (newMotherUsed >= inst.inputMotherQuantity) {
-      endReason = "MOTHER_USED_UP";
-    } else if (isSameDay(parsed.recordDate, weekEndOfInst)) {
-      endReason = "TIME_UP";
-    }
+    const newMotherUsed = (cumulativeMotherUsed.get(inst.id) ?? 0) + numbers.motherUsed;
+    const endReason = computeEndReason(newMotherUsed, inst.inputMotherQuantity, parsed.recordDate, weekEndOfInst);
 
     cumulativeMotherChecked.set(inst.id, newMotherChecked);
     cumulativeMotherUsed.set(inst.id, newMotherUsed);
@@ -410,11 +359,7 @@ export async function POST(req: NextRequest) {
       instructionCode: inst.code,
       assignedToId: inst.assignedToId,
       recordDate: parsed.recordDate,
-      motherChecked,
-      motherContaminatedM03,
-      motherContaminatedM05,
-      motherUsed,
-      stageItems,
+      numbers,
       notes: parsed.notes,
       plantTypeId: inst.plantTypeId,
       plantTypeCode: inst.plantTypeCode,
@@ -432,65 +377,22 @@ export async function POST(req: NextRequest) {
   if (validRows.length > 0) {
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
-        const productLotCode = generateProductLotCode(vr.instructionCode, vr.recordDate);
-        const recordItems = [];
-        for (const item of vr.stageItems) {
-          const expectedMoveAt =
-            item.stage === "MAU_ME" ? addWeeks(vr.recordDate, vr.transferWaitWeeks) : addWeeks(vr.recordDate, vr.rootingWeeks);
-          const lot = await tx.lot.create({
-            data: {
-              code: productLotCode,
-              plantTypeId: vr.plantTypeId,
-              stage: item.stage,
-              stageCode: item.stageCode,
-              quantity: item.quantity,
-              initialQuantity: item.quantity,
-              instructionId: vr.instructionId,
-              roomId: vr.personalRoomId,
-              enteredAt: vr.recordDate,
-              expectedMoveAt,
-            },
-          });
-          recordItems.push({ lotId: lot.id, stage: item.stage, quantityCreated: item.quantity });
-        }
-
-        await tx.dailyRecord.create({
-          data: {
-            instructionId: vr.instructionId,
-            staffId: vr.assignedToId,
-            recordDate: vr.recordDate,
-            motherUsed: vr.motherUsed,
-            motherChecked: vr.motherChecked,
-            motherContaminatedM03: vr.motherContaminatedM03,
-            motherContaminatedM05: vr.motherContaminatedM05,
-            notes: vr.notes,
-            items: { create: recordItems },
-          },
-        });
-
-        await addToContaminationRoom(tx, {
-          warehouseId: vr.warehouseId,
-          warehouseCode: vr.warehouseCode,
+        await applyDailyRecordDay(tx, {
+          instructionId: vr.instructionId,
+          instructionCode: vr.instructionCode,
+          assignedToId: vr.assignedToId,
+          recordDate: vr.recordDate,
+          numbers: vr.numbers,
+          notes: vr.notes,
           plantTypeId: vr.plantTypeId,
           plantTypeCode: vr.plantTypeCode,
-          stage: "MAU_ME",
-          stageCode: "M03",
-          quantity: vr.motherContaminatedM03,
-        });
-        await addToContaminationRoom(tx, {
+          transferWaitWeeks: vr.transferWaitWeeks,
+          rootingWeeks: vr.rootingWeeks,
           warehouseId: vr.warehouseId,
           warehouseCode: vr.warehouseCode,
-          plantTypeId: vr.plantTypeId,
-          plantTypeCode: vr.plantTypeCode,
-          stage: "MAU_ME",
-          stageCode: "M05",
-          quantity: vr.motherContaminatedM05,
+          personalRoomId: vr.personalRoomId,
+          endReason: vr.endReason,
         });
-
-        if (vr.endReason) {
-          await tx.plantingInstruction.update({ where: { id: vr.instructionId }, data: { status: "ENDED", endReason: vr.endReason } });
-        }
-
         successCount += 1;
       }
     });

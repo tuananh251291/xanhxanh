@@ -9,13 +9,13 @@ type InstructionItemForOrder = {
 };
 
 export type MediumOrderItemInput = {
-  stageCode: "M03" | "M05" | "T01" | "T05";
+  stageCode: "M05" | "T01" | "T05";
   mediumTypeId: string;
   quantity: number;
 };
 
 // Số lượng môi trường cần theo quy cách CHO 1 CHỈ ĐỊNH — cùng cách tính đã dùng ở luồng "Nhiệm vụ pha
-// MT" trước đây: môi trường tính theo đơn vị cây/cụm trực tiếp (KHÔNG quy đổi số túi). M03/M05 lấy từ
+// MT" trước đây: môi trường tính theo đơn vị cây/cụm trực tiếp (KHÔNG quy đổi số túi). M05 lấy từ
 // từng dòng quy cách nguồn (mỗi dòng tự có môi trường nhân mẫu mẹ riêng). T01/T05 là số ở cấp chỉ định
 // (không tách theo dòng) nên lấy môi trường ra rễ của dòng có expectedFinishedOutput lớn nhất ("dòng
 // chủ đạo") — chấp nhận vì 1 chỉ định thực tế hầu như chỉ có 1 dòng quy cách nguồn.
@@ -27,7 +27,7 @@ export function buildInstructionMediumNeeds(
   const result: MediumOrderItemInput[] = [];
 
   for (const item of items) {
-    if ((item.stageCode === "M03" || item.stageCode === "M05") && item.motherMediumTypeId && item.quantity > 0) {
+    if (item.stageCode === "M05" && item.motherMediumTypeId && item.quantity > 0) {
       result.push({ stageCode: item.stageCode, mediumTypeId: item.motherMediumTypeId, quantity: item.quantity });
     }
   }

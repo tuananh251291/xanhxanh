@@ -118,7 +118,7 @@ async function createInstruction(params: {
       code: `${shelf.code}-SRC-${params.createdAt.getTime()}`,
       plantTypeId: shelf.plantTypeId!,
       stage: "MAU_ME",
-      stageCode: "M03",
+      stageCode: "M05",
       shelfId: shelf.id,
       quantity: sourceQty,
       initialQuantity: sourceQty,
@@ -157,7 +157,7 @@ async function createInstruction(params: {
         create: [{
           shelfId: shelf.id,
           lotId: sourceLot.id,
-          stageCode: "M03",
+          stageCode: "M05",
           quantity: sourceQty,
           motherSampleRatio,
           rootingRatio,
@@ -177,7 +177,7 @@ async function createInstruction(params: {
 // Mô phỏng NV cấy mô nhập dữ liệu cấy cho 1 ngày cụ thể — tạo lô sản phẩm (mã theo generateProductLotCode)
 // gắn thẳng vào kệ đại diện Phòng tối cá nhân, đúng logic đang chạy ở POST /api/daily-records.
 async function seedDailyRecord(params: { instructionId: string; instructionCode: string; staffId: string; date: Date; personalRoomId: string }) {
-  const m03 = 10 + Math.floor(Math.random() * 10);
+  const m05 = 10 + Math.floor(Math.random() * 10);
   const t01 = 15 + Math.floor(Math.random() * 15);
   const productLotCode = generateProductLotCode(params.instructionCode, params.date);
 
@@ -186,9 +186,9 @@ async function seedDailyRecord(params: { instructionId: string; instructionCode:
       code: productLotCode,
       plantTypeId: (await prisma.plantingInstruction.findUniqueOrThrow({ where: { id: params.instructionId } })).plantTypeId,
       stage: "MAU_ME",
-      stageCode: "M03",
-      quantity: m03,
-      initialQuantity: m03,
+      stageCode: "M05",
+      quantity: m05,
+      initialQuantity: m05,
       status: "ACTIVE",
       instructionId: params.instructionId,
       roomId: params.personalRoomId,
@@ -215,13 +215,12 @@ async function seedDailyRecord(params: { instructionId: string; instructionCode:
       instructionId: params.instructionId,
       staffId: params.staffId,
       recordDate: params.date,
-      motherUsed: m03 + 5,
-      motherChecked: m03 + 5,
-      motherContaminatedM03: 0,
+      motherUsed: m05 + 5,
+      motherChecked: m05 + 5,
       motherContaminatedM05: 0,
       items: {
         create: [
-          { lotId: motherLot.id, stage: "MAU_ME", quantityCreated: m03 },
+          { lotId: motherLot.id, stage: "MAU_ME", quantityCreated: m05 },
           { lotId: finishedLot.id, stage: "THANH_PHAM", quantityCreated: t01 },
         ],
       },
@@ -281,7 +280,7 @@ async function seedBaselineLightRoomLots() {
         code: `${pt.code}-BASE-${count}`,
         plantTypeId: pt.id,
         stage: "MAU_ME",
-        stageCode: count % 2 === 0 ? "M03" : "M05",
+        stageCode: "M05",
         shelfId: shelf.id,
         quantity: qty,
         initialQuantity: qty,

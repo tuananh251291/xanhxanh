@@ -27,18 +27,27 @@ const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ 
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
 type DemandRow = { key: string; plantTypeId: string; stageCode: "T01" | "T05" | "T10"; quantity: string };
-type Alternative = { stageCode: string; available: number; suggestedQty: number; surplusQuantity: number; accepted: boolean };
+type Alternative = {
+  stageCode: string; available: number; suggestedQty: number; surplusQuantity: number; accepted: boolean;
+  requiresProcessing: boolean; source: "DAT_TIEU_CHUAN" | "HAN_TUI_THEO_DOI";
+  usesPlannedStock: boolean; plannedDate: string | null; bufferQuantity: number;
+};
 
 const BAG_SIZE: Record<string, number> = { T01: 1, T05: 5, T10: 10 };
 
 // Phân bổ lại phần thiếu (remainingTotal) cho các đề xuất thay thế theo đúng thứ tự ưu tiên server đã
 // trả về — bỏ tích 1 đề xuất thì phần thiếu nó đang bù tự động dồn sang đề xuất còn lại (tính lại từ
-// đầu danh sách mỗi lần đổi tích, không cộng dồn state cũ để tránh sai lệch).
-const reallocateAlternatives = (remainingTotal: number, alts: Alternative[]): Alternative[] => {
+// đầu danh sách mỗi lần đổi tích, không cộng dồn state cũ để tránh sai lệch). Đề xuất ĐÚNG quy cách đang
+// thiếu (tier 3a — Kho hàn túi/Theo dõi, chỉ cần chuyển phòng) không bao giờ làm tròn túi vì không phải
+// mở túi, dù bagSize của quy cách đó >1 cây. Sau khi phân bổ lại, tính lại dự phòng 5% (chỉ tier 2 —
+// Phòng đạt tiêu chuẩn) y hệt applyConversionBuffer ở server (xem orders/check/route.ts) vì đề xuất
+// "cuối cùng" có thể đổi sau khi bỏ tích 1 đề xuất khác.
+const reallocateAlternatives = (remainingTotal: number, alts: Alternative[], demandStageCode: string): Alternative[] => {
   let remaining = remainingTotal;
-  return alts.map((a) => {
-    if (!a.accepted || remaining <= 0) return { ...a, suggestedQty: 0, surplusQuantity: 0 };
-    const bagSize = BAG_SIZE[a.stageCode] ?? 1;
+  const next = alts.map((a) => {
+    if (!a.accepted || remaining <= 0) return { ...a, suggestedQty: 0, surplusQuantity: 0, bufferQuantity: 0 };
+    const sameStage = a.stageCode === demandStageCode;
+    const bagSize = sameStage ? 1 : (BAG_SIZE[a.stageCode] ?? 1);
     let suggestedQty: number;
     let surplusQuantity: number;
     if (bagSize <= 1) {
@@ -51,8 +60,24 @@ const reallocateAlternatives = (remainingTotal: number, alts: Alternative[]): Al
       surplusQuantity = actualDeduct - suggestedQty;
     }
     remaining -= suggestedQty;
-    return { ...a, suggestedQty, surplusQuantity };
+    return { ...a, suggestedQty, surplusQuantity, bufferQuantity: 0 };
   });
+
+  const tier2 = next.filter((a) => a.source === "DAT_TIEU_CHUAN" && a.suggestedQty > 0);
+  const totalConverted = tier2.reduce((s, a) => s + a.suggestedQty, 0);
+  const processingAlts = tier2.filter((a) => a.requiresProcessing);
+  if (processingAlts.length > 0) {
+    const last = processingAlts[processingAlts.length - 1];
+    const lastBagSize = BAG_SIZE[last.stageCode] ?? 1;
+    const bufferWanted = Math.ceil((totalConverted * 0.05) / lastBagSize) * lastBagSize;
+    const room = Math.max(0, last.available - last.suggestedQty - last.surplusQuantity);
+    const bufferQuantity = Math.min(bufferWanted, room);
+    if (bufferQuantity > 0) {
+      const idx = next.indexOf(last);
+      next[idx] = { ...last, surplusQuantity: last.surplusQuantity + bufferQuantity, bufferQuantity };
+    }
+  }
+  return next;
 };
 type CheckResult = {
   plantTypeId: string;
@@ -62,6 +87,8 @@ type CheckResult = {
   quantityDemand: number;
   availableAtStage: number;
   fulfilledAtStage: number;
+  usesPlannedStock: boolean;
+  plannedDate: string | null;
   alternatives: Alternative[];
   totalFulfilled: number;
 };
@@ -89,7 +116,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
   const [customerCode, setCustomerCode] = useState("");
   const [market, setMarket] = useState("");
   const [expectedShipAt, setExpectedShipAt] = useState("");
-  // Tồn khả dụng theo từng tổ hợp loại cây + quy cách — cache theo key để 2 dòng cùng tổ hợp không tra
+  // Tồn đạt tiêu chuẩn theo từng tổ hợp loại cây + quy cách — cache theo key để 2 dòng cùng tổ hợp không tra
   // lại 2 lần, tự tra ngay khi có đủ loại cây + quy cách (không cần đợi nhập số lượng/bấm "Check").
   const [availability, setAvailability] = useState<Record<string, number>>({});
 
@@ -121,6 +148,10 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
   };
 
   const onCheck = async () => {
+    if (!expectedShipAt) {
+      toast.error("Cần chọn thời gian dự kiến xuất trước khi Check");
+      return;
+    }
     const items = rows
       .filter((r) => r.plantTypeId && Number(r.quantity) > 0)
       .map((r) => ({ plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: Number(r.quantity) }));
@@ -133,7 +164,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
       const res = await fetch("/api/orders/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ expectedShipAt, items }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
@@ -150,7 +181,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
       const result = next[resultIdx];
       const toggledAlts = result.alternatives.map((a, i) => (i === altIdx ? { ...a, accepted: !a.accepted } : a));
       const remainingTotal = result.quantityDemand - result.fulfilledAtStage;
-      next[resultIdx] = { ...result, alternatives: reallocateAlternatives(remainingTotal, toggledAlts) };
+      next[resultIdx] = { ...result, alternatives: reallocateAlternatives(remainingTotal, toggledAlts, result.stageCode) };
       return next;
     });
   };
@@ -174,14 +205,15 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
       for (const a of r.alternatives) {
         if (!a.accepted) continue;
         if (a.suggestedQty <= 0 && a.surplusQuantity <= 0) continue;
-        // Bù túi (surplusQuantity > 0): phải giữ NGUYÊN CẢ túi (suggestedQty + surplusQuantity) ngay lúc
-        // tạm giữ — trừ đủ khỏi tồn khả dụng chứ không chỉ trừ phần thật cần (neededQuantity), nếu không
-        // phần dư (sẽ quy đổi sang T01 lúc Xác nhận) vẫn coi là "còn tồn" và có thể bị đơn khác giữ mất.
+        // Cần xử lý (mở túi lớn hơn HOẶC chuyển từ Kho hàn túi/Theo dõi): phải giữ NGUYÊN CẢ túi
+        // (suggestedQty + surplusQuantity) ngay lúc tạm giữ — trừ đủ khỏi tồn đạt tiêu chuẩn chứ không
+        // chỉ trừ phần thật cần (neededQuantity), nếu không phần dư (xử lý lúc Xác nhận) vẫn coi là "còn
+        // tồn" và có thể bị đơn khác giữ mất.
         items.push({
           plantTypeId: r.plantTypeId,
           stageCode: a.stageCode,
           quantity: a.suggestedQty + a.surplusQuantity,
-          neededQuantity: a.surplusQuantity > 0 ? a.suggestedQty : undefined,
+          neededQuantity: a.requiresProcessing ? a.suggestedQty : undefined,
         });
       }
     }
@@ -198,7 +230,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
         body: JSON.stringify({
           customerCode: customerCode.trim(),
           market,
-          expectedShipAt: expectedShipAt || undefined,
+          expectedShipAt,
           items,
         }),
       });
@@ -220,14 +252,23 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
       <Card>
         <CardHeader><CardTitle className="text-base">Nhu cầu khách hàng</CardTitle></CardHeader>
         <CardContent className="space-y-3">
+          <div className="space-y-1 max-w-xs">
+            <Label>Thời gian dự kiến xuất *</Label>
+            <Input
+              type="datetime-local"
+              value={expectedShipAt}
+              onChange={(e) => { setExpectedShipAt(e.target.value); setResults(null); }}
+            />
+            <p className="text-xs text-text-secondary">Quyết định lô hàng dự kiến (chưa về) nào được tính vào khả dụng.</p>
+          </div>
           <div className="overflow-x-auto border border-divider rounded-lg">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-primary-light">
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Loại cây</th>
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold w-44">Quy cách</th>
-                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-32">Số lượng khả dụng</th>
-                  <th className="text-left px-3 py-2 text-base text-primary-strong font-bold w-28">Số lượng nhu cầu</th>
+                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-32">Số lượng đạt tiêu chuẩn (cây)</th>
+                  <th className="text-left px-3 py-2 text-base text-primary-strong font-bold w-28">Số lượng nhu cầu (cây)</th>
                   <th className="px-2 py-2 w-10"></th>
                 </tr>
               </thead>
@@ -277,7 +318,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
                       )}
                     </td>
                     <td className="px-3 py-1.5">
-                      <Input type="number" min={1} className="h-9" value={row.quantity} onChange={(e) => updateRow(row.key, { quantity: e.target.value })} placeholder="0" />
+                      <Input type="number" min={1} className="h-9" value={row.quantity} onChange={(e) => updateRow(row.key, { quantity: e.target.value })} placeholder="0 cây" />
                     </td>
                     <td className="px-2 py-1.5">
                       <Button type="button" variant="ghost" size="icon" onClick={() => removeRow(row.key)} disabled={rows.length === 1}>
@@ -312,51 +353,88 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
                     <tr className="bg-primary-light">
                       <th className="text-left px-3 py-2 text-primary-strong font-bold">Loại cây</th>
                       <th className="text-left px-3 py-2 text-primary-strong font-bold">Quy cách</th>
-                      <th className="text-right px-3 py-2 text-primary-strong font-bold">Nhu cầu</th>
-                      <th className="text-right px-3 py-2 text-primary-strong font-bold">Tồn kho khả dụng</th>
-                      <th className="text-right px-3 py-2 text-primary-strong font-bold">Đáp ứng</th>
+                      <th className="text-right px-3 py-2 text-primary-strong font-bold">Nhu cầu (cây)</th>
+                      <th className="text-right px-3 py-2 text-primary-strong font-bold">Tồn kho đạt tiêu chuẩn (cây)</th>
+                      <th className="text-right px-3 py-2 text-primary-strong font-bold">Đáp ứng (cây)</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-b border-divider">
-                      <td className="px-3 py-2 font-medium">{r.plantTypeName} ({r.plantTypeCode})</td>
+                      <td className="px-3 py-2 font-medium">
+                        {r.plantTypeName} ({r.plantTypeCode})
+                        {r.usesPlannedStock && (
+                          <Badge className="ml-1.5 bg-info-light text-info-foreground">
+                            Có hàng dự kiến{r.plannedDate ? ` về ${new Date(r.plannedDate).toLocaleDateString("vi-VN")}` : ""}
+                          </Badge>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{r.stageCode}</td>
                       <td className="px-3 py-2 text-right">{r.quantityDemand.toLocaleString("vi-VN")}</td>
                       <td className="px-3 py-2 text-right">{r.availableAtStage.toLocaleString("vi-VN")}</td>
                       <td className="px-3 py-2 text-right font-semibold">{r.fulfilledAtStage.toLocaleString("vi-VN")}</td>
                     </tr>
-                    {r.alternatives.map((a, ai) => (
-                      <Fragment key={a.stageCode}>
-                        <tr className="bg-background">
-                          <td className="px-3 py-1.5 pl-6 text-text-secondary text-xs" colSpan={2}>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <Checkbox checked={a.accepted} onCheckedChange={() => toggleAlternative(ri, ai)} />
-                              Đề xuất thay thế — Quy cách {a.stageCode}
-                            </label>
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-xs">—</td>
-                          <td className="px-3 py-1.5 text-right text-xs">{a.available.toLocaleString("vi-VN")}</td>
-                          <td className="px-3 py-1.5 text-right text-xs font-semibold">{a.suggestedQty.toLocaleString("vi-VN")}</td>
-                        </tr>
-                        {a.stageCode === "T01" && (
+                    {r.alternatives.map((a, ai) => {
+                      const sameStage = a.stageCode === r.stageCode;
+                      const label = a.source === "HAN_TUI_THEO_DOI"
+                        ? sameStage
+                          ? `Đang ở Kho hàn túi/Theo dõi — cùng quy cách ${a.stageCode}`
+                          : `Đề xuất thay thế — Kho hàn túi/Theo dõi, quy cách ${a.stageCode}`
+                        : `Đề xuất thay thế — Quy cách ${a.stageCode}`;
+                      return (
+                        <Fragment key={`${a.source}-${a.stageCode}`}>
                           <tr className="bg-background">
-                            <td className="px-3 pb-1.5 pl-10 text-warning-foreground text-xs italic" colSpan={4}>
-                              *Lưu ý có phụ phí cho việc lấy túi 1
+                            <td className="px-3 py-1.5 pl-6 text-text-secondary text-xs" colSpan={2}>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <Checkbox checked={a.accepted} onCheckedChange={() => toggleAlternative(ri, ai)} />
+                                {label}
+                                {a.usesPlannedStock && (
+                                  <Badge className="bg-info-light text-info-foreground">
+                                    Có hàng dự kiến{a.plannedDate ? ` về ${new Date(a.plannedDate).toLocaleDateString("vi-VN")}` : ""}
+                                  </Badge>
+                                )}
+                              </label>
                             </td>
+                            <td className="px-3 py-1.5 text-right text-xs">—</td>
+                            <td className="px-3 py-1.5 text-right text-xs">{a.available.toLocaleString("vi-VN")}</td>
+                            <td className="px-3 py-1.5 text-right text-xs font-semibold">{a.suggestedQty.toLocaleString("vi-VN")}</td>
                           </tr>
-                        )}
-                        {a.surplusQuantity > 0 && (
-                          <tr className="bg-background">
-                            <td className="px-3 pb-1.5 pl-10 text-text-secondary text-xs" colSpan={3}>
-                              ↳ Số dư chuyển sang quy cách T01
-                            </td>
-                            <td className="px-3 pb-1.5 text-right text-xs font-semibold text-text-secondary">
-                              {a.surplusQuantity.toLocaleString("vi-VN")}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    ))}
+                          {a.source === "HAN_TUI_THEO_DOI" && (
+                            <tr className="bg-background">
+                              <td className="px-3 pb-1.5 pl-10 text-warning-foreground text-xs italic" colSpan={4}>
+                                *Cần Kho thành phẩm xử lý (chuyển từ Kho hàn túi/Theo dõi) trước khi xuất kho
+                              </td>
+                            </tr>
+                          )}
+                          {a.stageCode === "T01" && (
+                            <tr className="bg-background">
+                              <td className="px-3 pb-1.5 pl-10 text-warning-foreground text-xs italic" colSpan={4}>
+                                *Lưu ý có phụ phí cho việc lấy túi 1
+                              </td>
+                            </tr>
+                          )}
+                          {a.surplusQuantity - a.bufferQuantity > 0 && (
+                            <tr className="bg-background">
+                              <td className="px-3 pb-1.5 pl-10 text-text-secondary text-xs" colSpan={3}>
+                                ↳ Số dư tròn túi, chuyển sang quy cách T01
+                              </td>
+                              <td className="px-3 pb-1.5 text-right text-xs font-semibold text-text-secondary">
+                                {(a.surplusQuantity - a.bufferQuantity).toLocaleString("vi-VN")}
+                              </td>
+                            </tr>
+                          )}
+                          {a.bufferQuantity > 0 && (
+                            <tr className="bg-background">
+                              <td className="px-3 pb-1.5 pl-10 text-text-secondary text-xs" colSpan={3}>
+                                ↳ Dự phòng hao hụt 5% khi tách túi (giữ thêm, hoàn trả nếu không dùng hết)
+                              </td>
+                              <td className="px-3 pb-1.5 text-right text-xs font-semibold text-text-secondary">
+                                {a.bufferQuantity.toLocaleString("vi-VN")}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
                 <div className="px-3 py-2 bg-card border-t border-divider flex items-center justify-between text-sm">
@@ -391,7 +469,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
               </div>
               <div className="space-y-1">
                 <Label>Thị trường *</Label>
-                <Select items={MARKET_OPTIONS} value={market || undefined} onValueChange={(v) => setMarket(v as string)}>
+                <Select items={MARKET_OPTIONS} value={market} onValueChange={(v) => setMarket(v as string)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Chọn thị trường" /></SelectTrigger>
                   <SelectContent>
                     {MARKET_OPTIONS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
@@ -400,11 +478,9 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
               </div>
               <div className="space-y-1">
                 <Label>Thời gian dự kiến xuất</Label>
-                <Input
-                  type="datetime-local"
-                  value={expectedShipAt}
-                  onChange={(e) => setExpectedShipAt(e.target.value)}
-                />
+                <p className="text-sm text-foreground px-3 py-2 bg-muted rounded-md">
+                  {new Date(expectedShipAt).toLocaleString("vi-VN")}
+                </p>
               </div>
             </div>
             <Button className="w-full bg-primary hover:bg-primary-hover" disabled={holding || !holdDays} onClick={onHold}>

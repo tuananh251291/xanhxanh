@@ -35,7 +35,7 @@ export default async function OrdersPage() {
           <ShoppingCart className="w-6 h-6 text-primary-strong" /> Đơn hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Nhập nhu cầu khách hàng, bấm "Check" để xem đáp ứng được bao nhiêu từ tồn khả dụng, rồi "Tạm giữ đơn hàng" nếu đồng ý.
+          Nhập nhu cầu khách hàng, bấm "Check" để xem đáp ứng được bao nhiêu từ tồn đạt tiêu chuẩn, rồi "Tạm giữ đơn hàng" nếu đồng ý.
         </p>
       </div>
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { motherClusterUnits } from "@/types";
 import { startOfWeek, endOfWeek } from "date-fns";
 
 type RankingEntry = { staffId: string; name: string; total: number };
@@ -21,7 +20,7 @@ export async function GET() {
     select: {
       staffId: true,
       staff: { select: { name: true } },
-      items: { select: { stage: true, quantityCreated: true, lot: { select: { stageCode: true } } } },
+      items: { select: { stage: true, quantityCreated: true } },
     },
   });
 
@@ -33,9 +32,8 @@ export async function GET() {
       const map = item.stage === "THANH_PHAM" ? finishedMap : item.stage === "MAU_ME" ? motherMap : null;
       if (!map) continue;
 
-      const amount = item.stage === "MAU_ME"
-        ? motherClusterUnits(item.lot.stageCode, item.quantityCreated)
-        : item.quantityCreated;
+      // quantityCreated đã tính thẳng theo cụm (M05) / cây (T01/T05/T10) — không cần quy đổi.
+      const amount = item.quantityCreated;
 
       const cur = map.get(record.staffId) ?? { staffId: record.staffId, name: record.staff.name, total: 0 };
       cur.total += amount;

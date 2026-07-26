@@ -15,7 +15,7 @@ const CONFIG_META: Record<string, { label: string; description: string; unit: st
   contamination_alert_pct: { label: "Ngưỡng cảnh báo tỉ lệ nhiễm", description: "% tỉ lệ nhiễm để kích hoạt cảnh báo tự động", unit: "%" },
   mother_contamination_alert_pct: {
     label: "Tỉ lệ nhiễm sau ủ sáng",
-    description: "% tối đa giữa tổng mẫu mẹ nhiễm (M03+M05) cộng dồn và tổng mẫu mẹ được cấp cho chỉ định — vượt ngưỡng này sẽ báo cho Kho mô ngay khi nhân viên cấy mô lưu nhật ký hàng ngày",
+    description: "% tối đa giữa tổng mẫu mẹ nhiễm cộng dồn và tổng mẫu mẹ được cấp cho chỉ định — vượt ngưỡng này sẽ báo cho Kho mô ngay khi nhân viên cấy mô lưu nhật ký hàng ngày",
     unit: "%",
   },
   mother_ratio_target_pct: {

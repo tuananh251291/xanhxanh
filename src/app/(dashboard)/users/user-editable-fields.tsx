@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Save } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { UserRole } from "@prisma/client";
+import EditUserDialog, { type EditableUser } from "./edit-user-dialog";
+import UnlockAccountCell from "./unlock-account-cell";
 
 type WarehouseOption = { id: string; code: string; name: string };
 
-// Gộp 3 cột "Vị trí làm việc" / "Năng lực cấy" / "Giữ đơn (ngày)" + nút "Lưu" của 1 dòng nhân viên
-// thành 1 component để cùng chia sẻ state "đang sửa chưa lưu" — người dùng đổi lựa chọn/nhập số xong bấm
-// "Lưu" mới thực sự PATCH lên server, thay vì lưu ngay từng ô như trước (dễ bấm nhầm/đổi ý giữa chừng).
+// Gộp 3 cột "Vị trí làm việc" / "Năng lực cấy" / "Giữ đơn (ngày)" + cột "Thao tác" (nút Chỉnh sửa +
+// Lưu cạnh nhau) của 1 dòng nhân viên thành 1 component để cùng chia sẻ state "đang sửa chưa lưu" —
+// người dùng đổi lựa chọn/nhập số xong bấm "Lưu" mới thực sự PATCH lên server, thay vì lưu ngay từng ô
+// như trước (dễ bấm nhầm/đổi ý giữa chừng).
 export default function UserEditableFields({
   userId,
   role,
@@ -25,6 +29,10 @@ export default function UserEditableFields({
   warehouseOptions,
   plantingCapacity,
   holdDays,
+  editUser,
+  sanXuatWarehouses,
+  thanhPhamWarehouses,
+  lockedAt,
 }: {
   userId: string;
   role: UserRole | null;
@@ -36,6 +44,11 @@ export default function UserEditableFields({
   warehouseOptions: WarehouseOption[];
   plantingCapacity: number;
   holdDays: number | null;
+  // null = không được sửa tài khoản này (không phải SUPER_ADMIN, hoặc dòng này là SUPER_ADMIN khác).
+  editUser: EditableUser | null;
+  sanXuatWarehouses: WarehouseOption[];
+  thanhPhamWarehouses: WarehouseOption[];
+  lockedAt: Date | null;
 }) {
   const canEditWorkplace = isWorkplaceRole && canApprove;
   const canEditThisCapacity = role === "CAY_MO" && canEditCapacity;
@@ -48,10 +61,24 @@ export default function UserEditableFields({
   const router = useRouter();
 
   // Prop mới (sau router.refresh() từ 1 lần lưu thành công, hoặc dòng khác trong bảng vừa đổi) đồng bộ
-  // lại state cục bộ để input luôn khớp dữ liệu đã lưu thật trên server.
-  useEffect(() => setWp(workplaceWarehouseId ?? "NONE"), [workplaceWarehouseId]);
-  useEffect(() => setCap(String(plantingCapacity)), [plantingCapacity]);
-  useEffect(() => setHd(holdDays != null ? String(holdDays) : ""), [holdDays]);
+  // lại state cục bộ để input luôn khớp dữ liệu đã lưu thật trên server — chỉnh state ngay trong lúc
+  // render (theo khuyến nghị React cho "adjust state when a prop changes") thay vì dùng useEffect, tránh
+  // 1 lượt render thừa và vi phạm rule react-hooks/set-state-in-effect.
+  const [prevWorkplaceWarehouseId, setPrevWorkplaceWarehouseId] = useState(workplaceWarehouseId);
+  if (workplaceWarehouseId !== prevWorkplaceWarehouseId) {
+    setPrevWorkplaceWarehouseId(workplaceWarehouseId);
+    setWp(workplaceWarehouseId ?? "NONE");
+  }
+  const [prevPlantingCapacity, setPrevPlantingCapacity] = useState(plantingCapacity);
+  if (plantingCapacity !== prevPlantingCapacity) {
+    setPrevPlantingCapacity(plantingCapacity);
+    setCap(String(plantingCapacity));
+  }
+  const [prevHoldDays, setPrevHoldDays] = useState(holdDays);
+  if (holdDays !== prevHoldDays) {
+    setPrevHoldDays(holdDays);
+    setHd(holdDays != null ? String(holdDays) : "");
+  }
 
   const wpDirty = canEditWorkplace && wp !== (workplaceWarehouseId ?? "NONE");
   const capDirty = canEditThisCapacity && cap !== String(plantingCapacity);
@@ -167,14 +194,39 @@ export default function UserEditableFields({
         )}
       </td>
       <td className="px-4 py-3">
-        {canEditWorkplace || canEditThisCapacity || canEditThisHoldDays ? (
-          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={!dirty || saving} onClick={save}>
-            <Save className="w-3.5 h-3.5 mr-1.5" /> {saving ? "Đang lưu..." : "Lưu"}
-          </Button>
+        {lockedAt ? (
+          <div className="flex items-center gap-2">
+            <Badge className="bg-danger-light text-destructive">Đã khóa</Badge>
+            {canApprove && <UnlockAccountCell userId={userId} />}
+          </div>
         ) : (
-          <span className="text-xs text-text-muted">—</span>
+          <span className="text-xs text-text-muted">Bình thường</span>
         )}
       </td>
+      {(canApprove || canEditCapacity) && (
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-1.5">
+            {editUser && (
+              <EditUserDialog user={editUser} sanXuatWarehouses={sanXuatWarehouses} thanhPhamWarehouses={thanhPhamWarehouses} />
+            )}
+            {(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays) && (
+              <Button
+                size="icon-sm"
+                className="bg-primary hover:bg-primary-hover"
+                disabled={!dirty || saving}
+                onClick={save}
+                title="Lưu"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                <span className="sr-only">Lưu</span>
+              </Button>
+            )}
+            {!editUser && !(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays) && (
+              <span className="text-xs text-text-muted">—</span>
+            )}
+          </div>
+        </td>
+      )}
     </>
   );
 }

@@ -20,7 +20,6 @@ const RETURN_OPTIONS = [
 
 const schema = z
   .object({
-    code: z.string().min(2),
     name: z.string().min(2),
     allowsReturn: z.enum(["yes", "no"]),
     returnWindowDays: z.string().optional(),
@@ -43,7 +42,6 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
     resolver: zodResolver(schema),
     defaultValues: item
       ? {
-          code: item.code,
           name: item.name,
           allowsReturn: item.allowsReturn ? "yes" : "no",
           returnWindowDays: item.returnWindowDays ? String(item.returnWindowDays) : "",
@@ -56,7 +54,6 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
     setLoading(true);
     try {
       const payload = {
-        ...(isEdit ? {} : { code: data.code }),
         name: data.name,
         allowsReturn: data.allowsReturn === "yes",
         returnWindowDays: data.allowsReturn === "yes" ? Number(data.returnWindowDays) : null,
@@ -83,11 +80,16 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{isEdit ? "Sửa nhà cung cấp" : "Thêm nhà cung cấp mới"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-          <div className="space-y-1">
-            <Label>Mã nhà cung cấp</Label>
-            <Input {...register("code")} placeholder="VD: NCC001" disabled={isEdit} />
-            {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
-          </div>
+          {isEdit ? (
+            <div className="space-y-1">
+              <Label>Mã nhà cung cấp</Label>
+              <p className="text-sm font-mono text-text-secondary">{item.code}</p>
+            </div>
+          ) : (
+            <p className="text-xs text-text-secondary bg-muted rounded-md px-3 py-2">
+              Mã nhà cung cấp sẽ tự động sinh theo mẫu NCC01–NCC99.
+            </p>
+          )}
           <div className="space-y-1">
             <Label>Tên nhà cung cấp</Label>
             <Input {...register("name")} placeholder="VD: Vườn ươm Đà Lạt" />

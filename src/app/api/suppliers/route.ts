@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { generateSupplierCode } from "@/lib/codes";
 import { z } from "zod";
 
 const schema = z
   .object({
-    code: z.string().min(2),
     name: z.string().min(2),
     allowsReturn: z.boolean(),
     returnWindowDays: z.number().int().positive().nullable(),
@@ -33,9 +33,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
-  const existing = await prisma.supplier.findUnique({ where: { code: parsed.data.code } });
-  if (existing) return NextResponse.json({ message: "Mã nhà cung cấp đã tồn tại" }, { status: 409 });
-  const { code, name, allowsReturn, returnWindowDays } = parsed.data;
+  const { name, allowsReturn, returnWindowDays } = parsed.data;
+  const code = await generateSupplierCode();
   const item = await prisma.supplier.create({
     data: { code, name, allowsReturn, returnWindowDays: allowsReturn ? returnWindowDays : null },
   });

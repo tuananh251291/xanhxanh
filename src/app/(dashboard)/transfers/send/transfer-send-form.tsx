@@ -191,7 +191,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
                   <Select
                     items={lots.map((l) => ({
                       value: l.id,
-                      label: `${l.code} — ${l.plantType.name} (${l.quantity.toLocaleString("vi-VN")})${l.shelf ? ` · ${l.shelf.code}` : ""}`,
+                      label: `${l.code} — ${l.plantType.name} (${l.quantity.toLocaleString("vi-VN")} ${l.stage === "MAU_ME" ? "cụm" : "cây"})${l.shelf ? ` · ${l.shelf.code}` : ""}`,
                     }))}
                     value={item.lotId || null}
                     onValueChange={(v) => setSelectedItems((prev) => prev.map((it, i) => i === idx ? { ...it, lotId: v as string } : it))}
@@ -202,7 +202,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
                     <SelectContent>
                       {lots.map((l) => (
                         <SelectItem key={l.id} value={l.id}>
-                          {l.code} — {l.plantType.name} ({l.quantity.toLocaleString("vi-VN")})
+                          {l.code} — {l.plantType.name} ({l.quantity.toLocaleString("vi-VN")} {l.stage === "MAU_ME" ? "cụm" : "cây"})
                           {l.shelf ? ` · ${l.shelf.code}` : ""}
                         </SelectItem>
                       ))}
@@ -217,7 +217,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
                     value={item.quantity || ""}
                     onChange={(e) => setSelectedItems((prev) => prev.map((it, i) => i === idx ? { ...it, quantity: parseInt(e.target.value) || 0 } : it))}
                   />
-                  {lot && <span className="text-xs text-text-muted">/{lot.quantity}</span>}
+                  {lot && <span className="text-xs text-text-muted">/{lot.quantity} {lot.stage === "MAU_ME" ? "cụm" : "cây"}</span>}
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(idx)}>
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>

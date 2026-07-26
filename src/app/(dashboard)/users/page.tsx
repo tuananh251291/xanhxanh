@@ -13,11 +13,9 @@ import { ROLE_LABELS, ROLE_COLORS, isAdminRole } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import CreateUserDialog from "./create-user-dialog";
-import EditUserDialog from "./edit-user-dialog";
 import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
 import UserEditableFields from "./user-editable-fields";
-import UnlockAccountCell from "./unlock-account-cell";
 
 // KHO_THANH_PHAM gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác —
 // xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
@@ -126,23 +124,23 @@ export default async function UsersPage({
                   <thead>
                     <tr className="bg-primary-light">
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã NV</th>
-                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên</th>
-                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Email</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Nhân viên</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vai trò</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vị trí làm việc</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Năng lực cấy</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Giữ đơn (ngày)</th>
-                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Lưu</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Đăng nhập</th>
-                      {canApprove && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
+                      {(canApprove || canEditCapacity) && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
                         <td className="px-4 py-3 text-sm font-mono text-text-secondary">{user.code}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-foreground">{user.name}</td>
-                        <td className="px-4 py-3 text-sm text-text-secondary">{user.email}</td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-foreground">{user.name}</p>
+                          <p className="text-xs text-text-secondary">{user.email}</p>
+                        </td>
                         <td className="px-4 py-3">
                           {user.role ? (
                             <Badge className={ROLE_COLORS[user.role as UserRole]}>
@@ -167,22 +165,9 @@ export default async function UsersPage({
                           }
                           plantingCapacity={user.plantingCapacity}
                           holdDays={user.holdDays}
-                        />
-                        <td className="px-4 py-3">
-                          {user.lockedAt ? (
-                            <div className="flex items-center gap-2">
-                              <Badge className="bg-danger-light text-destructive">Đã khóa</Badge>
-                              {canApprove && <UnlockAccountCell userId={user.id} />}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-text-muted">Bình thường</span>
-                          )}
-                        </td>
-                        {canApprove && (
-                          <td className="px-4 py-3">
-                            {user.role && user.role !== "SUPER_ADMIN" ? (
-                              <EditUserDialog
-                                user={{
+                          editUser={
+                            canApprove && user.role && user.role !== "SUPER_ADMIN"
+                              ? {
                                   id: user.id,
                                   name: user.name,
                                   email: user.email,
@@ -190,20 +175,18 @@ export default async function UsersPage({
                                   code: user.code,
                                   isActive: user.isActive,
                                   workplaceWarehouseId: user.workplaceWarehouseId,
-                                }}
-                                sanXuatWarehouses={sanXuatWarehouses}
-                                thanhPhamWarehouses={thanhPhamWarehouses}
-                              />
-                            ) : (
-                              <span className="text-xs text-text-muted">—</span>
-                            )}
-                          </td>
-                        )}
+                                }
+                              : null
+                          }
+                          sanXuatWarehouses={sanXuatWarehouses}
+                          thanhPhamWarehouses={thanhPhamWarehouses}
+                          lockedAt={user.lockedAt}
+                        />
                       </tr>
                     ))}
                     {users.length === 0 && (
                       <tr>
-                        <td colSpan={canApprove ? 10 : 9} className="px-4 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={canApprove || canEditCapacity ? 8 : 7} className="px-4 py-8 text-center text-sm text-text-muted">
                           Không tìm thấy nhân viên phù hợp
                         </td>
                       </tr>

@@ -23,7 +23,7 @@ const LOT_SELECT = {
   },
 };
 
-// Tồn khả dụng = tồn thực − tổng số lượng đã bị giữ bởi đơn HELD (CLAUDE.md "Quy tắc tồn kho") — cùng
+// Tồn đạt tiêu chuẩn = tồn thực − tổng số lượng đã bị giữ bởi đơn HELD (CLAUDE.md "Quy tắc tồn kho") — cùng
 // công thức getAvailableQuantity (src/lib/inventory.ts) nhưng áp trực tiếp lên lô đã fetch sẵn, tránh
 // query lại từng lô.
 const netQuantity = (lot: { quantity: number; orderItems: { quantity: number }[] }) =>
@@ -32,7 +32,7 @@ const netQuantity = (lot: { quantity: number; orderItems: { quantity: number }[]
 export default async function AvailableInventoryPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/inventory/available"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/inventory/dat-tieu-chuan"))) redirect("/dashboard");
 
   const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
   const userId = session?.user?.id ?? "";
@@ -40,7 +40,7 @@ export default async function AvailableInventoryPage() {
   const [homeRoom, marketRooms] = await Promise.all([
     workplaceWarehouseId
       ? prisma.room.findFirst({
-          where: { warehouseId: workplaceWarehouseId, type: "PHONG_KHA_DUNG", isActive: true },
+          where: { warehouseId: workplaceWarehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
           include: {
             lots: { where: { status: "ACTIVE" }, select: LOT_SELECT },
             warehouse: { select: { code: true, name: true } },
@@ -60,7 +60,7 @@ export default async function AvailableInventoryPage() {
   const rooms = [...(homeRoom ? [homeRoom] : []), ...marketRooms];
 
   // T10 chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực tiếp từ Phòng
-  // ra rễ) — vẫn hiển thị ở đây vì trang này đọc thẳng lô trong Phòng khả dụng/Phòng thị trường.
+  // ra rễ) — vẫn hiển thị ở đây vì trang này đọc thẳng lô trong Phòng đạt tiêu chuẩn/Phòng thị trường.
   const roomStageTotals = (lots: { stageCode: string; quantity: number; orderItems: { quantity: number }[] }[]) =>
     lots.reduce(
       (acc, l) => {
@@ -90,7 +90,7 @@ export default async function AvailableInventoryPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Package className="w-6 h-6 text-primary-strong" /> Tồn khả dụng
+          <Package className="w-6 h-6 text-primary-strong" /> Tồn đạt tiêu chuẩn
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           Tổng: {totalLots.length} lô · {totalQuantity.toLocaleString("vi-VN")} cây
@@ -131,7 +131,7 @@ export default async function AvailableInventoryPage() {
                     <Badge variant="outline" className="text-xs">T05: {t05.toLocaleString("vi-VN")}</Badge>
                     {t10 > 0 && <Badge variant="outline" className="text-xs">T10: {t10.toLocaleString("vi-VN")}</Badge>}
                   </div>
-                  <Link href={`/inventory/available/${room.id}`}>
+                  <Link href={`/inventory/dat-tieu-chuan/${room.id}`}>
                     <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
                       <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
                     </Button>

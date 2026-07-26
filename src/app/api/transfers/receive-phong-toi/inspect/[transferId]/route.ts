@@ -5,7 +5,7 @@ import { addToContaminationRoom } from "@/lib/contamination-room";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
-const STAGE_CODES = ["T01", "T05", "M03", "M05"] as const;
+const STAGE_CODES = ["T01", "T05", "M05"] as const;
 
 async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
   return prisma.transfer.findFirst({

@@ -8,9 +8,9 @@ const schema = z.object({ returnQuantity: z.number().int().min(0) });
 // "Kiểm tra" + "Trả hàng" — chỉ áp dụng cho dòng nhập hàng của nhà cung cấp cho phép trả hàng
 // (Supplier.allowsReturn). Kho thành phẩm kiểm tra lại trong vòng Supplier.returnWindowDays ngày kể từ
 // ngày nhập, phát hiện thêm cây không đạt trong số đã tính "đạt" lúc nhập — bấm "Trả hàng" sẽ trừ thẳng
-// số đó khỏi lô T01 đã cộng ở Phòng khả dụng (giảm cả tồn thực tế lẫn tồn khả dụng vì hàng rời kho thật,
-// khác phần "không đạt" ban đầu vẫn nằm nguyên trong Phòng theo dõi). returnQuantity = 0 vẫn hợp lệ —
-// nghĩa là đã kiểm tra, không phát hiện thêm lỗi.
+// số đó khỏi lô ĐÚNG QUY CÁCH (item.stageCode) đã cộng ở Phòng đạt tiêu chuẩn lúc nhập hàng (giảm cả tồn
+// thực tế lẫn tồn đạt tiêu chuẩn vì hàng rời kho thật, khác phần "không đạt" ban đầu vẫn nằm nguyên trong
+// Phòng theo dõi). returnQuantity = 0 vẫn hợp lệ — nghĩa là đã kiểm tra, không phát hiện thêm lỗi.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (session?.user?.role !== "KHO_THANH_PHAM") {
@@ -25,9 +25,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const item = await prisma.goodsReceiptItem.findUnique({
     where: { id },
-    include: { receipt: { select: { roomId: true, supplier: { select: { allowsReturn: true } } } } },
+    include: {
+      receipt: {
+        select: { roomId: true, room: { select: { warehouseId: true } }, supplier: { select: { allowsReturn: true } } },
+      },
+    },
   });
   if (!item) return NextResponse.json({ message: "Không tìm thấy dòng nhập hàng" }, { status: 404 });
+  if (item.receipt.room.warehouseId !== session.user.workplaceWarehouseId) {
+    return NextResponse.json({ message: "Dòng này thuộc kho thành phẩm khác — không đúng địa điểm làm việc của bạn" }, { status: 403 });
+  }
   if (!item.receipt.supplier.allowsReturn) {
     return NextResponse.json({ message: "Nhà cung cấp này không cho phép trả hàng" }, { status: 400 });
   }
@@ -42,7 +49,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await prisma.$transaction(async (tx) => {
       if (returnQuantity > 0) {
         const lot = await tx.lot.findFirst({
-          where: { roomId: item.receipt.roomId, plantTypeId: item.plantTypeId, stageCode: "T01", status: "ACTIVE" },
+          where: { roomId: item.receipt.roomId, plantTypeId: item.plantTypeId, stageCode: item.stageCode, status: "ACTIVE" },
           orderBy: { enteredAt: "asc" },
         });
         if (!lot || lot.quantity < returnQuantity) {

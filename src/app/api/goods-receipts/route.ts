@@ -2,33 +2,58 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateGoodsReceiptCode, generateLotCode } from "@/lib/codes";
-import { getFinishedAvailableRooms } from "@/lib/processing";
+import { getFinishedQualifiedRooms } from "@/lib/processing";
+import { upsertLot } from "@/lib/goods-receipt";
 import { createAlert } from "@/lib/inventory";
 import { addDays } from "date-fns";
-import type { Prisma } from "@prisma/client";
+import { cellDate } from "@/lib/excel-import";
 import { z } from "zod";
 
-const createSchema = z.object({
-  supplierId: z.string().min(1),
-  roomId: z.string().min(1),
-  notes: z.string().optional(),
-  items: z
-    .array(
-      z.object({
-        plantTypeId: z.string().min(1),
-        quantityDelivered: z.number().int().positive(),
-        quantityRejected: z.number().int().min(0),
-      })
-    )
-    .min(1, "Cần ít nhất 1 dòng nhập hàng"),
+const confirmedItemSchema = z.object({
+  plantTypeId: z.string().min(1),
+  stageCode: z.enum(["T01", "T05", "T10"]),
+  quantityDelivered: z.number().int().positive(),
+  quantityRejected: z.number().int().min(0),
 });
 
-// "Nhập hàng" — Kho thành phẩm ghi nhận 1 lần nhận hàng từ nhà cung cấp ngoài. Với mỗi dòng: phần "đạt"
-// (quantityDelivered - quantityRejected) cộng thẳng vào 1 lô T01 ACTIVE trong Phòng khả dụng đã chọn
-// (tăng cả tồn thực tế lẫn tồn khả dụng, giống pattern merge-hoặc-tạo-mới ở POST /api/processing-tickets);
-// phần "không đạt" cộng vào 1 lô T01 ACTIVE trong Phòng theo dõi CÙNG kho đó (tăng tồn thực tế vì trang
-// tồn thực tế cộng gộp mọi phòng của kho thành phẩm, nhưng KHÔNG tăng tồn khả dụng vì trang tồn khả dụng
-// chỉ đọc Phòng khả dụng — xem src/app/(dashboard)/inventory/available/page.tsx).
+const plannedItemSchema = z.object({
+  plantTypeId: z.string().min(1),
+  stageCode: z.enum(["T01", "T05", "T10"]),
+  estimatedQuantity: z.number().int().positive(),
+});
+
+const createSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("CONFIRMED"),
+    supplierId: z.string().min(1),
+    roomId: z.string().min(1),
+    notes: z.string().optional(),
+    items: z.array(confirmedItemSchema).min(1, "Cần ít nhất 1 dòng nhập hàng"),
+  }),
+  // Kế hoạch nhập kho — chưa có hàng thật, chỉ ước tính tổng số lượng mỗi SKU (chưa biết tỉ lệ đạt/không
+  // đạt cho tới khi hàng về). Xem PATCH /api/goods-receipts/[id]/confirm để xác nhận số liệu thật.
+  z.object({
+    status: z.literal("PLANNED"),
+    supplierId: z.string().min(1),
+    roomId: z.string().min(1),
+    notes: z.string().optional(),
+    expectedDate: z.string().min(1, "Cần nhập ngày dự kiến nhập kho"),
+    items: z.array(plannedItemSchema).min(1, "Cần ít nhất 1 dòng kế hoạch"),
+  }),
+]);
+
+// "Nhập hàng" — Kho thành phẩm ghi nhận 1 lần nhận hàng từ nhà cung cấp ngoài. Mỗi dòng tự chọn quy cách
+// (T01/T05/T10) — phần "đạt" (quantityDelivered - quantityRejected) cộng thẳng vào 1 lô ACTIVE đúng quy
+// cách đó trong Phòng đạt tiêu chuẩn đã chọn (tăng cả tồn thực tế lẫn tồn đạt tiêu chuẩn, giống pattern
+// merge-hoặc-tạo-mới ở POST /api/processing-tickets); phần "không đạt" cộng vào 1 lô ACTIVE cùng quy
+// cách trong Phòng theo dõi CÙNG kho đó (tăng tồn thực tế vì trang tồn thực tế cộng gộp mọi phòng của
+// kho thành phẩm, nhưng KHÔNG tăng tồn đạt tiêu chuẩn vì trang tồn đạt tiêu chuẩn chỉ đọc Phòng đạt tiêu
+// chuẩn — xem src/app/(dashboard)/inventory/dat-tieu-chuan/page.tsx). Đơn vị luôn tính theo cây.
+//
+// Nhánh "Kế hoạch nhập kho" (status PLANNED) KHÔNG cộng gì vào tồn thật — chỉ tạo 1 lô "ảo"
+// (Lot.status = PLANNED) mỗi dòng, dùng để tính khả dụng TƯƠNG LAI cho đơn hàng có ngày xuất từ
+// expectedDate trở đi (xem getQualifiedLots ở src/lib/order-availability.ts). Xác nhận số liệu thật ở
+// PATCH /api/goods-receipts/[id]/confirm mới thực sự cộng vào tồn.
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "KHO_THANH_PHAM") {
@@ -40,91 +65,124 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
-  const { supplierId, roomId, notes, items } = parsed.data;
+  const data = parsed.data;
 
-  for (const item of items) {
-    if (item.quantityRejected > item.quantityDelivered) {
-      return NextResponse.json({ message: "Số lượng không đạt không được lớn hơn số lượng bàn giao" }, { status: 400 });
-    }
+  if (!session.user.workplaceWarehouseId) {
+    return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao" }, { status: 400 });
   }
 
-  const [supplier, validRooms, creatingUser] = await Promise.all([
-    prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true, isActive: true, allowsReturn: true, returnWindowDays: true } }),
-    getFinishedAvailableRooms(),
+  const [supplier, allRooms, creatingUser] = await Promise.all([
+    prisma.supplier.findUnique({ where: { id: data.supplierId }, select: { id: true, isActive: true, allowsReturn: true, returnWindowDays: true } }),
+    getFinishedQualifiedRooms(),
     prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } }),
   ]);
   if (!supplier || !supplier.isActive) {
     return NextResponse.json({ message: "Không tìm thấy nhà cung cấp" }, { status: 400 });
   }
-  const room = validRooms.find((r) => r.id === roomId);
+  // Chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) — khác
+  // getFinishedQualifiedRooms dùng ở nơi khác (VD Xử lý cây) vốn không giới hạn theo kho.
+  const validRooms = allRooms.filter((r) => r.warehouseId === session.user.workplaceWarehouseId);
+  const room = validRooms.find((r) => r.id === data.roomId);
   if (!room) {
-    return NextResponse.json({ message: "Phòng không hợp lệ — chỉ áp dụng Phòng khả dụng của kho thành phẩm" }, { status: 400 });
-  }
-
-  const roomWithWarehouse = await prisma.room.findUnique({ where: { id: roomId }, select: { warehouseId: true } });
-  const rejectRoom = await prisma.room.findFirst({
-    where: { warehouseId: roomWithWarehouse!.warehouseId, type: "PHONG_THEO_DOI", isActive: true },
-    select: { id: true },
-  });
-  if (items.some((i) => i.quantityRejected > 0) && !rejectRoom) {
-    return NextResponse.json({ message: "Kho này chưa có Phòng theo dõi — liên hệ Admin trước khi ghi nhận hàng không đạt" }, { status: 400 });
+    return NextResponse.json({ message: "Phòng không hợp lệ — chỉ được chọn Phòng đạt tiêu chuẩn của đúng kho thành phẩm bạn làm việc" }, { status: 400 });
   }
 
   const plantTypes = await prisma.plantType.findMany({
-    where: { id: { in: Array.from(new Set(items.map((i) => i.plantTypeId))) } },
+    where: { id: { in: Array.from(new Set(data.items.map((i) => i.plantTypeId))) } },
     select: { id: true, code: true, isActive: true },
   });
   const plantTypeById = new Map(plantTypes.map((p) => [p.id, p]));
-  for (const item of items) {
+  for (const item of data.items) {
     const pt = plantTypeById.get(item.plantTypeId);
     if (!pt || !pt.isActive) return NextResponse.json({ message: "Loại cây không hợp lệ" }, { status: 400 });
   }
 
   const staffCode = creatingUser?.code ?? "000";
 
-  const upsertLot = async (
-    tx: Prisma.TransactionClient,
-    targetRoomId: string,
-    plantTypeId: string,
-    plantTypeCode: string,
-    quantity: number
-  ) => {
-    const existingLot = await tx.lot.findFirst({
-      where: { roomId: targetRoomId, plantTypeId, stageCode: "T01", status: "ACTIVE" },
-      orderBy: { enteredAt: "asc" },
-    });
-    if (existingLot) {
-      await tx.lot.update({ where: { id: existingLot.id }, data: { quantity: { increment: quantity } } });
-      return;
-    }
-    const code = await generateLotCode({ plantTypeCode, staffCode, stageCode: "T01" });
-    await tx.lot.create({
-      data: {
-        code,
-        plantTypeId,
-        stage: "THANH_PHAM",
-        stageCode: "T01",
-        roomId: targetRoomId,
-        quantity,
-        initialQuantity: quantity,
-        status: "ACTIVE",
-      },
-    });
-  };
-
   try {
+    if (data.status === "PLANNED") {
+      const expectedDate = cellDate(data.expectedDate);
+      if (!expectedDate) {
+        return NextResponse.json({ message: "Ngày dự kiến nhập kho không hợp lệ" }, { status: 400 });
+      }
+
+      const receipt = await prisma.$transaction(async (tx) => {
+        const code = await generateGoodsReceiptCode(tx);
+        const created = await tx.goodsReceipt.create({
+          data: {
+            code,
+            supplierId: data.supplierId,
+            roomId: data.roomId,
+            createdById: session.user.id,
+            notes: data.notes,
+            status: "PLANNED",
+            expectedDate,
+          },
+        });
+
+        for (const item of data.items) {
+          const plantTypeCode = plantTypeById.get(item.plantTypeId)!.code;
+          const lotCode = await generateLotCode({ plantTypeCode, staffCode, stageCode: item.stageCode, date: expectedDate });
+          const plannedLot = await tx.lot.create({
+            data: {
+              code: lotCode,
+              plantTypeId: item.plantTypeId,
+              stage: "THANH_PHAM",
+              stageCode: item.stageCode,
+              roomId: data.roomId,
+              quantity: item.estimatedQuantity,
+              initialQuantity: item.estimatedQuantity,
+              status: "PLANNED",
+              expectedDate,
+            },
+          });
+          await tx.goodsReceiptItem.create({
+            data: {
+              receiptId: created.id,
+              plantTypeId: item.plantTypeId,
+              stageCode: item.stageCode,
+              quantityDelivered: item.estimatedQuantity,
+              quantityRejected: 0,
+              quantityPassed: item.estimatedQuantity,
+              plannedLotId: plannedLot.id,
+            },
+          });
+        }
+
+        return created;
+      });
+
+      return NextResponse.json(receipt, { status: 201 });
+    }
+
+    const roomWithWarehouse = await prisma.room.findUnique({ where: { id: data.roomId }, select: { warehouseId: true } });
+    const rejectRoom = await prisma.room.findFirst({
+      where: { warehouseId: roomWithWarehouse!.warehouseId, type: "PHONG_THEO_DOI", isActive: true },
+      select: { id: true },
+    });
+    if (data.items.some((i) => i.quantityRejected > 0) && !rejectRoom) {
+      return NextResponse.json({ message: "Kho này chưa có Phòng theo dõi — liên hệ Admin trước khi ghi nhận hàng không đạt" }, { status: 400 });
+    }
+    for (const item of data.items) {
+      if (item.quantityRejected > item.quantityDelivered) {
+        return NextResponse.json({ message: "Số lượng không đạt không được lớn hơn số lượng bàn giao" }, { status: 400 });
+      }
+    }
+
     const receipt = await prisma.$transaction(async (tx) => {
       const code = await generateGoodsReceiptCode(tx);
       const created = await tx.goodsReceipt.create({
         data: {
           code,
-          supplierId,
-          roomId,
+          supplierId: data.supplierId,
+          roomId: data.roomId,
           createdById: session.user.id,
-          notes,
+          notes: data.notes,
+          status: "CONFIRMED",
           items: {
-            create: items.map((i) => ({
+            create: data.items.map((i) => ({
               plantTypeId: i.plantTypeId,
+              stageCode: i.stageCode,
               quantityDelivered: i.quantityDelivered,
               quantityRejected: i.quantityRejected,
               quantityPassed: i.quantityDelivered - i.quantityRejected,
@@ -133,14 +191,14 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      for (const item of items) {
+      for (const item of data.items) {
         const plantTypeCode = plantTypeById.get(item.plantTypeId)!.code;
         const quantityPassed = item.quantityDelivered - item.quantityRejected;
         if (quantityPassed > 0) {
-          await upsertLot(tx, roomId, item.plantTypeId, plantTypeCode, quantityPassed);
+          await upsertLot(tx, data.roomId, item.plantTypeId, plantTypeCode, item.stageCode, quantityPassed, staffCode);
         }
         if (item.quantityRejected > 0) {
-          await upsertLot(tx, rejectRoom!.id, item.plantTypeId, plantTypeCode, item.quantityRejected);
+          await upsertLot(tx, rejectRoom!.id, item.plantTypeId, plantTypeCode, item.stageCode, item.quantityRejected, staffCode);
         }
       }
 

@@ -74,16 +74,23 @@ function groupByPlantType(items: OrderDetailItem[]): PlantTypeGroup[] {
   });
 }
 
-function StageRow({ stage, isAlternative }: { stage: StageBreakdown; isAlternative: boolean }) {
+function StageRow({
+  stage, label, isAlternative,
+}: {
+  stage: StageBreakdown;
+  label: string;
+  isAlternative: boolean;
+}) {
   return (
     <tr className={isAlternative ? "bg-background" : "border-t border-divider"}>
-      <td className={`px-3 py-2 text-sm ${isAlternative ? "pl-8 text-text-secondary" : "text-foreground font-medium"}`}>
-        {isAlternative ? `Đề xuất thay thế — Quy cách ${stage.stageCode}` : `Quy cách ${stage.stageCode}`}
+      <td className={`px-3 py-1.5 text-sm ${isAlternative ? "pl-8 text-text-secondary" : "text-foreground"}`}>
+        {isAlternative ? <span className="text-xs">Đề xuất thay thế</span> : <span className="font-semibold">{label}</span>}
+        {" · "}Quy cách {stage.stageCode}
         {stage.hasPending && <Badge variant="in-progress" className="ml-1.5">chờ tách túi</Badge>}
         {stage.hasCompleted && <Badge variant="completed" className="ml-1.5">đã tách túi</Badge>}
         {stage.notes.length > 0 && <p className="text-xs text-text-muted mt-0.5">{stage.notes.join("; ")}</p>}
       </td>
-      <td className={`px-3 py-2 text-sm text-right ${isAlternative ? "text-text-secondary" : "font-semibold text-foreground"}`}>
+      <td className={`px-3 py-1.5 text-sm text-right ${isAlternative ? "text-text-secondary" : "font-semibold text-foreground"}`}>
         {stage.quantity.toLocaleString("vi-VN")}
       </td>
     </tr>
@@ -103,13 +110,14 @@ export default function OrderDetailDialog({
   items: OrderDetailItem[];
 }) {
   const groups = groupByPlantType(items);
+  const grandTotal = groups.reduce((s, g) => s + g.totalQuantity, 0);
 
   return (
     <Dialog>
       <DialogTrigger render={<Button size="sm" variant="outline" className="h-8" />}>
         <Eye className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
       </DialogTrigger>
-      <DialogContent className="max-w-[84rem] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-fit sm:max-w-none max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-mono">{code}</DialogTitle>
         </DialogHeader>
@@ -137,24 +145,21 @@ export default function OrderDetailDialog({
               <tbody>
                 {groups.map((g) => (
                   <Fragment key={g.plantTypeId}>
-                    <tr className="border-t border-divider bg-primary-light/40">
-                      <td colSpan={2} className="px-3 py-2 text-sm font-bold text-foreground">
-                        {g.plantTypeName} ({g.plantTypeCode})
-                      </td>
-                    </tr>
-                    <StageRow stage={g.primary} isAlternative={false} />
+                    <StageRow stage={g.primary} label={`${g.plantTypeName} (${g.plantTypeCode})`} isAlternative={false} />
                     {g.alternatives.map((alt) => (
-                      <StageRow key={alt.stageCode} stage={alt} isAlternative />
+                      <StageRow key={alt.stageCode} stage={alt} label="" isAlternative />
                     ))}
-                    <tr className="border-t border-divider bg-card">
-                      <td className="px-3 py-1.5 text-sm text-right text-text-secondary">Tổng loại cây</td>
-                      <td className="px-3 py-1.5 text-sm text-right font-semibold text-foreground">
-                        {g.totalQuantity.toLocaleString("vi-VN")}
-                      </td>
-                    </tr>
                   </Fragment>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-divider bg-primary-light/40">
+                  <td className="px-3 py-2 text-sm text-right font-bold text-primary-strong">Tổng số lượng cây</td>
+                  <td className="px-3 py-2 text-sm text-right font-bold text-primary-strong">
+                    {grandTotal.toLocaleString("vi-VN")}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

@@ -74,7 +74,7 @@ export async function generateTransferCode(client: Prisma.TransactionClient | ty
 
 // Mã lô = mã cây (VD "AL001") + mã NV cấy 3 số (VD "003", lấy từ 3 số cuối User.code "NV003") + mã
 // tuần/năm 4 số (VD "0726" = tuần 07 năm 2026, tính theo lịch tuần làm việc weekStartsOn: 1 dùng chung
-// toàn app). NHIỀU dòng Lot (khác stageCode, VD M03 và M05 của cùng 1 đợt cấy) có thể dùng chung 1 mã lô
+// toàn app). NHIỀU dòng Lot (khác stageCode, VD M05 và T05 của cùng 1 đợt cấy) có thể dùng chung 1 mã lô
 // — duy nhất theo (code, stageCode), không unique theo code riêng lẻ (xem @@unique trên model Lot).
 // Phần "gốc" của mã lô, tách riêng khỏi generateLotCode để nơi cần tự kiểm soát va chạm mã trong 1
 // transaction (VD nhập Excel hàng loạt — nhiều dòng có thể ra cùng base trước khi transaction commit,
@@ -96,7 +96,7 @@ export async function generateLotCode(params: {
   const { stageCode } = params;
   const base = lotCodeBase(params);
 
-  // Cùng mã lô (base) có thể đã tồn tại cho quy cách khác (VD M03 đã tạo trước, giờ tạo dòng M05) — vẫn
+  // Cùng mã lô (base) có thể đã tồn tại cho quy cách khác (VD M05 đã tạo trước, giờ tạo dòng T05) — vẫn
   // dùng lại đúng base đó. Chỉ khi (base, stageCode) này đã tồn tại rồi (VD lô cũ đã chuyển kệ, giờ tạo
   // lô mới cùng tuần/NV/quy cách) mới thêm hậu tố để tránh trùng.
   let candidate = base;
@@ -130,6 +130,18 @@ export async function generateWarehouseCode(type: "SAN_XUAT" | "THANH_PHAM"): Pr
     candidate = `${prefix}-${letterFor(index)}`;
   }
   return candidate;
+}
+
+// Mã nhà cung cấp = "NCC" + số thứ tự 2 chữ số, chạy NCC01 - NCC99 (tối đa 99 nhà cung cấp). Tìm ô
+// trống nhỏ nhất thay vì chỉ +1 từ mã lớn nhất, để mã của nhà cung cấp đã xóa cứng được cấp lại cho
+// nhà cung cấp mới thay vì bỏ trống vĩnh viễn.
+export async function generateSupplierCode(): Promise<string> {
+  for (let n = 1; n <= 99; n++) {
+    const candidate = `NCC${String(n).padStart(2, "0")}`;
+    const existing = await prisma.supplier.findUnique({ where: { code: candidate } });
+    if (!existing) return candidate;
+  }
+  throw new Error("Đã đạt giới hạn 99 nhà cung cấp (NCC01-NCC99)");
 }
 
 export async function generateMediumOrderCode(): Promise<string> {

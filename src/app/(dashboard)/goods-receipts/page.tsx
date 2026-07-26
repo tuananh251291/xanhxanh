@@ -5,23 +5,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Truck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
-import { getFinishedAvailableRooms } from "@/lib/processing";
+import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { formatDistanceToNow, addDays, isPast } from "date-fns";
 import { vi } from "date-fns/locale";
 import GoodsReceiptForm from "./goods-receipt-form";
 import ReturnInspectionDialog from "./return-inspection-dialog";
+import ConfirmPlanDialog from "./confirm-plan-dialog";
 
 export default async function GoodsReceiptsPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/goods-receipts"))) redirect("/dashboard");
 
-  const [rooms, plantTypes, suppliers, recentReceipts, pendingInspections] = await Promise.all([
-    getFinishedAvailableRooms(),
+  // NV kho thành phẩm chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) —
+  // khác các nơi khác dùng getFinishedQualifiedRooms (VD Xử lý cây) vốn KHÔNG giới hạn theo kho.
+  const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
+
+  const [allRooms, plantTypes, suppliers, recentReceipts, pendingInspections, pendingPlans] = await Promise.all([
+    getFinishedQualifiedRooms(),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.goodsReceipt.findMany({
-      where: { createdById: session?.user?.id ?? "" },
+      where: { createdById: session?.user?.id ?? "", status: "CONFIRMED" },
       orderBy: { createdAt: "desc" },
       take: 5,
       select: {
@@ -31,7 +36,10 @@ export default async function GoodsReceiptsPage() {
       },
     }),
     prisma.goodsReceiptItem.findMany({
-      where: { returnedAt: null, receipt: { supplier: { allowsReturn: true } } },
+      where: {
+        returnedAt: null,
+        receipt: { status: "CONFIRMED", supplier: { allowsReturn: true }, room: { warehouseId: workplaceWarehouseId ?? "" } },
+      },
       orderBy: { receipt: { createdAt: "asc" } },
       select: {
         id: true, quantityPassed: true,
@@ -39,7 +47,23 @@ export default async function GoodsReceiptsPage() {
         receipt: { select: { code: true, createdAt: true, supplier: { select: { name: true, returnWindowDays: true } } } },
       },
     }),
+    prisma.goodsReceipt.findMany({
+      where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
+      orderBy: { expectedDate: "asc" },
+      select: {
+        id: true, code: true, expectedDate: true,
+        supplier: { select: { code: true, name: true } },
+        items: {
+          select: {
+            id: true, stageCode: true, quantityDelivered: true,
+            plantType: { select: { code: true, name: true } },
+          },
+        },
+      },
+    }),
   ]);
+
+  const rooms = allRooms.filter((r) => r.warehouseId === workplaceWarehouseId);
 
   return (
     <div className="space-y-6">
@@ -48,9 +72,46 @@ export default async function GoodsReceiptsPage() {
           <Truck className="w-6 h-6 text-primary-strong" /> Nhập hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Ghi nhận hàng nhận từ nhà cung cấp ngoài — số lượng bàn giao cộng vào tồn thực tế, số lượng đạt cộng vào tồn khả dụng.
+          Ghi nhận hàng nhận từ nhà cung cấp ngoài — số lượng bàn giao cộng vào tồn thực tế, số lượng đạt cộng vào tồn đạt tiêu chuẩn.
         </p>
       </div>
+
+      {pendingPlans.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Kế hoạch đang chờ hàng về</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {pendingPlans.map((plan) => {
+              const overdue = plan.expectedDate ? isPast(plan.expectedDate) : false;
+              return (
+                <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
+                  <div>
+                    <p className="text-sm font-medium text-foreground font-mono">{plan.code} · {plan.supplier.name}</p>
+                    <p className="text-xs text-text-secondary flex flex-wrap items-center gap-1.5 mt-0.5">
+                      {plan.items.map((i) => `${i.plantType.code} (${i.stageCode}): ${i.quantityDelivered.toLocaleString("vi-VN")} cây`).join(" · ")}
+                      {plan.expectedDate && (
+                        <Badge variant={overdue ? "overdue" : "in-progress"}>
+                          Dự kiến {plan.expectedDate.toLocaleDateString("vi-VN")}
+                        </Badge>
+                      )}
+                    </p>
+                  </div>
+                  <ConfirmPlanDialog
+                    receiptId={plan.id}
+                    code={plan.code}
+                    supplierName={`${plan.supplier.name} (${plan.supplier.code})`}
+                    items={plan.items.map((i) => ({
+                      itemId: i.id,
+                      plantTypeLabel: `${i.plantType.name} (${i.plantType.code})`,
+                      stageCode: i.stageCode,
+                      estimatedQuantity: i.quantityDelivered,
+                    }))}
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {pendingInspections.length > 0 && (
         <Card>
@@ -84,7 +145,13 @@ export default async function GoodsReceiptsPage() {
         </Card>
       )}
 
-      <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} />
+      {workplaceWarehouseId ? (
+        <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} />
+      ) : (
+        <Card><CardContent className="py-8 text-center text-text-muted">
+          Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao để được gán trước khi nhập hàng.
+        </CardContent></Card>
+      )}
 
       {recentReceipts.length > 0 && (
         <Card>

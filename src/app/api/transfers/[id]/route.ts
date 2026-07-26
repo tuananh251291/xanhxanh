@@ -58,8 +58,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const isSurplusTransfer = transfer.notes === SURPLUS_TRANSFER_TAG;
 
   // Bàn giao từ Phòng tối → Kho sáng: hệ thống tự chỉ định kệ (mẫu mẹ theo đúng NV phụ trách,
-  // tràn quá sức chứa kệ (tính theo túi, do SUPER_ADMIN cài đặt riêng từng kệ) thì dồn sang Kho mẫu
-  // mẹ chung; cây ra rễ vào Phòng ra rễ) — không cần KHO_MO chọn tay.
+  // tràn quá sức chứa kệ (tính theo cụm, do SUPER_ADMIN cài đặt riêng từng kệ) thì dồn sang Kho mẫu
+  // mẹ chung; cây ra rễ vào Phòng ra rễ, tính theo cây) — không cần KHO_MO chọn tay.
   if (isSurplusTransfer || transfer.fromRoom?.type === "PHONG_TOI") {
     const warehouseId = transfer.fromRoom?.warehouseId ?? transfer.fromWarehouseId;
     if (!warehouseId) return NextResponse.json({ message: "Không xác định được kho nguồn" }, { status: 400 });
@@ -222,12 +222,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // Nguyên tắc kệ Phòng mẫu mẹ: 1 kệ chỉ xếp 1 loại cây (nếu đã gán) và không vượt capacity — kiểm tra
   // trước khi cam kết, tính cả các lô khác trong cùng đợt xác nhận này dồn vào cùng 1 kệ. Kệ có thể
-  // chứa nhiều lô/quy cách cùng lúc (VD cả M03 lẫn M05), giới hạn duy nhất là capacity.
+  // chứa nhiều lô cùng lúc, giới hạn duy nhất là capacity.
   if (shelfAssignments && shelfAssignments.length > 0) {
     const shelfIds = Array.from(new Set(shelfAssignments.map((a) => a.shelfId)));
     const shelves = await prisma.shelf.findMany({
       where: { id: { in: shelfIds } },
-      include: { lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } } },
+      include: {
+        lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
+        room: { select: { type: true } },
+      },
     });
     const shelfById = new Map(shelves.map((s) => [s.id, s]));
     const batchQtyByShelf = new Map<string, number>();
@@ -247,7 +250,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const shelf = shelfById.get(shelfId)!;
       const existingQty = sumLotQuantity(shelf.lots);
       if (shelf.capacity && existingQty + addQty > shelf.capacity) {
-        return NextResponse.json({ message: `Kệ ${shelf.code} không đủ chỗ (còn trống ${Math.max(0, shelf.capacity - existingQty)}/${shelf.capacity})` }, { status: 409 });
+        const unit = shelf.room?.type === "PHONG_MAU_ME" ? "cụm" : "cây";
+        return NextResponse.json({ message: `Kệ ${shelf.code} không đủ chỗ (còn trống ${Math.max(0, shelf.capacity - existingQty)}/${shelf.capacity} ${unit})` }, { status: 409 });
       }
     }
   }

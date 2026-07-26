@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateProcessingTicketCode, generateLotCode } from "@/lib/codes";
-import { getAvailableLots } from "@/lib/order-availability";
-import { getFinishedAvailableRooms } from "@/lib/processing";
+import { getQualifiedLots } from "@/lib/order-availability";
+import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { z } from "zod";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
@@ -27,7 +27,7 @@ const createSchema = z
 
 // "Tạo phiếu xử lý" — trừ ngay số lượng đầu vào (FIFO qua các lô ACTIVE), cộng/tạo lô đầu ra ngay
 // trong cùng transaction (phiếu là biên bản ghi việc đã xử lý xong, không có luồng "đang xử lý" chờ
-// duyệt). Đọc lại tồn khả dụng NGAY TRONG transaction (không tin số đã xem trước đó trên form).
+// duyệt). Đọc lại tồn đạt tiêu chuẩn NGAY TRONG transaction (không tin số đã xem trước đó trên form).
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "KHO_THANH_PHAM") {
@@ -45,9 +45,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Quy cách không hợp lệ (T01/T05/T10)" }, { status: 400 });
   }
 
-  const validRooms = await getFinishedAvailableRooms();
+  const validRooms = await getFinishedQualifiedRooms();
   if (!validRooms.some((r) => r.id === roomId)) {
-    return NextResponse.json({ message: "Phòng không hợp lệ — chỉ áp dụng Phòng khả dụng của kho thành phẩm" }, { status: 400 });
+    return NextResponse.json({ message: "Phòng không hợp lệ — chỉ áp dụng Phòng đạt tiêu chuẩn của kho thành phẩm" }, { status: 400 });
   }
 
   const [plantType, creatingUser] = await Promise.all([
@@ -60,10 +60,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const ticket = await prisma.$transaction(async (tx) => {
-      const lots = await getAvailableLots([roomId], plantTypeId, inputStageCode, tx);
+      const lots = await getQualifiedLots([roomId], plantTypeId, inputStageCode, tx);
       const totalAvailable = lots.reduce((s, l) => s + l.available, 0);
       if (totalAvailable < inputQuantity) {
-        throw new Error(`Tồn kho khả dụng không đủ — quy cách ${inputStageCode} chỉ còn ${totalAvailable}/${inputQuantity} cần xử lý`);
+        throw new Error(`Tồn kho đạt tiêu chuẩn không đủ — quy cách ${inputStageCode} chỉ còn ${totalAvailable}/${inputQuantity} cần xử lý`);
       }
 
       const inputAllocations: { lotId: string; quantity: number }[] = [];

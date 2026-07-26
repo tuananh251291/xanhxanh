@@ -33,3 +33,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const item = await prisma.supplier.update({ where: { id }, data });
   return NextResponse.json(item);
 }
+
+// Xóa cứng — khác warehouses/rooms/shelves (soft-delete vì Lot có thể còn tham chiếu tới lịch sử tồn
+// kho). Supplier không giữ lịch sử tồn kho trực tiếp, chỉ chặn nếu đã có phiếu nhập hàng (GoodsReceipt,
+// supplierId bắt buộc — không thể chỉ gỡ tham chiếu như shelf-groups).
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cấp cao mới có quyền xóa nhà cung cấp" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const supplier = await prisma.supplier.findUnique({ where: { id }, select: { id: true, code: true } });
+  if (!supplier) return NextResponse.json({ message: "Không tìm thấy nhà cung cấp" }, { status: 404 });
+
+  const receiptCount = await prisma.goodsReceipt.count({ where: { supplierId: id } });
+  if (receiptCount > 0) {
+    return NextResponse.json(
+      { message: `Không thể xóa — nhà cung cấp "${supplier.code}" đã có ${receiptCount} phiếu nhập hàng trong hệ thống` },
+      { status: 409 }
+    );
+  }
+
+  await prisma.supplier.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+}

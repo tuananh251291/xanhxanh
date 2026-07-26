@@ -68,8 +68,8 @@ export default async function KhoSangPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {onlyMotherRoom
-            ? `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")}`
-            : `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")}`}
+            ? `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm`
+            : `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")} cây`}
         </p>
       </div>
 
@@ -103,7 +103,6 @@ export default async function KhoSangPage() {
                     <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap">{shelf.name}</td>
                     <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.plantType?.name ?? "—"}</td>
                     <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.assignedStaff?.name ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{(bagsByCode["M03"] ?? 0).toLocaleString("vi-VN")}</td>
                     <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{(bagsByCode["M05"] ?? 0).toLocaleString("vi-VN")}</td>
                   </tr>
                 );
@@ -117,8 +116,7 @@ export default async function KhoSangPage() {
                         <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
                         <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
                         <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">M03</th>
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">M05</th>
+                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">M05 (cụm)</th>
                       </tr>
                     </thead>
                     <tbody>{rows.map(renderRow)}</tbody>
@@ -153,7 +151,9 @@ export default async function KhoSangPage() {
               {room.shelves.map((shelf) => {
                 const shelfMother = sumLotQuantity(shelf.lots.filter((l) => l.stage === "MAU_ME"));
                 const shelfFinished = sumLotQuantity(shelf.lots.filter((l) => l.stage === "THANH_PHAM"));
-                // Sức chứa kệ (Phòng mẫu mẹ lẫn Phòng ra rễ) tính theo túi — cộng thẳng quantity, không quy đổi.
+                // Nhánh này chỉ vẽ Phòng ra rễ (Phòng mẫu mẹ đã có bảng riêng ở trên) — sức chứa kệ tính
+                // theo cây, cộng thẳng quantity không quy đổi (shelfMother gần như luôn = 0 ở đây vì
+                // Phòng ra rễ không lưu lô mẫu mẹ).
                 const shelfUnits = shelfMother + shelfFinished;
                 return (
                   <Card key={shelf.id} className={shelf.lots.length === 0 ? "opacity-50" : ""}>
@@ -177,8 +177,8 @@ export default async function KhoSangPage() {
                       ) : (
                         <div className="space-y-1">
                           <div className="flex gap-2 text-xs">
-                            {shelfMother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM: {shelfMother.toLocaleString("vi-VN")}</Badge>}
-                            {shelfFinished > 0 && <Badge className="bg-primary-light text-primary-strong">TP: {shelfFinished.toLocaleString("vi-VN")}</Badge>}
+                            {shelfMother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM: {shelfMother.toLocaleString("vi-VN")} cụm</Badge>}
+                            {shelfFinished > 0 && <Badge className="bg-primary-light text-primary-strong">TP: {shelfFinished.toLocaleString("vi-VN")} cây</Badge>}
                           </div>
                           <div className="space-y-0.5 mt-1">
                             {shelf.lots.slice(0, 5).map((lot) => {

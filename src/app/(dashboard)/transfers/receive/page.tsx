@@ -314,14 +314,15 @@ export default function TransferReceivePage() {
                                   <p className="text-xs text-text-secondary bg-info-light rounded p-2">
                                     {isSurplus
                                       ? "Bàn giao MM dư (chỉ định đã kết thúc do hết thời gian) — hệ thống tự xếp thẳng vào Kho quá hạn trong Kho mẫu mẹ chung."
-                                      : "Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M03/M05) vào đúng kệ của nhân viên phụ trách trong Kho mẫu mẹ đã chia (dư quá sức chứa kệ sẽ tự chuyển sang Kho đúng hạn), cây ra rễ vào Phòng ra rễ."}
+                                      : "Bàn giao từ Phòng tối — hệ thống tự xếp kệ: mẫu mẹ (M05) vào đúng kệ của nhân viên phụ trách trong Kho mẫu mẹ đã chia (dư quá sức chứa kệ sẽ tự chuyển sang Kho đúng hạn), cây ra rễ vào Phòng ra rễ."}
                                   </p>
                                 ) : (
                                   <>
                                     <p className="text-sm font-medium text-foreground">Phân bổ kệ cho từng lô:</p>
                                     {t.items.map((item) => {
                                       const allShelves = t.toRoom?.shelves ?? t.toWarehouse.shelves;
-                                      // Chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng loại cây của lô này, và còn đủ chỗ (túi).
+                                      // Chỉ gợi ý kệ chưa gán loại cây hoặc đã gán đúng loại cây của lô này, và còn đủ chỗ
+                                      // (đơn vị theo room type — cây ở Phòng ra rễ, cụm ở Phòng mẫu mẹ).
                                       const itemUnits = item.quantity;
                                       const compatibleShelves = allShelves.filter((s) => {
                                         const used = sumLotQuantity(s.lots);
@@ -335,7 +336,9 @@ export default function TransferReceivePage() {
                                             <span className="font-mono text-info-foreground">{item.lot.code}</span>
                                             <span className="text-text-secondary ml-2">{item.lot.plantType.name}</span>
                                             <Badge variant="secondary" className="ml-2 text-xs">{item.lot.stage === "MAU_ME" ? "MM" : "TP"}</Badge>
-                                            <span className="ml-2 font-medium">{item.quantity.toLocaleString("vi-VN")}</span>
+                                            <span className="ml-2 font-medium">
+                                              {item.quantity.toLocaleString("vi-VN")} {item.lot.stage === "MAU_ME" ? "cụm" : "cây"}
+                                            </span>
                                           </div>
                                           <Select
                                             items={compatibleShelves.map((s) => {

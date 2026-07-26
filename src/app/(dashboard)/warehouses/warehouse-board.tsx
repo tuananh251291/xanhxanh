@@ -42,7 +42,7 @@ type RoomData = {
 // Các phòng này không có Shelf nào, không cần hiện quản lý kệ: kho thành phẩm không quản lý theo giàn
 // kệ; Phòng tối cá nhân (1 Room/NV) và Phòng Nhiễm cũng vậy — lô gắn thẳng vào Room (Lot.roomId).
 const NO_SHELF_ROOM_TYPES = new Set<RoomType>([
-  "PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG", "PHONG_TOI", "PHONG_NHIEM",
+  "PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG", "PHONG_TOI", "PHONG_NHIEM",
 ]);
 // Kho sản xuất chỉ có đúng 4 loại phòng này — nhóm lại 2 tầng cho dễ nhìn: Phòng sáng (mẫu mẹ + ra rễ)
 // và Phòng tối (phòng nhiễm + các phòng tối cá nhân theo từng NV cấy mô).

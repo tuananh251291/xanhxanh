@@ -232,7 +232,7 @@ async function main() {
     { code: "SXB-PS", name: "Phòng mẫu mẹ Hưng Yên", type: "PHONG_MAU_ME" as const, warehouseCode: "SX-B" },
     { code: "SXB-PRR", name: "Phòng ra rễ Hưng Yên", type: "PHONG_RA_RE" as const, warehouseCode: "SX-B" },
     { code: "SXB-NHIEM", name: "Phòng Nhiễm Hưng Yên", type: "PHONG_NHIEM" as const, warehouseCode: "SX-B" },
-    { code: "KTPA-KD", name: "Phòng khả dụng", type: "PHONG_KHA_DUNG" as const, warehouseCode: "KTP-A" },
+    { code: "KTPA-DTC", name: "Phòng đạt tiêu chuẩn", type: "PHONG_DAT_TIEU_CHUAN" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-TD", name: "Phòng theo dõi", type: "PHONG_THEO_DOI" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-HT", name: "Phòng hàn túi", type: "PHONG_HAN_TUI" as const, warehouseCode: "KTP-A" },
     { code: "KTPA-TT-SG", name: "Phòng thị trường Singapore", type: "PHONG_THI_TRUONG" as const, warehouseCode: "KTP-A" },
@@ -339,11 +339,10 @@ async function main() {
   }
   console.log("✅ Phòng tối cá nhân created");
 
-  // Lots — mã lô = mã chi tiết loại cây + mã NV cấy 3 số + mã tuần/năm 4 số (lotCodeBase()), 4 quy cách
-  // M03/M05/T01/T05 của cùng 1 lượt demo (cùng cây, cùng NV, cùng tuần) dùng CHUNG 1 mã lô, phân biệt
+  // Lots — mã lô = mã chi tiết loại cây + mã NV cấy 3 số + mã tuần/năm 4 số (lotCodeBase()), 3 quy cách
+  // M05/T01/T05 của cùng 1 lượt demo (cùng cây, cùng NV, cùng tuần) dùng CHUNG 1 mã lô, phân biệt
   // nhau bằng stageCode (đúng nguyên tắc @@unique([code, stageCode]) của Lot).
   const STAGE_CODES: { code: string; stage: "THANH_PHAM" | "MAU_ME"; qtyRange: [number, number] }[] = [
-    { code: "M03", stage: "MAU_ME", qtyRange: [30, 80] },
     { code: "M05", stage: "MAU_ME", qtyRange: [20, 60] },
     { code: "T01", stage: "THANH_PHAM", qtyRange: [50, 150] },
     { code: "T05", stage: "THANH_PHAM", qtyRange: [20, 60] },
@@ -352,8 +351,8 @@ async function main() {
   const motherShelves = await prisma.shelf.findMany({
     where: { room: { type: "PHONG_MAU_ME" } },
   });
-  // Kho thành phẩm không quản lý theo giàn kệ — lô thành phẩm gắn thẳng vào Phòng khả dụng.
-  const khaDungRoomId = createdRooms["KTPA-KD"];
+  // Kho thành phẩm không quản lý theo giàn kệ — lô thành phẩm gắn thẳng vào Phòng đạt tiêu chuẩn.
+  const khaDungRoomId = createdRooms["KTPA-DTC"];
   const allPlantTypes = await prisma.plantType.findMany({ orderBy: { code: "asc" } });
   const caymoStaffForLots = await prisma.user.findMany({ where: { role: "CAY_MO" }, orderBy: { code: "asc" } });
 
@@ -373,7 +372,7 @@ async function main() {
     for (const sc of STAGE_CODES) {
       const quantity = randInt(sc.qtyRange[0], sc.qtyRange[1]);
       // Kệ mẫu mẹ (Phòng sáng) chỉ được chọn trong số kệ đã gán đúng loại cây pt — mỗi kệ chỉ xếp 1 mã cây.
-      // Thành phẩm không dùng kệ — gắn thẳng vào Phòng khả dụng qua roomId.
+      // Thành phẩm không dùng kệ — gắn thẳng vào Phòng đạt tiêu chuẩn qua roomId.
       const shelf = sc.stage === "MAU_ME"
         ? motherShelves.filter((s) => s.plantTypeId === pt.id)[randInt(0, motherShelves.filter((s) => s.plantTypeId === pt.id).length - 1)]
         : undefined;
@@ -465,7 +464,7 @@ async function main() {
             : Math.round(expectedMotherOutput * (0.9 + rng() * 0.2));
           const actualFinishedTotal = Math.round(expectedFinishedOutput * (0.9 + rng() * 0.2));
 
-          // Mã lô của cả tuần này (cùng cây, cùng NV, cùng tuần) — M03/M05/T01/T05 dùng chung mã, chỉ
+          // Mã lô của cả tuần này (cùng cây, cùng NV, cùng tuần) — M05/T01/T05 dùng chung mã, chỉ
           // khác stageCode. Nhật ký hàng ngày trong cùng tuần cùng chỉ định gộp vào chung 1 dòng Lot theo
           // quy cách (không tạo lô mới mỗi ngày) đúng nguyên tắc "chỉ định cấy phân bổ theo tuần".
           const weekLotCode = lotCodeBase(pt.code, staff.code, weekStart);
@@ -478,7 +477,7 @@ async function main() {
             const recordDate = addDays(weekStart, dayOffsets[recIdx]);
             const motherQty = Math.round(actualMotherTotal / 3);
             const finishedQty = Math.round(actualFinishedTotal / 3);
-            const mmStageCode = recIdx % 2 === 0 ? "M03" : "M05";
+            const mmStageCode = "M05";
             const tpStageCode = recIdx % 2 === 0 ? "T01" : "T05";
 
             const dailyRecord = await prisma.dailyRecord.create({

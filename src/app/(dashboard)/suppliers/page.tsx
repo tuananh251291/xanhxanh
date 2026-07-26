@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Truck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import SupplierDialog from "./supplier-dialog";
+import DeleteSupplierButton from "./delete-supplier-button";
 
 export default async function SuppliersPage() {
   const session = await auth();
@@ -54,7 +55,10 @@ export default async function SuppliersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <SupplierDialog item={{ id: s.id, code: s.code, name: s.name, isActive: s.isActive, allowsReturn: s.allowsReturn, returnWindowDays: s.returnWindowDays }} />
+                      <div className="flex items-center gap-1">
+                        <SupplierDialog item={{ id: s.id, code: s.code, name: s.name, isActive: s.isActive, allowsReturn: s.allowsReturn, returnWindowDays: s.returnWindowDays }} />
+                        <DeleteSupplierButton id={s.id} code={s.code} name={s.name} />
+                      </div>
                     </td>
                   </tr>
                 ))}

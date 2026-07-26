@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { isSameDay } from "date-fns";
 
 const schema = z.object({ completed: z.boolean() });
 
@@ -20,13 +21,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
-  const updated = await prisma.checklistItem.update({
-    where: { id },
-    data: {
-      completed: parsed.data.completed,
-      completedAt: parsed.data.completed ? new Date() : null,
-    },
-  });
+  // Chặn bỏ đánh dấu việc đã hoàn thành từ hôm trước — tránh sửa ngược lịch sử báo cáo đã ghi nhận
+  // ở ngày hôm đó. Bỏ đánh dấu chỉ được phép trong cùng ngày vừa hoàn thành (sửa lỗi bấm nhầm).
+  if (item.completed && !parsed.data.completed && item.completedAt && !isSameDay(item.completedAt, new Date())) {
+    return NextResponse.json({ message: "Không thể bỏ đánh dấu việc đã hoàn thành từ ngày trước" }, { status: 400 });
+  }
+
+  if (item.completed === parsed.data.completed) {
+    return NextResponse.json(item);
+  }
+
+  const [updated] = await prisma.$transaction([
+    prisma.checklistItem.update({
+      where: { id },
+      data: {
+        completed: parsed.data.completed,
+        completedAt: parsed.data.completed ? new Date() : null,
+      },
+    }),
+    prisma.checklistItemLog.create({
+      data: { itemId: id, completed: parsed.data.completed },
+    }),
+  ]);
 
   return NextResponse.json(updated);
 }

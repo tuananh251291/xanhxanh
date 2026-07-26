@@ -1,15 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 import { ROLE_LABELS } from "@/types";
 import type { UserRole } from "@prisma/client";
 
+type ItemLog = { completed: boolean; changedAt: string };
+type Item = {
+  id: string;
+  title: string;
+  completed: boolean;
+  assignedDate: string;
+  completedAt: string | null;
+  logs: ItemLog[];
+};
 type Row = {
   userId: string;
   userName: string;
@@ -19,12 +29,14 @@ type Row = {
   percent: number;
   thresholdPercent: number;
   belowThreshold: boolean;
+  items: Item[];
 };
 
 export default function ChecklistReport() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   const load = useCallback(async (d: string) => {
     setLoading(true);
@@ -68,6 +80,7 @@ export default function ChecklistReport() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-primary-light text-left text-primary-strong">
+                    <th className="py-2 pr-4 font-bold text-base w-8"></th>
                     <th className="py-2 pr-4 font-bold text-base">Nhân viên</th>
                     <th className="py-2 pr-4 font-bold text-base">Vai trò</th>
                     <th className="py-2 pr-4 font-bold text-base">Hoàn thành</th>
@@ -77,24 +90,64 @@ export default function ChecklistReport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.userId} className={`border-b last:border-0 ${r.belowThreshold ? "bg-danger-light" : "even:bg-primary-light hover:bg-primary-light/60"}`}>
-                      <td className="py-2 pr-4 font-medium">{r.userName}</td>
-                      <td className="py-2 pr-4 text-text-secondary">{ROLE_LABELS[r.role]}</td>
-                      <td className="py-2 pr-4">{r.completed}/{r.total}</td>
-                      <td className="py-2 pr-4 font-medium">{r.percent}%</td>
-                      <td className="py-2 pr-4 text-text-secondary">{r.thresholdPercent}%</td>
-                      <td className="py-2">
-                        {r.belowThreshold ? (
-                          <Badge className="bg-danger-light text-destructive gap-1">
-                            <AlertTriangle className="w-3 h-3" /> Không đạt
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-primary-light text-primary-strong">Đạt</Badge>
+                  {rows.map((r) => {
+                    const expanded = expandedUserId === r.userId;
+                    return (
+                      <Fragment key={r.userId}>
+                        <tr
+                          onClick={() => setExpandedUserId(expanded ? null : r.userId)}
+                          className={`border-b last:border-0 cursor-pointer ${r.belowThreshold ? "bg-danger-light" : "even:bg-primary-light hover:bg-primary-light/60"}`}
+                        >
+                          <td className="py-2 pl-2 text-text-muted">
+                            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </td>
+                          <td className="py-2 pr-4 font-medium">{r.userName}</td>
+                          <td className="py-2 pr-4 text-text-secondary">{ROLE_LABELS[r.role]}</td>
+                          <td className="py-2 pr-4">{r.completed}/{r.total}</td>
+                          <td className="py-2 pr-4 font-medium">{r.percent}%</td>
+                          <td className="py-2 pr-4 text-text-secondary">{r.thresholdPercent}%</td>
+                          <td className="py-2">
+                            {r.belowThreshold ? (
+                              <Badge className="bg-danger-light text-destructive gap-1">
+                                <AlertTriangle className="w-3 h-3" /> Không đạt
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-primary-light text-primary-strong">Đạt</Badge>
+                            )}
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="border-b last:border-0">
+                            <td></td>
+                            <td colSpan={6} className="pb-3 pr-4">
+                              <div className="rounded-lg border border-divider bg-card divide-y divide-divider">
+                                {r.items.map((it) => (
+                                  <div key={it.id} className="px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className={it.completed ? "text-text-secondary" : "text-foreground font-medium"}>{it.title}</span>
+                                      <span className="text-xs text-text-muted whitespace-nowrap">
+                                        Giao {format(new Date(it.assignedDate), "dd/MM", { locale: vi })}
+                                        {it.completedAt && ` · Xong ${format(new Date(it.completedAt), "dd/MM HH:mm", { locale: vi })}`}
+                                      </span>
+                                    </div>
+                                    {it.logs.length > 0 && (
+                                      <ul className="mt-1 text-xs text-text-muted space-y-0.5">
+                                        {it.logs.map((log, i) => (
+                                          <li key={i}>
+                                            {format(new Date(log.changedAt), "dd/MM/yyyy HH:mm", { locale: vi })} — {log.completed ? "đánh dấu hoàn thành" : "bỏ đánh dấu"}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -6,7 +6,7 @@ import { isSameDay } from "date-fns";
 import { z } from "zod";
 
 const patchSchema = z.union([
-  z.object({ m03: z.number().int().min(0), m05: z.number().int().min(0), t01: z.number().int().min(0), t05: z.number().int().min(0) }),
+  z.object({ m05: z.number().int().min(0), t01: z.number().int().min(0), t05: z.number().int().min(0) }),
   z.object({ action: z.literal("handover") }),
   z.object({ action: z.literal("confirm") }),
 ]);
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  if ("m03" in parsed.data) {
+  if ("m05" in parsed.data) {
     const updated = await prisma.mediumOrderDay.update({
       where: { id: dayId },
       data: parsed.data,

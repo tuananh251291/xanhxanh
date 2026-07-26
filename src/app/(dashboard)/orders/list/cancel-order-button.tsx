@@ -11,7 +11,7 @@ export default function CancelOrderButton({ orderId, orderCode }: { orderId: str
   const router = useRouter();
 
   const cancel = async () => {
-    if (!window.confirm(`Xóa đơn ${orderCode}? Toàn bộ số lượng đang tạm giữ sẽ trả lại tồn khả dụng ngay.`)) return;
+    if (!window.confirm(`Xóa đơn ${orderCode}? Toàn bộ số lượng đang tạm giữ sẽ trả lại tồn đạt tiêu chuẩn ngay.`)) return;
 
     setCancelling(true);
     try {

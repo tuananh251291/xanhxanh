@@ -13,7 +13,7 @@ const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE"
 // buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên dưới. NV kho
 // thành phẩm (KHO_THANH_PHAM) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ —
 // KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm như trước (xem
-// getFinishedAvailableRooms ở src/lib/processing.ts).
+// getFinishedQualifiedRooms ở src/lib/processing.ts).
 const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM"] as const;
 
 const patchSchema = z.union([

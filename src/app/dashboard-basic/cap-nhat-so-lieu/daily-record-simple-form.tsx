@@ -25,36 +25,31 @@ type DailyRecord = {
   recordDate: string;
   motherUsed: number;
   motherChecked: number;
-  motherContaminatedM03: number;
   motherContaminatedM05: number;
   items: RecordItem[];
 };
 
 type FormState = {
   motherChecked: string;
-  motherContaminatedM03: string;
   motherContaminatedM05: string;
   motherUsed: string;
-  m03: string;
   m05: string;
   t05: string;
   t01: string;
 };
 
 const emptyForm: FormState = {
-  motherChecked: "0", motherContaminatedM03: "0", motherContaminatedM05: "0", motherUsed: "0",
-  m03: "0", m05: "0", t05: "0", t01: "0",
+  motherChecked: "0", motherContaminatedM05: "0", motherUsed: "0",
+  m05: "0", t05: "0", t01: "0",
 };
 
 const FIELD_ROWS: { key: keyof FormState; label: string; editable: boolean }[] = [
-  { key: "motherChecked", label: "MM đã kiểm tra", editable: true },
-  { key: "motherContaminatedM03", label: "MM nhiễm M03", editable: true },
-  { key: "motherContaminatedM05", label: "MM nhiễm M05", editable: true },
-  { key: "motherUsed", label: "MM sử dụng", editable: true },
-  { key: "m03", label: "M03 mới cấy", editable: true },
-  { key: "m05", label: "M05 mới cấy", editable: true },
-  { key: "t05", label: "T05 thành phẩm", editable: true },
-  { key: "t01", label: "T01 thành phẩm", editable: true },
+  { key: "motherChecked", label: "MM đã kiểm tra (cụm)", editable: true },
+  { key: "motherContaminatedM05", label: "MM nhiễm (cụm)", editable: true },
+  { key: "motherUsed", label: "MM sử dụng (cụm)", editable: true },
+  { key: "m05", label: "M05 mới cấy (cụm)", editable: true },
+  { key: "t05", label: "T05 thành phẩm (cây)", editable: true },
+  { key: "t01", label: "T01 thành phẩm (cây)", editable: true },
 ];
 
 const NUMBER_INPUT_CLASS = "w-24 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
@@ -102,10 +97,8 @@ export default function DailyRecordSimpleForm() {
   const todayValues = todayRecord
     ? {
         motherChecked: todayRecord.motherChecked,
-        motherContaminatedM03: todayRecord.motherContaminatedM03,
         motherContaminatedM05: todayRecord.motherContaminatedM05,
         motherUsed: todayRecord.motherUsed,
-        m03: todayRecord.items.filter((i) => i.lot.stageCode === "M03").reduce((s, i) => s + i.quantityCreated, 0),
         m05: todayRecord.items.filter((i) => i.lot.stageCode === "M05").reduce((s, i) => s + i.quantityCreated, 0),
         t05: todayRecord.items.filter((i) => i.lot.stageCode === "T05").reduce((s, i) => s + i.quantityCreated, 0),
         t01: todayRecord.items.filter((i) => i.lot.stageCode === "T01").reduce((s, i) => s + i.quantityCreated, 0),
@@ -124,11 +117,10 @@ export default function DailyRecordSimpleForm() {
     const value = e.target.value;
     setForm((f) => {
       const next = { ...f, [key]: value };
-      if (key === "motherChecked" || key === "motherContaminatedM03" || key === "motherContaminatedM05") {
+      if (key === "motherChecked" || key === "motherContaminatedM05") {
         const checked = Number(key === "motherChecked" ? value : f.motherChecked) || 0;
-        const contaminatedM03 = Number(key === "motherContaminatedM03" ? value : f.motherContaminatedM03) || 0;
         const contaminatedM05 = Number(key === "motherContaminatedM05" ? value : f.motherContaminatedM05) || 0;
-        next.motherUsed = String(Math.max(0, checked - contaminatedM03 - contaminatedM05));
+        next.motherUsed = String(Math.max(0, checked - contaminatedM05));
       }
       return next;
     });
@@ -144,10 +136,8 @@ export default function DailyRecordSimpleForm() {
         body: JSON.stringify({
           instructionId: selectedId,
           motherChecked: Number(form.motherChecked) || 0,
-          motherContaminatedM03: Number(form.motherContaminatedM03) || 0,
           motherContaminatedM05: Number(form.motherContaminatedM05) || 0,
           motherUsed: Number(form.motherUsed) || 0,
-          m03: Number(form.m03) || 0,
           m05: Number(form.m05) || 0,
           t05: Number(form.t05) || 0,
           t01: Number(form.t01) || 0,
@@ -198,7 +188,7 @@ export default function DailyRecordSimpleForm() {
             <label className="text-sm font-medium">Chỉ định cấy</label>
             <Select
               items={instructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
-              value={selectedId || undefined}
+              value={selectedId}
               onValueChange={(v) => setSelectedId(v as string)}
             >
               <SelectTrigger>

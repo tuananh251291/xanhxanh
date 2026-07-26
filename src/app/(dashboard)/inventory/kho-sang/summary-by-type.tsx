@@ -38,8 +38,8 @@ export default function SummaryByType({ entries }: { entries: TypeSummary[] }) {
                 <div key={e.name} className="flex items-center justify-between bg-background rounded px-3 py-2">
                   <span className="font-medium text-sm">{e.name}</span>
                   <div className="flex gap-2 text-xs">
-                    {e.mother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM: {e.mother.toLocaleString("vi-VN")}</Badge>}
-                    {e.finished > 0 && <Badge className="bg-primary-light text-primary-strong">TP: {e.finished.toLocaleString("vi-VN")}</Badge>}
+                    {e.mother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM: {e.mother.toLocaleString("vi-VN")} cụm</Badge>}
+                    {e.finished > 0 && <Badge className="bg-primary-light text-primary-strong">TP: {e.finished.toLocaleString("vi-VN")} cây</Badge>}
                   </div>
                 </div>
               ))}

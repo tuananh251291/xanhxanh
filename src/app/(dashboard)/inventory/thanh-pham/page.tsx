@@ -12,7 +12,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeSummary from "./plant-type-summary";
 
 const ROOM_TYPE_ICONS: Partial<Record<RoomType, typeof Package>> = {
-  PHONG_KHA_DUNG: PackageCheck,
+  PHONG_DAT_TIEU_CHUAN: PackageCheck,
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
   PHONG_THI_TRUONG: Globe,
@@ -25,7 +25,7 @@ export default async function ThanhPhamInventoryPage() {
 
   const rooms = await prisma.room.findMany({
     where: {
-      type: { in: ["PHONG_KHA_DUNG", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] },
+      type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] },
       isActive: true,
     },
     include: {

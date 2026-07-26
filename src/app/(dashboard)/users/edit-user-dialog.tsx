@@ -47,7 +47,7 @@ type FormData = z.infer<typeof schema>;
 
 type WarehouseOption = { id: string; code: string; name: string };
 
-type EditableUser = {
+export type EditableUser = {
   id: string;
   name: string;
   email: string;
@@ -186,8 +186,9 @@ export default function EditUserDialog({
         }
       }}
     >
-      <DialogTrigger render={<Button variant="ghost" size="sm" />}>
-        <Pencil className="w-3.5 h-3.5 mr-1" /> Chỉnh sửa
+      <DialogTrigger render={<Button variant="ghost" size="icon-sm" title="Chỉnh sửa" />}>
+        <Pencil className="w-3.5 h-3.5" />
+        <span className="sr-only">Chỉnh sửa</span>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

@@ -34,12 +34,12 @@ async function getAdminStats() {
 }
 
 async function getSaleStats(userId: string, workplaceWarehouseId: string | null) {
-  // "Tồn khả dụng" ở đây phải khớp đúng phạm vi trang /inventory/available (Phòng khả dụng của kho
+  // "Tồn đạt tiêu chuẩn" ở đây phải khớp đúng phạm vi trang /inventory/dat-tieu-chuan (Phòng đạt tiêu chuẩn của kho
   // được gán + các Phòng thị trường đã được cấp quyền riêng qua RoomAccess) — không đếm toàn hệ thống.
   const accessibleRooms = await prisma.room.findMany({
     where: {
       OR: [
-        ...(workplaceWarehouseId ? [{ warehouseId: workplaceWarehouseId, type: "PHONG_KHA_DUNG" as const }] : []),
+        ...(workplaceWarehouseId ? [{ warehouseId: workplaceWarehouseId, type: "PHONG_DAT_TIEU_CHUAN" as const }] : []),
         { type: "PHONG_THI_TRUONG" as const, roomAccess: { some: { userId } } },
       ],
     },
@@ -456,7 +456,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
       </div>
       <GreetingBanner />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <StatCard title="Tồn khả dụng (TP)" value={stats.availableLots} icon={Package} color="green" subtitle="lô thành phẩm" />
+        <StatCard title="Tồn đạt tiêu chuẩn (TP)" value={stats.availableLots} icon={Package} color="green" subtitle="lô thành phẩm" />
         <StatCard title="Đơn đang hoạt động" value={stats.myOrders.length} icon={ShoppingCart} color="blue" />
       </div>
       <TodayChecklist />
@@ -617,6 +617,17 @@ function KyThuatDashboard({
   userName: string;
 }) {
   const weekLabel = `${format(stats.weekStart, "dd/MM", { locale: vi })} — ${format(stats.weekEnd, "dd/MM/yyyy", { locale: vi })}`;
+  // "Việc 1: Tạo chỉ định cấy" có hạn chót mềm (Thứ 5) khác việc 2 (chỉ có hạn cuối tuần) — 3 trạng thái:
+  // xong trong/trước Thứ 5 = "Hoàn thành" (đúng hạn), xong sau Thứ 5 nhưng trước hết Chủ nhật = "Kết
+  // thúc" (trễ hạn nhưng vẫn trong tuần), qua hết Thứ 5 mà CHƯA xong = "Cần hoàn thành ngay" (cảnh báo
+  // khẩn). Đánh giá lại LIVE mỗi lần tải trang theo đúng thời điểm hiện tại — không lưu mốc "đã hoàn
+  // thành lúc nào", nên nếu có lô mới phát sinh quá hạn sau khi đã 100% thì trạng thái tự lùi lại đúng.
+  const isPastThursdayEnd = new Date() > endOfDay(stats.thursdayDeadline);
+  const instructionDone = stats.instructionPercent >= 100;
+  const instructionBadgeState: TaskBadgeState = instructionDone
+    ? (isPastThursdayEnd ? "done_late" : "done")
+    : (isPastThursdayEnd ? "urgent" : "not_done");
+
   return (
     <div className="space-y-6">
       <div>
@@ -637,6 +648,7 @@ function KyThuatDashboard({
             deadline={`Cần hoàn thiện trong ngày Thứ 5 hàng tuần (${format(stats.thursdayDeadline, "dd/MM", { locale: vi })})`}
             percent={stats.instructionPercent}
             countLabel={`${stats.instructionDone}/${stats.instructionTotal} lô`}
+            badgeState={instructionBadgeState}
           />
           <WeeklyTaskRow
             href="/planting-check"
@@ -653,8 +665,35 @@ function KyThuatDashboard({
   );
 }
 
+// "done"/"not_done" = hành vi mặc định cũ (đúng-hạn/chưa xong, dùng cho mọi WeeklyTaskRow không truyền
+// badgeState riêng). "done_late" = xong nhưng sau hạn chót mềm (VD Thứ 5) — vẫn coi là đã xử lý xong,
+// chỉ khác màu để phân biệt "đúng hạn" và "trễ hạn nhưng vẫn trong tuần". "urgent" = đã qua hạn chót mềm
+// mà vẫn chưa xong — cảnh báo khẩn, khác với "not_done" (chưa tới hạn, vẫn còn thời gian).
+type TaskBadgeState = "done" | "not_done" | "done_late" | "urgent";
+
+const TASK_BADGE_CONFIG: Record<TaskBadgeState, {
+  chipClass: string; badgeClass: string; icon: LucideIcon; barClass: string; label: string;
+}> = {
+  done: {
+    chipClass: "bg-primary-light text-primary-strong", badgeClass: "bg-primary-light text-primary-strong hover:bg-primary-light",
+    icon: CheckCircle2, barClass: "bg-primary", label: "Đã hoàn thành",
+  },
+  done_late: {
+    chipClass: "bg-warning-light text-warning-foreground", badgeClass: "bg-warning-light text-warning-foreground hover:bg-warning-light",
+    icon: CheckCircle2, barClass: "bg-warning", label: "Đã kết thúc (trễ hạn)",
+  },
+  urgent: {
+    chipClass: "bg-danger-light text-destructive", badgeClass: "bg-danger-light text-destructive hover:bg-danger-light",
+    icon: AlertTriangle, barClass: "bg-destructive", label: "Cần hoàn thành ngay",
+  },
+  not_done: {
+    chipClass: "bg-danger-light text-destructive", badgeClass: "bg-danger-light text-destructive hover:bg-danger-light",
+    icon: XCircle, barClass: "bg-destructive", label: "Chưa hoàn thành",
+  },
+};
+
 function WeeklyTaskRow({
-  href, icon: Icon, title, deadline, percent, countLabel,
+  href, icon: Icon, title, deadline, percent, countLabel, badgeState,
 }: {
   href: string;
   icon: LucideIcon;
@@ -662,8 +701,11 @@ function WeeklyTaskRow({
   deadline: string;
   percent: number;
   countLabel?: string;
+  badgeState?: TaskBadgeState;
 }) {
-  const done = percent >= 100;
+  const state = badgeState ?? (percent >= 100 ? "done" : "not_done");
+  const config = TASK_BADGE_CONFIG[state];
+  const BadgeIcon = config.icon;
   return (
     <Link
       href={href}
@@ -671,7 +713,7 @@ function WeeklyTaskRow({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`p-2.5 rounded-xl shrink-0 ${done ? "bg-primary-light text-primary-strong" : "bg-danger-light text-destructive"}`}>
+          <div className={`p-2.5 rounded-xl shrink-0 ${config.chipClass}`}>
             <Icon className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -679,18 +721,14 @@ function WeeklyTaskRow({
             <p className="text-xs text-text-secondary truncate">{deadline}</p>
           </div>
         </div>
-        <Badge
-          className={`shrink-0 gap-1 ${done ? "bg-primary-light text-primary-strong hover:bg-primary-light" : "bg-danger-light text-destructive hover:bg-danger-light"}`}
-        >
-          {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-          {done
-            ? `Đã hoàn thành — ${countLabel ?? "100%"}`
-            : `Chưa hoàn thành — ${countLabel ?? `${percent}%`}`}
+        <Badge className={`shrink-0 gap-1 ${config.badgeClass}`}>
+          <BadgeIcon className="w-3.5 h-3.5" />
+          {`${config.label} — ${countLabel ?? `${percent}%`}`}
         </Badge>
       </div>
       <div className="w-full bg-muted rounded-full h-1.5 mt-3">
         <div
-          className={`rounded-full h-1.5 ${done ? "bg-primary" : "bg-destructive"}`}
+          className={`rounded-full h-1.5 ${config.barClass}`}
           style={{ width: `${Math.min(100, percent)}%` }}
         />
       </div>

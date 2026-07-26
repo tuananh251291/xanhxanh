@@ -53,8 +53,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const staffUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
 
-  // Chia phần dư theo tỉ trọng số lượng nguồn của từng dòng quy cách (M03/M05) trong chỉ định — nếu
-  // chỉ dùng 1 quy cách thì toàn bộ phần dư thuộc quy cách đó.
+  // Chia phần dư theo tỉ trọng số lượng nguồn của từng dòng (quy cách M05) trong chỉ định — nếu
+  // chỉ có 1 dòng thì toàn bộ phần dư thuộc dòng đó.
   const totalInputQty = instruction.items.reduce((s, i) => s + i.quantity, 0);
   const stageGroups = Array.from(new Set(instruction.items.map((i) => i.stageCode).filter((c): c is string => !!c)));
   const splits: { stageCode: string; quantity: number }[] = [];

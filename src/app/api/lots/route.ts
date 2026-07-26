@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const roomId = searchParams.get("roomId");
   const warehouseId = searchParams.get("warehouseId");
   const shelfId = searchParams.get("shelfId");
+  const rotationGroupId = searchParams.get("rotationGroupId");
   const status = searchParams.get("status") ?? "ACTIVE";
   const instructionId = searchParams.get("instructionId");
   const assignedToId = searchParams.get("assignedToId");
@@ -29,7 +30,13 @@ export async function GET(req: NextRequest) {
     where.instructionItems = { none: { instruction: { status: { in: ["ACTIVE", "DRAFT"] } } } };
   }
 
-  if (shelfId) {
+  if (rotationGroupId) {
+    // Lấy TẤT CẢ lô mẫu mẹ trên mọi kệ cùng 1 Nhóm tuần mẫu mẹ (rotationGroupId) — dùng khi KY_THUAT chọn
+    // 1 kệ để ra chỉ định cấy: các kệ cùng Nhóm coi như 1 đợt, gộp chung vào 1 chỉ định (xem
+    // create-instruction-dialog.tsx). Lọc CHÍNH XÁC theo Nhóm thay vì dựa vào danh sách chung (take: 200
+    // theo enteredAt desc bên dưới), tránh lô của kệ khác trong Nhóm bị rớt khỏi 200 lô mới nhất.
+    where.shelf = { rotationGroupId };
+  } else if (shelfId) {
     // Lối tắt "Tạo chỉ định" từ 1 kệ cụ thể (banner Nhóm tuần mẫu mẹ đến hạn) — lọc CHÍNH XÁC đúng kệ
     // đó thay vì dựa vào danh sách chung (take: 200 theo enteredAt desc bên dưới), tránh trường hợp lô
     // của kệ đã đến hạn (nhập kho từ lâu) bị rớt khỏi 200 lô mới nhất và dialog không tự chọn được kệ.
@@ -69,6 +76,7 @@ export async function GET(req: NextRequest) {
         include: {
           warehouse: { select: { name: true, type: true } },
           room: { select: { name: true, type: true } },
+          rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
         },
       },
       room: {

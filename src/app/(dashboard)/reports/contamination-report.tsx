@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getWeekBuckets, bucketIndexForDate } from "@/lib/report-utils";
 import ReportLineChart from "./charts/report-line-chart";
 import ReportBarChart from "./charts/report-bar-chart";
+import MotherContaminationReport from "./mother-contamination-report";
+import DarkRoomContaminationReport from "./dark-room-contamination-report";
 
 const HISTORY_WEEKS = 10;
 const ALERT_THRESHOLD_PCT = 20;
@@ -78,6 +80,9 @@ export default async function ContaminationReport() {
 
   return (
     <div className="space-y-4">
+      <MotherContaminationReport />
+      <DarkRoomContaminationReport />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Xu hướng tỉ lệ nhiễm toàn hệ thống ({HISTORY_WEEKS} tuần gần nhất)</CardTitle>

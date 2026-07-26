@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PenLine, Loader2, Lock, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
-import { motherClusterUnits } from "@/types";
 
 type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
 type Instruction = {
@@ -29,7 +28,6 @@ type DailyRecord = {
   recordDate: string;
   motherUsed: number;
   motherChecked: number;
-  motherContaminatedM03: number;
   motherContaminatedM05: number;
   items: RecordItem[];
 };
@@ -38,18 +36,16 @@ const DAY_LABELS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Th�
 
 type FormState = {
   motherChecked: string;
-  motherContaminatedM03: string;
   motherContaminatedM05: string;
   motherUsed: string;
-  m03: string;
   m05: string;
   t05: string;
   t01: string;
 };
 
 const emptyForm: FormState = {
-  motherChecked: "0", motherContaminatedM03: "0", motherContaminatedM05: "0", motherUsed: "0",
-  m03: "0", m05: "0", t05: "0", t01: "0",
+  motherChecked: "0", motherContaminatedM05: "0", motherUsed: "0",
+  m05: "0", t05: "0", t01: "0",
 };
 
 // Chỉ để dạng điền số thuần, ẩn nút bấm tăng/giảm mặc định của trình duyệt.
@@ -115,10 +111,8 @@ export default function DailyRecordPage() {
     const sum = (code: string) => rec.items.filter((i) => i.lot.stageCode === code).reduce((s, i) => s + i.quantityCreated, 0);
     return {
       motherChecked: rec.motherChecked,
-      motherContaminatedM03: rec.motherContaminatedM03,
       motherContaminatedM05: rec.motherContaminatedM05,
       motherUsed: rec.motherUsed,
-      m03: sum("M03"),
       m05: sum("M05"),
       t05: sum("T05"),
       t01: sum("T01"),
@@ -131,16 +125,14 @@ export default function DailyRecordPage() {
     (acc, rec) => {
       const v = rowValues(rec);
       acc.motherChecked += v.motherChecked;
-      acc.motherContaminatedM03 += v.motherContaminatedM03;
       acc.motherContaminatedM05 += v.motherContaminatedM05;
       acc.motherUsed += v.motherUsed;
-      acc.m03 += v.m03;
       acc.m05 += v.m05;
       acc.t05 += v.t05;
       acc.t01 += v.t01;
       return acc;
     },
-    { motherChecked: 0, motherContaminatedM03: 0, motherContaminatedM05: 0, motherUsed: 0, m03: 0, m05: 0, t05: 0, t01: 0 }
+    { motherChecked: 0, motherContaminatedM05: 0, motherUsed: 0, m05: 0, t05: 0, t01: 0 }
   );
 
   const todayRecord = recordForDay(today);
@@ -151,20 +143,19 @@ export default function DailyRecordPage() {
   // nhập lúc tạo chỉ định). Cả 2 tỉ lệ cùng thấp hơn ngưỡng % Admin cấu hình mới coi là nghi cấy sai chỉ
   // định — khớp đúng thuật toán server ở /api/daily-records.
   const pendingMotherUsed = !todayRecord ? Number(form.motherUsed) || 0 : 0;
-  const pendingM03 = !todayRecord ? Number(form.m03) || 0 : 0;
   const pendingM05 = !todayRecord ? Number(form.m05) || 0 : 0;
   const pendingT05 = !todayRecord ? Number(form.t05) || 0 : 0;
   const pendingT01 = !todayRecord ? Number(form.t01) || 0 : 0;
 
   const projectedMotherUsed = totals.motherUsed + pendingMotherUsed;
-  const projectedMotherClusters =
-    motherClusterUnits("M03", totals.m03 + pendingM03) + motherClusterUnits("M05", totals.m05 + pendingM05);
+  // m05 (số lô mẫu mẹ tạo ra hôm nay) đã tính thẳng theo cụm — không cần quy đổi thêm.
+  const projectedMotherClusters = totals.m05 + pendingM05;
   const projectedFinished = totals.t05 + totals.t01 + pendingT05 + pendingT01;
 
   const targetMotherOutputClusters = selectedInst
     ? selectedInst.items
-        .filter((i) => i.stageCode === "M03" || i.stageCode === "M05")
-        .reduce((s, i) => s + motherClusterUnits(i.stageCode, i.expectedMotherOutput ?? 0), 0)
+        .filter((i) => i.stageCode === "M05")
+        .reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0)
     : 0;
   const targetMotherRatio = selectedInst && selectedInst.inputMotherQuantity > 0 ? targetMotherOutputClusters / selectedInst.inputMotherQuantity : 0;
   const targetFinishedRatio =
@@ -193,10 +184,8 @@ export default function DailyRecordPage() {
         body: JSON.stringify({
           instructionId: selectedId,
           motherChecked: Number(form.motherChecked) || 0,
-          motherContaminatedM03: Number(form.motherContaminatedM03) || 0,
           motherContaminatedM05: Number(form.motherContaminatedM05) || 0,
           motherUsed: Number(form.motherUsed) || 0,
-          m03: Number(form.m03) || 0,
           m05: Number(form.m05) || 0,
           t05: Number(form.t05) || 0,
           t01: Number(form.t01) || 0,
@@ -237,13 +226,11 @@ export default function DailyRecordPage() {
     const value = e.target.value;
     setForm((f) => {
       const next = { ...f, [key]: value };
-      // MM sử dụng mặc định = MM đã kiểm tra - tổng MM nhiễm (M03+M05), tự tính lại mỗi khi 1 trong 3
-      // số này đổi.
-      if (key === "motherChecked" || key === "motherContaminatedM03" || key === "motherContaminatedM05") {
+      // MM sử dụng mặc định = MM đã kiểm tra - MM nhiễm, tự tính lại mỗi khi 1 trong 2 số này đổi.
+      if (key === "motherChecked" || key === "motherContaminatedM05") {
         const checked = Number(key === "motherChecked" ? value : f.motherChecked) || 0;
-        const contaminatedM03 = Number(key === "motherContaminatedM03" ? value : f.motherContaminatedM03) || 0;
         const contaminatedM05 = Number(key === "motherContaminatedM05" ? value : f.motherContaminatedM05) || 0;
-        next.motherUsed = String(Math.max(0, checked - contaminatedM03 - contaminatedM05));
+        next.motherUsed = String(Math.max(0, checked - contaminatedM05));
       }
       return next;
     });
@@ -269,7 +256,7 @@ export default function DailyRecordPage() {
             ) : (
               <Select
                 items={instructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
-                value={selectedId || undefined}
+                value={selectedId}
                 onValueChange={(v) => setSelectedId(v as string)}
               >
                 <SelectTrigger>
@@ -302,14 +289,12 @@ export default function DailyRecordPage() {
                   <thead>
                     <tr className="bg-primary-light text-primary-strong">
                       <th className="px-3 py-2 text-left whitespace-nowrap font-bold text-base">Ngày</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">MM đã kiểm tra</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">MM nhiễm M03</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">MM nhiễm M05</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">MM sử dụng</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">M03</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">M05</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">T05</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">T01</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">MM đã kiểm tra (cụm)</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">MM nhiễm (cụm)</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">MM sử dụng (cụm)</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">M05 (cụm)</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">T05 (cây)</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">T01 (cây)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -327,10 +312,8 @@ export default function DailyRecordPage() {
                           {isEditableRow ? (
                             <>
                               <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherChecked} onChange={setField("motherChecked")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherContaminatedM03} onChange={setField("motherContaminatedM03")} /></td>
                               <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherContaminatedM05} onChange={setField("motherContaminatedM05")} /></td>
                               <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherUsed} onChange={setField("motherUsed")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.m03} onChange={setField("m03")} /></td>
                               <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.m05} onChange={setField("m05")} /></td>
                               <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.t05} onChange={setField("t05")} /></td>
                               <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.t01} onChange={setField("t01")} /></td>
@@ -338,10 +321,8 @@ export default function DailyRecordPage() {
                           ) : (
                             <>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherChecked) : "—"}</td>
-                              <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherContaminatedM03) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherContaminatedM05) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherUsed) : "—"}</td>
-                              <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.m03) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.m05) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.t05) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.t01) : "—"}</td>
@@ -353,10 +334,8 @@ export default function DailyRecordPage() {
                     <tr className="border-b bg-info-light font-semibold">
                       <td className="px-3 py-2">Tổng thực tế đến thời điểm hiện tại</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherChecked)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(totals.motherContaminatedM03)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherContaminatedM05)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherUsed)}</td>
-                      <td className={`px-3 py-2 text-right ${motherRatioLow ? "text-destructive" : ""}`}>{fmt(totals.m03)}</td>
                       <td className={`px-3 py-2 text-right ${motherRatioLow ? "text-destructive" : ""}`}>{fmt(totals.m05)}</td>
                       <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
                       <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
@@ -401,8 +380,8 @@ export default function DailyRecordPage() {
                 {motherCheckedExceeded && (
                   <div className="mt-4 flex items-center gap-2 text-sm font-medium text-destructive bg-danger-light rounded p-3">
                     <TriangleAlert className="w-4 h-4 shrink-0" />
-                    Tổng MM đã kiểm tra ({fmt(cumulativeMotherChecked)}) vượt quá số mẫu mẹ được cấp cho chỉ định
-                    ({fmt(selectedInst?.inputMotherQuantity)}) — không thể lưu.
+                    Tổng MM đã kiểm tra ({fmt(cumulativeMotherChecked)} cụm) vượt quá số mẫu mẹ được cấp cho chỉ định
+                    ({fmt(selectedInst?.inputMotherQuantity)} cụm) — không thể lưu.
                   </div>
                 )}
                 <Button
