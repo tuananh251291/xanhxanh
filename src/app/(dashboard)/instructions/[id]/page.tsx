@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { format, addDays } from "date-fns";
+import { format, addDays, startOfWeek, isSameDay } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MEDIUM_ORDER_STATUS_LABELS } from "@/types";
+import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MEDIUM_ORDER_STATUS_LABELS, canManageDailyRecords } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { PrintButton } from "@/components/shared/print-button";
 import { isPageAllowed } from "@/lib/permissions";
+import EditDailyRecordDialog from "../edit-daily-record-dialog";
+import AddDailyRecordDialog from "../add-daily-record-dialog";
 import "./print-instruction.css";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
@@ -72,6 +74,21 @@ export default async function InstructionDetailPage({ params }: { params: Promis
     slSach: item.quantity,
   }));
   const m05Total = inst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
+
+  // Admin/Admin cấp cao (mọi kho) hoặc KHO_MO (chỉ đúng kho mình làm việc) được sửa/bù nhật ký cấy hộ NV.
+  const instructionWarehouseId = inst.items[0]?.shelf?.warehouseId ?? null;
+  const canManage = canManageDailyRecords(role, session?.user?.workplaceWarehouseId, instructionWarehouseId);
+
+  // Bù dữ liệu ngày NV cấy mô bỏ sót — CHỈ áp dụng cho tuần chỉ định = tuần hiện tại (khớp đúng ràng
+  // buộc server ở POST /api/daily-records nhánh canActOnBehalf), và chỉ những ngày đã qua (không bù cho
+  // ngày tương lai) chưa có bản ghi nào.
+  const now = new Date();
+  const isCurrentWeek = !!inst.weekStart && isSameDay(startOfWeek(inst.weekStart, { weekStartsOn: 1 }), startOfWeek(now, { weekStartsOn: 1 }));
+  const missingDays =
+    canManage && isCurrentWeek && inst.assignedToId && inst.weekStart
+      ? Array.from({ length: 7 }, (_, i) => addDays(inst.weekStart!, i))
+          .filter((d) => d <= now && !inst.dailyRecords.some((rec) => isSameDay(rec.recordDate, d)))
+      : [];
 
   return (
     <div className="space-y-6">
@@ -289,37 +306,58 @@ export default async function InstructionDetailPage({ params }: { params: Promis
         </Card>
       )}
 
-      {/* Daily Records */}
-      {inst.dailyRecords.length > 0 && (
+      {/* Daily Records — Admin/Admin cấp cao/KHO_MO (cùng kho) luôn thấy khung này kể cả chưa có ngày
+          nào, để bù dữ liệu các ngày còn thiếu trong tuần hiện tại (xem missingDays) khi NV cấy mô quên
+          nhập. */}
+      {(inst.dailyRecords.length > 0 || canManage) && (
         <Card className="print:hidden">
           <CardHeader><CardTitle className="text-base">Nhật ký cấy ({inst.dailyRecords.length})</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-background">
-                    <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Ngày</th>
-                    <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">NV</th>
-                    <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Mẫu mẹ dùng (cụm)</th>
-                    <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Chi tiết</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inst.dailyRecords.map((rec) => (
-                    <tr key={rec.id} className="border-b hover:bg-muted">
-                      <td className="px-4 py-2">{format(rec.recordDate, "dd/MM/yyyy", { locale: vi })}</td>
-                      <td className="px-4 py-2">{rec.staff.name}</td>
-                      <td className="px-4 py-2">{rec.motherUsed.toLocaleString("vi-VN")}</td>
-                      <td className="px-4 py-2 text-text-secondary">
-                        {rec.items
-                          .map((item) => `${STAGE_LABELS[item.stage]}: ${item.quantityCreated.toLocaleString("vi-VN")} ${item.stage === "MAU_ME" ? "cụm" : "cây"}`)
-                          .join(" / ")}
-                      </td>
+          <CardContent className={inst.dailyRecords.length === 0 && missingDays.length === 0 ? "" : "p-0"}>
+            {inst.dailyRecords.length === 0 && missingDays.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-6">Chưa có dữ liệu ngày nào</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-background">
+                      <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Ngày</th>
+                      <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">NV</th>
+                      <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Mẫu mẹ dùng (cụm)</th>
+                      <th className="text-left px-4 py-2 text-text-secondary font-bold text-base">Chi tiết</th>
+                      {canManage && <th className="px-4 py-2"></th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {inst.dailyRecords.map((rec) => (
+                      <tr key={rec.id} className="border-b hover:bg-muted">
+                        <td className="px-4 py-2">{format(rec.recordDate, "dd/MM/yyyy", { locale: vi })}</td>
+                        <td className="px-4 py-2">{rec.staff.name}</td>
+                        <td className="px-4 py-2">{rec.motherUsed.toLocaleString("vi-VN")}</td>
+                        <td className="px-4 py-2 text-text-secondary">
+                          {rec.items
+                            .map((item) => `${STAGE_LABELS[item.stage]}: ${item.quantityCreated.toLocaleString("vi-VN")} ${item.stage === "MAU_ME" ? "cụm" : "cây"}`)
+                            .join(" / ")}
+                        </td>
+                        {/* Sửa nhật ký sai — Admin/Admin cấp cao hoặc KHO_MO cùng kho, xem PATCH /api/daily-records/[id]. */}
+                        {canManage && (
+                          <td className="px-4 py-2"><EditDailyRecordDialog recordId={rec.id} /></td>
+                        )}
+                      </tr>
+                    ))}
+                    {missingDays.map((d) => (
+                      <tr key={d.toISOString()} className="border-b hover:bg-muted">
+                        <td className="px-4 py-2">{format(d, "dd/MM/yyyy", { locale: vi })}</td>
+                        <td className="px-4 py-2">{inst.assignedTo?.name}</td>
+                        <td className="px-4 py-2 text-text-muted" colSpan={2}>Chưa có dữ liệu</td>
+                        <td className="px-4 py-2">
+                          <AddDailyRecordDialog instructionId={inst.id} date={d} staffName={inst.assignedTo?.name ?? ""} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

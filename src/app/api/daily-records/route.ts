@@ -7,6 +7,7 @@ import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { z } from "zod";
 import { addDays, addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
+import { canManageDailyRecords, isAdminRole } from "@/types";
 
 const schema = z.object({
   instructionId: z.string(),
@@ -17,11 +18,16 @@ const schema = z.object({
   t05: z.number().int().min(0),
   t01: z.number().int().min(0),
   notes: z.string().optional(),
+  // Chỉ Admin/Admin cấp cao/KHO_MO (cùng kho) mới truyền — bù dữ liệu cho 1 ngày cụ thể trong tuần mà
+  // NV cấy mô bỏ sót (xem nhánh canActOnBehalf bên dưới). NV cấy mô tự nhập luôn bỏ qua field này, luôn
+  // dùng đúng "hôm nay".
+  date: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "CAY_MO") {
+  const role = session?.user?.role;
+  if (role !== "CAY_MO" && role !== "KHO_MO" && !isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
@@ -36,9 +42,29 @@ export async function POST(req: NextRequest) {
     include: { plantType: true, items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } } },
   });
   if (!instruction) return NextResponse.json({ message: "Không tìm thấy chỉ định" }, { status: 404 });
-  if (instruction.assignedToId !== session.user.id) {
-    return NextResponse.json({ message: "Không phải chỉ định của bạn" }, { status: 403 });
+
+  // Lô sản xuất ra tự động chuyển vào Phòng tối CÁ NHÂN của NV cấy mô ngay khi nhập dữ liệu — không
+  // cần đợi bàn giao mới có chỗ. Suy ra đúng kho sản xuất từ giàn kệ nguồn của chỉ định — cần biết sớm
+  // để còn xét quyền KHO_MO (chỉ được thao tác đúng kho mình làm việc) ngay dưới đây.
+  const warehouseId = instruction.items[0]?.shelf?.warehouseId;
+  const warehouseCode = instruction.items[0]?.shelf?.warehouse.code;
+  if (!warehouseId || !warehouseCode) {
+    return NextResponse.json({ message: "Không xác định được kho sản xuất của chỉ định" }, { status: 400 });
   }
+
+  const canActOnBehalf = canManageDailyRecords(role, session!.user.workplaceWarehouseId, warehouseId);
+  if (role === "CAY_MO") {
+    if (instruction.assignedToId !== session!.user.id) {
+      return NextResponse.json({ message: "Không phải chỉ định của bạn" }, { status: 403 });
+    }
+  } else if (!canActOnBehalf) {
+    return NextResponse.json({ message: "Không có quyền — chỉ được cập nhật nhật ký của NV cùng kho sản xuất bạn làm việc" }, { status: 403 });
+  }
+  // Admin/KHO_MO bù dữ liệu THAY cho đúng NV đã được gán — chỉ định chưa gán ai thì không biết gán nhật ký cho ai.
+  if (canActOnBehalf && !instruction.assignedToId) {
+    return NextResponse.json({ message: "Chỉ định chưa gán NV cấy mô" }, { status: 400 });
+  }
+  const staffId = canActOnBehalf ? instruction.assignedToId! : session!.user.id;
 
   const today = new Date();
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
@@ -47,16 +73,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Chỉ định này không thuộc tuần thực tế" }, { status: 400 });
   }
 
-  // Mỗi ngày chỉ được nhập 1 lần — đã điền xong (có bản ghi hôm nay) thì không cho nhập/sửa lại.
-  const existingToday = await prisma.dailyRecord.findFirst({
+  // Ngày ghi nhận thật sự của bản ghi — NV cấy mô luôn là "hôm nay". Admin/KHO_MO bù dữ liệu được chọn
+  // đúng 1 ngày Thứ 2 - Chủ nhật của TUẦN HIỆN TẠI (đã đảm bảo instruction.weekStart == tuần hiện tại ở
+  // trên), không cho chọn ngày trong tương lai hay ngoài tuần chỉ định.
+  let targetDate = today;
+  if (canActOnBehalf && parsed.data.date) {
+    const requested = new Date(parsed.data.date);
+    if (Number.isNaN(requested.getTime()) || requested < instruction.weekStart || requested > addDays(instruction.weekStart, 6) || requested > today) {
+      return NextResponse.json({ message: "Ngày không hợp lệ — chỉ chọn được trong tuần chỉ định và không sau hôm nay" }, { status: 400 });
+    }
+    targetDate = requested;
+  }
+
+  // Mỗi ngày chỉ được nhập 1 lần — đã điền xong (có bản ghi của đúng ngày đó) thì không cho nhập/sửa lại
+  // qua đường tạo mới này (sửa lại dữ liệu ngày đã có phải qua PATCH /api/daily-records/[id]).
+  const existingForDate = await prisma.dailyRecord.findFirst({
     where: {
       instructionId,
-      staffId: session.user.id,
-      recordDate: { gte: startOfDay(today), lte: endOfDay(today) },
+      staffId,
+      recordDate: { gte: startOfDay(targetDate), lte: endOfDay(targetDate) },
     },
   });
-  if (existingToday) {
-    return NextResponse.json({ message: "Đã nhập dữ liệu cho hôm nay, không thể sửa lại" }, { status: 409 });
+  if (existingForDate) {
+    return NextResponse.json({ message: "Đã có dữ liệu cho ngày này, không thể nhập lại" }, { status: 409 });
   }
 
   // Tổng "MM đã kiểm tra" lũy kế cả tuần (Thứ 2 - Chủ nhật, tức toàn bộ DailyRecord của chỉ định vì 1
@@ -74,14 +113,9 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  // Lô sản xuất ra tự động chuyển vào Phòng tối CÁ NHÂN của NV cấy mô ngay khi nhập dữ liệu — không
-  // cần đợi bàn giao mới có chỗ. Suy ra đúng kho sản xuất từ giàn kệ nguồn của chỉ định.
-  const warehouseId = instruction.items[0]?.shelf?.warehouseId;
-  const warehouseCode = instruction.items[0]?.shelf?.warehouse.code;
-  if (!warehouseId || !warehouseCode) {
-    return NextResponse.json({ message: "Không xác định được kho sản xuất của chỉ định" }, { status: 400 });
-  }
-  const personalRoom = await getOrCreatePersonalDarkRoom(session.user.id, warehouseId);
+  // Luôn dùng đúng Phòng tối cá nhân của NV đứng tên bản ghi (staffId) — kể cả khi Admin/KHO_MO là người
+  // bấm lưu (bù dữ liệu hộ), vì đây là "không gian vật lý" của NV cấy mô, không phải của người thao tác.
+  const personalRoom = await getOrCreatePersonalDarkRoom(staffId, warehouseId);
 
   const items = ([
     { stage: "MAU_ME" as const, stageCode: "M05" as const, quantityCreated: m05 },
@@ -94,14 +128,15 @@ export async function POST(req: NextRequest) {
 
   // Lô sản phẩm: mỗi ngày trong tuần chỉ định luôn tạo 1 lô riêng (mã = mã chỉ định + 1 ký tự 2-8 ứng
   // với Thứ 2 - Chủ nhật của ngày nhập) — không gộp nhiều ngày vào 1 lô như trước. "Mỗi ngày chỉ được
-  // nhập 1 lần" (existingToday ở trên) nên không lo trùng mã trong cùng 1 chỉ định.
-  const productLotCode = generateProductLotCode(instruction.code, today);
+  // nhập 1 lần" (existingForDate ở trên) nên không lo trùng mã trong cùng 1 chỉ định. Dùng targetDate
+  // (không phải "hôm nay" thao tác) để mã lô/hạn cấy chuyển đúng theo ngày đang bù dữ liệu.
+  const productLotCode = generateProductLotCode(instruction.code, targetDate);
 
   for (const item of items) {
     const expectedMoveAt =
       item.stage === "MAU_ME"
-        ? addWeeks(new Date(), instruction.plantType.transferWaitWeeks)
-        : addWeeks(new Date(), instruction.plantType.rootingWeeks);
+        ? addWeeks(targetDate, instruction.plantType.transferWaitWeeks)
+        : addWeeks(targetDate, instruction.plantType.rootingWeeks);
     const lot = await prisma.lot.create({
       data: {
         code: productLotCode,
@@ -112,7 +147,7 @@ export async function POST(req: NextRequest) {
         initialQuantity: item.quantityCreated,
         instructionId,
         roomId: personalRoom.id,
-        enteredAt: new Date(),
+        enteredAt: targetDate,
         expectedMoveAt,
       },
     });
@@ -120,12 +155,13 @@ export async function POST(req: NextRequest) {
     lotsCreated.push(lot);
   }
 
-  // Tạo daily record — recordDate luôn là hôm nay (chỉ được nhập vào dòng của ngày hôm đó).
+  // Tạo daily record — recordDate đúng ngày đang ghi nhận (hôm nay với NV cấy mô, hoặc ngày Admin chọn
+  // bù trong tuần hiện tại).
   const record = await prisma.dailyRecord.create({
     data: {
       instructionId,
-      staffId: session.user.id,
-      recordDate: today,
+      staffId,
+      recordDate: targetDate,
       motherUsed,
       motherChecked,
       motherContaminatedM05,

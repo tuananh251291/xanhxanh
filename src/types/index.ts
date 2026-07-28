@@ -42,6 +42,19 @@ export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "ADMIN" || role === "SUPER_ADMIN";
 }
 
+// Ai được sửa/bù nhật ký cấy hộ NV cấy mô (xem PATCH/POST /api/daily-records, /instructions/[id]) —
+// Admin/Admin cấp cao được thao tác MỌI kho, KHO_MO chỉ được thao tác đúng NV cùng kho sản xuất mình
+// đang làm việc (workplaceWarehouseId) — không được đụng dữ liệu của kho khác dù cùng vào trang này.
+export function canManageDailyRecords(
+  role: UserRole | null | undefined,
+  workplaceWarehouseId: string | null | undefined,
+  instructionWarehouseId: string | null | undefined
+): boolean {
+  if (isAdminRole(role)) return true;
+  if (role === "KHO_MO") return !!workplaceWarehouseId && !!instructionWarehouseId && workplaceWarehouseId === instructionWarehouseId;
+  return false;
+}
+
 export const WAREHOUSE_TYPE_LABELS = {
   SAN_XUAT: "Kho sản xuất",
   THANH_PHAM: "Kho thành phẩm",
