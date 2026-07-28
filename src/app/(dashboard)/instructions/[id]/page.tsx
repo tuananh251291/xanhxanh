@@ -49,7 +49,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
       dailyRecords: {
         include: {
           staff: { select: { name: true } },
-          items: { include: { lot: { select: { code: true, stage: true } } } },
+          items: { include: { lot: { select: { code: true, stage: true, stageCode: true } } } },
         },
         orderBy: { recordDate: "desc" },
       },
@@ -74,6 +74,27 @@ export default async function InstructionDetailPage({ params }: { params: Promis
     slSach: item.quantity,
   }));
   const m05Total = inst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
+
+  // Tỉ lệ nhân MM/ra TP thực tế (cộng dồn mọi ngày nhật ký) so với mục tiêu (suy từ tỉ lệ KY_THUAT nhập
+  // lúc tạo chỉ định) — khớp đúng công thức đang dùng ở POST /api/daily-records và trang Nhập dữ liệu cấy.
+  const actualMotherUsed = inst.dailyRecords.reduce((s, r) => s + r.motherUsed, 0);
+  const actualMotherOutput = inst.dailyRecords.reduce(
+    (s, r) => s + r.items.filter((i) => i.stage === "MAU_ME").reduce((s2, i) => s2 + i.quantityCreated, 0),
+    0
+  );
+  const actualFinishedOutput = inst.dailyRecords.reduce(
+    (s, r) => s + r.items.filter((i) => i.stage === "THANH_PHAM").reduce((s2, i) => s2 + i.quantityCreated, 0),
+    0
+  );
+  // Tỉ lệ chỉ định = ĐÚNG số KY_THUAT đã gõ lúc tạo chỉ định (motherSampleRatio/rootingRatio, xem
+  // create-instruction-dialog.tsx — dùng CHUNG cho mọi dòng nên lấy dòng đầu có giá trị là đủ), không
+  // suy ngược từ m05Total/inputMotherQuantity vì expectedMotherOutput đã làm tròn xuống (Math.floor) nên
+  // chia lại có thể lệch nhẹ so với số NV đã gõ.
+  const targetMotherRatio = inst.items.find((i) => i.stageCode === "M05" && i.motherSampleRatio !== null)?.motherSampleRatio ?? null;
+  const targetFinishedRatio = inst.items.find((i) => i.rootingRatio !== null)?.rootingRatio ?? null;
+  const actualMotherRatio = actualMotherUsed > 0 ? actualMotherOutput / actualMotherUsed : null;
+  const actualFinishedRatio = actualMotherUsed > 0 ? actualFinishedOutput / actualMotherUsed : null;
+  const fmtRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 
   // Admin/Admin cấp cao (mọi kho) hoặc KHO_MO (chỉ đúng kho mình làm việc) được sửa/bù nhật ký cấy hộ NV.
   const instructionWarehouseId = inst.items[0]?.shelf?.warehouseId ?? null;
@@ -211,6 +232,10 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                 </tr>
               </tbody>
             </table>
+            <p className="pi-notes-text">
+              <strong>Tỉ lệ nhân MM:</strong> {targetMotherRatio === null ? "—" : fmtRatio(targetMotherRatio)}
+              &nbsp;&nbsp; <strong>Tỉ lệ ra TP:</strong> {targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}
+            </p>
           </section>
 
           {/* Lưu ý */}
@@ -335,7 +360,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                         <td className="px-4 py-2">{rec.motherUsed.toLocaleString("vi-VN")}</td>
                         <td className="px-4 py-2 text-text-secondary">
                           {rec.items
-                            .map((item) => `${STAGE_LABELS[item.stage]}: ${item.quantityCreated.toLocaleString("vi-VN")} ${item.stage === "MAU_ME" ? "cụm" : "cây"}`)
+                            .map((item) => `${item.lot.stageCode}: ${item.quantityCreated.toLocaleString("vi-VN")} ${item.stage === "MAU_ME" ? "cụm" : "cây"}`)
                             .join(" / ")}
                         </td>
                         {/* Sửa nhật ký sai — Admin/Admin cấp cao hoặc KHO_MO cùng kho, xem PATCH /api/daily-records/[id]. */}
@@ -354,6 +379,23 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                         </td>
                       </tr>
                     ))}
+                    {inst.dailyRecords.length > 0 && (
+                      <tr className="bg-info-light font-semibold">
+                        <td className="px-4 py-2" colSpan={2}>Tỉ lệ (lũy kế)</td>
+                        <td className="px-4 py-2">{actualMotherUsed.toLocaleString("vi-VN")}</td>
+                        <td className="px-4 py-2 text-text-secondary" colSpan={canManage ? 2 : 1}>
+                          <span className={targetMotherRatio !== null && actualMotherRatio !== null && actualMotherRatio < targetMotherRatio ? "text-destructive" : ""}>
+                            Tỉ lệ nhân MM: {actualMotherRatio === null ? "—" : fmtRatio(actualMotherRatio)}
+                            {targetMotherRatio !== null && ` (chỉ định ${fmtRatio(targetMotherRatio)})`}
+                          </span>
+                          {" / "}
+                          <span className={targetFinishedRatio !== null && actualFinishedRatio !== null && actualFinishedRatio < targetFinishedRatio ? "text-destructive" : ""}>
+                            Tỉ lệ ra TP: {actualFinishedRatio === null ? "—" : fmtRatio(actualFinishedRatio)}
+                            {targetFinishedRatio !== null && ` (chỉ định ${fmtRatio(targetFinishedRatio)})`}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

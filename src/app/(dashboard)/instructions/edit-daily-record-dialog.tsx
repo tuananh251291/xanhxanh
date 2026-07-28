@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Pencil, Loader2 } from "lucide-react";
+import { Pencil, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -108,6 +108,13 @@ export default function EditDailyRecordDialog({ recordId }: { recordId: string }
               </p>
             ) : (
               <>
+                <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
+                    <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">MM đã kiểm tra (cụm)</Label>

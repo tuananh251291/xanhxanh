@@ -64,6 +64,12 @@ export async function POST(req: NextRequest) {
   if (canActOnBehalf && !instruction.assignedToId) {
     return NextResponse.json({ message: "Chỉ định chưa gán NV cấy mô" }, { status: 400 });
   }
+  // NV cấy mô phải bấm "Xác nhận" đã nhận mẫu mẹ (confirmMotherReceived) trước khi có dữ liệu cấy nào
+  // được ghi nhận cho chỉ định này — kể cả Admin/KHO_MO bù hộ cũng không được bỏ qua bước này, vì về mặt
+  // vật lý NV chưa xác nhận nghĩa là chưa chắc chắn đã thực sự cầm mẫu mẹ để cấy.
+  if (!instruction.motherReceivedAt) {
+    return NextResponse.json({ message: "Chỉ định chưa được NV cấy mô xác nhận nhận mẫu mẹ — không thể nhập dữ liệu cấy" }, { status: 400 });
+  }
   const staffId = canActOnBehalf ? instruction.assignedToId! : session!.user.id;
 
   const today = new Date();

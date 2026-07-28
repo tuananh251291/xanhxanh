@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -18,14 +18,17 @@ import { vi } from "date-fns/locale";
 export default function AddDailyRecordDialog({ instructionId, date, staffName }: { instructionId: string; date: Date; staffName: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [motherChecked, setMotherChecked] = useState("0");
-  const [motherContaminatedM05, setMotherContaminatedM05] = useState("0");
-  const [motherUsed, setMotherUsed] = useState("0");
-  const [m05, setM05] = useState("0");
-  const [t05, setT05] = useState("0");
-  const [t01, setT01] = useState("0");
+  // Để trống (không mặc định "0") — dễ gõ nhầm nếu có sẵn "0" (VD gõ "5" thành "05" rồi quên xoá).
+  const [motherContaminatedM05, setMotherContaminatedM05] = useState("");
+  const [motherUsed, setMotherUsed] = useState("");
+  const [m05, setM05] = useState("");
+  const [t05, setT05] = useState("");
+  const [t01, setT01] = useState("");
   const [notes, setNotes] = useState("");
   const router = useRouter();
+
+  // MM đã kiểm tra KHÔNG tự nhập — luôn tự tính = MM nhiễm + MM sử dụng.
+  const motherChecked = (Number(motherUsed) || 0) + (Number(motherContaminatedM05) || 0);
 
   const submit = async () => {
     setLoading(true);
@@ -36,7 +39,7 @@ export default function AddDailyRecordDialog({ instructionId, date, staffName }:
         body: JSON.stringify({
           instructionId,
           date: date.toISOString(),
-          motherChecked: Number(motherChecked) || 0,
+          motherChecked,
           motherContaminatedM05: Number(motherContaminatedM05) || 0,
           motherUsed: Number(motherUsed) || 0,
           m05: Number(m05) || 0,
@@ -68,31 +71,39 @@ export default function AddDailyRecordDialog({ instructionId, date, staffName }:
             NV cấy mô: {staffName} — chưa có dữ liệu ngày này, dùng khi NV quên nhập hoặc nhập sai cần bù lại.
           </p>
 
+          <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
+              <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">MM đã kiểm tra (cụm)</Label>
-              <Input type="number" min={0} value={motherChecked} onChange={(e) => setMotherChecked(e.target.value)} />
-            </div>
-            <div className="space-y-1">
               <Label className="text-xs">MM nhiễm (cụm)</Label>
-              <Input type="number" min={0} value={motherContaminatedM05} onChange={(e) => setMotherContaminatedM05(e.target.value)} />
+              <Input type="number" min={0} placeholder="_" value={motherContaminatedM05} onChange={(e) => setMotherContaminatedM05(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">MM sử dụng (cụm)</Label>
-              <Input type="number" min={0} value={motherUsed} onChange={(e) => setMotherUsed(e.target.value)} />
+              <Input type="number" min={0} placeholder="_" value={motherUsed} onChange={(e) => setMotherUsed(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">MM đã kiểm tra (cụm)</Label>
+              <Input type="number" disabled value={motherChecked} />
             </div>
             <div />
             <div className="space-y-1">
               <Label className="text-xs">M05 (cụm)</Label>
-              <Input type="number" min={0} value={m05} onChange={(e) => setM05(e.target.value)} />
+              <Input type="number" min={0} placeholder="_" value={m05} onChange={(e) => setM05(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">T05 (cây)</Label>
-              <Input type="number" min={0} value={t05} onChange={(e) => setT05(e.target.value)} />
+              <Input type="number" min={0} placeholder="_" value={t05} onChange={(e) => setT05(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">T01 (cây)</Label>
-              <Input type="number" min={0} value={t01} onChange={(e) => setT01(e.target.value)} />
+              <Input type="number" min={0} placeholder="_" value={t01} onChange={(e) => setT01(e.target.value)} />
             </div>
           </div>
           <div className="space-y-1">

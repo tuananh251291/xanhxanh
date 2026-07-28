@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Lock, TriangleAlert, CheckCircle2 } from "lucide-react";
+import { Loader2, Lock, TriangleAlert, CheckCircle2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { isSameDay, startOfWeek } from "date-fns";
 
@@ -16,6 +16,7 @@ type Instruction = {
   plantType: { name: string };
   weekStart: string | null;
   inputMotherQuantity: number;
+  motherReceivedAt: string | null;
   items: InstructionItem[];
 };
 
@@ -38,15 +39,19 @@ type FormState = {
   t01: string;
 };
 
+// Để trống (không mặc định "0") cho các ô nhập tay — dễ gõ nhầm nếu có sẵn "0" (VD gõ "5" thành "05"
+// rồi quên xoá số 0 cũ). Chỉ ô "MM đã kiểm tra" (tự tính, khoá không cho gõ) mới giữ "0" thật vì nó luôn
+// hiện đúng kết quả tính toán, không phải chỗ chờ người dùng gõ.
 const emptyForm: FormState = {
-  motherChecked: "0", motherContaminatedM05: "0", motherUsed: "0",
-  m05: "0", t05: "0", t01: "0",
+  motherChecked: "0", motherContaminatedM05: "", motherUsed: "",
+  m05: "", t05: "", t01: "",
 };
 
+// MM đã kiểm tra KHÔNG tự nhập — luôn tự tính = MM nhiễm + MM sử dụng (xem setField), chỉ hiển thị.
 const FIELD_ROWS: { key: keyof FormState; label: string; editable: boolean }[] = [
-  { key: "motherChecked", label: "MM đã kiểm tra (cụm)", editable: true },
   { key: "motherContaminatedM05", label: "MM nhiễm (cụm)", editable: true },
   { key: "motherUsed", label: "MM sử dụng (cụm)", editable: true },
+  { key: "motherChecked", label: "MM đã kiểm tra (cụm)", editable: false },
   { key: "m05", label: "M05 mới cấy (cụm)", editable: true },
   { key: "t05", label: "T05 thành phẩm (cây)", editable: true },
   { key: "t01", label: "T01 thành phẩm (cây)", editable: true },
@@ -76,7 +81,10 @@ export default function DailyRecordSimpleForm() {
           (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
         );
         setInstructions(inWeek);
-        setSelectedId((prev) => (prev && inWeek.some((i) => i.id === prev) ? prev : (inWeek[0]?.id ?? "")));
+        // Chỉ những chỉ định ĐÃ xác nhận nhận mẫu mẹ mới được chọn để nhập dữ liệu — chưa xác nhận thì
+        // API cũng chặn (xem POST /api/daily-records), ẩn hẳn ở đây để NV không bấm nhầm rồi mới báo lỗi.
+        const confirmed = inWeek.filter((i) => i.motherReceivedAt);
+        setSelectedId((prev) => (prev && confirmed.some((i) => i.id === prev) ? prev : (confirmed[0]?.id ?? "")));
         setLoading(false);
       });
   }, [currentWeekStart]);
@@ -91,6 +99,8 @@ export default function DailyRecordSimpleForm() {
       .then((data) => setRecords(Array.isArray(data) ? data : []));
   }, [selectedId]);
 
+  const confirmedInstructions = instructions.filter((i) => i.motherReceivedAt);
+  const hasUnconfirmed = instructions.length > confirmedInstructions.length;
   const selectedInst = instructions.find((i) => i.id === selectedId);
   const todayRecord = records.find((r) => isSameDay(new Date(r.recordDate), today));
 
@@ -117,10 +127,10 @@ export default function DailyRecordSimpleForm() {
     const value = e.target.value;
     setForm((f) => {
       const next = { ...f, [key]: value };
-      if (key === "motherChecked" || key === "motherContaminatedM05") {
-        const checked = Number(key === "motherChecked" ? value : f.motherChecked) || 0;
+      if (key === "motherUsed" || key === "motherContaminatedM05") {
+        const used = Number(key === "motherUsed" ? value : f.motherUsed) || 0;
         const contaminatedM05 = Number(key === "motherContaminatedM05" ? value : f.motherContaminatedM05) || 0;
-        next.motherUsed = String(Math.max(0, checked - contaminatedM05));
+        next.motherChecked = String(used + contaminatedM05);
       }
       return next;
     });
@@ -128,6 +138,11 @@ export default function DailyRecordSimpleForm() {
 
   const onSubmit = async () => {
     if (!selectedId) return;
+    // Đã lưu là KHÔNG sửa lại được nữa (chỉ Admin mới sửa được sau này) — bắt buộc dừng lại xác nhận
+    // trước khi ghi, đặc biệt nhắc rõ đơn vị vì hay nhầm cụm/túi.
+    if (!window.confirm("Hãy kiểm tra lại số liệu trước khi cập nhật — dữ liệu đã lưu sẽ KHÔNG tự sửa lại được.\n\nLưu ý: các ô số lượng đang nhập là SỐ CỤM, không phải số túi.")) {
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/daily-records", {
@@ -170,11 +185,15 @@ export default function DailyRecordSimpleForm() {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   }
 
-  if (instructions.length === 0) {
+  if (confirmedInstructions.length === 0) {
     return (
       <Card>
         <CardContent className="py-16 text-center text-text-muted">
-          <p>Không có chỉ định cấy nào của bạn trong tuần này</p>
+          <p>
+            {hasUnconfirmed
+              ? "Bạn có chỉ định tuần này nhưng chưa xác nhận nhận mẫu mẹ — vào \"Nhận bàn giao mẫu mẹ\" để xác nhận trước khi nhập dữ liệu."
+              : "Không có chỉ định cấy nào của bạn trong tuần này"}
+          </p>
         </CardContent>
       </Card>
     );
@@ -182,12 +201,12 @@ export default function DailyRecordSimpleForm() {
 
   return (
     <div className="space-y-4">
-      {instructions.length > 1 && (
+      {confirmedInstructions.length > 1 && (
         <Card>
           <CardContent className="pt-4 space-y-1">
             <label className="text-sm font-medium">Chỉ định cấy</label>
             <Select
-              items={instructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
+              items={confirmedInstructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
               value={selectedId}
               onValueChange={(v) => setSelectedId(v as string)}
             >
@@ -195,7 +214,7 @@ export default function DailyRecordSimpleForm() {
                 <SelectValue placeholder="Chọn chỉ định cấy" />
               </SelectTrigger>
               <SelectContent>
-                {instructions.map((inst) => (
+                {confirmedInstructions.map((inst) => (
                   <SelectItem key={inst.id} value={inst.id}>{inst.code} — {inst.plantType.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -232,6 +251,13 @@ export default function DailyRecordSimpleForm() {
       ) : selectedInst ? (
         <Card>
           <CardContent className="pt-4 space-y-1">
+            <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2 mb-2">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
+                <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+              </div>
+            </div>
             <div className="divide-y divide-divider">
               {FIELD_ROWS.map((row) => (
                 <div key={row.key} className="flex items-center justify-between py-2.5">
@@ -239,9 +265,11 @@ export default function DailyRecordSimpleForm() {
                   <Input
                     type="number"
                     min={0}
+                    disabled={!row.editable}
+                    placeholder={row.editable ? "_" : undefined}
                     className={NUMBER_INPUT_CLASS}
                     value={form[row.key]}
-                    onChange={setField(row.key)}
+                    onChange={row.editable ? setField(row.key) : undefined}
                   />
                 </div>
               ))}

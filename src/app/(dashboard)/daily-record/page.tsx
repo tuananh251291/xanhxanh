@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PenLine, Loader2, Lock, TriangleAlert } from "lucide-react";
+import { PenLine, Loader2, Lock, TriangleAlert, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
 
@@ -19,6 +19,7 @@ type Instruction = {
   expectedFinishedOutput: number | null;
   plannedT01Quantity: number | null;
   plannedT05Quantity: number | null;
+  motherReceivedAt: string | null;
   items: InstructionItem[];
 };
 
@@ -43,9 +44,12 @@ type FormState = {
   t01: string;
 };
 
+// Để trống (không mặc định "0") cho các ô nhập tay — dễ gõ nhầm nếu có sẵn "0" (VD gõ "5" thành "05"
+// rồi quên xoá số 0 cũ). Chỉ ô "MM đã kiểm tra" (tự tính, khoá không cho gõ) mới giữ "0" thật vì nó luôn
+// hiện đúng kết quả tính toán, không phải chỗ chờ người dùng gõ.
 const emptyForm: FormState = {
-  motherChecked: "0", motherContaminatedM05: "0", motherUsed: "0",
-  m05: "0", t05: "0", t01: "0",
+  motherChecked: "0", motherContaminatedM05: "", motherUsed: "",
+  m05: "", t05: "", t01: "",
 };
 
 // Chỉ để dạng điền số thuần, ẩn nút bấm tăng/giảm mặc định của trình duyệt.
@@ -87,7 +91,10 @@ export default function DailyRecordPage() {
           (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
         );
         setInstructions(inWeek);
-        setSelectedId((prev) => (prev && inWeek.some((i) => i.id === prev) ? prev : (inWeek[0]?.id ?? "")));
+        // Chỉ những chỉ định ĐÃ xác nhận nhận mẫu mẹ mới được chọn để nhập dữ liệu — chưa xác nhận thì
+        // API cũng chặn (xem POST /api/daily-records), ẩn hẳn ở đây để NV không bấm nhầm rồi mới báo lỗi.
+        const confirmed = inWeek.filter((i) => i.motherReceivedAt);
+        setSelectedId((prev) => (prev && confirmed.some((i) => i.id === prev) ? prev : (confirmed[0]?.id ?? "")));
       });
   }, [currentWeekStart]);
 
@@ -103,6 +110,8 @@ export default function DailyRecordPage() {
       .finally(() => setLoading(false));
   }, [selectedId]);
 
+  const confirmedInstructions = instructions.filter((i) => i.motherReceivedAt);
+  const hasUnconfirmed = instructions.length > confirmedInstructions.length;
   const selectedInst = instructions.find((i) => i.id === selectedId);
 
   const recordForDay = (day: Date) => records.find((r) => isSameDay(new Date(r.recordDate), day));
@@ -176,6 +185,11 @@ export default function DailyRecordPage() {
 
   const onSubmitToday = async () => {
     if (!selectedId) return;
+    // Đã lưu là KHÔNG sửa lại được nữa (chỉ Admin mới sửa được sau này) — bắt buộc dừng lại xác nhận
+    // trước khi ghi, đặc biệt nhắc rõ đơn vị vì hay nhầm cụm/túi.
+    if (!window.confirm("Hãy kiểm tra lại số liệu trước khi cập nhật — dữ liệu đã lưu sẽ KHÔNG tự sửa lại được.\n\nLưu ý: các ô số lượng đang nhập là SỐ CỤM, không phải số túi.")) {
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/daily-records", {
@@ -216,6 +230,7 @@ export default function DailyRecordPage() {
         (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
       );
       setInstructions(inWeek);
+      setSelectedId((prev) => (prev && inWeek.some((i) => i.id === prev && i.motherReceivedAt) ? prev : (inWeek.find((i) => i.motherReceivedAt)?.id ?? "")));
       setRecords(await recRes.json());
     } finally {
       setSubmitting(false);
@@ -226,11 +241,11 @@ export default function DailyRecordPage() {
     const value = e.target.value;
     setForm((f) => {
       const next = { ...f, [key]: value };
-      // MM sử dụng mặc định = MM đã kiểm tra - MM nhiễm, tự tính lại mỗi khi 1 trong 2 số này đổi.
-      if (key === "motherChecked" || key === "motherContaminatedM05") {
-        const checked = Number(key === "motherChecked" ? value : f.motherChecked) || 0;
+      // MM đã kiểm tra KHÔNG tự nhập — luôn tự tính = MM nhiễm + MM sử dụng mỗi khi 1 trong 2 số này đổi.
+      if (key === "motherUsed" || key === "motherContaminatedM05") {
+        const used = Number(key === "motherUsed" ? value : f.motherUsed) || 0;
         const contaminatedM05 = Number(key === "motherContaminatedM05" ? value : f.motherContaminatedM05) || 0;
-        next.motherUsed = String(Math.max(0, checked - contaminatedM05));
+        next.motherChecked = String(used + contaminatedM05);
       }
       return next;
     });
@@ -251,11 +266,15 @@ export default function DailyRecordPage() {
         <CardContent className="pt-4">
           <div className="space-y-1 max-w-md">
             <label className="text-sm font-medium">Chỉ định cấy (tuần thực tế)</label>
-            {instructions.length === 0 ? (
-              <p className="text-sm text-text-secondary">Không có chỉ định cấy nào của bạn trong tuần này.</p>
+            {confirmedInstructions.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                {hasUnconfirmed
+                  ? "Bạn có chỉ định tuần này nhưng chưa xác nhận nhận mẫu mẹ — vào \"Chỉ định của tôi\" để xác nhận trước khi nhập dữ liệu."
+                  : "Không có chỉ định cấy nào của bạn trong tuần này."}
+              </p>
             ) : (
               <Select
-                items={instructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
+                items={confirmedInstructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
                 value={selectedId}
                 onValueChange={(v) => setSelectedId(v as string)}
               >
@@ -263,7 +282,7 @@ export default function DailyRecordPage() {
                   <SelectValue placeholder="Chọn chỉ định cấy" />
                 </SelectTrigger>
                 <SelectContent>
-                  {instructions.map((inst) => (
+                  {confirmedInstructions.map((inst) => (
                     <SelectItem key={inst.id} value={inst.id}>{inst.code} — {inst.plantType.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -281,6 +300,15 @@ export default function DailyRecordPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {!todayRecord && (
+              <div className="mb-3 text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
+                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
+                  <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+                </div>
+              </div>
+            )}
             {loading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-text-muted" /></div>
             ) : (
@@ -289,9 +317,9 @@ export default function DailyRecordPage() {
                   <thead>
                     <tr className="bg-primary-light text-primary-strong">
                       <th className="px-3 py-2 text-left whitespace-nowrap font-bold text-base">Ngày</th>
-                      <th className="px-3 py-2 text-right font-bold text-base">MM đã kiểm tra (cụm)</th>
                       <th className="px-3 py-2 text-right font-bold text-base">MM nhiễm (cụm)</th>
                       <th className="px-3 py-2 text-right font-bold text-base">MM sử dụng (cụm)</th>
+                      <th className="px-3 py-2 text-right font-bold text-base">MM đã kiểm tra (cụm)</th>
                       <th className="px-3 py-2 text-right font-bold text-base">M05 (cụm)</th>
                       <th className="px-3 py-2 text-right font-bold text-base">T05 (cây)</th>
                       <th className="px-3 py-2 text-right font-bold text-base">T01 (cây)</th>
@@ -311,18 +339,18 @@ export default function DailyRecordPage() {
                           </td>
                           {isEditableRow ? (
                             <>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherChecked} onChange={setField("motherChecked")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherContaminatedM05} onChange={setField("motherContaminatedM05")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.motherUsed} onChange={setField("motherUsed")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.m05} onChange={setField("m05")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.t05} onChange={setField("t05")} /></td>
-                              <td className="px-2 py-2"><Input type="number" min={0} className={NUMBER_INPUT_CLASS} value={form.t01} onChange={setField("t01")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={form.motherContaminatedM05} onChange={setField("motherContaminatedM05")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={form.motherUsed} onChange={setField("motherUsed")} /></td>
+                              <td className="px-2 py-2"><Input type="number" disabled className={NUMBER_INPUT_CLASS} value={form.motherChecked} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={form.m05} onChange={setField("m05")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={form.t05} onChange={setField("t05")} /></td>
+                              <td className="px-2 py-2"><Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={form.t01} onChange={setField("t01")} /></td>
                             </>
                           ) : (
                             <>
-                              <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherChecked) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherContaminatedM05) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherUsed) : "—"}</td>
+                              <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.motherChecked) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.m05) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.t05) : "—"}</td>
                               <td className="px-3 py-2 text-right text-foreground">{values ? fmt(values.t01) : "—"}</td>
@@ -333,9 +361,9 @@ export default function DailyRecordPage() {
                     })}
                     <tr className="border-b bg-info-light font-semibold">
                       <td className="px-3 py-2">Tổng thực tế đến thời điểm hiện tại</td>
-                      <td className="px-3 py-2 text-right">{fmt(totals.motherChecked)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherContaminatedM05)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherUsed)}</td>
+                      <td className="px-3 py-2 text-right">{fmt(totals.motherChecked)}</td>
                       <td className={`px-3 py-2 text-right ${motherRatioLow ? "text-destructive" : ""}`}>{fmt(totals.m05)}</td>
                       <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
                       <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
