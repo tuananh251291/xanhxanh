@@ -21,6 +21,15 @@ async function markSourceLotsPlanted(tx: Prisma.TransactionClient, items: { lotI
   await tx.lot.updateMany({ where: { id: { in: sourceLotIds } }, data: { status: "PLANTED" } });
 }
 
+// Ngược lại markSourceLotsPlanted — dùng khi Kho mô "Hoàn tác" bàn giao (xem nhánh undoHandover bên
+// dưới). Chỉ trả về ACTIVE đúng những lô ĐANG là PLANTED — phòng trường hợp hiếm lô đã bị đổi status vì
+// lý do khác (VD nhiễm) giữa lúc bàn giao và lúc hoàn tác, tránh ghi đè nhầm trạng thái đó.
+async function revertSourceLotsToActive(tx: Prisma.TransactionClient, items: { lotId: string | null }[]): Promise<void> {
+  const sourceLotIds = Array.from(new Set(items.map((i) => i.lotId).filter((v): v is string => !!v)));
+  if (sourceLotIds.length === 0) return;
+  await tx.lot.updateMany({ where: { id: { in: sourceLotIds }, status: "PLANTED" }, data: { status: "ACTIVE" } });
+}
+
 // Sửa chỉ định cấy TRƯỚC khi Kho mô bàn giao (handedOverAt còn null) — chỉ cho đổi số liệu của các
 // dòng quy cách ĐÃ CÓ (số lượng dùng/tỉ lệ/môi trường) + Tuần thực hiện/Ghi chú, KHÔNG cho thêm/bớt
 // dòng hay đổi giàn kệ nguồn (giữ nguyên lotId đã "cấy chuyển" từ lúc tạo — đổi giàn kệ sẽ phải động
@@ -39,6 +48,7 @@ const patchSchema = z.union([
   z.object({ status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED", "ENDED"]) }),
   z.object({ assignedToId: z.string().min(1) }),
   z.object({ confirmHandover: z.literal(true) }),
+  z.object({ undoHandover: z.literal(true) }),
   z.object({ confirmMotherReceived: z.literal(true) }),
   z.object({ cancelInstruction: z.literal(true) }),
   z.object({
@@ -299,6 +309,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           // ở DRAFT vĩnh viễn (khiến nút xác nhận nhận mẫu mẹ và luật "1 NV/1 chỉ định ACTIVE" bị sai lệch).
           status: instruction.status === "DRAFT" ? "ACTIVE" : instruction.status,
         },
+        include: { assignedTo: { select: { name: true } } },
+      });
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Kho mô bấm "Hoàn tác" khi lỡ bàn giao nhầm — chỉ cho phép trong khoảng thời gian NV cấy mô CHƯA
+  // XÁC NHẬN nhận mẫu mẹ (motherReceivedAt còn null), vì sau khi xác nhận coi như NV đã thật sự bắt đầu
+  // dùng mẫu mẹ, hoàn tác lúc đó sẽ tạo trạng thái mâu thuẫn (đã xác nhận nhận nhưng chỉ định lại "chưa
+  // bàn giao"). Trả lô nguồn về ACTIVE (ngược lại markSourceLotsPlanted), xoá mốc bàn giao — KHÔNG đụng
+  // tới assignedToId (giữ nguyên NV đã gán, kể cả trường hợp gán qua kệ "chung" — đổi NV là thao tác
+  // khác, không thuộc phạm vi hoàn tác bàn giao).
+  if ("undoHandover" in parsed.data) {
+    if (!(isAdminRole(role) || role === "KHO_MO")) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    const instruction = await prisma.plantingInstruction.findUnique({
+      where: { id },
+      include: { items: { select: { lotId: true } } },
+    });
+    if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    if (!instruction.handedOverAt) {
+      return NextResponse.json({ message: "Chỉ định chưa được bàn giao — không có gì để hoàn tác" }, { status: 400 });
+    }
+    if (instruction.motherReceivedAt) {
+      return NextResponse.json({ message: "NV cấy mô đã xác nhận nhận mẫu mẹ — không thể hoàn tác bàn giao nữa" }, { status: 400 });
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      await revertSourceLotsToActive(tx, instruction.items);
+      return tx.plantingInstruction.update({
+        where: { id },
+        data: { handedOverAt: null, handedOverById: null },
         include: { assignedTo: { select: { name: true } } },
       });
     });

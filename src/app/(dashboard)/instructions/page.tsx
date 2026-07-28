@@ -15,6 +15,7 @@ import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import AssignStaffCell from "./assign-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
+import UndoHandoverButton from "./undo-handover-button";
 import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse, getMotherRotationEpoch } from "@/lib/mother-week-group";
 import MotherDueWarehouseCard from "./mother-due-warehouse-card";
 
@@ -246,6 +247,9 @@ export default async function InstructionsPage({
                           {role === "KHO_MO" && (
                             <td className="px-4 py-3">
                               {inst.assignedTo && !inst.handedOverAt && <ConfirmHandoverButton instructionId={inst.id} />}
+                              {inst.handedOverAt && !inst.motherReceivedAt && (
+                                <UndoHandoverButton instructionId={inst.id} instructionCode={inst.code} />
+                              )}
                             </td>
                           )}
                           <td className="px-4 py-3">
