@@ -162,6 +162,9 @@ enum AlertType {
   // (targetRole) cần kiểm tra lại trước hạn (receipt.createdAt + supplier.returnWindowDays ngày) để
   // phát hiện thêm cây không đạt phát sinh sau nhận hàng (xem GoodsReceiptItem, trang /goods-receipts).
   GOODS_RECEIPT_RETURN_DUE
+  // NV cấy mô đăng ký hoàn thành sớm chỉ định hoặc đăng ký làm thêm ngoài giờ (xem ExtraWorkRequest) —
+  // báo cho KHO_MO (targetRole) cùng kho sản xuất biết để xác nhận/duyệt.
+  EXTRA_WORK_REQUEST
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -257,6 +260,8 @@ model User {
   goodsReceipts        GoodsReceipt[] @relation("GoodsReceiptCreatedBy")
   goodsReceiptsConfirmed GoodsReceipt[] @relation("GoodsReceiptConfirmedBy")
   goodsReceiptItemsReturned GoodsReceiptItem[] @relation("GoodsReceiptItemReturnedBy")
+  extraWorkRequests         ExtraWorkRequest[] @relation("ExtraWorkRequestStaff")
+  extraWorkRequestsResponded ExtraWorkRequest[] @relation("ExtraWorkRequestRespondedBy")
 
   @@map("users")
 }
@@ -858,6 +863,8 @@ model PlantingInstruction {
   mediumOrderId String?
   mediumOrder   MediumOrder? @relation(fields: [mediumOrderId], references: [id])
 
+  extraWorkRequests ExtraWorkRequest[]
+
   @@map("planting_instructions")
 }
 
@@ -1042,6 +1049,70 @@ model ContaminationProposal {
   updatedAt     DateTime                     @updatedAt
 
   @@map("contamination_proposals")
+}
+
+// ============================================================
+// EXTRA WORK REQUESTS — NV cấy mô đăng ký cấy thêm (dùng khi cấy nhanh hết chỉ định được giao hoặc
+// muốn đăng ký làm thêm ngoài giờ/Chủ nhật) — gửi cho KHO_MO cùng kho sản xuất xác nhận/duyệt.
+// ============================================================
+
+enum ExtraWorkRequestType {
+  // Báo trước cho KHO_MO biết sắp cấy xong chỉ định đang thực hiện, để chuẩn bị bàn giao chỉ định mới
+  // sớm hơn dự kiến — chỉ mang tính thông báo, KHO_MO chỉ có 1 hành động "Xác nhận" (không có từ chối).
+  EARLY_COMPLETION
+  // Đăng ký làm thêm ngoài giờ hành chính hoặc Chủ nhật — KHO_MO xét duyệt Đồng ý/Từ chối.
+  OVERTIME
+}
+
+enum WorkSession {
+  SANG
+  CHIEU
+}
+
+enum ExtraWorkRequestStatus {
+  PENDING
+  APPROVED // EARLY_COMPLETION dùng chung giá trị này cho hành động "Xác nhận"
+  REJECTED // Chỉ áp dụng cho OVERTIME — EARLY_COMPLETION không có đường REJECTED
+}
+
+model ExtraWorkRequest {
+  id     String               @id @default(cuid())
+  type   ExtraWorkRequestType
+  staffId String
+  staff   User                @relation("ExtraWorkRequestStaff", fields: [staffId], references: [id])
+
+  // Chỉ dùng cho EARLY_COMPLETION — chỉ định đang thực hiện của NV tại lúc gửi đăng ký (server tự suy ra,
+  // không cho client chọn tay để tránh chọn nhầm chỉ định của NV khác).
+  instructionId      String?
+  instruction        PlantingInstruction? @relation(fields: [instructionId], references: [id])
+  expectedEndDate    DateTime?
+  expectedEndSession WorkSession?
+
+  // Chỉ dùng cho OVERTIME — nhiều dòng ngày/giờ trong 1 lần đăng ký, xem ExtraWorkSlot.
+  slots ExtraWorkSlot[]
+
+  status        ExtraWorkRequestStatus @default(PENDING)
+  respondedById String?
+  respondedBy   User?                  @relation("ExtraWorkRequestRespondedBy", fields: [respondedById], references: [id])
+  respondedAt   DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@map("extra_work_requests")
+}
+
+// 1 dòng ngày/giờ trong đăng ký làm thêm ngoài giờ (ExtraWorkRequest type = OVERTIME) — NV bấm "Thêm
+// hàng" để đăng ký nhiều ngày trong cùng 1 lần gửi. startTime/endTime lưu dạng "HH:mm" (giờ trong ngày
+// thuần, không cần combine với date thành DateTime đầy đủ).
+model ExtraWorkSlot {
+  id        String           @id @default(cuid())
+  requestId String
+  request   ExtraWorkRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  date      DateTime
+  startTime String
+  endTime   String
+
+  @@map("extra_work_slots")
 }
 
 // ============================================================

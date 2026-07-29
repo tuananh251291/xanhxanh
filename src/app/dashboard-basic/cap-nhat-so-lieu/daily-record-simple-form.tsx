@@ -60,6 +60,9 @@ const FIELD_ROWS: { key: keyof FormState; label: string; editable: boolean }[] =
 const NUMBER_INPUT_CLASS = "w-24 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 const fmt = (n: number) => n.toLocaleString("vi-VN");
+// Cùng định dạng hệ số mà KY_THUAT dùng lúc nhập "Tỉ lệ nhân MM"/"Tỉ lệ ra TP" lúc tạo chỉ định (xem
+// fmtRatio ở instructions/[id]/page.tsx) — số cụm/cây ra trên 1 đơn vị MM dùng, không phải %.
+const formatRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 
 export default function DailyRecordSimpleForm() {
   const [instructions, setInstructions] = useState<Instruction[]>([]);
@@ -162,9 +165,12 @@ export default function DailyRecordSimpleForm() {
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Lưu dữ liệu hôm nay thành công!");
       if (json.alert) {
-        toast.warning(
-          `Cấy lệch chỉ định — tỉ lệ nhân MM đạt ${Math.round(json.motherRatioPct)}%, tỉ lệ ra thành phẩm đạt ${Math.round(json.finishedRatioPct)}% (cần ≥${json.motherRatioTargetPct}% và ≥${json.finishedRatioTargetPct}%) — đã gửi cảnh báo cho KY_THUAT`
-        );
+        // Chỉ liệt kê tỉ lệ nào chỉ định THỰC SỰ có mục tiêu (targetRatio > 0) — chỉ định thiếu 1 trong 2
+        // tỉ lệ (bên kia để trống lúc tạo) thì toast cũng chỉ nói đúng tỉ lệ có mục tiêu.
+        const deviationParts: string[] = [];
+        if (json.targetMotherRatio > 0) deviationParts.push(`tỉ lệ nhân MM đạt ${formatRatio(json.actualMotherRatio)} (chỉ định ${formatRatio(json.targetMotherRatio)})`);
+        if (json.targetFinishedRatio > 0) deviationParts.push(`tỉ lệ ra thành phẩm đạt ${formatRatio(json.actualFinishedRatio)} (chỉ định ${formatRatio(json.targetFinishedRatio)})`);
+        toast.warning(`Cấy lệch chỉ định — ${deviationParts.join(", ")} — đã gửi cảnh báo cho KY_THUAT`);
       }
       if (json.ended) {
         toast.info(

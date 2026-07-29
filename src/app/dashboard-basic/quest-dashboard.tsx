@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   Flame, Trophy, Swords, Sparkles, Medal, Bell, CheckCircle2, XCircle,
-  PackageCheck, PenLine, Moon, Send, Loader2, Volume2, VolumeX, type LucideIcon,
+  PackageCheck, PenLine, Moon, Send, Loader2, Volume2, VolumeX, CalendarPlus, ChevronRight, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -159,6 +159,21 @@ export default function CayMoQuestDashboard({
       <p className="text-sm font-bold text-primary-strong bg-primary-light border border-primary-light rounded-2xl px-4 py-3">
         {quote}
       </p>
+
+      <Link href="/dashboard-basic/dang-ky-cay-them" className="block">
+        <Card className="hover:border-primary transition-colors">
+          <CardContent className="py-4 flex items-center gap-3">
+            <div className="bg-secondary text-secondary-foreground p-2.5 rounded-xl shrink-0">
+              <CalendarPlus className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Đăng ký cấy thêm</p>
+              <p className="text-xs text-text-secondary">Hoàn thành sớm chỉ định hoặc đăng ký làm thêm ngoài giờ/Chủ nhật</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
+          </CardContent>
+        </Card>
+      </Link>
 
       {stats.unreadInspectionResults > 0 && (
         <Link href="/handover-record" className="block">

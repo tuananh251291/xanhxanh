@@ -432,7 +432,7 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
                 <div key={alert.id} className="flex items-start justify-between p-3 bg-warning-light rounded-lg border border-warning-light">
                   <div>
                     <p className="text-sm font-medium text-foreground">{alert.title}</p>
-                    <p className="text-xs text-text-secondary">{alert.message}</p>
+                    <p className="text-xs text-text-secondary whitespace-pre-line">{alert.message}</p>
                   </div>
                   <span className="text-xs text-text-muted whitespace-nowrap ml-4">
                     {formatDistanceToNow(alert.createdAt, { addSuffix: true, locale: vi })}

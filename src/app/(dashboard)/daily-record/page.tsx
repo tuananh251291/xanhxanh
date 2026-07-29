@@ -9,6 +9,10 @@ import { PenLine, Loader2, Lock, TriangleAlert, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
 
+// Cùng định dạng hệ số mà KY_THUAT dùng lúc nhập "Tỉ lệ nhân MM"/"Tỉ lệ ra TP" lúc tạo chỉ định (xem
+// fmtRatio ở instructions/[id]/page.tsx) — số cụm/cây ra trên 1 đơn vị MM dùng, không phải %.
+const formatRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+
 type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
 type Instruction = {
   id: string;
@@ -170,13 +174,18 @@ export default function DailyRecordPage() {
   const targetFinishedRatio =
     selectedInst && selectedInst.inputMotherQuantity > 0 ? (selectedInst.expectedFinishedOutput ?? 0) / selectedInst.inputMotherQuantity : 0;
 
-  const actualMotherRatio = projectedMotherUsed > 0 ? projectedMotherClusters / projectedMotherUsed : 0;
-  const actualFinishedRatio = projectedMotherUsed > 0 ? projectedFinished / projectedMotherUsed : 0;
+  const hasMotherUsedData = projectedMotherUsed > 0;
+  const actualMotherRatio = hasMotherUsedData ? projectedMotherClusters / projectedMotherUsed : 0;
+  const actualFinishedRatio = hasMotherUsedData ? projectedFinished / projectedMotherUsed : 0;
   const motherRatioPct = targetMotherRatio > 0 ? (actualMotherRatio / targetMotherRatio) * 100 : null;
   const finishedRatioPct = targetFinishedRatio > 0 ? (actualFinishedRatio / targetFinishedRatio) * 100 : null;
   const motherRatioLow = motherRatioPct !== null && motherRatioPct < motherRatioTargetPct;
   const finishedRatioLow = finishedRatioPct !== null && finishedRatioPct < finishedRatioTargetPct;
-  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && motherRatioLow && finishedRatioLow;
+  // Chỉ định có thể chỉ có mục tiêu 1 trong 2 tỉ lệ (bên kia để trống) — tỉ lệ nào không có mục tiêu thì
+  // bỏ qua, không bắt buộc đủ cả 2 mới cảnh báo (khớp thuật toán server ở /api/daily-records).
+  const hasAnyTargetRatio = motherRatioPct !== null || finishedRatioPct !== null;
+  const allAvailableRatiosLow = (motherRatioPct === null || motherRatioLow) && (finishedRatioPct === null || finishedRatioLow);
+  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && hasAnyTargetRatio && allAvailableRatiosLow;
 
   // Tổng MM đã kiểm tra lũy kế (các ngày đã lưu + số đang nhập hôm nay) không được vượt quá số mẫu mẹ
   // được cấp cho chỉ định (inputMotherQuantity) — chặn nút Lưu nếu vượt, khớp validate ở API.
@@ -209,9 +218,12 @@ export default function DailyRecordPage() {
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Lưu dữ liệu hôm nay thành công!");
       if (json.alert) {
-        toast.warning(
-          `⚠️ Cấy lệch chỉ định — tỉ lệ nhân MM đạt ${Math.round(json.motherRatioPct)}%, tỉ lệ ra thành phẩm đạt ${Math.round(json.finishedRatioPct)}% (cần ≥${json.motherRatioTargetPct}% và ≥${json.finishedRatioTargetPct}%) — đã gửi cảnh báo cho KY_THUAT`
-        );
+        // Chỉ liệt kê tỉ lệ nào chỉ định THỰC SỰ có mục tiêu (targetRatio > 0) — chỉ định thiếu 1 trong 2
+        // tỉ lệ (bên kia để trống lúc tạo) thì toast cũng chỉ nói đúng tỉ lệ có mục tiêu.
+        const deviationParts: string[] = [];
+        if (json.targetMotherRatio > 0) deviationParts.push(`tỉ lệ nhân MM đạt ${formatRatio(json.actualMotherRatio)} (chỉ định ${formatRatio(json.targetMotherRatio)})`);
+        if (json.targetFinishedRatio > 0) deviationParts.push(`tỉ lệ ra thành phẩm đạt ${formatRatio(json.actualFinishedRatio)} (chỉ định ${formatRatio(json.targetFinishedRatio)})`);
+        toast.warning(`⚠️ Cấy lệch chỉ định — ${deviationParts.join(", ")} — đã gửi cảnh báo cho KY_THUAT`);
       }
       if (json.ended) {
         toast.info(
@@ -376,17 +388,17 @@ export default function DailyRecordPage() {
             {selectedInst && (
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className={`rounded-lg p-3 ${motherRatioLow ? "bg-danger-light" : "bg-background"}`}>
-                  <p className="text-xs text-text-secondary">Tỉ lệ nhân MM (cụm MM thành phẩm / MM sử dụng)</p>
+                  <p className="text-xs text-text-secondary">Hệ số nhân MM (cụm MM thành phẩm / MM sử dụng)</p>
                   <p className={`text-lg font-bold ${motherRatioLow ? "text-destructive" : "text-foreground"}`}>
-                    {motherRatioPct === null ? "—" : `${Math.round(motherRatioPct)}%`}
-                    <span className="text-xs font-normal text-text-secondary ml-1">(cần ≥{motherRatioTargetPct}%)</span>
+                    {hasMotherUsedData ? formatRatio(actualMotherRatio) : "—"}
+                    <span className="text-xs font-normal text-text-secondary ml-1">(chỉ định giao: {formatRatio(targetMotherRatio)})</span>
                   </p>
                 </div>
                 <div className={`rounded-lg p-3 ${finishedRatioLow ? "bg-danger-light" : "bg-background"}`}>
-                  <p className="text-xs text-text-secondary">Tỉ lệ ra thành phẩm (cây ra rễ / MM sử dụng)</p>
+                  <p className="text-xs text-text-secondary">Hệ số ra thành phẩm (cây ra rễ / MM sử dụng)</p>
                   <p className={`text-lg font-bold ${finishedRatioLow ? "text-destructive" : "text-foreground"}`}>
-                    {finishedRatioPct === null ? "—" : `${Math.round(finishedRatioPct)}%`}
-                    <span className="text-xs font-normal text-text-secondary ml-1">(cần ≥{finishedRatioTargetPct}%)</span>
+                    {hasMotherUsedData ? formatRatio(actualFinishedRatio) : "—"}
+                    <span className="text-xs font-normal text-text-secondary ml-1">(chỉ định giao: {formatRatio(targetFinishedRatio)})</span>
                   </p>
                 </div>
               </div>
@@ -395,7 +407,9 @@ export default function DailyRecordPage() {
             {isDeviating && (
               <div className="mt-3 flex items-center gap-2 text-sm font-bold text-destructive bg-danger-light rounded p-3">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
-                Bạn đang cấy lệch so với chỉ định cấy — cả 2 tỉ lệ trên đều thấp hơn ngưỡng cần đạt
+                Bạn đang cấy lệch so với chỉ định cấy — {motherRatioPct !== null && finishedRatioPct !== null
+                  ? "cả 2 tỉ lệ trên đều thấp hơn ngưỡng cần đạt"
+                  : "tỉ lệ có mục tiêu ở trên đang thấp hơn ngưỡng cần đạt"}
               </div>
             )}
 

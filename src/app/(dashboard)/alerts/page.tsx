@@ -76,7 +76,7 @@ export default function AlertsPage() {
                   <div className="space-y-1">
                     <Badge variant="secondary" className="text-xs">{ALERT_TYPE_LABELS[a.type] ?? a.type}</Badge>
                     <p className="text-sm font-medium text-foreground">{a.title}</p>
-                    <p className="text-sm text-text-secondary">{a.message}</p>
+                    <p className="text-sm text-text-secondary whitespace-pre-line">{a.message}</p>
                     <p className="text-xs text-text-muted">{formatDistanceToNow(new Date(a.createdAt), { addSuffix: true, locale: vi })}</p>
                   </div>
                   <Button

@@ -203,6 +203,23 @@ export const ALERT_TYPE_LABELS = {
   MOTHER_CONTAMINATION_HIGH: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng cao",
   GOODS_RECEIPT_RETURN_DUE: "Phiếu nhập hàng cần kiểm tra trả hàng",
   ORDER_PROCESSING_SHORTFALL: "Xử lý cây thiếu hụt so với đơn hàng",
+  EXTRA_WORK_REQUEST: "Đăng ký cấy thêm",
+} as const;
+
+export const EXTRA_WORK_REQUEST_TYPE_LABELS = {
+  EARLY_COMPLETION: "Hoàn thành sớm chỉ định được giao",
+  OVERTIME: "Đăng ký làm thêm ngoài giờ",
+} as const;
+
+export const WORK_SESSION_LABELS = {
+  SANG: "Buổi sáng",
+  CHIEU: "Buổi chiều",
+} as const;
+
+export const EXTRA_WORK_REQUEST_STATUS_LABELS = {
+  PENDING: "Chờ xử lý",
+  APPROVED: "Đã xác nhận",
+  REJECTED: "Từ chối",
 } as const;
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).
@@ -250,6 +267,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
+    { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
@@ -261,6 +279,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
+    { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
@@ -270,13 +289,14 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
     { href: "/mother-ready", label: "Mẫu mẹ đạt chưa chỉ định", icon: "Sprout" },
     { href: "/planting-check", label: "Kiểm tra tình trạng cấy", icon: "ClipboardCheck" },
-    { href: "/reports/production", label: "Báo cáo SX", icon: "BarChart3" },
+    { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   CAY_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
+    { href: "/extra-work", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
     { href: "/product-handover", label: "Bàn giao sản phẩm", icon: "Send" },
     { href: "/handover-record", label: "Ghi nhận bàn giao", icon: "PackageCheck" },
@@ -296,6 +316,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_THANH_PHAM: [

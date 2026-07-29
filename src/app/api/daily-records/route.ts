@@ -39,7 +39,11 @@ export async function POST(req: NextRequest) {
 
   const instruction = await prisma.plantingInstruction.findUnique({
     where: { id: instructionId },
-    include: { plantType: true, items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } } },
+    include: {
+      plantType: true,
+      assignedTo: { select: { name: true } },
+      items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } },
+    },
   });
   if (!instruction) return NextResponse.json({ message: "Không tìm thấy chỉ định" }, { status: 404 });
 
@@ -261,12 +265,18 @@ export async function POST(req: NextRequest) {
   const motherRatioPct = targetMotherRatio > 0 ? (actualMotherRatio / targetMotherRatio) * 100 : null;
   const finishedRatioPct = targetFinishedRatio > 0 ? (actualFinishedRatio / targetFinishedRatio) * 100 : null;
 
+  // Chỉ định có thể chỉ được KY_THUAT nhập 1 trong 2 tỉ lệ (VD để trống "Tỉ lệ ra TP" vì chưa xác định) —
+  // tỉ lệ nào KHÔNG có mục tiêu (Pct null) thì bỏ qua, không bắt buộc phải có đủ cả 2 mới xét. Chỉ cần
+  // TỒN TẠI ít nhất 1 tỉ lệ có mục tiêu và MỌI tỉ lệ tồn tại đó đều thấp hơn ngưỡng mới báo — khác trước
+  // đây bắt buộc có đủ cả 2, khiến chỉ định thiếu 1 trong 2 tỉ lệ mục tiêu không bao giờ báo được dù tỉ
+  // lệ còn lại tệ đến đâu.
+  const motherLow = motherRatioPct !== null && motherRatioPct < motherRatioTargetPct;
+  const finishedLow = finishedRatioPct !== null && finishedRatioPct < finishedRatioTargetPct;
+  const hasAnyTargetRatio = motherRatioPct !== null || finishedRatioPct !== null;
+  const allAvailableRatiosLow = (motherRatioPct === null || motherLow) && (finishedRatioPct === null || finishedLow);
+
   let alert = false;
-  if (
-    totalMotherUsed > 0 &&
-    motherRatioPct !== null && finishedRatioPct !== null &&
-    motherRatioPct < motherRatioTargetPct && finishedRatioPct < finishedRatioTargetPct
-  ) {
+  if (totalMotherUsed > 0 && hasAnyTargetRatio && allAvailableRatiosLow) {
     alert = true;
     // Chặn spam: mỗi chỉ định (1 chỉ định = đúng 1 tuần) chỉ TẠO TỐI ĐA 1 alert loại này trong suốt vòng
     // đời của nó — không lọc theo status (khác MOTHER_CONTAMINATION_HIGH ở trên, vốn cho phép báo lại sau
@@ -284,10 +294,33 @@ export async function POST(req: NextRequest) {
       // /api/alerts để chọn nguyên nhân xử lý (route đó tự chặn nếu alert.userId khác session hiện tại,
       // xem src/app/api/alerts/route.ts) — tránh NV kỹ thuật khác âm thầm xử lý hộ, làm sai điểm đánh giá cá
       // nhân (checkPercent) của đúng người phụ trách chỉ định.
+      // Hiện dạng hệ số thực tế/theo chỉ định (VD 1,2 / 1,8) — đúng đơn vị KY_THUAT đã gõ lúc tạo chỉ định
+      // (motherSampleRatio/rootingRatio) — kèm % đạt được so với chỉ định (Pct) để dễ hình dung mức độ
+      // lệch. Mỗi dòng cách nhau bằng "\n" — trang hiển thị alert.message cần "whitespace-pre-line" mới
+      // xuống dòng đúng (xem alerts/page.tsx, dashboard/page.tsx, planting-check-board.tsx). Chỉ liệt kê
+      // tỉ lệ nào THỰC SỰ có mục tiêu (Pct !== null) — chỉ định thiếu 1 trong 2 thì message cũng chỉ nói
+      // đúng 1 tỉ lệ.
+      const fmtRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+      const fmtPct = (n: number) => n.toLocaleString("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const deviationLines: string[] = [];
+      if (motherRatioPct !== null) {
+        deviationLines.push(
+          `Tỉ lệ nhân MM thực tế: ${fmtRatio(actualMotherRatio)}`,
+          `Tỉ lệ nhân MM theo chỉ định: ${fmtRatio(targetMotherRatio)}`,
+          `Đạt: ${fmtPct(motherRatioPct)}%`
+        );
+      }
+      if (finishedRatioPct !== null) {
+        deviationLines.push(
+          `Tỉ lệ ra thành phẩm thực tế: ${fmtRatio(actualFinishedRatio)}`,
+          `Tỉ lệ ra thành phẩm theo chỉ định: ${fmtRatio(targetFinishedRatio)}`,
+          `Đạt: ${fmtPct(finishedRatioPct)}%`
+        );
+      }
       await createAlert({
         type: "OUTPUT_DEVIATION",
         title: "Cấy lệch tiến độ so với chỉ định",
-        message: `Chỉ định ${instruction.code}: tỉ lệ nhân MM đạt ${Math.round(motherRatioPct)}% (cần ≥${motherRatioTargetPct}%), tỉ lệ ra thành phẩm đạt ${Math.round(finishedRatioPct)}% (cần ≥${finishedRatioTargetPct}%) so với mục tiêu chỉ định`,
+        message: `Chỉ định ${instruction.code} — NV thực hiện: ${instruction.assignedTo?.name ?? "—"}\n${deviationLines.join("\n")}`,
         userId: instruction.createdById,
         relatedId: instructionId,
         relatedType: "PlantingInstruction",
@@ -322,7 +355,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { record, lotsCreated, alert, motherRatioPct, finishedRatioPct, motherRatioTargetPct, finishedRatioTargetPct, ended, endReason },
+    { record, lotsCreated, alert, actualMotherRatio, targetMotherRatio, actualFinishedRatio, targetFinishedRatio, ended, endReason },
     { status: 201 }
   );
 }
