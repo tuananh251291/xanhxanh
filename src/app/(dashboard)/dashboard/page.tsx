@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
   PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
-  FlaskConical, Bell, Recycle, Eye, RotateCcw, type LucideIcon,
+  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, type LucideIcon,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -17,6 +17,7 @@ import ProductivityLeaderboard from "@/components/shared/productivity-leaderboar
 import { isMediumOrderInProgress } from "@/lib/medium-orders";
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -167,10 +168,20 @@ async function getKyThuatStats(userId: string) {
   const resolvedDeviations = deviationAlerts.filter((a) => a.cause !== null).length;
   const checkPercent = deviationAlerts.length === 0 ? 100 : Math.round((resolvedDeviations / deviationAlerts.length) * 100);
 
+  // Việc "3. Tạo chỉ định cấy dự phòng" — tối thiểu MIN_BACKUP_INSTRUCTION_COUNT chỉ định isBackup cho
+  // ĐÚNG tuần sau (weekStart = nextWeekStart), tạo trước Thứ 5 tuần này — xem /instructions/backup. Đếm
+  // theo weekStart chính xác nên tự "reset" mỗi tuần (tuần sau trở thành tuần này thì không còn tính vào
+  // chỉ tiêu mới). toStoredWeekStart để so khớp đúng giờ UTC-midnight đã lưu, không theo giờ local server.
+  const backupCount = await prisma.plantingInstruction.count({
+    where: { createdById: userId, isBackup: true, weekStart: toStoredWeekStart(addWeeks(weekStart, 1)) },
+  });
+  const backupPercent = Math.min(100, Math.round((backupCount / MIN_BACKUP_INSTRUCTION_COUNT) * 100));
+
   return {
     weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent,
     instructionDone: handledItems.length,
     instructionTotal: dueLotIds.length,
+    backupCount, backupPercent,
   };
 }
 
@@ -627,6 +638,13 @@ function KyThuatDashboard({
   const instructionBadgeState: TaskBadgeState = instructionDone
     ? (isPastThursdayEnd ? "done_late" : "done")
     : (isPastThursdayEnd ? "urgent" : "not_done");
+  // "Việc 3: Tạo chỉ định cấy dự phòng" dùng CHUNG hạn chót mềm Thứ 5 với việc 1, cùng 3 trạng thái
+  // done/done_late/urgent — đủ MIN_BACKUP_INSTRUCTION_COUNT chỉ định trước/trong Thứ 5 = đúng hạn, đủ sau
+  // Thứ 5 (tạo bù) = trễ hạn nhưng vẫn tính hoàn thành, qua Thứ 5 mà chưa đủ = cảnh báo khẩn.
+  const backupDone = stats.backupCount >= MIN_BACKUP_INSTRUCTION_COUNT;
+  const backupBadgeState: TaskBadgeState = backupDone
+    ? (isPastThursdayEnd ? "done_late" : "done")
+    : (isPastThursdayEnd ? "urgent" : "not_done");
 
   return (
     <div className="space-y-6">
@@ -656,6 +674,15 @@ function KyThuatDashboard({
             title="2. Kiểm tra tình trạng cấy"
             deadline="Xử lý các chỉ định lệch % vượt ngưỡng — cần hoàn thiện trong tuần"
             percent={stats.checkPercent}
+          />
+          <WeeklyTaskRow
+            href="/instructions/backup"
+            icon={ShieldPlus}
+            title="3. Tạo chỉ định cấy dự phòng"
+            deadline={`Tối thiểu ${MIN_BACKUP_INSTRUCTION_COUNT} chỉ định cho tuần sau — cần hoàn thiện trong ngày Thứ 5 hàng tuần (${format(stats.thursdayDeadline, "dd/MM", { locale: vi })})`}
+            percent={stats.backupPercent}
+            countLabel={`${stats.backupCount}/${MIN_BACKUP_INSTRUCTION_COUNT} chỉ định`}
+            badgeState={backupBadgeState}
           />
         </CardContent>
       </Card>

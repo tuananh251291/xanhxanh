@@ -55,14 +55,20 @@ export type MotherWeekGroupStatus = {
 // "Đạt hạn cấy chuyển" (isDue) tính THUẦN theo lịch xoay vòng — KHÔNG còn dựa vào Lot.expectedMoveAt/ngày
 // nhập lô nữa (đổi theo yêu cầu: đã có Nhóm tuần mẫu mẹ gắn với tuần thật cụ thể qua "Tuần khởi đầu của
 // Nhóm tuần mẫu mẹ 1", không cần theo dõi ngày lô riêng lẻ). N (số khe xoay vòng) = Thời gian đợi cấy
-// chuyển của mã cây gán cho Nhóm đó (lấy từ kệ đầu tiên có gán mã cây — theo quy ước 1 Nhóm tuần mẫu mẹ
-// chỉ chứa 1 mã cây duy nhất, xem comment tại Shelf.rotationGroupId, nên mọi lô cùng Nhóm luôn cùng thời
-// gian đợi). 1 Nhóm được coi là "đạt hạn" khi rotationOrder khớp getCurrentWeekSlot ở TUẦN NÀY hoặc TUẦN
-// SAU (báo trước 1 tuần cho NV kỹ thuật kịp ra chỉ định trước khi tuần đến hạn thật sự bắt đầu — giữ đúng
-// tinh thần báo trước như trước đây, hạn chót hiển thị vẫn là Thứ 5 của tuần đang xem, xem
-// getMotherDueDeadline/src/lib/mother-ready.ts). Nhóm chưa có lô nào (rỗng) vẫn không được coi là "đạt
-// hạn" dù đúng lịch — tránh hiện thẻ cảnh báo trống không có gì để tạo chỉ định. Luôn isDue=false nếu
-// không truyền motherEpochMonday (SUPER_ADMIN chưa cấu hình "Tuần khởi đầu của Nhóm tuần mẫu mẹ 1").
+// chuyển của mã cây trên kệ. 1 nhãn Nhóm tuần (VD "MM1") vốn được dùng CHUNG cho nhiều NV/mã cây có N
+// KHÁC NHAU (không phải "1 Nhóm chỉ 1 mã cây" như giả định ban đầu — thực tế 1 kho có thể vừa có mã cây
+// N=4 vừa có mã cây N=6 cùng dùng nhãn "MM1") — nên KHÔNG thể gộp chung 1 kết quả isDue cho cả nhãn:
+// cùng là "MM1" nhưng N=4 và N=6 lại đại diện 2 điểm KHÁC NHAU trên 2 chu kỳ khác nhau, chỉ trùng nhau ở
+// đúng tuần epoch (mọi N đều ra khe 1 ở offset 0). Vì vậy tách entry theo (rotationGroup, N) thay vì chỉ
+// theo rotationGroup — có thể ra 2 entry cùng tên "MM1" (1 cho N=4, 1 cho N=6), mỗi entry tự tính đúng
+// hạn theo N riêng, KHÔNG ảnh hưởng gì tới nơi dùng groupId/groupName (chỉ dùng làm nhãn hiển thị/khoá
+// dedupe alert, xem mother-ready.ts) hay danh sách shelves phẳng (mother-due/[warehouseId]/page.tsx).
+// 1 Nhóm được coi là "đạt hạn" khi rotationOrder khớp getCurrentWeekSlot ở TUẦN NÀY hoặc TUẦN SAU (báo
+// trước 1 tuần cho NV kỹ thuật kịp ra chỉ định trước khi tuần đến hạn thật sự bắt đầu — hạn chót hiển
+// thị vẫn là Thứ 5 của tuần đang xem, xem getMotherDueDeadline/src/lib/mother-ready.ts). Nhóm chưa có lô
+// nào (rỗng) vẫn không được coi là "đạt hạn" dù đúng lịch — tránh hiện thẻ cảnh báo trống không có gì để
+// tạo chỉ định. Luôn isDue=false nếu không truyền motherEpochMonday (SUPER_ADMIN chưa cấu hình "Tuần
+// khởi đầu của Nhóm tuần mẫu mẹ 1") hoặc kệ chưa gán mã cây (không xác định được N).
 export function summarizeMotherWeekGroups(
   shelves: {
     id: string;
@@ -79,20 +85,11 @@ export function summarizeMotherWeekGroups(
   now: Date = new Date(),
   motherEpochMonday?: Date
 ): MotherWeekGroupStatus[] {
-  // Thời gian đợi cấy chuyển (số khe xoay vòng N) của 1 Nhóm — lấy từ mã cây của kệ ĐẦU TIÊN trong Nhóm
-  // có gán mã cây (theo quy ước 1 Nhóm chỉ chứa 1 mã cây, xem comment trên).
-  const transferWaitWeeksByGroup = new Map<string, number>();
-  for (const shelf of shelves) {
-    if (!shelf.rotationGroup || !shelf.plantType?.transferWaitWeeks) continue;
-    if (!transferWaitWeeksByGroup.has(shelf.rotationGroup.id)) {
-      transferWaitWeeksByGroup.set(shelf.rotationGroup.id, shelf.plantType.transferWaitWeeks);
-    }
-  }
-
-  const byGroup = new Map<string, MotherWeekGroupStatus>();
+  const byGroup = new Map<string, MotherWeekGroupStatus & { totalSlots: number | null }>();
   for (const shelf of shelves) {
     if (!shelf.rotationGroup) continue;
-    const key = shelf.rotationGroup.id;
+    const totalSlots = shelf.plantType?.transferWaitWeeks ?? null;
+    const key = `${shelf.rotationGroup.id}::${totalSlots ?? "?"}`;
     const entry = byGroup.get(key) ?? {
       groupId: key,
       groupName: shelf.rotationGroup.name,
@@ -101,6 +98,7 @@ export function summarizeMotherWeekGroups(
       lotCount: 0,
       totalQuantity: 0,
       isDue: false,
+      totalSlots,
     };
     const quantity = shelf.lots.reduce((sum, lot) => sum + lot.quantity, 0);
     // Chỉ liệt kê kệ THẬT SỰ có lô mẫu mẹ — 1 Nhóm xoay vòng thường có nhiều kệ trống (chưa từng xếp
@@ -131,16 +129,26 @@ export function summarizeMotherWeekGroups(
   }
 
   if (motherEpochMonday) {
+    const nextWeek = addWeeks(now, 1);
+    // getCurrentWeekSlot tính theo mod N nên tự "quay ngược" ra khe hợp lệ cho cả những tuần TRƯỚC
+    // motherEpochMonday (VD epoch = tuần 31, N=4 thì tuần 30 bị tính thành khe 4/MM4 dù lịch chưa bắt
+    // đầu) — chặn tường minh: tuần nào còn TRƯỚC epoch thì không tính khe cho tuần đó (currentSlot/
+    // nextWeekSlot = null), tránh Nhóm cuối chu kỳ (VD MM4/MM6) hiện "đến hạn" nhầm ngay trước khi lịch
+    // thật sự khởi động. Riêng nextWeekSlot của đúng tuần epoch vẫn tính bình thường — đây chính là cơ
+    // chế báo trước 1 tuần cho Nhóm 1 (VD tuần 30 báo trước MM1 sắp tới hạn ở tuần 31).
+    const nowInRange = now.getTime() >= motherEpochMonday.getTime();
+    const nextWeekInRange = nextWeek.getTime() >= motherEpochMonday.getTime();
     for (const entry of byGroup.values()) {
-      const totalSlots = transferWaitWeeksByGroup.get(entry.groupId);
-      if (!totalSlots || entry.rotationOrder === null || entry.lotCount === 0) continue;
-      const currentSlot = getCurrentWeekSlot(totalSlots, now, motherEpochMonday);
-      const nextWeekSlot = getCurrentWeekSlot(totalSlots, addWeeks(now, 1), motherEpochMonday);
+      if (!entry.totalSlots || entry.rotationOrder === null || entry.lotCount === 0) continue;
+      const currentSlot = nowInRange ? getCurrentWeekSlot(entry.totalSlots, now, motherEpochMonday) : null;
+      const nextWeekSlot = nextWeekInRange ? getCurrentWeekSlot(entry.totalSlots, nextWeek, motherEpochMonday) : null;
       entry.isDue = entry.rotationOrder === currentSlot || entry.rotationOrder === nextWeekSlot;
     }
   }
 
-  return Array.from(byGroup.values()).sort((a, b) => (a.rotationOrder ?? 0) - (b.rotationOrder ?? 0));
+  return Array.from(byGroup.values())
+    .sort((a, b) => (a.rotationOrder ?? 0) - (b.rotationOrder ?? 0))
+    .map(({ totalSlots: _totalSlots, ...rest }) => rest);
 }
 
 export type MotherDueWarehouseSummary = {

@@ -152,10 +152,12 @@ export default async function MotherDueWarehousePage({
         </CardContent></Card>
       ) : (
         <Card>
-          <CardContent className="py-4 overflow-x-auto">
-            {/* 4 cột cố định chiều rộng (không giãn hết bề ngang thẻ) — nút "Tạo chỉ định" luôn nằm ở
-                mép phải mỗi cột (justify-between) nên các nút thẳng hàng nhau theo chiều dọc. */}
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(4, minmax(0, 13rem))" }}>
+          <CardContent className="py-4">
+            {/* Cột co giãn theo màn hình (1 cột ở mobile, tăng dần tới 4 cột ở màn lớn) — cố định 4 cột
+                như trước khiến mỗi cột quá hẹp trên điện thoại, đẩy nút "Tạo chỉ định" tràn đè lên tên
+                giàn kệ cột bên cạnh. min-w-0 trên span tên kệ để truncate hoạt động đúng trong flex
+                container (mặc định flex item không tự co dưới độ rộng nội dung nếu thiếu min-w-0). */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {sortedShelves.map((s) => (
                 <div
                   key={s.id}
@@ -164,7 +166,7 @@ export default async function MotherDueWarehousePage({
                   {/* Bỏ tiền tố mã kho/phòng (VD "SX-TA-PS-") cho gọn, chỉ giữ phần hàng+cột thật sự
                       phân biệt kệ trong khu — luôn là đoạn cuối cùng sau dấu "-" (xem cách sinh
                       shelf.code trong src/app/api/shelves/route.ts). */}
-                  <span className="text-xs font-mono truncate">
+                  <span className="text-xs font-mono truncate min-w-0">
                     {s.code.split("-").pop() ?? s.code}
                     {s.plantTypeCode ? ` · ${s.plantTypeCode}` : ""}
                   </span>

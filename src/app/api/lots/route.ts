@@ -17,6 +17,9 @@ export async function GET(req: NextRequest) {
   const instructionId = searchParams.get("instructionId");
   const assignedToId = searchParams.get("assignedToId");
   const availableForInstruction = searchParams.get("availableForInstruction") === "true";
+  // Dùng khi tạo chỉ định cấy DỰ PHÒNG (create-instruction-dialog.tsx, backupMode) — chỉ lấy lô trên kệ
+  // "chung" chưa chia (Shelf.assignedStaffId null), không lấy kệ đã chia của 1 NV cụ thể.
+  const unassignedShelfOnly = searchParams.get("unassignedShelfOnly") === "true";
 
   const where: Record<string, unknown> = {};
   if (stage) where.stage = stage;
@@ -55,7 +58,7 @@ export async function GET(req: NextRequest) {
     // xác nhận, nên nếu không lọc thì F5 lại trang bàn giao vẫn thấy lô đó và có thể bàn giao trùng lần 2.
     where.transferItems = { none: { transfer: { status: "PENDING" } } };
   } else if (roomType) {
-    where.shelf = { room: { type: roomType } };
+    where.shelf = { room: { type: roomType }, ...(unassignedShelfOnly ? { assignedStaffId: null } : {}) };
   }
 
   if (assignedToId) {

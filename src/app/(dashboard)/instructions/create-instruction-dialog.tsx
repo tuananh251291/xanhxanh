@@ -45,6 +45,7 @@ type MotherLot = {
     id: string;
     code: string;
     warehouseId: string;
+    assignedStaffId: string | null;
     rotationGroupId: string | null;
     rotationGroup: { id: string; name: string } | null;
   } | null;
@@ -70,6 +71,8 @@ export default function CreateInstructionDialog({
   initialShelfId,
   triggerContent,
   triggerClassName,
+  backupMode,
+  slotNumber,
 }: {
   // Mở dialog và tự chọn sẵn đúng kệ này — dùng cho lối tắt "Tạo chỉ định" từ banner Nhóm tuần mẫu mẹ
   // đến hạn (xem instructions/page.tsx), KY_THUAT không cần tự tìm lại kệ trong dropdown.
@@ -77,6 +80,14 @@ export default function CreateInstructionDialog({
   // Nội dung nút mở dialog tuỳ biến — mặc định là "+ Tạo chỉ định cấy" ở đầu trang.
   triggerContent?: ReactNode;
   triggerClassName?: string;
+  // Tạo chỉ định cấy DỰ PHÒNG (nhiệm vụ tuần của KY_THUAT, xem /instructions/backup) — khác bản thường
+  // ở 3 điểm: (1) giàn kệ nguồn CHỈ lấy từ kệ mẫu mẹ "chung" chưa chia (unassignedShelfOnly), (2) Tuần
+  // thực hiện khoá cứng = tuần sau (không cho sửa, để tính đúng vào chỉ tiêu 5 chỉ định/tuần), (3) gửi
+  // kèm isBackup: true lên POST /api/instructions.
+  backupMode?: boolean;
+  // Số thứ tự hiển thị trên tiêu đề dialog khi backupMode (VD "Tạo chỉ định cấy dự phòng 3") — chỉ để
+  // hiển thị, không gửi lên server.
+  slotNumber?: number;
 } = {}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -110,6 +121,7 @@ export default function CreateInstructionDialog({
         plantTypeId: string;
         plantTypeName: string;
         warehouseId: string;
+        assignedStaffId: string | null;
         rotationGroupId: string | null;
         rotationGroupName: string | null;
         lots: MotherLot[];
@@ -126,6 +138,7 @@ export default function CreateInstructionDialog({
           plantTypeId: lot.plantTypeId,
           plantTypeName: lot.plantType.name,
           warehouseId: lot.shelf.warehouseId,
+          assignedStaffId: lot.shelf.assignedStaffId,
           rotationGroupId: lot.shelf.rotationGroupId,
           rotationGroupName: lot.shelf.rotationGroup?.name ?? null,
           lots: [lot],
@@ -166,7 +179,14 @@ export default function CreateInstructionDialog({
   };
 
   const loadRowsForShelf = async (
-    anchor: { shelfId: string; plantTypeId: string; warehouseId: string; rotationGroupId: string | null; rotationGroupName: string | null },
+    anchor: {
+      shelfId: string;
+      plantTypeId: string;
+      warehouseId: string;
+      assignedStaffId: string | null;
+      rotationGroupId: string | null;
+      rotationGroupName: string | null;
+    },
     fallbackLots: MotherLot[],
     availableForInstruction: boolean
   ) => {
@@ -181,11 +201,18 @@ export default function CreateInstructionDialog({
       const params = new URLSearchParams({ stage: "MAU_ME", status: "ACTIVE", rotationGroupId: anchor.rotationGroupId });
       if (availableForInstruction) params.set("availableForInstruction", "true");
       const groupLots: MotherLot[] = await fetch(`/api/lots?${params}`).then((r) => r.json());
-      // Nhóm tuần chỉ là cơ chế xoay vòng vật lý (SUPER_ADMIN cấu hình ở /settings/shelf-groups), không
-      // ràng buộc phải cùng 1 mã cây hay cùng 1 kho — lọc lại đúng mã cây VÀ đúng kho sản xuất của kệ
-      // vừa chọn để giữ đúng quy tắc 1 chỉ định = 1 mã cây, không gộp nhầm kệ từ 2 kho vật lý khác nhau
-      // vào chung 1 chỉ định (Nhóm tuần có thể lỡ gán kệ từ nhiều kho khác nhau).
-      const matching = groupLots.filter((l) => l.plantTypeId === anchor.plantTypeId && l.shelf?.warehouseId === anchor.warehouseId);
+      // Nhóm tuần chỉ là cơ chế xoay vòng vật lý DÙNG CHUNG TOÀN KHO (SUPER_ADMIN cấu hình ở
+      // /settings/shelf-groups) — KHÔNG ràng buộc phải cùng 1 mã cây, cùng 1 kho, hay cùng 1 NV phụ
+      // trách (nhiều NV khác nhau đều có thể có kệ M05 riêng cùng thuộc chung 1 Nhóm, VD cả NV A lẫn NV
+      // B đều có 2 kệ "MM1" — chỉ trùng nhãn xoay vòng, không phải cùng 1 đợt cấy chuyển của cùng 1
+      // người). Lọc lại đúng mã cây + đúng kho + đúng NV phụ trách của kệ vừa chọn, để không gộp nhầm
+      // mẫu mẹ của 2 NV khác nhau vào chung 1 chỉ định (chỉ định chỉ có 1 assignedToId).
+      const matching = groupLots.filter(
+        (l) =>
+          l.plantTypeId === anchor.plantTypeId &&
+          l.shelf?.warehouseId === anchor.warehouseId &&
+          l.shelf?.assignedStaffId === anchor.assignedStaffId
+      );
       const finalLots = matching.length > 0 ? matching : fallbackLots;
       setRows(buildRows(finalLots));
       const shelfCodes = Array.from(new Set(finalLots.map((l) => l.shelf?.code).filter((c): c is string => !!c))).sort();
@@ -204,9 +231,14 @@ export default function CreateInstructionDialog({
     // availableForInstruction ở đây: mẫu mẹ đến hạn cấy chuyển gần như LUÔN đang là nguồn của chỉ định
     // tuần trước (còn ACTIVE, vì mẫu mẹ dùng lặp lại qua nhiều tuần cấy chuyển, không bị "dùng hết" như
     // mẫu mẹ 1 lần) — nếu vẫn lọc thì kệ đến hạn nào cũng rớt sạch, dialog không bao giờ tự chọn được kệ.
+    // backupMode (chỉ định cấy dự phòng) CHỈ lấy mẫu mẹ trên kệ "chung" chưa chia (unassignedShelfOnly)
+    // — không dùng availableForInstruction lẫn initialShelfId (2 cơ chế đó chỉ áp dụng cho lối tắt từ
+    // kệ đã đến hạn/kệ đã chia).
     const lotsUrl = initialShelfId
       ? `/api/lots?stage=MAU_ME&status=ACTIVE&shelfId=${initialShelfId}`
-      : "/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE&availableForInstruction=true";
+      : backupMode
+        ? "/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE&availableForInstruction=true&unassignedShelfOnly=true"
+        : "/api/lots?roomType=PHONG_MAU_ME&stage=MAU_ME&status=ACTIVE&availableForInstruction=true";
     Promise.all([
       fetch("/api/medium-types").then((r) => r.json()),
       fetch(lotsUrl).then((r) => r.json()),
@@ -223,6 +255,7 @@ export default function CreateInstructionDialog({
               shelfId: initialShelfId,
               plantTypeId: anchorLot.plantTypeId,
               warehouseId: anchorLot.shelf?.warehouseId ?? "",
+              assignedStaffId: anchorLot.shelf?.assignedStaffId ?? null,
               rotationGroupId: anchorLot.shelf?.rotationGroupId ?? null,
               rotationGroupName: anchorLot.shelf?.rotationGroup?.name ?? null,
             },
@@ -248,6 +281,7 @@ export default function CreateInstructionDialog({
         shelfId: group.shelfId,
         plantTypeId: group.plantTypeId,
         warehouseId: group.warehouseId,
+        assignedStaffId: group.assignedStaffId,
         rotationGroupId: group.rotationGroupId,
         rotationGroupName: group.rotationGroupName,
       },
@@ -344,10 +378,15 @@ export default function CreateInstructionDialog({
           })),
           plannedT01Quantity: Number(plannedT01) || 0,
           plannedT05Quantity: Number(plannedT05) || 0,
+          isBackup: !!backupMode,
         }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Tạo chỉ định cấy thành công — chờ Kho mô phân công nhân viên cấy");
+      toast.success(
+        backupMode
+          ? "Đã tạo chỉ định cấy dự phòng — chờ Kho mô gắn NV đã đăng ký lúc bàn giao"
+          : "Tạo chỉ định cấy thành công — chờ Kho mô phân công nhân viên cấy"
+      );
       setOpen(false); resetForm(); router.refresh();
     } finally { setLoading(false); }
   };
@@ -362,7 +401,9 @@ export default function CreateInstructionDialog({
         )}
       </DialogTrigger>
       <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-[84rem] max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Tạo chỉ định cấy mới</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{backupMode ? `Tạo chỉ định cấy dự phòng${slotNumber ? ` ${slotNumber}` : ""}` : "Tạo chỉ định cấy mới"}</DialogTitle>
+        </DialogHeader>
         <div className="space-y-4 mt-2">
 
           <div className="space-y-1">
@@ -519,7 +560,11 @@ export default function CreateInstructionDialog({
               min={format(currentWeekStart(), "yyyy-MM-dd")}
               value={weekStart}
               onChange={(e) => setWeekStart(e.target.value)}
+              disabled={backupMode}
             />
+            {backupMode && (
+              <p className="text-xs text-text-muted">Chỉ định cấy dự phòng luôn cho tuần sau, không sửa được</p>
+            )}
             {weekStart && (
               <p className="text-xs text-text-secondary">
                 Tuần số {getISOWeek(new Date(weekStart))} — Thứ 2, {format(new Date(weekStart), "dd/MM/yyyy", { locale: vi })} – Chủ nhật,{" "}

@@ -48,10 +48,17 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  // Dùng khi Kho mô bàn giao 1 chỉ định cấy dự phòng và cần chọn "nhân viên đã đăng ký" (xem
+  // AssignBackupStaffCell) — chỉ lấy đăng ký ĐÃ DUYỆT và CHƯA được dùng gán cho chỉ định nào.
+  const availableForBackup = searchParams.get("availableForBackup") === "true";
   const role = session.user.role;
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
+  if (availableForBackup) {
+    where.status = "APPROVED";
+    where.fulfilledAt = null;
+  }
   if (role === "CAY_MO") {
     where.staffId = session.user.id;
   } else if (role === "KHO_MO") {

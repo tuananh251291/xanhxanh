@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -31,6 +31,11 @@ export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Nếu người dùng bấm "Đăng ký" quá sớm (trước khi React gắn xong sự kiện), trình duyệt sẽ tự
+  // submit form theo kiểu HTML gốc (GET) — lộ cả email/mật khẩu ra URL. Khoá nút bấm cho tới khi
+  // chắc chắn đã hydrate xong để chặn hẳn khả năng này.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const { register, handleSubmit, formState: { errors } } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
@@ -73,7 +78,7 @@ export default function RegisterPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4">
             <div className="space-y-1">
               <Label htmlFor="name">Họ tên</Label>
               <Input id="name" placeholder="Nguyễn Văn A" {...register("name")} />
@@ -101,7 +106,7 @@ export default function RegisterPage() {
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full bg-primary hover:bg-primary-hover" disabled={loading}>
+            <Button type="submit" className="w-full bg-primary hover:bg-primary-hover" disabled={loading || !mounted}>
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Đăng ký
             </Button>

@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PackageCheck, Loader2, Check, AlertTriangle, ArrowLeft, Wand2, Plus, Trash2 } from "lucide-react";
+import { PackageCheck, Loader2, Check, AlertTriangle, ArrowLeft, Wand2, Plus, Trash2, ShieldPlus } from "lucide-react";
 import { toast } from "sonner";
 
 type PlacementRow = {
@@ -16,6 +16,7 @@ type PlacementRow = {
   quantity: number;
   shelfCode: string;
   pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
+  isBackup: boolean;
 };
 
 type Row = {
@@ -27,7 +28,26 @@ type Row = {
   rootingError: string | null;
   motherError: string | null;
   motherPendingQuantity: number;
+  motherHasBackup: boolean;
+  rootingHasBackup: boolean;
 };
+
+// Hiện khi trong lô đang chờ xếp có lô đến từ chỉ định cấy DỰ PHÒNG (isBackup) — nhắc KHO_MO biết mẫu
+// mẹ của đợt này sẽ luôn về Kho mẫu mẹ chung chưa chia (không gộp vào kệ đã chia cá nhân của NV, xem
+// src/lib/shelf-assignment.ts), kể cả khi tự nhập kệ tay cũng nên chọn 1 kệ chung thay vì kệ riêng của NV.
+function BackupInstructionNotice({ hasMother, hasRooting }: { hasMother: boolean; hasRooting: boolean }) {
+  if (!hasMother && !hasRooting) return null;
+  return (
+    <div className="mx-4 mt-4 flex items-start gap-2 rounded-lg border border-info-light bg-info-light px-3 py-2.5 text-sm text-info-foreground">
+      <ShieldPlus className="w-4 h-4 shrink-0 mt-0.5" />
+      <p>
+        <b>Có lô từ Chỉ định cấy dự phòng.</b>{" "}
+        {hasMother && "Mẫu mẹ sẽ được xếp về Kho mẫu mẹ chung chưa chia, không gộp vào kệ đã chia riêng của NV. "}
+        Nếu tự nhập kệ tay, hãy chọn 1 kệ chung phù hợp thay vì kệ đã chia của NV.
+      </p>
+    </div>
+  );
+}
 
 type Placement = { lotCode: string; shelfCode: string; quantity: number; pool: string };
 type ManualRow = { shelfCode: string; quantity: string };
@@ -62,6 +82,7 @@ function StageRows({
               <td className="px-4 py-3">
                 <Badge variant="secondary">{p.shelfCode}</Badge>
                 {POOL_LABELS[p.pool] && <Badge className="bg-warning-light text-warning-foreground ml-1">{POOL_LABELS[p.pool]}</Badge>}
+                {p.isBackup && <Badge className="bg-info-light text-info-foreground ml-1">Dự phòng</Badge>}
               </td>
             </>
           ) : (
@@ -266,6 +287,7 @@ export default function PlaceBoard({ transferId }: { transferId: string }) {
   return (
     <Card>
       <CardContent className="p-0">
+        <BackupInstructionNotice hasMother={row.motherHasBackup} hasRooting={row.rootingHasBackup} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

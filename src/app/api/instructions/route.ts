@@ -5,7 +5,8 @@ import { generateInstructionCode } from "@/lib/codes";
 import { syncInstructionMediumOrder } from "@/lib/instruction-medium-order";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
-import { startOfWeek } from "date-fns";
+import { startOfWeek, addWeeks } from "date-fns";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 
 // Mỗi dòng = 1 quy cách nguồn (M05 — quy cách mẫu mẹ duy nhất) được dùng, lấy từ 1 lô cụ thể trên 1 kệ.
 // Mỗi dòng tự có tỉ lệ + môi trường riêng — output KHÔNG dây chuyền qua nhau: dự kiến mẫu mẹ = quantity
@@ -40,6 +41,9 @@ const createSchema = z.object({
   // lô thành phẩm thật sự tạo ra khi NV cấy nhập nhật ký sẽ tự chọn quy cách theo thực tế.
   plannedT01Quantity: z.number().int().min(0).default(0),
   plannedT05Quantity: z.number().int().min(0).default(0),
+  // Chỉ định cấy dự phòng (nhiệm vụ tuần của KY_THUAT, xem PlantingInstruction.isBackup) — validate
+  // thêm bên dưới: nguồn phải là kệ "chung" chưa chia, Tuần thực hiện phải đúng tuần sau.
+  isBackup: z.boolean().default(false),
 });
 
 export async function GET(req: NextRequest) {
@@ -88,13 +92,20 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { shelfItems, plantTypeId, weekStart, notes, plannedT01Quantity, plannedT05Quantity } = parsed.data;
+  const { shelfItems, plantTypeId, weekStart, notes, plannedT01Quantity, plannedT05Quantity, isBackup } = parsed.data;
 
   // Không cho tạo chỉ định cho tuần đã trôi qua — so theo tuần chứa weekStart (weekStartsOn: 1), không
   // bắt buộc weekStart phải đúng ngày Thứ 2. Chặn cả ở đây phòng khi client gửi thẳng lên (bỏ qua input
   // date có min ở create-instruction-dialog.tsx).
   if (startOfWeek(new Date(weekStart), { weekStartsOn: 1 }) < startOfWeek(new Date(), { weekStartsOn: 1 })) {
     return NextResponse.json({ message: "Không được chọn tuần đã trôi qua" }, { status: 400 });
+  }
+  // Chỉ định dự phòng LUÔN cho tuần sau (nhiệm vụ tuần chỉ đếm đúng weekStart này) — chặn ở server
+  // phòng khi client gửi thẳng lên (UI đã khoá cứng field Tuần thực hiện, không cho sửa tay). So theo
+  // toStoredWeekStart (UTC-midnight, giống cách lưu bên dưới) — không dùng startOfWeek theo giờ local,
+  // sẽ lệch múi giờ server so với giá trị thật sự lưu xuống DB.
+  if (isBackup && new Date(weekStart).getTime() !== toStoredWeekStart(startOfWeek(addWeeks(new Date(), 1), { weekStartsOn: 1 })).getTime()) {
+    return NextResponse.json({ message: "Chỉ định dự phòng chỉ được tạo cho tuần sau" }, { status: 400 });
   }
 
   // Chỉ định cấy chỉ được lấy nguồn từ kệ trong Phòng mẫu mẹ của Kho sản xuất — chặn ở server phòng khi
@@ -106,6 +117,11 @@ export async function POST(req: NextRequest) {
   });
   if (validShelves.length !== shelfIds.length) {
     return NextResponse.json({ message: "Chỉ được chọn kệ trong Phòng mẫu mẹ của Kho sản xuất" }, { status: 400 });
+  }
+  // Chỉ định dự phòng bắt buộc nguồn là kệ "chung" chưa chia — chưa gắn NV cụ thể, để Kho mô tự gắn
+  // đúng NV đã đăng ký làm thêm/hoàn thành sớm lúc bàn giao (xem PATCH /api/instructions/[id]).
+  if (isBackup && validShelves.some((s) => s.assignedStaffId)) {
+    return NextResponse.json({ message: "Chỉ định dự phòng chỉ được lấy nguồn từ kệ mẫu mẹ chung chưa chia" }, { status: 400 });
   }
 
   // Kệ Phòng mẫu mẹ "đã chia" (gắn sẵn 1 NV cấy mô cụ thể) → tự động gán luôn NV đó cho chỉ định,
@@ -160,6 +176,7 @@ export async function POST(req: NextRequest) {
         plannedT05Quantity,
         weekStart: weekStart ? new Date(weekStart) : undefined,
         status: "ACTIVE",
+        isBackup,
         items: {
           create: itemsWithOutput.map((item) => ({
             shelfId: item.shelfId,

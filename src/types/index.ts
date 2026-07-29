@@ -133,6 +133,10 @@ export function sumLotQuantity(lots: { quantity: number }[]): number {
 // toán bàn giao hàng ngày thông thường (planShelfAssignments), và để UI nhận biết hiển thị đúng mô tả.
 export const SURPLUS_TRANSFER_TAG = "SURPLUS_MOTHER_HANDOVER";
 
+// Số chỉ định cấy dự phòng tối thiểu KY_THUAT phải tạo mỗi tuần cho tuần sau, trước Thứ 5 tuần này —
+// xem /instructions/backup, getKyThuatStats (dashboard/page.tsx).
+export const MIN_BACKUP_INSTRUCTION_COUNT = 5;
+
 export const LOT_STATUS_LABELS = {
   ACTIVE: "Đang lưu",
   TRANSFERRED: "Đã chuyển",
@@ -263,6 +267,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
     { href: "/materials", label: "Vật tư", icon: "Boxes" },
     { href: "/suppliers", label: "Nhà cung cấp", icon: "Truck" },
+    { href: "/product-prices", label: "Bảng giá sản phẩm", icon: "DollarSign" },
+    { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
+    { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/settings/shelf-groups", label: "Nhóm giàn kệ", icon: "Layers" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
@@ -277,6 +284,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/plant-types", label: "Danh sách cây", icon: "Leaf" },
     { href: "/warehouses", label: "Kho & Kệ", icon: "Warehouse" },
     { href: "/medium-types", label: "Môi trường", icon: "FlaskConical" },
+    { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
+    { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
@@ -286,6 +295,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KY_THUAT: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
+    { href: "/instructions/backup", label: "Chỉ định cấy dự phòng", icon: "ShieldPlus" },
     { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
     { href: "/mother-ready", label: "Mẫu mẹ đạt chưa chỉ định", icon: "Sprout" },
     { href: "/planting-check", label: "Kiểm tra tình trạng cấy", icon: "ClipboardCheck" },

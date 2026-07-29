@@ -40,9 +40,11 @@ export default function CreateUserDialog() {
   const [thanhPhamWarehouses, setThanhPhamWarehouses] = useState<ThanhPhamWarehouse[]>([]);
   const router = useRouter();
 
+  // Mật khẩu mặc định "demo123" cho mọi tài khoản mới — Admin vẫn sửa lại được trước khi tạo nếu muốn
+  // đặt mật khẩu riêng cho nhân viên đó.
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { marketRoomIds: [] },
+    defaultValues: { marketRoomIds: [], password: "demo123" },
   });
 
   const role = watch("role");
@@ -115,7 +117,7 @@ export default function CreateUserDialog() {
         <DialogHeader>
           <DialogTitle>Thêm người dùng mới</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+        <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4 mt-2">
           <div className="space-y-1">
             <Label>Họ tên</Label>
             <Input {...register("name")} placeholder="Nguyễn Văn A" />

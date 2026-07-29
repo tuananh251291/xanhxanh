@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -45,6 +45,10 @@ export default function AccountPage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  // Chặn submit form kiểu HTML gốc (GET, lộ mật khẩu ra URL) nếu người dùng bấm quá sớm, trước khi
+  // React kịp gắn xong sự kiện — xem cùng cơ chế ở trang đăng nhập.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const {
     register, handleSubmit, reset, formState: { errors },
@@ -176,7 +180,7 @@ export default function AccountPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmitPassword)} className="space-y-4 max-w-sm">
+          <form onSubmit={handleSubmit(onSubmitPassword)} method="post" className="space-y-4 max-w-sm">
             <div className="space-y-1">
               <Label htmlFor="currentPassword">Mật khẩu hiện tại</Label>
               <Input id="currentPassword" type="password" placeholder="••••••••" {...register("currentPassword")} />
@@ -192,7 +196,7 @@ export default function AccountPage() {
               <Input id="confirmPassword" type="password" placeholder="••••••••" {...register("confirmPassword")} />
               {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>}
             </div>
-            <Button type="submit" disabled={savingPassword} className="bg-primary hover:bg-primary-hover">
+            <Button type="submit" disabled={savingPassword || !mounted} className="bg-primary hover:bg-primary-hover">
               {savingPassword ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
               Đổi mật khẩu
             </Button>

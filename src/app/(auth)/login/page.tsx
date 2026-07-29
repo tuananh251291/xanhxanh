@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -110,6 +110,15 @@ export default function LoginPage() {
   });
   const typedEmail = watch("email") ?? "";
 
+  // Chỉ true SAU khi React đã hydrate xong trên client — trước đó form chưa thật sự được gắn xử lý
+  // submit qua handleSubmit(onSubmit), nên nếu người dùng bấm "Đăng nhập" quá sớm (VD thiết bị khác vào
+  // qua mạng LAN, mạng chậm khiến JS tải/hydrate trễ hơn HTML), trình duyệt sẽ tự submit form theo kiểu
+  // HTML gốc (GET) — lộ cả email/mật khẩu ra URL và tải lại trang trắng, không có thông báo lỗi gì (bug
+  // thật đã tái hiện được, không phải do người dùng thao tác chậm). Khoá nút bấm cho tới khi chắc chắn
+  // đã hydrate xong để chặn hẳn khả năng này.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
     setError("");
@@ -216,7 +225,10 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* method="post" là lớp phòng thủ thứ 2 — nếu vẫn lỡ rơi vào submit kiểu HTML gốc (JS chưa
+              hydrate xong) thì email/mật khẩu đi theo POST body, không lộ ra URL như GET mặc định. Lớp
+              phòng thủ chính là khoá nút bấm bằng `mounted` bên dưới. */}
+          <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4">
             <div className="space-y-1">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -254,8 +266,8 @@ export default function LoginPage() {
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full bg-primary hover:bg-primary-hover" disabled={loading}>
-              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button type="submit" className="w-full bg-primary hover:bg-primary-hover" disabled={loading || !mounted}>
+              {(loading || !mounted) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Đăng nhập
             </Button>
           </form>

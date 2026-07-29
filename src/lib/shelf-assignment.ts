@@ -29,7 +29,7 @@ type LotForAssign = {
   plantTypeId: string;
   plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
   instructionId: string | null;
-  instruction: { assignedToId: string | null } | null;
+  instruction: { assignedToId: string | null; isBackup: boolean } | null;
 };
 
 type ShelfCandidate = {
@@ -103,12 +103,21 @@ export async function planShelfAssignments(
     select: { id: true, rotationOrder: true },
   });
   let currentGroup: { id: string; rotationOrder: number | null } | undefined;
+  // Tuần hiện tại còn TRƯỚC mốc "Tuần khởi đầu Nhóm tuần ra rễ 1" đã cấu hình — lịch xoay vòng thật sự
+  // CHƯA bắt đầu. getCurrentWeekSlot tính theo mod N nên tự "quay ngược" ra 1 khe hợp lệ cho tuần trước
+  // epoch (VD epoch tuần 31 thì tuần 30 bị tính thành khe cuối cùng của chu kỳ trước), không có ý nghĩa
+  // gì và có thể khớp NHẦM với 1 Nhóm thật — chặn tường minh, coi như chưa xác định được Nhóm nào đang
+  // tới lượt (giống hệt lỗi đã sửa ở summarizeRootingWeekGroups/summarizeMotherWeekGroups).
+  let beforeEpoch = false;
   if (raReGroups.length > 0) {
     const startWeekValue = await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "");
     const epochMonday = startWeekValue ? isoWeekStringToMonday(startWeekValue) : null;
-    currentGroup = raReGroups.find(
-      (g) => g.rotationOrder === (epochMonday ? getCurrentWeekSlot(raReGroups.length, new Date(), epochMonday) : getCurrentWeekSlot(raReGroups.length))
-    );
+    beforeEpoch = !!epochMonday && new Date().getTime() < epochMonday.getTime();
+    if (!beforeEpoch) {
+      currentGroup = raReGroups.find(
+        (g) => g.rotationOrder === (epochMonday ? getCurrentWeekSlot(raReGroups.length, new Date(), epochMonday) : getCurrentWeekSlot(raReGroups.length))
+      );
+    }
   }
   const rootingUsesRotationGroup = shelves.some(
     (s) => s.room?.type === "PHONG_RA_RE" && s.rotationGroupId !== null
@@ -136,6 +145,11 @@ export async function planShelfAssignments(
       let pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
       if (pool.length === 0) throw new ShelfAssignError("Không có kệ Phòng ra rễ nào trong kho này");
       if (rootingUsesRotationGroup) {
+        if (beforeEpoch) {
+          throw new ShelfAssignError(
+            `Chưa tới tuần bắt đầu lịch xoay vòng Nhóm tuần ra rễ (SUPER_ADMIN đã cấu hình ở /settings/shelf-groups nhưng còn ở tuần sau) — chưa xác định được Nhóm nào đang tới lượt`
+          );
+        }
         if (!currentGroup) {
           throw new ShelfAssignError(
             `Chưa cấu hình Nhóm tuần ra rễ nào — SUPER_ADMIN cần tạo Nhóm ở /settings/shelf-groups`
@@ -167,7 +181,13 @@ export async function planShelfAssignments(
       continue;
     }
 
-    const ownerStaffId = lot.instruction?.assignedToId ?? null;
+    // Chỉ định cấy DỰ PHÒNG (isBackup) — dù đã gắn NV lúc bàn giao (xem PATCH /api/instructions/[id]
+    // nhánh assignExtraWorkRequestId), mẫu mẹ sinh ra từ đợt cấy dự phòng KHÔNG được coi là "của" NV đó
+    // để gộp vào kệ đã chia cá nhân — luôn coi như KHÔNG có chủ (ownerStaffId = null), rớt thẳng xuống
+    // nhánh Kho mẫu mẹ chung bên dưới. Lý do: kệ đã chia của NV được cấp phát theo chỉ tiêu SẢN LƯỢNG
+    // THƯỜNG XUYÊN của họ, không tính phần việc dự phòng làm thêm/hoàn thành sớm — gộp vào sẽ làm sai
+    // lệch sức chứa đã tính cho công việc chính của NV đó.
+    const ownerStaffId = lot.instruction?.isBackup ? null : (lot.instruction?.assignedToId ?? null);
     let remainingBags = lot.quantity;
 
     if (ownerStaffId) {

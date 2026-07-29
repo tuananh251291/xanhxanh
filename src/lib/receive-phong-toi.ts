@@ -15,7 +15,7 @@ export const lotSelect = {
   plantTypeId: true,
   plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
   instructionId: true,
-  instruction: { select: { assignedToId: true } },
+  instruction: { select: { assignedToId: true, isBackup: true } },
 } as const;
 
 export type PendingItem = {
@@ -31,7 +31,7 @@ export type PendingItem = {
     plantTypeId: string;
     plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
     instructionId: string | null;
-    instruction: { assignedToId: string | null } | null;
+    instruction: { assignedToId: string | null; isBackup: boolean } | null;
   };
 };
 
@@ -44,6 +44,7 @@ export type PlacementRow = {
   quantity: number;
   shelfCode: string;
   pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
+  isBackup: boolean;
 };
 
 export type StagePreview = {
@@ -57,6 +58,11 @@ export type StagePreview = {
   // (motherError khác null) thì motherPlacements rỗng nhưng KHO_MO vẫn cần biết tổng để tự nhập kệ thủ
   // công (xem confirmStageManual) đủ đúng số, không thiếu không thừa.
   motherPendingQuantity: number;
+  // Có lô nào (mẫu mẹ hoặc cây ra rễ) đến từ chỉ định cấy DỰ PHÒNG hay không — tính RIÊNG từ pendingItems
+  // (không suy từ *Placements) vì cần đúng cả khi thuật toán báo lỗi/KHO_MO tự nhập tay, để UI luôn hiện
+  // được thông báo dù ở nhánh nào. Dùng để hiện banner nhắc KHO_MO (xem place-staff-board.tsx/place-board.tsx).
+  motherHasBackup: boolean;
+  rootingHasBackup: boolean;
 };
 
 function toPlacementRows(placements: Awaited<ReturnType<typeof planShelfAssignments>>): PlacementRow[] {
@@ -67,6 +73,7 @@ function toPlacementRows(placements: Awaited<ReturnType<typeof planShelfAssignme
     quantity: p.quantity,
     shelfCode: p.shelfCode,
     pool: p.pool,
+    isBackup: !!p.lot.instruction?.isBackup,
   }));
 }
 
@@ -106,6 +113,8 @@ export async function buildStagePreview(pendingItems: PendingItem[], workplaceWa
     rootingError,
     motherError,
     motherPendingQuantity: motherItems.reduce((s, i) => s + i.lot.quantity, 0),
+    motherHasBackup: motherItems.some((i) => i.lot.instruction?.isBackup),
+    rootingHasBackup: rootingItems.some((i) => i.lot.instruction?.isBackup),
   };
 }
 

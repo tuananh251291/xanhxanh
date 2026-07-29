@@ -262,6 +262,7 @@ model User {
   goodsReceiptItemsReturned GoodsReceiptItem[] @relation("GoodsReceiptItemReturnedBy")
   extraWorkRequests         ExtraWorkRequest[] @relation("ExtraWorkRequestStaff")
   extraWorkRequestsResponded ExtraWorkRequest[] @relation("ExtraWorkRequestRespondedBy")
+  productPrices             ProductPrice[]
 
   @@map("users")
 }
@@ -481,6 +482,45 @@ model Supplier {
   goodsReceipts GoodsReceipt[]
 
   @@map("suppliers")
+}
+
+// ============================================================
+// PRODUCT PRICE LIST (bảng giá sản phẩm) — mã/tên do Admin cấp cao (SUPER_ADMIN) tạo, khớp đúng "Item
+// code" trên invoice xuất khẩu (VD "PD19T10"). Admin cấp cao cập nhật giá mỗi tháng (ProductPrice mới,
+// giữ lại lịch sử các tháng trước). NV Sale dùng để đối chiếu invoice PDF khách gửi (xem
+// /api/price-check) — "giá đang áp dụng" = ProductPrice có effectiveMonth gần nhất không sau tháng hiện
+// tại (KHÔNG theo ngày trên invoice).
+// ============================================================
+
+model Product {
+  id            String   @id @default(cuid())
+  code          String   @unique // Item code trên invoice, VD "PD19T10"
+  name          String // Model name
+  botanicalName String?
+  unit          String? // VD "Plant/UNY"
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  prices ProductPrice[]
+
+  @@map("products")
+}
+
+// 1 dòng = giá áp dụng cho 1 sản phẩm kể từ đầu 1 tháng cụ thể (effectiveMonth luôn là ngày 1 đầu
+// tháng). "Giá đang áp dụng" tại thời điểm bất kỳ = dòng có effectiveMonth lớn nhất <= tháng đó.
+model ProductPrice {
+  id             String   @id @default(cuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price          Float // USD
+  effectiveMonth DateTime
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@unique([productId, effectiveMonth])
+  @@map("product_prices")
 }
 
 enum GoodsReceiptStatus {
@@ -854,6 +894,12 @@ model PlantingInstruction {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
+  // Chỉ định cấy dự phòng — nhiệm vụ tuần của KY_THUAT: tạo tối thiểu 5 chỉ định dự phòng cho tuần sau
+  // trước Thứ 5 tuần này, nguồn LUÔN lấy từ kệ mẫu mẹ "chung" chưa chia (Shelf.assignedStaffId = null),
+  // chưa gắn NV cụ thể lúc tạo — dùng khi NV cấy mô đăng ký làm thêm/hoàn thành sớm (xem
+  // ExtraWorkRequest.fulfilledInstructionId). Xem POST /api/instructions, getKyThuatStats.
+  isBackup    Boolean           @default(false)
+
   items               PlantingInstructionItem[]
   lots                Lot[]
   dailyRecords        DailyRecord[]
@@ -863,7 +909,8 @@ model PlantingInstruction {
   mediumOrderId String?
   mediumOrder   MediumOrder? @relation(fields: [mediumOrderId], references: [id])
 
-  extraWorkRequests ExtraWorkRequest[]
+  extraWorkRequests          ExtraWorkRequest[] @relation("ExtraWorkRequestCurrentInstruction")
+  fulfilledExtraWorkRequests ExtraWorkRequest[] @relation("ExtraWorkRequestFulfilledInstruction")
 
   @@map("planting_instructions")
 }
@@ -1084,7 +1131,7 @@ model ExtraWorkRequest {
   // Chỉ dùng cho EARLY_COMPLETION — chỉ định đang thực hiện của NV tại lúc gửi đăng ký (server tự suy ra,
   // không cho client chọn tay để tránh chọn nhầm chỉ định của NV khác).
   instructionId      String?
-  instruction        PlantingInstruction? @relation(fields: [instructionId], references: [id])
+  instruction        PlantingInstruction? @relation("ExtraWorkRequestCurrentInstruction", fields: [instructionId], references: [id])
   expectedEndDate    DateTime?
   expectedEndSession WorkSession?
 
@@ -1095,6 +1142,15 @@ model ExtraWorkRequest {
   respondedById String?
   respondedBy   User?                  @relation("ExtraWorkRequestRespondedBy", fields: [respondedById], references: [id])
   respondedAt   DateTime?
+
+  // Đăng ký đã APPROVED được Kho mô "dùng" để gán vào 1 chỉ định cấy dự phòng (xem
+  // PlantingInstruction.isBackup, PATCH /api/instructions/[id] nhánh assignExtraWorkRequestId) — null dù
+  // đã APPROVED nghĩa là còn "khả dụng", chưa NV nào được gán chỉ định thật từ đăng ký này. Ngăn 1 đăng
+  // ký bị dùng gán trùng cho nhiều chỉ định dự phòng khác nhau.
+  fulfilledAt            DateTime?
+  fulfilledInstructionId String?
+  fulfilledInstruction   PlantingInstruction? @relation("ExtraWorkRequestFulfilledInstruction", fields: [fulfilledInstructionId], references: [id])
+
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 

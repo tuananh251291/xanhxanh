@@ -47,6 +47,7 @@ const editItemSchema = z.object({
 const patchSchema = z.union([
   z.object({ status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED", "ENDED"]) }),
   z.object({ assignedToId: z.string().min(1) }),
+  z.object({ assignExtraWorkRequestId: z.string().min(1) }),
   z.object({ confirmHandover: z.literal(true) }),
   z.object({ undoHandover: z.literal(true) }),
   z.object({ confirmMotherReceived: z.literal(true) }),
@@ -319,8 +320,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // XÁC NHẬN nhận mẫu mẹ (motherReceivedAt còn null), vì sau khi xác nhận coi như NV đã thật sự bắt đầu
   // dùng mẫu mẹ, hoàn tác lúc đó sẽ tạo trạng thái mâu thuẫn (đã xác nhận nhận nhưng chỉ định lại "chưa
   // bàn giao"). Trả lô nguồn về ACTIVE (ngược lại markSourceLotsPlanted), xoá mốc bàn giao — KHÔNG đụng
-  // tới assignedToId (giữ nguyên NV đã gán, kể cả trường hợp gán qua kệ "chung" — đổi NV là thao tác
-  // khác, không thuộc phạm vi hoàn tác bàn giao).
+  // tới assignedToId cho chỉ định THƯỜNG (giữ nguyên NV đã gán qua kệ "đã chia" — đổi NV là thao tác
+  // khác, không thuộc phạm vi hoàn tác bàn giao). Riêng chỉ định DỰ PHÒNG (isBackup): NV được gán qua 1
+  // suất đăng ký làm thêm/hoàn thành sớm cụ thể (xem assignExtraWorkRequestId bên dưới) — hoàn tác coi
+  // như huỷ luôn việc gán đó, xoá assignedToId + trả lại suất đăng ký về trạng thái "khả dụng"
+  // (fulfilledAt/fulfilledInstructionId = null) để Kho mô chọn được NV khác (hoặc gán lại đúng NV cũ)
+  // từ danh sách, thay vì kẹt cứng với đúng 1 người và suất đăng ký bị coi như "đã dùng" oan.
   if ("undoHandover" in parsed.data) {
     if (!(isAdminRole(role) || role === "KHO_MO")) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -338,9 +343,82 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const updated = await prisma.$transaction(async (tx) => {
       await revertSourceLotsToActive(tx, instruction.items);
+      if (instruction.isBackup) {
+        await tx.extraWorkRequest.updateMany({
+          where: { fulfilledInstructionId: id },
+          data: { fulfilledAt: null, fulfilledInstructionId: null },
+        });
+      }
       return tx.plantingInstruction.update({
         where: { id },
-        data: { handedOverAt: null, handedOverById: null },
+        data: {
+          handedOverAt: null,
+          handedOverById: null,
+          assignedToId: instruction.isBackup ? null : undefined,
+        },
+        include: { assignedTo: { select: { name: true } } },
+      });
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Kho mô bàn giao chỉ định cấy DỰ PHÒNG (isBackup) — thay vì chọn tự do như kệ "chung" thường
+  // (isAssignAction bên dưới), phải chọn đúng 1 đăng ký làm thêm/hoàn thành sớm ĐÃ DUYỆT và CHƯA dùng
+  // (xem GET /api/extra-work-requests?availableForBackup=true) — hành động này vừa gán NV + bàn giao
+  // (giống hệt isAssignAction) VỪA đánh dấu đăng ký đó đã dùng (fulfilledAt) để không bị gán trùng.
+  if ("assignExtraWorkRequestId" in parsed.data) {
+    if (!(isAdminRole(role) || role === "KHO_MO")) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    const instruction = await prisma.plantingInstruction.findUnique({
+      where: { id },
+      include: { items: { select: { lotId: true, shelf: { select: { warehouseId: true } } } } },
+    });
+    if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    if (!instruction.isBackup) {
+      return NextResponse.json({ message: "Chỉ áp dụng cho chỉ định cấy dự phòng" }, { status: 400 });
+    }
+    if (instruction.assignedToId) {
+      return NextResponse.json({ message: "Chỉ định đã có nhân viên cấy mô" }, { status: 400 });
+    }
+    // NV cấy mô chỉ được nhận nhiệm vụ từ Kho mô ĐÚNG khu sản xuất (kho) mình đang làm việc — kệ nguồn
+    // của chỉ định thuộc kho nào thì chỉ Kho mô của kho đó (và NV đăng ký làm thêm cũng thuộc kho đó,
+    // xem check staff.workplaceWarehouseId bên dưới) mới được bàn giao. Thiếu check này thì Kho mô 1 kho
+    // vẫn có thể (qua URL/id) bàn giao nhầm chỉ định của kho KHÁC.
+    const instructionWarehouseId = instruction.items[0]?.shelf?.warehouseId;
+    if (role === "KHO_MO" && instructionWarehouseId !== session!.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+
+    const extraWorkRequest = await prisma.extraWorkRequest.findUnique({
+      where: { id: parsed.data.assignExtraWorkRequestId },
+      include: { staff: { select: { id: true, workplaceWarehouseId: true } } },
+    });
+    if (!extraWorkRequest) return NextResponse.json({ message: "Không tìm thấy đăng ký" }, { status: 404 });
+    if (extraWorkRequest.staff.workplaceWarehouseId !== instructionWarehouseId) {
+      return NextResponse.json({ message: "Đăng ký không thuộc kho của chỉ định này" }, { status: 403 });
+    }
+    if (role === "KHO_MO" && extraWorkRequest.staff.workplaceWarehouseId !== session!.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Đăng ký không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+    if (extraWorkRequest.status !== "APPROVED" || extraWorkRequest.fulfilledAt) {
+      return NextResponse.json({ message: "Đăng ký này chưa được duyệt hoặc đã dùng cho chỉ định khác" }, { status: 400 });
+    }
+
+    const isFirstHandover = !instruction.handedOverAt;
+    const updated = await prisma.$transaction(async (tx) => {
+      if (isFirstHandover) await markSourceLotsPlanted(tx, instruction.items);
+      await tx.extraWorkRequest.update({
+        where: { id: extraWorkRequest.id },
+        data: { fulfilledAt: new Date(), fulfilledInstructionId: id },
+      });
+      return tx.plantingInstruction.update({
+        where: { id },
+        data: {
+          assignedToId: extraWorkRequest.staff.id,
+          handedOverAt: instruction.handedOverAt ?? new Date(),
+          handedOverById: instruction.handedOverById ?? session!.user!.id,
+        },
         include: { assignedTo: { select: { name: true } } },
       });
     });

@@ -9,7 +9,7 @@ import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
 import { ensureMotherReadyAlerts } from "@/lib/mother-ready";
 import { ensureRootingReadyAlerts } from "@/lib/rooting-ready";
-import { ensureInstructionsEnded } from "@/lib/instruction-lifecycle";
+import { ensureInstructionsEnded, ensureBackupInstructionsCleaned } from "@/lib/instruction-lifecycle";
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +23,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const role = session.user.role as UserRole;
 
   await ensureInstructionsEnded();
+  await ensureBackupInstructionsCleaned();
   await ensureExpiredOrdersCancelled();
   if (role === "KY_THUAT") await ensureMotherReadyAlerts();
   if (role === "KHO_MO") await ensureRootingReadyAlerts();

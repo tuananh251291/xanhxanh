@@ -194,7 +194,7 @@ export default function EditUserDialog({
         <DialogHeader>
           <DialogTitle>Sửa tài khoản</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+        <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4 mt-2">
           <div className="space-y-1">
             <Label>Họ tên</Label>
             <Input {...register("name")} placeholder="Nguyễn Văn A" />

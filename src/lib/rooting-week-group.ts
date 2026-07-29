@@ -52,7 +52,13 @@ export function summarizeRootingWeekGroups(
   // Chỉ tính "khe hiện tại" khi ĐÃ cấu hình epochMonday — getCurrentWeekSlot tự có epoch mặc định (không
   // mang ý nghĩa nghiệp vụ) nếu không truyền, nên phải chặn tường minh ở đây thay vì để lọt qua, tránh báo
   // "đạt xuất" dựa trên 1 mốc vô nghĩa khi SUPER_ADMIN chưa cấu hình "Tuần khởi đầu của Nhóm tuần ra rễ 1".
-  const currentSlot = totalSlots > 0 && epochMonday ? getCurrentWeekSlot(totalSlots, now, epochMonday) : null;
+  // Đồng thời chặn cả những TUẦN CÒN TRƯỚC epochMonday — getCurrentWeekSlot tính theo mod N nên tự "quay
+  // ngược" ra 1 khe hợp lệ cho tuần trước epoch (VD epoch tuần 31, N=4 thì tuần 30 bị tính thành khe 4),
+  // dù lịch xoay vòng thật sự chưa bắt đầu — không có ý nghĩa gì, dễ khiến Nhóm cuối chu kỳ hiện "đạt
+  // xuất" nhầm ngay trước khi lịch khởi động (xem lỗi tương tự đã sửa ở summarizeMotherWeekGroups).
+  const currentSlot = totalSlots > 0 && epochMonday && now.getTime() >= epochMonday.getTime()
+    ? getCurrentWeekSlot(totalSlots, now, epochMonday)
+    : null;
 
   const byGroup = new Map<string, RootingWeekGroupStatus>();
   for (const shelf of shelves) {

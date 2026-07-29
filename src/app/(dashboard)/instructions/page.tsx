@@ -14,6 +14,7 @@ import { INSTRUCTION_STATUS_LABELS, isAdminRole } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import AssignStaffCell from "./assign-staff-cell";
+import AssignBackupStaffCell from "./assign-backup-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
 import UndoHandoverButton from "./undo-handover-button";
 import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse, getMotherRotationEpoch } from "@/lib/mother-week-group";
@@ -230,13 +231,20 @@ export default async function InstructionsPage({
                     <tbody>
                       {instructions.map((inst) => (
                         <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                          <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{inst.code}</td>
+                          <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">
+                            {inst.code}
+                            {inst.isBackup && <Badge variant="secondary" className="ml-1.5 align-middle">Dự phòng</Badge>}
+                          </td>
                           <td className="px-4 py-3 text-sm font-mono text-foreground">{inst.plantType.code}</td>
                           <td className="px-4 py-3 text-sm text-foreground">{inst.plantType.name}</td>
                           <td className="px-4 py-3 text-sm text-foreground">
                             {!inst.assignedTo ? (
                               role === "KHO_MO" ? (
-                                <AssignStaffCell instructionId={inst.id} staffList={caymoStaff} />
+                                inst.isBackup ? (
+                                  <AssignBackupStaffCell instructionId={inst.id} />
+                                ) : (
+                                  <AssignStaffCell instructionId={inst.id} staffList={caymoStaff} />
+                                )
                               ) : (
                                 <Badge variant="secondary">Chưa gán</Badge>
                               )
