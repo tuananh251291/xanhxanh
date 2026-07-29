@@ -5,19 +5,28 @@ import { z } from "zod";
 import { addWeeks, startOfWeek } from "date-fns";
 import { generateLotCode } from "@/lib/codes";
 import { sumLotQuantity } from "@/types";
-import { shelfMatchesPlantType, resolveStockInWarehouseId, STOCK_IN_ROOM_TYPE } from "@/lib/stock-in";
+import { shelfMatchesPlantType, isEligibleMotherShelfForStockIn, resolveStockInWarehouseId, STOCK_IN_ROOM_TYPE } from "@/lib/stock-in";
+import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
 
-const schema = z.object({
-  stage: z.enum(["MAU_ME", "THANH_PHAM"]),
-  plantTypeId: z.string().min(1),
-  stageCode: z.string().min(1),
-  shelfId: z.string().min(1),
-  quantity: z.number().int().positive(),
-  mode: z.enum(["ADD", "REPLACE"]),
-  warehouseId: z.string().optional(), // chỉ Admin/Admin cấp cao cần truyền — KHO_MO luôn dùng đúng kho làm việc, bỏ qua field này dù có gửi lên
-});
+const schema = z
+  .object({
+    stage: z.enum(["MAU_ME", "THANH_PHAM"]),
+    plantTypeId: z.string().min(1),
+    stageCode: z.string().min(1),
+    // "SHELF" = Phòng sáng (Phòng mẫu mẹ/Phòng ra rễ, xếp vào 1 giàn kệ). "DARK_ROOM" = Phòng tối, gắn
+    // thẳng vào Phòng tối cá nhân của 1 NV cấy mô (không có giàn kệ) — xem getOrCreatePersonalDarkRoom.
+    destination: z.enum(["SHELF", "DARK_ROOM"]),
+    shelfId: z.string().optional(),
+    staffId: z.string().optional(),
+    quantity: z.number().int().positive(),
+    mode: z.enum(["ADD", "REPLACE"]),
+    warehouseId: z.string().optional(), // chỉ Admin/Admin cấp cao cần truyền — KHO_MO luôn dùng đúng kho làm việc, bỏ qua field này dù có gửi lên
+  })
+  .refine((data) => (data.destination === "SHELF" ? !!data.shelfId : !!data.staffId), {
+    message: "Thiếu giàn kệ hoặc NV cấy mô",
+  });
 
 const STAGE_CODES: Record<"MAU_ME" | "THANH_PHAM", string[]> = {
   MAU_ME: ["M05"],
@@ -25,13 +34,11 @@ const STAGE_CODES: Record<"MAU_ME" | "THANH_PHAM", string[]> = {
 };
 
 // Nhập kho thủ công cho KHO_MO (đúng kho làm việc) và Admin/Admin cấp cao (tự chọn kho sản xuất) — cộng
-// thêm hoặc cập nhật thay thế số lượng 1 lô (cây hoặc cụm mẫu mẹ) vào 1 giàn kệ, không qua chỉ định
-// cấy/bàn giao như luồng thông thường (VD kiểm kê phát hiện thiếu/thừa, nhận hàng ngoài luồng...). Bắt
-// buộc đúng 2 nguyên tắc: (1) đúng mã cây được phép xếp vào giàn đó — xem shelfMatchesPlantType, (2)
-// không vượt sức chứa còn lại — validate LẠI ở server dù UI đã lọc trước, vì nhiều tab/nhiều NV có thể
-// cùng thao tác đồng thời.
+// thêm hoặc cập nhật thay thế số lượng 1 lô (cây hoặc cụm mẫu mẹ), không qua chỉ định cấy/bàn giao như
+// luồng thông thường (VD kiểm kê phát hiện thiếu/thừa, nhận hàng ngoài luồng...). 2 nơi nhập: giàn kệ
+// (Phòng sáng — Phòng mẫu mẹ/Phòng ra rễ) hoặc Phòng tối cá nhân của 1 NV cấy mô (destination).
 //
-// mode "ADD" (cộng thêm): nếu giàn kệ đã có sẵn 1 lô ACTIVE cùng mã cây + quy cách thì cộng dồn vào lô đó
+// mode "ADD" (cộng thêm): nếu nơi nhập đã có sẵn 1 lô ACTIVE cùng mã cây + quy cách thì cộng dồn vào lô đó
 // (giống hệt cách upsertLot ở src/lib/goods-receipt.ts merge theo phòng/mã cây/quy cách — lấy lô CŨ NHẤT
 // nếu có nhiều lô trùng), không có thì tạo lô mới. mode "REPLACE" (cập nhật thay thế): GHI ĐÈ thẳng số
 // lượng lô đó thành đúng số vừa nhập (dùng khi kiểm kê ra số thực tế khác hệ thống) — không có lô nào thì
@@ -49,7 +56,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
-  const { stage, plantTypeId, stageCode, shelfId, quantity, mode, warehouseId: requestedWarehouseId } = parsed.data;
+  const { stage, plantTypeId, stageCode, destination, shelfId, staffId, quantity, mode, warehouseId: requestedWarehouseId } = parsed.data;
 
   if (!STAGE_CODES[stage].includes(stageCode)) {
     return NextResponse.json({ message: "Quy cách không hợp lệ" }, { status: 400 });
@@ -61,33 +68,82 @@ export async function POST(req: NextRequest) {
   }
   const warehouseId = resolved.warehouseId;
 
-  const [plantType, shelf, creatingUser, motherEpochMonday] = await Promise.all([
+  const [plantType, creatingUser] = await Promise.all([
     prisma.plantType.findUnique({
       where: { id: plantTypeId },
       select: { code: true, isActive: true, transferWaitWeeks: true, rootingWeeks: true },
     }),
-    prisma.shelf.findUnique({
-      where: { id: shelfId },
-      select: {
-        id: true,
-        code: true,
-        isActive: true,
-        warehouseId: true,
-        capacity: true,
-        plantTypeId: true,
-        allowedCodes: true,
-        room: { select: { type: true } },
-        rotationGroup: { select: { rotationOrder: true } },
-        lots: { where: { status: "ACTIVE" }, select: { id: true, quantity: true, plantTypeId: true, stageCode: true, enteredAt: true } },
-      },
-    }),
     prisma.user.findUnique({ where: { id: session!.user.id }, select: { code: true } }),
-    getMotherRotationEpoch(),
   ]);
-
   if (!plantType || !plantType.isActive) {
     return NextResponse.json({ message: "Không tìm thấy mã cây" }, { status: 400 });
   }
+
+  const staffCode = creatingUser?.code ?? "000";
+  const now = new Date();
+
+  if (destination === "DARK_ROOM") {
+    const staff = await prisma.user.findUnique({
+      where: { id: staffId! },
+      select: { role: true, isActive: true, workplaceWarehouseId: true },
+    });
+    if (!staff || !staff.isActive || staff.role !== "CAY_MO" || staff.workplaceWarehouseId !== warehouseId) {
+      return NextResponse.json({ message: "NV cấy mô không hợp lệ cho kho đã chọn" }, { status: 400 });
+    }
+
+    const room = await getOrCreatePersonalDarkRoom(staffId!, warehouseId);
+    const existingLot = await prisma.lot.findFirst({
+      where: { roomId: room.id, plantTypeId, stageCode, status: "ACTIVE" },
+      orderBy: { enteredAt: "asc" },
+    });
+
+    if (existingLot) {
+      const newQuantity = mode === "ADD" ? existingLot.quantity + quantity : quantity;
+      const updated = await prisma.lot.update({ where: { id: existingLot.id }, data: { quantity: newQuantity } });
+      return NextResponse.json({ lot: updated, created: false, previousQuantity: existingLot.quantity, newQuantity }, { status: 200 });
+    }
+
+    // Phòng tối không tính hạn theo Nhóm tuần giàn kệ (không có giàn kệ) — dùng đúng công thức mặc định
+    // giống lúc NV cấy mô tự nhập nhật ký hàng ngày (xem POST /api/daily-records).
+    const expectedMoveAt = addWeeks(now, stage === "MAU_ME" ? plantType.transferWaitWeeks : plantType.rootingWeeks);
+    const lot = await prisma.$transaction(async (tx) => {
+      const code = await generateLotCode({ plantTypeCode: plantType.code, staffCode, stageCode, date: now });
+      return tx.lot.create({
+        data: {
+          code,
+          plantTypeId,
+          stage,
+          stageCode,
+          roomId: room.id,
+          quantity,
+          initialQuantity: quantity,
+          status: "ACTIVE",
+          enteredAt: now,
+          expectedMoveAt,
+        },
+      });
+    });
+    return NextResponse.json({ lot, created: true, previousQuantity: 0, newQuantity: quantity }, { status: 201 });
+  }
+
+  const shelf = await prisma.shelf.findUnique({
+    where: { id: shelfId! },
+    select: {
+      id: true,
+      code: true,
+      isActive: true,
+      warehouseId: true,
+      capacity: true,
+      plantTypeId: true,
+      allowedCodes: true,
+      assignedStaffId: true,
+      room: { select: { type: true } },
+      rotationGroup: { select: { rotationOrder: true } },
+      lots: { where: { status: "ACTIVE" }, select: { id: true, quantity: true, plantTypeId: true, stageCode: true, enteredAt: true } },
+    },
+  });
+  const motherEpochMonday = stage === "MAU_ME" ? await getMotherRotationEpoch() : null;
+
   if (!shelf || !shelf.isActive || shelf.warehouseId !== warehouseId) {
     return NextResponse.json({ message: "Không tìm thấy giàn kệ trong kho đã chọn" }, { status: 400 });
   }
@@ -96,7 +152,8 @@ export async function POST(req: NextRequest) {
       message: stage === "MAU_ME" ? "Giàn kệ này không thuộc Phòng mẫu mẹ" : "Giàn kệ này không thuộc Phòng ra rễ",
     }, { status: 400 });
   }
-  if (!shelfMatchesPlantType(stage, shelf, plantTypeId, plantType.code)) {
+  const eligible = stage === "MAU_ME" ? isEligibleMotherShelfForStockIn(shelf, plantTypeId) : shelfMatchesPlantType(stage, shelf, plantTypeId, plantType.code);
+  if (!eligible) {
     return NextResponse.json({ message: `Mã cây ${plantType.code} không được phép xếp vào giàn kệ ${shelf.code}` }, { status: 400 });
   }
 
@@ -118,9 +175,6 @@ export async function POST(req: NextRequest) {
       message: `Giàn kệ ${shelf.code} không đủ chỗ trống (còn ${allowedMax.toLocaleString("vi-VN")}, cần ${quantity.toLocaleString("vi-VN")})`,
     }, { status: 400 });
   }
-
-  const staffCode = creatingUser?.code ?? "000";
-  const now = new Date();
 
   if (existingLot) {
     const newQuantity = mode === "ADD" ? previousQuantity + quantity : quantity;
@@ -153,7 +207,7 @@ export async function POST(req: NextRequest) {
         plantTypeId,
         stage,
         stageCode,
-        shelfId,
+        shelfId: shelfId!,
         quantity,
         initialQuantity: quantity,
         status: "ACTIVE",

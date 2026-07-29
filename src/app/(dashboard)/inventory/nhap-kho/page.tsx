@@ -41,9 +41,9 @@ export default async function NhapKhoPage() {
           <PackagePlus className="w-6 h-6 text-primary-strong" /> Nhập kho thủ công
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Ghi nhận trực tiếp số lượng cây ra rễ hoặc cụm mẫu mẹ vào 1 giàn kệ — cộng thêm vào số đang có
-          hoặc cập nhật thay thế hẳn số lượng (VD sau khi kiểm kê). Hệ thống tự kiểm tra đúng mã cây được
-          phép xếp và sức chứa còn lại của giàn kệ.
+          Ghi nhận trực tiếp số lượng cây ra rễ hoặc cụm mẫu mẹ vào Phòng sáng (1 giàn kệ) hoặc Phòng tối
+          (1 NV cấy mô) — cộng thêm vào số đang có hoặc cập nhật thay thế hẳn số lượng (VD sau khi kiểm
+          kê). Hệ thống tự kiểm tra đúng mã cây được phép xếp và sức chứa còn lại của giàn kệ.
         </p>
       </div>
 

@@ -23,6 +23,23 @@ export function shelfMatchesPlantType(
   return shelf.allowedCodes.length === 0 || matchesAllowedCodes(shelf.allowedCodes, plantTypeCode);
 }
 
+// Điều kiện đề xuất giàn kệ Phòng mẫu mẹ RIÊNG cho Nhập kho thủ công — khác shelfMatchesPlantType (hàm
+// đó chỉ dùng cho luồng bàn giao tự động). Gộp cả 2 góc nhìn: CẤU HÌNH kệ (đã "Gán mã cây & NV mẫu mẹ"
+// dedicated cho đúng mã cây này — dù đang trống chưa từng nhập lần nào, VD kệ vừa gán xong) VÀ TỒN THỰC
+// TẾ (kệ đang có lô còn hoạt động đúng mã cây đó dù không dedicated, VD kệ chung đã lỡ có ai xếp mã này
+// vào). (1) shelf.plantTypeId khớp ĐÚNG mã cây đang nhập — bất kể đã gán NV hay đang trống. (2) kệ đang
+// có lô CÒN HOẠT ĐỘNG đúng mã cây đó. (3) kệ HOÀN TOÀN CHƯA cấu hình gì (chưa gán NV, chưa dedicated mã
+// cây nào) và đang trống — để bắt đầu xếp mới. Loại trừ kệ đã gán riêng cho NV/mã cây khác nhưng đang
+// trống (dành riêng, không cho nhập nhầm vào).
+export function isEligibleMotherShelfForStockIn(
+  shelf: { assignedStaffId: string | null; plantTypeId: string | null; lots: { plantTypeId: string }[] },
+  plantTypeId: string
+): boolean {
+  if (shelf.plantTypeId === plantTypeId) return true;
+  if (shelf.lots.some((l) => l.plantTypeId === plantTypeId)) return true;
+  return shelf.plantTypeId === null && shelf.assignedStaffId === null && shelf.lots.length === 0;
+}
+
 // Ai được dùng tính năng Nhập kho thủ công và kho nào áp dụng — KHO_MO chỉ được thao tác đúng kho làm
 // việc của mình (workplaceWarehouseId, KHÔNG cho tự chọn kho khác dù có truyền lên); Admin/Admin cấp cao
 // được thao tác MỌI kho sản xuất nhưng phải tự chọn (không có kho mặc định) — validate lại đúng

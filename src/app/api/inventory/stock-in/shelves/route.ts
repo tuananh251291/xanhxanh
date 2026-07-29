@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { sumLotQuantity } from "@/types";
-import { shelfMatchesPlantType, resolveStockInWarehouseId, STOCK_IN_ROOM_TYPE } from "@/lib/stock-in";
+import { shelfMatchesPlantType, isEligibleMotherShelfForStockIn, resolveStockInWarehouseId, STOCK_IN_ROOM_TYPE } from "@/lib/stock-in";
 
 // Danh sách kệ trong kho áp dụng (KHO_MO: đúng kho làm việc; Admin/Admin cấp cao: kho tự chọn qua query
 // warehouseId), được phép xếp mã cây đã chọn — dùng cho trang /inventory/nhap-kho chọn kệ khi nhập kho
@@ -45,13 +45,16 @@ export async function GET(req: NextRequest) {
       capacity: true,
       plantTypeId: true,
       allowedCodes: true,
-      lots: { where: { status: "ACTIVE" }, select: { quantity: true } },
+      assignedStaffId: true,
+      lots: { where: { status: "ACTIVE" }, select: { quantity: true, plantTypeId: true } },
     },
     orderBy: [{ block: "asc" }, { colNumber: "asc" }],
   });
 
+  // Phòng mẫu mẹ dùng bộ lọc riêng theo TỒN THỰC TẾ (xem isEligibleMotherShelfForStockIn) — Phòng ra rễ
+  // giữ nguyên shelfMatchesPlantType (không ràng buộc mã cây).
   const eligible = shelves
-    .filter((s) => shelfMatchesPlantType(stage, s, plantTypeId, plantType.code))
+    .filter((s) => (stage === "MAU_ME" ? isEligibleMotherShelfForStockIn(s, plantTypeId) : shelfMatchesPlantType(stage, s, plantTypeId, plantType.code)))
     .map((s) => {
       const used = sumLotQuantity(s.lots);
       const capLeft = s.capacity === null ? null : Math.max(0, s.capacity - used);
