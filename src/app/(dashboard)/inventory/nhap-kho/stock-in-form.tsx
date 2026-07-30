@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { PackagePlus, Loader2, Warehouse as WarehouseIcon } from "lucide-react";
+import { PackagePlus, Loader2, Warehouse as WarehouseIcon, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Warehouse = { id: string; name: string };
@@ -26,6 +27,8 @@ type EligibleShelf = { id: string; code: string; name: string; capacity: number 
 type StaffOption = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string; disabled?: boolean };
 type Destination = "SHELF" | "DARK_ROOM";
+type Row = { key: number; plantTypeId: string; stageCode: string; quantity: string; enteredDate: string };
+type StockInResult = { lot: { code: string }; created: boolean; previousQuantity: number; newQuantity: number; plantTypeCode: string; stageCode: string };
 
 const STAGE_OPTIONS = [
   { value: "MAU_ME", label: "Phòng mẫu mẹ" },
@@ -72,27 +75,40 @@ export default function StockInForm({
   const [destination, setDestination] = useState<Destination>("SHELF");
 
   const [mode, setMode] = useState<"ADD" | "REPLACE">("ADD");
-  const [plantTypeId, setPlantTypeId] = useState("");
-  const [quantity, setQuantity] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Riêng Phòng sáng: có thêm bước "Khu vực" (Phòng mẫu mẹ/Phòng ra rễ) quyết định danh sách quy cách +
   // giàn kệ đề xuất.
   const [shelfStage, setShelfStage] = useState<"MAU_ME" | "THANH_PHAM">("MAU_ME");
-  const [shelfStageCode, setShelfStageCode] = useState("M05");
   const [shelfId, setShelfId] = useState("");
   const [shelves, setShelves] = useState<EligibleShelf[]>([]);
   const [loadingShelves, setLoadingShelves] = useState(false);
 
-  // Riêng Phòng tối: gộp quy cách + chọn NV cấy mô thay cho giàn kệ.
-  const [darkRoomStageCode, setDarkRoomStageCode] = useState("M05");
+  // Riêng Phòng tối: chọn NV cấy mô thay cho giàn kệ — mỗi dòng bên dưới tự chọn ngày NV thực tế nhập
+  // riêng (mặc định hôm nay, cho phép chọn lùi lại nếu nhập bù, VD dòng này nhập bù hôm qua, dòng khác
+  // nhập đúng hôm nay) — dùng để tính hạn +N tuần chuyển lên Kho sáng, không tính từ lúc bấm nút.
   const [staffId, setStaffId] = useState("");
   const [staffList, setStaffList] = useState<StaffOption[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
+  const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
 
-  const stage = destination === "SHELF" ? shelfStage : stageOfCode(darkRoomStageCode);
-  const stageCode = destination === "SHELF" ? shelfStageCode : darkRoomStageCode;
-  const unit = stage === "MAU_ME" ? "cụm" : "cây";
+  // Cho phép nhập nhiều dòng (mã cây/quy cách/số lượng khác nhau) trong 1 lần nhập khi đích đến là Phòng
+  // tối, hoặc Phòng ra rễ trong Phòng sáng — cả 2 trường hợp này dùng chung 1 nơi nhập (NV/giàn kệ) nên
+  // gộp nhiều dòng vào cùng chỗ hợp lý. Phòng mẫu mẹ giữ đúng 1 dòng vì đề xuất giàn kệ phụ thuộc mã cây
+  // của từng dòng, không gộp được vào 1 giàn kệ chung.
+  const canBatch = destination === "DARK_ROOM" || (destination === "SHELF" && shelfStage === "THANH_PHAM");
+  const rowStageCodeOptions = destination === "DARK_ROOM" ? DARK_ROOM_STAGE_CODE_OPTIONS : STAGE_CODE_OPTIONS[shelfStage];
+  const defaultRowStageCode = destination === "DARK_ROOM" ? "M05" : STAGE_CODE_OPTIONS[shelfStage][0].value;
+
+  // Bắt đầu từ 1 vì dòng đầu tiên (key 0) đã được gán sẵn trong state khởi tạo bên dưới — makeRow chỉ
+  // gọi trong handler/effect, không gọi lúc render để tránh đọc ref giữa chừng render.
+  const rowKeyRef = useRef(1);
+  const makeRow = (stageCode: string): Row => {
+    const row = { key: rowKeyRef.current, plantTypeId: "", stageCode, quantity: "", enteredDate: todayStr };
+    rowKeyRef.current += 1;
+    return row;
+  };
+  const [rows, setRows] = useState<Row[]>([{ key: 0, plantTypeId: "", stageCode: "M05", quantity: "", enteredDate: todayStr }]);
 
   const warehouseOptions: ComboOption[] = warehouses.map((w) => ({ value: w.id, label: w.name }));
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
@@ -143,39 +159,61 @@ export default function StockInForm({
 
   const changeWarehouse = (id: string) => {
     setWarehouseId(id);
-    setPlantTypeId("");
     setShelfId("");
     setShelves([]);
     setStaffId("");
     setStaffList([]);
+    setRows([makeRow(defaultRowStageCode)]);
   };
 
   const changeDestination = (d: Destination) => {
     setDestination(d);
     setShelfId("");
     setStaffId("");
+    setRows([makeRow(d === "DARK_ROOM" ? "M05" : STAGE_CODE_OPTIONS[shelfStage][0].value)]);
   };
 
   const changeShelfStage = (v: "MAU_ME" | "THANH_PHAM") => {
     setShelfStage(v);
-    setShelfStageCode(STAGE_CODE_OPTIONS[v][0].value);
     setShelfId("");
-    if (destination === "SHELF") loadShelves(warehouseId, v, plantTypeId);
+    setRows([makeRow(STAGE_CODE_OPTIONS[v][0].value)]);
   };
 
-  const changePlantType = (id: string) => {
-    setPlantTypeId(id);
-    setShelfId("");
-    if (destination === "SHELF") loadShelves(warehouseId, shelfStage, id);
+  // Chỉ dòng ĐẦU TIÊN quyết định danh sách giàn kệ đề xuất khi đích là Phòng sáng — vì Phòng ra rễ không
+  // ràng buộc mã cây (mọi mã đều xếp được), còn Phòng mẫu mẹ chỉ có đúng 1 dòng nên dòng đầu = dòng duy
+  // nhất. Đổi mã cây các dòng sau không cần tải lại giàn kệ.
+  const updateRowPlantType = (rowKey: number, plantTypeId: string) => {
+    const idx = rows.findIndex((r) => r.key === rowKey);
+    setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, plantTypeId } : r)));
+    if (destination === "SHELF" && idx === 0) {
+      setShelfId("");
+      loadShelves(warehouseId, shelfStage, plantTypeId);
+    }
   };
+
+  const updateRow = (rowKey: number, patch: Partial<Omit<Row, "key" | "plantTypeId">>) => {
+    setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, ...patch } : r)));
+  };
+
+  const addRow = () => setRows((prev) => [...prev, makeRow(defaultRowStageCode)]);
+  const removeRow = (rowKey: number) => setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.key !== rowKey)));
 
   const submit = async () => {
     if (isAdmin && !warehouseId) { toast.error("Chọn kho sản xuất"); return; }
-    if (!plantTypeId) { toast.error("Chọn mã cây"); return; }
     if (destination === "SHELF" && !shelfId) { toast.error("Chọn giàn kệ"); return; }
     if (destination === "DARK_ROOM" && !staffId) { toast.error("Chọn NV cấy mô"); return; }
-    const qty = Number(quantity);
-    if (!qty || qty <= 0) { toast.error("Số lượng phải lớn hơn 0"); return; }
+
+    const items: { plantTypeId: string; stageCode: string; quantity: number; enteredDate?: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row.plantTypeId) { toast.error(`Dòng ${i + 1}: chưa chọn mã cây`); return; }
+      const qty = Number(row.quantity);
+      if (!qty || qty <= 0) { toast.error(`Dòng ${i + 1}: số lượng phải lớn hơn 0`); return; }
+      if (destination === "DARK_ROOM" && !row.enteredDate) { toast.error(`Dòng ${i + 1}: chọn ngày nhập kho tối`); return; }
+      items.push({ plantTypeId: row.plantTypeId, stageCode: row.stageCode, quantity: qty, enteredDate: destination === "DARK_ROOM" ? row.enteredDate : undefined });
+    }
+
+    const representativePlantTypeId = rows[0]?.plantTypeId ?? "";
 
     setSubmitting(true);
     try {
@@ -183,28 +221,31 @@ export default function StockInForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stage,
-          plantTypeId,
-          stageCode,
           destination,
           shelfId: destination === "SHELF" ? shelfId : undefined,
           staffId: destination === "DARK_ROOM" ? staffId : undefined,
-          quantity: qty,
           mode,
           warehouseId,
+          items,
         }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      if (json.created) {
-        toast.success(`Đã tạo lô mới ${json.lot.code} — ${json.newQuantity.toLocaleString("vi-VN")} ${unit}`);
-      } else if (mode === "ADD") {
-        toast.success(`Đã cộng thêm ${qty.toLocaleString("vi-VN")} vào lô ${json.lot.code} — hiện có ${json.newQuantity.toLocaleString("vi-VN")} ${unit}`);
-      } else {
-        toast.success(`Đã cập nhật lô ${json.lot.code} từ ${json.previousQuantity.toLocaleString("vi-VN")} thành ${json.newQuantity.toLocaleString("vi-VN")} ${unit}`);
+
+      const results = json.results as StockInResult[];
+      for (const r of results) {
+        const rUnit = stageOfCode(r.stageCode) === "MAU_ME" ? "cụm" : "cây";
+        if (r.created) {
+          toast.success(`${r.plantTypeCode}: đã tạo lô mới ${r.lot.code} — ${r.newQuantity.toLocaleString("vi-VN")} ${rUnit}`);
+        } else if (mode === "ADD") {
+          toast.success(`${r.plantTypeCode}: đã cộng thêm vào lô ${r.lot.code} — hiện có ${r.newQuantity.toLocaleString("vi-VN")} ${rUnit}`);
+        } else {
+          toast.success(`${r.plantTypeCode}: đã cập nhật lô ${r.lot.code} từ ${r.previousQuantity.toLocaleString("vi-VN")} thành ${r.newQuantity.toLocaleString("vi-VN")} ${rUnit}`);
+        }
       }
-      setQuantity("");
-      if (destination === "SHELF") loadShelves(warehouseId, shelfStage, plantTypeId);
+
+      setRows([makeRow(defaultRowStageCode)]);
+      if (destination === "SHELF" && representativePlantTypeId) loadShelves(warehouseId, shelfStage, representativePlantTypeId);
     } finally {
       setSubmitting(false);
     }
@@ -262,32 +303,17 @@ export default function StockInForm({
             </div>
           </div>
 
-          <div className="space-y-1">
-            <Label>Quy cách *</Label>
-            <Select
-              items={STAGE_CODE_OPTIONS[shelfStage]}
-              value={shelfStageCode}
-              onValueChange={(v) => setShelfStageCode(v as string)}
-              disabled={destination !== "SHELF"}
-            >
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {STAGE_CODE_OPTIONS[shelfStage].map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
+          <div className="space-y-1 sm:col-span-2">
             <Label>Giàn kệ * {loadingShelves && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}</Label>
             <Combobox
               items={shelfOptions}
               value={shelfOptions.find((o) => o.value === shelfId) ?? null}
               isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
               onValueChange={(v) => setShelfId(v ? (v as ComboOption).value : "")}
-              disabled={destination !== "SHELF" || !plantTypeId || loadingShelves}
+              disabled={destination !== "SHELF" || !rows[0]?.plantTypeId || loadingShelves}
             >
               <ComboboxInputGroup className="w-full h-11 md:h-8">
-                <ComboboxInput placeholder={plantTypeId ? "Gõ mã giàn kệ…" : "Chọn mã cây trước"} />
+                <ComboboxInput placeholder={rows[0]?.plantTypeId ? "Gõ mã giàn kệ…" : "Chọn mã cây ở dòng đầu tiên trước"} />
                 <ComboboxTrigger />
               </ComboboxInputGroup>
               <ComboboxContent>
@@ -302,26 +328,14 @@ export default function StockInForm({
                 Chỉ đề xuất kệ đang chứa sẵn mã cây này, hoặc kệ mẫu mẹ chung còn trống và chưa gắn NV.
               </p>
             )}
+            {shelfStage === "THANH_PHAM" && (
+              <p className="text-xs text-text-secondary">Không ràng buộc mã cây — đề xuất theo đúng kho đã chọn.</p>
+            )}
           </div>
         </div>
 
         {/* Khối Phòng tối — mờ đi khi đang chọn Phòng sáng */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-divider p-3 transition-opacity ${destination === "SHELF" ? "opacity-40 pointer-events-none" : ""}`}>
-          <div className="space-y-1">
-            <Label>Quy cách *</Label>
-            <Select
-              items={DARK_ROOM_STAGE_CODE_OPTIONS}
-              value={darkRoomStageCode}
-              onValueChange={(v) => setDarkRoomStageCode(v as string)}
-              disabled={destination !== "DARK_ROOM"}
-            >
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {DARK_ROOM_STAGE_CODE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
+        <div className={`rounded-lg border border-divider p-3 transition-opacity ${destination === "SHELF" ? "opacity-40 pointer-events-none" : ""}`}>
           <div className="space-y-1">
             <Label>NV cấy mô * {loadingStaff && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}</Label>
             <Combobox
@@ -342,33 +356,100 @@ export default function StockInForm({
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
-            <p className="text-xs text-text-secondary">Lô sẽ gắn thẳng vào Phòng tối cá nhân của đúng NV chọn ở đây.</p>
+            <p className="text-xs text-text-secondary">Lô sẽ gắn thẳng vào Phòng tối cá nhân của đúng NV chọn ở đây — mỗi dòng bên dưới tự chọn ngày nhập riêng.</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label>Mã cây *</Label>
-            <Combobox
-              items={plantTypeOptions}
-              value={plantTypeOptions.find((o) => o.value === plantTypeId) ?? null}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => changePlantType(v ? (v as ComboOption).value : "")}
-              disabled={isAdmin && !warehouseId}
-            >
-              <ComboboxInputGroup className="w-full h-11 md:h-8">
-                <ComboboxInput placeholder={isAdmin && !warehouseId ? "Chọn kho trước" : "Gõ mã hoặc tên cây…"} />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-          </div>
+        {/* Danh sách dòng nhập — Phòng mẫu mẹ chỉ 1 dòng, Phòng tối/Phòng ra rễ cho phép thêm nhiều dòng */}
+        <div className="space-y-2">
+          <Label>Danh sách nhập *</Label>
+          {rows.map((row, idx) => {
+            const rowUnit = stageOfCode(row.stageCode) === "MAU_ME" ? "cụm" : "cây";
+            return (
+              <div
+                key={row.key}
+                className={`grid grid-cols-1 gap-2 rounded-lg border border-divider p-2 items-end ${
+                  destination === "DARK_ROOM" ? "sm:grid-cols-[1fr_9rem_9rem_7rem_auto]" : "sm:grid-cols-[1fr_10rem_8rem_auto]"
+                }`}
+              >
+                <div className="space-y-1">
+                  {idx === 0 && <Label className="text-xs text-text-secondary">Mã cây *</Label>}
+                  <Combobox
+                    items={plantTypeOptions}
+                    value={plantTypeOptions.find((o) => o.value === row.plantTypeId) ?? null}
+                    isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                    onValueChange={(v) => updateRowPlantType(row.key, v ? (v as ComboOption).value : "")}
+                    disabled={isAdmin && !warehouseId}
+                  >
+                    <ComboboxInputGroup className="w-full h-11 md:h-8">
+                      <ComboboxInput placeholder={isAdmin && !warehouseId ? "Chọn kho trước" : "Gõ mã hoặc tên cây…"} />
+                      <ComboboxTrigger />
+                    </ComboboxInputGroup>
+                    <ComboboxContent>
+                      <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
+                </div>
 
+                <div className="space-y-1">
+                  {idx === 0 && <Label className="text-xs text-text-secondary">Quy cách *</Label>}
+                  <Select items={rowStageCodeOptions} value={row.stageCode} onValueChange={(v) => updateRow(row.key, { stageCode: v as string })}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {rowStageCodeOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {destination === "DARK_ROOM" && (
+                  <div className="space-y-1">
+                    {idx === 0 && <Label className="text-xs text-text-secondary">Ngày nhập *</Label>}
+                    <Input
+                      type="date"
+                      max={todayStr}
+                      value={row.enteredDate}
+                      onChange={(e) => updateRow(row.key, { enteredDate: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  {idx === 0 && <Label className="text-xs text-text-secondary">SL ({rowUnit}) *</Label>}
+                  <Input
+                    type="number"
+                    min={1}
+                    value={row.quantity}
+                    onChange={(e) => updateRow(row.key, { quantity: e.target.value })}
+                    placeholder={`Số ${rowUnit}`}
+                  />
+                </div>
+
+                <div>
+                  {rows.length > 1 && (
+                    <Button type="button" variant="ghost" size="icon-sm" className="text-destructive" onClick={() => removeRow(row.key)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {destination === "DARK_ROOM" && (
+            <p className="text-xs text-text-secondary">
+              Ngày nhập = ngày NV thực tế đưa dòng đó vào Phòng tối, dùng để tính hạn chuyển lên Kho sáng — mỗi dòng chọn ngày riêng, không phải ngày bấm nút.
+            </p>
+          )}
+          {canBatch && (
+            <Button type="button" variant="outline" size="sm" onClick={addRow} className="gap-1">
+              <Plus className="w-3.5 h-3.5" /> Thêm dòng
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label>Kiểu nhập *</Label>
             <Select items={MODE_OPTIONS} value={mode} onValueChange={(v) => setMode(v as "ADD" | "REPLACE")}>
@@ -385,11 +466,6 @@ export default function StockInForm({
                 ? "Nếu nơi nhập đã có sẵn lô cùng mã cây + quy cách, số nhập sẽ CỘNG THÊM vào lô đó."
                 : "Nếu nơi nhập đã có sẵn lô cùng mã cây + quy cách, số lượng lô đó sẽ được GHI ĐÈ thành đúng số vừa nhập (dùng khi kiểm kê ra số thực tế)."}
             </p>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Số lượng ({unit}) *</Label>
-            <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={`Số ${unit}`} />
           </div>
         </div>
 
