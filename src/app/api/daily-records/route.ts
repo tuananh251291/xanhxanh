@@ -196,8 +196,11 @@ export async function POST(req: NextRequest) {
 
   // Tỉ lệ nhiễm mẫu mẹ sau ủ sáng — tổng mẫu mẹ nhiễm cộng dồn mọi ngày của chỉ định này so với tổng
   // mẫu mẹ được cấp (inputMotherQuantity), kiểm tra lại ngay mỗi lần lưu nhật ký — vượt ngưỡng Admin cấp
-  // cao cài đặt (mother_contamination_alert_pct, xem Cài đặt) thì báo cho KHO_MO biết sớm, trước cả khi
-  // có phiếu bàn giao thật, để chủ động xử lý khi nhận.
+  // cao cài đặt (mother_contamination_alert_pct, xem Cài đặt) thì báo cho CẢ KHO_MO (biết sớm, trước cả
+  // khi có phiếu bàn giao thật, để chủ động xử lý khi nhận) LẪN đúng NV kỹ thuật đã tạo chỉ định này (biết
+  // sớm để theo dõi/điều chỉnh chỉ định nếu cần) — 2 alert riêng, dedupe riêng theo từng người nhận (không
+  // dùng chung 1 query dedupe, vì targetRole/userId khác nhau — nếu chỉ chặn theo type+relatedId+status
+  // thì bên nào tạo alert trước sẽ chặn luôn alert của bên còn lại).
   const motherContaminationPct = parseFloat(await getSystemConfig("mother_contamination_alert_pct", "10")) || 10;
   const contaminatedAgg = await prisma.dailyRecord.aggregate({
     where: { instructionId },
@@ -206,19 +209,35 @@ export async function POST(req: NextRequest) {
   const totalContaminated = contaminatedAgg._sum.motherContaminatedM05 ?? 0;
   const motherContaminationRate = instruction.inputMotherQuantity > 0 ? (totalContaminated / instruction.inputMotherQuantity) * 100 : 0;
   if (motherContaminationRate > motherContaminationPct) {
-    // Chặn spam: mỗi chỉ định chỉ giữ tối đa 1 alert CHƯA ĐỌC loại này tại 1 thời điểm — nếu tỉ lệ nhiễm
-    // vẫn vượt ngưỡng ở lần lưu nhật ký tiếp theo (VD ngày sau) mà KHO_MO chưa kịp đọc alert cũ, không
-    // tạo thêm bản ghi trùng; KHO_MO đọc/xử lý xong (đổi status khỏi UNREAD) thì lần lệch tiếp theo mới
+    const contaminationMessage = `Chỉ định ${instruction.code}: mẫu mẹ nhiễm ${totalContaminated}/${instruction.inputMotherQuantity} (${Math.round(motherContaminationRate)}%) — vượt ngưỡng ${motherContaminationPct}%`;
+
+    // Chặn spam: mỗi chỉ định chỉ giữ tối đa 1 alert CHƯA ĐỌC loại này/người nhận tại 1 thời điểm — nếu
+    // tỉ lệ nhiễm vẫn vượt ngưỡng ở lần lưu nhật ký tiếp theo (VD ngày sau) mà chưa kịp đọc alert cũ,
+    // không tạo thêm bản ghi trùng; đọc/xử lý xong (đổi status khỏi UNREAD) thì lần lệch tiếp theo mới
     // tạo alert mới.
-    const existingContaminationAlert = await prisma.alert.findFirst({
-      where: { type: "MOTHER_CONTAMINATION_HIGH", relatedId: instructionId, status: "UNREAD" },
+    const existingKhoMoAlert = await prisma.alert.findFirst({
+      where: { type: "MOTHER_CONTAMINATION_HIGH", relatedId: instructionId, targetRole: "KHO_MO", status: "UNREAD" },
     });
-    if (!existingContaminationAlert) {
+    if (!existingKhoMoAlert) {
       await createAlert({
         type: "MOTHER_CONTAMINATION_HIGH",
         title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
-        message: `Chỉ định ${instruction.code}: mẫu mẹ nhiễm ${totalContaminated}/${instruction.inputMotherQuantity} (${Math.round(motherContaminationRate)}%) — vượt ngưỡng ${motherContaminationPct}%`,
+        message: contaminationMessage,
         targetRole: "KHO_MO",
+        relatedId: instructionId,
+        relatedType: "PlantingInstruction",
+      });
+    }
+
+    const existingKyThuatAlert = await prisma.alert.findFirst({
+      where: { type: "MOTHER_CONTAMINATION_HIGH", relatedId: instructionId, userId: instruction.createdById, status: "UNREAD" },
+    });
+    if (!existingKyThuatAlert) {
+      await createAlert({
+        type: "MOTHER_CONTAMINATION_HIGH",
+        title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
+        message: contaminationMessage,
+        userId: instruction.createdById,
         relatedId: instructionId,
         relatedType: "PlantingInstruction",
       });
