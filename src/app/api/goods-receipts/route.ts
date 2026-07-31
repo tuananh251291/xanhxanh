@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
 
         for (const item of data.items) {
           const plantTypeCode = plantTypeById.get(item.plantTypeId)!.code;
-          const lotCode = await generateLotCode({ plantTypeCode, staffCode, stageCode: item.stageCode, date: expectedDate });
+          const lotCode = await generateLotCode({ plantTypeCode, staffCode, stageCode: item.stageCode, date: expectedDate, client: tx });
           const plannedLot = await tx.lot.create({
             data: {
               code: lotCode,

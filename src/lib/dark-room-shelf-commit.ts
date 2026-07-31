@@ -58,6 +58,7 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
         plantTypeCode: part.lot.plantType.code,
         staffCode: staffUser?.code ?? "000",
         stageCode: part.lot.stageCode,
+        client: tx,
       });
       await tx.lot.create({
         data: {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { addWeeks, startOfWeek } from "date-fns";
+import { addWeeks, startOfWeek, startOfDay, endOfDay } from "date-fns";
 import { generateLotCode } from "@/lib/codes";
 import { sumLotQuantity } from "@/types";
 import { shelfMatchesPlantType, isEligibleMotherShelfForStockIn, resolveStockInWarehouseId, STOCK_IN_ROOM_TYPE } from "@/lib/stock-in";
@@ -149,9 +149,18 @@ export async function POST(req: NextRequest) {
           const stage = stageOfCode(item.stageCode)!;
           const enteredAt = enteredAtByItem.get(i)!;
           // Đọc lại trong transaction (không dùng snapshot ngoài) — nếu batch có 2 dòng trùng mã cây +
-          // quy cách thì dòng sau thấy đúng lô dòng trước vừa tạo/cập nhật, không tạo trùng lô.
+          // quy cách + ngày thì dòng sau thấy đúng lô dòng trước vừa tạo/cập nhật, không tạo trùng lô.
+          // Chỉ gộp vào lô CÙNG NGÀY (enteredAt) — Phòng tối luôn tạo 1 lô riêng/ngày (giống quy ước của
+          // POST /api/daily-records), nếu tìm theo mọi ngày sẽ vô tình gộp/ghi đè nhầm vào lô của 1 ngày
+          // cấy khác (VD lô nhật ký hôm qua) — đã từng xảy ra thật, xem lịch sử sửa lỗi.
           const existingLot = await tx.lot.findFirst({
-            where: { roomId: room.id, plantTypeId: item.plantTypeId, stageCode: item.stageCode, status: "ACTIVE" },
+            where: {
+              roomId: room.id,
+              plantTypeId: item.plantTypeId,
+              stageCode: item.stageCode,
+              status: "ACTIVE",
+              enteredAt: { gte: startOfDay(enteredAt), lte: endOfDay(enteredAt) },
+            },
             orderBy: { enteredAt: "asc" },
           });
 
@@ -166,7 +175,7 @@ export async function POST(req: NextRequest) {
           // định giống lúc NV cấy mô tự nhập nhật ký hàng ngày (xem POST /api/daily-records), tính từ
           // enteredAt của ĐÚNG DÒNG NÀY (ngày NV thực tế nhập) chứ không phải thời điểm bấm nút Nhập kho.
           const expectedMoveAt = addWeeks(enteredAt, stage === "MAU_ME" ? pt.transferWaitWeeks : pt.rootingWeeks);
-          const code = await generateLotCode({ plantTypeCode: pt.code, staffCode, stageCode: item.stageCode, date: enteredAt });
+          const code = await generateLotCode({ plantTypeCode: pt.code, staffCode, stageCode: item.stageCode, date: enteredAt, client: tx });
           const created = await tx.lot.create({
             data: {
               code,
@@ -278,7 +287,7 @@ export async function POST(req: NextRequest) {
           expectedMoveAt = addWeeks(now, stage === "MAU_ME" ? pt.transferWaitWeeks : pt.rootingWeeks);
         }
 
-        const code = await generateLotCode({ plantTypeCode: pt.code, staffCode, stageCode: item.stageCode, date: now });
+        const code = await generateLotCode({ plantTypeCode: pt.code, staffCode, stageCode: item.stageCode, date: now, client: tx });
         const created = await tx.lot.create({
           data: {
             code,

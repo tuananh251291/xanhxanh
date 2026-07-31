@@ -167,6 +167,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                   plantTypeCode: currentItem.lot.plantType.code,
                   staffCode: staffUser?.code ?? "000",
                   stageCode: currentItem.lot.stageCode,
+                  client: tx,
                 });
                 await tx.lot.create({
                   data: {

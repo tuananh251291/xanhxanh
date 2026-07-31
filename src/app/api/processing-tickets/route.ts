@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
           plantTypeCode: plantType.code,
           staffCode: creatingUser?.code ?? "000",
           stageCode: outputStageCode,
+          client: tx,
         });
         const created = await tx.lot.create({
           data: {

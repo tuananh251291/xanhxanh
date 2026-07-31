@@ -87,13 +87,21 @@ export function lotCodeBase(params: { plantTypeCode: string; staffCode: string; 
   return `${plantTypeCode}${staffNum}${week}${year}`;
 }
 
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction tạo NHIỀU lô cùng lúc (VD nhập kho thủ công
+// theo lô — src/app/api/inventory/stock-in/route.ts) để đọc thấy cả các dòng vừa tạo trước đó trong CÙNG
+// transaction (read-your-own-writes), giống hệt cách generateTransferCode/generateOrderCode đã làm —
+// thiếu bước này từng gây lỗi P2002 "Unique constraint failed on (code, stageCode)" thật: 2 dòng cùng 1
+// lần nhập, cùng mã cây/NV/tuần (nên cùng base) nhưng khác ngày, đều rơi vào nhánh tạo lô mới trong cùng
+// 1 transaction — vòng lặp kiểm tra trùng qua prisma singleton (đọc committed-only) không thấy dòng kia
+// vừa insert (chưa commit), tính ra cùng 1 candidate rồi cùng insert → vi phạm unique constraint thật.
 export async function generateLotCode(params: {
   plantTypeCode: string;
   staffCode: string;
   stageCode: string;
   date?: Date;
+  client?: Prisma.TransactionClient | typeof prisma;
 }): Promise<string> {
-  const { stageCode } = params;
+  const { stageCode, client = prisma } = params;
   const base = lotCodeBase(params);
 
   // Cùng mã lô (base) có thể đã tồn tại cho quy cách khác (VD M05 đã tạo trước, giờ tạo dòng T05) — vẫn
@@ -101,7 +109,7 @@ export async function generateLotCode(params: {
   // lô mới cùng tuần/NV/quy cách) mới thêm hậu tố để tránh trùng.
   let candidate = base;
   let n = 1;
-  while (await prisma.lot.findFirst({ where: { code: candidate, stageCode } })) {
+  while (await client.lot.findFirst({ where: { code: candidate, stageCode } })) {
     n += 1;
     candidate = `${base}-${n}`;
   }

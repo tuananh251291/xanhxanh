@@ -135,7 +135,7 @@ export async function moveMotherStock(params: {
       const staffCode = lot.instruction?.assignedToId
         ? (await tx.user.findUnique({ where: { id: lot.instruction.assignedToId }, select: { code: true } }))?.code
         : null;
-      const code = await generateLotCode({ plantTypeCode: lot.plantType.code, staffCode: staffCode ?? "000", stageCode: lot.stageCode });
+      const code = await generateLotCode({ plantTypeCode: lot.plantType.code, staffCode: staffCode ?? "000", stageCode: lot.stageCode, client: tx });
 
       await tx.lot.update({
         where: { id: lot.id },

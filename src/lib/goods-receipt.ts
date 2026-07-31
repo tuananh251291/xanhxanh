@@ -21,7 +21,7 @@ export async function upsertLot(
     await tx.lot.update({ where: { id: existingLot.id }, data: { quantity: { increment: quantity } } });
     return;
   }
-  const code = await generateLotCode({ plantTypeCode, staffCode, stageCode });
+  const code = await generateLotCode({ plantTypeCode, staffCode, stageCode, client: tx });
   await tx.lot.create({
     data: {
       code,

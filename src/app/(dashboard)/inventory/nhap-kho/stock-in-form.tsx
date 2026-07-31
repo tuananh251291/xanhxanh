@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,10 @@ const MODE_OPTIONS: { value: "ADD" | "REPLACE"; label: string }[] = [
   { value: "ADD", label: "Cộng thêm vào số đang có" },
   { value: "REPLACE", label: "Cập nhật thay thế số lượng" },
 ];
+
+// Ngày nhập Phòng tối cách hôm nay quá ngưỡng này thì hỏi xác nhận lại trước khi lưu — nhập bù ngày cũ
+// vẫn là nhu cầu thật (VD quên nhập hôm qua), chỉ cảnh báo để tránh gõ nhầm ngày chứ không chặn hẳn.
+const FAR_PAST_ENTERED_DATE_WARNING_DAYS = 7;
 
 export default function StockInForm({
   fixedWarehouse,
@@ -211,6 +215,21 @@ export default function StockInForm({
       if (!qty || qty <= 0) { toast.error(`Dòng ${i + 1}: số lượng phải lớn hơn 0`); return; }
       if (destination === "DARK_ROOM" && !row.enteredDate) { toast.error(`Dòng ${i + 1}: chọn ngày nhập kho tối`); return; }
       items.push({ plantTypeId: row.plantTypeId, stageCode: row.stageCode, quantity: qty, enteredDate: destination === "DARK_ROOM" ? row.enteredDate : undefined });
+    }
+
+    // Ngày nhập cách hôm nay quá xa (VD gõ nhầm năm/tháng) — hỏi xác nhận lại, không chặn hẳn vì nhập bù
+    // ngày cũ vẫn là nhu cầu thật.
+    if (destination === "DARK_ROOM") {
+      const farPastRows = rows
+        .map((row, i) => ({ row, idx: i, daysAgo: differenceInCalendarDays(new Date(todayStr), new Date(row.enteredDate)) }))
+        .filter((r) => r.daysAgo > FAR_PAST_ENTERED_DATE_WARNING_DAYS);
+      if (farPastRows.length > 0) {
+        const lines = farPastRows.map((r) => `Dòng ${r.idx + 1}: ${format(new Date(r.row.enteredDate), "dd/MM/yyyy")} (${r.daysAgo} ngày trước)`).join("\n");
+        const confirmed = window.confirm(
+          `Có dòng chọn ngày nhập cách hôm nay hơn ${FAR_PAST_ENTERED_DATE_WARNING_DAYS} ngày, kiểm tra lại có gõ nhầm ngày không:\n${lines}\n\nVẫn tiếp tục lưu?`
+        );
+        if (!confirmed) return;
+      }
     }
 
     const representativePlantTypeId = rows[0]?.plantTypeId ?? "";
