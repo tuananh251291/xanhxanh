@@ -473,6 +473,16 @@ export default function DailyRecordPage() {
                       <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
                       <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
                     </tr>
+                    <tr className="border-b text-text-secondary">
+                      <td className="px-3 py-2">Số lượng cần đạt theo Chỉ định tương ứng với số MM đã sử dụng</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">{fmt(totals.motherUsed)}</td>
+                      <td className="px-3 py-2 text-right">—</td>
+                      <td className="px-3 py-2 text-right">{fmt(Math.round(targetMotherRatio * totals.motherUsed))}</td>
+                      <td className="px-3 py-2 text-right" colSpan={2}>
+                        {fmt(Math.round(targetFinishedRatio * totals.motherUsed))} <span className="text-xs">(gộp T05+T01)</span>
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -501,10 +511,10 @@ export default function DailyRecordPage() {
               <div className="mt-3 flex items-center gap-2 text-sm font-bold text-destructive bg-danger-light rounded p-3">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
                 Bạn đang cấy lệch so với chỉ định cấy — {motherRatioLow && finishedRatioLow
-                  ? "cả 2 hệ số trên đều thấp hơn ngưỡng cần đạt"
+                  ? `Hệ số nhân MM đang đạt ${Math.round(motherRatioPct ?? 0)}%, Hệ số ra thành phẩm đang đạt ${Math.round(finishedRatioPct ?? 0)}% so với chỉ định`
                   : motherRatioLow
-                  ? "hệ số nhân MM đang thấp hơn ngưỡng cần đạt"
-                  : "hệ số ra thành phẩm đang thấp hơn ngưỡng cần đạt"}
+                  ? `Hệ số nhân MM đang đạt ${Math.round(motherRatioPct ?? 0)}% so với chỉ định`
+                  : `Hệ số ra thành phẩm đang đạt ${Math.round(finishedRatioPct ?? 0)}% so với chỉ định`}
               </div>
             )}
 
