@@ -30,14 +30,19 @@ function InspectionDialog({ group, onDone, disabled }: { group: Lot[]; onDone: (
   const [contaminated, setContaminated] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Dùng lot.quantity (tồn HIỆN TẠI) chứ không phải lot.initialQuantity (số lúc lô mới tạo, đứng yên
+  // vĩnh viễn dù sau đó Nhập kho thủ công cộng thêm nhiều lần — xem POST /api/inventory/stock-in chỉ cập
+  // nhật quantity, không đụng initialQuantity theo đúng thiết kế initialQuantity làm mốc so sánh
+  // "lô đã bị sửa gì chưa" ở nơi khác, VD src/app/api/daily-records/[id]/route.ts). Dùng initialQuantity
+  // ở đây từng khiến phiếu kiểm tra hiện thiếu hẳn phần mới cộng thêm, không kiểm tra/báo cáo hết được.
   const rows = group.map((lot) => {
     const value = parseInt(contaminated[lot.id] ?? "0") || 0;
-    const passed = Math.max(0, lot.initialQuantity - value);
+    const passed = Math.max(0, lot.quantity - value);
     return { lot, value, passed };
   });
   const totals = rows.reduce(
     (acc, r) => ({
-      total: acc.total + r.lot.initialQuantity,
+      total: acc.total + r.lot.quantity,
       contaminated: acc.contaminated + r.value,
       passed: acc.passed + r.passed,
     }),
@@ -46,7 +51,7 @@ function InspectionDialog({ group, onDone, disabled }: { group: Lot[]; onDone: (
 
   const submit = async () => {
     for (const r of rows) {
-      if (r.value > r.lot.initialQuantity) { toast.error(`Số nhiễm của ${r.lot.stageCode} vượt quá tổng số`); return; }
+      if (r.value > r.lot.quantity) { toast.error(`Số nhiễm của ${r.lot.stageCode} vượt quá tổng số`); return; }
     }
     setSubmitting(true);
     try {
@@ -93,12 +98,12 @@ function InspectionDialog({ group, onDone, disabled }: { group: Lot[]; onDone: (
               {rows.map(({ lot, passed }) => (
                 <tr key={lot.id} className="border-b last:border-0">
                   <td className="py-1.5 pr-2">{lot.stageCode}</td>
-                  <td className="py-1.5 px-2 text-right">{lot.initialQuantity.toLocaleString("vi-VN")}</td>
+                  <td className="py-1.5 px-2 text-right">{lot.quantity.toLocaleString("vi-VN")}</td>
                   <td className="py-1.5 px-2 text-right">
                     <Input
                       type="number"
                       min="0"
-                      max={lot.initialQuantity}
+                      max={lot.quantity}
                       value={contaminated[lot.id] ?? ""}
                       onChange={(e) => setContaminated((prev) => ({ ...prev, [lot.id]: e.target.value }))}
                       placeholder="0"

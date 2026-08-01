@@ -23,15 +23,17 @@ function InspectionGroupCard({ group, onDone }: { group: Lot[]; onDone: () => vo
   const [contaminated, setContaminated] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Dùng lot.quantity (tồn HIỆN TẠI) chứ không phải lot.initialQuantity (số lúc lô mới tạo, đứng yên
+  // vĩnh viễn dù sau đó Nhập kho thủ công cộng thêm nhiều lần) — xem chú thích tương tự ở my-dark-room.
   const rows = group.map((lot) => {
     const value = parseInt(contaminated[lot.id] ?? "0") || 0;
-    const passed = Math.max(0, lot.initialQuantity - value);
+    const passed = Math.max(0, lot.quantity - value);
     return { lot, value, passed };
   });
 
   const submit = async () => {
     for (const r of rows) {
-      if (r.value > r.lot.initialQuantity) {
+      if (r.value > r.lot.quantity) {
         toast.error(`Số nhiễm của ${r.lot.stageCode} vượt quá tổng số`);
         return;
       }
@@ -72,14 +74,14 @@ function InspectionGroupCard({ group, onDone }: { group: Lot[]; onDone: () => vo
                 <span className="text-foreground font-medium">
                   {lot.stageCode} · <span className="font-mono">{lot.plantType.code}</span> — {lot.plantType.name}
                 </span>
-                <span className="text-text-secondary">Tổng: {lot.initialQuantity.toLocaleString("vi-VN")}</span>
+                <span className="text-text-secondary">Tổng: {lot.quantity.toLocaleString("vi-VN")}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <label className="text-sm text-text-secondary shrink-0">Số lượng nhiễm</label>
                 <Input
                   type="number"
                   min={0}
-                  max={lot.initialQuantity}
+                  max={lot.quantity}
                   value={contaminated[lot.id] ?? ""}
                   onChange={(e) => setContaminated((prev) => ({ ...prev, [lot.id]: e.target.value }))}
                   placeholder="0"

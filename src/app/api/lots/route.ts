@@ -65,10 +65,23 @@ export async function GET(req: NextRequest) {
     where.instruction = { assignedToId };
   }
 
-  // CAY_MO can only see their own lots (from their instructions)
+  // CAY_MO chỉ xem được lô của mình — gồm CẢ lô có chỉ định cấy gán cho mình LẪN lô nằm thẳng trong
+  // Phòng tối cá nhân của mình dù không gắn chỉ định nào (VD Admin/KHO_MO nhập tay qua Nhập kho thủ
+  // công — instructionId null). Thiếu vế "room" sẽ khiến NV không thấy lô do người khác nhập tay vào
+  // đúng phòng tối của mình, kéo theo quest "Kiểm tra nhiễm"/"Bàn giao sản phẩm" không bao giờ báo dù lô
+  // đã quá hạn thật (xem src/lib/cay-mo-quest-stats.ts có cùng lỗi).
   const role = session.user.role;
   if (role === "CAY_MO" && !assignedToId) {
-    where.instruction = { assignedToId: session.user.id };
+    const ownershipOr = [
+      { instruction: { assignedToId: session.user.id } },
+      { room: { assignedStaffId: session.user.id } },
+    ];
+    if (where.OR) {
+      where.AND = [{ OR: where.OR }, { OR: ownershipOr }];
+      delete where.OR;
+    } else {
+      where.OR = ownershipOr;
+    }
   }
 
   const lots = await prisma.lot.findMany({

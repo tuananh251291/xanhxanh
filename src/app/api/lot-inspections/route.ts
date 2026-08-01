@@ -63,14 +63,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Số nhiễm vượt quá tồn hiện tại của lô" }, { status: 400 });
   }
 
+  // LotInspectionItem.initialQuantity = tồn HIỆN TẠI của lô tại lúc kiểm tra (lot.quantity), KHÔNG phải
+  // Lot.initialQuantity (số lúc lô mới tạo, đứng yên vĩnh viễn dù sau đó Nhập kho thủ công cộng thêm
+  // nhiều lần) — nhầm 2 field trùng tên khác model từng khiến passedQuantity tính thiếu hẳn phần mới
+  // cộng thêm, sai lệch với validate contaminatedQuantity > lot.quantity ở trên.
   const inspectionItems = lots.map((lot) => {
     const contaminatedQuantity = itemByLotId.get(lot.id)!.contaminatedQuantity;
     return {
       lotId: lot.id,
       stageCode: lot.stageCode,
-      initialQuantity: lot.initialQuantity,
+      initialQuantity: lot.quantity,
       contaminatedQuantity,
-      passedQuantity: lot.initialQuantity - contaminatedQuantity,
+      passedQuantity: lot.quantity - contaminatedQuantity,
     };
   });
 
