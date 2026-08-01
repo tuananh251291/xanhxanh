@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Send, Loader2, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
-import { differenceInCalendarDays } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 
 // Quy cách thành phẩm (T01/T05) mới cho khai "không đạt" (VD cây quá nhỏ) — mẫu mẹ (M05) luôn đạt hết,
 // không hiện ô nhập. Khớp quy ước mã quy cách dùng xuyên suốt hệ thống (M... = mẫu mẹ, T... = thành phẩm).
@@ -67,6 +67,9 @@ function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: 
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <PackageCheck className="w-5 h-5" /> Lô sản phẩm <span className="font-mono">{group[0].code}</span>
+            <span className="text-xs font-normal text-text-secondary">
+              (Ngày nhập kho tối: {format(new Date(group[0].enteredAt), "dd/MM/yyyy")})
+            </span>
           </CardTitle>
           <span className="text-sm text-text-secondary whitespace-nowrap">Đã cấy {daysSince} ngày</span>
         </div>

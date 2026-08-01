@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Moon, Loader2, Send, ClipboardCheck, Lock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { getInspectionDueAt } from "@/lib/inspection";
 
 type Lot = {
@@ -169,6 +170,9 @@ function ProductLotGroup({ group, onUpdated, selected, onToggleSelect }: {
                 </span>
               )}
             </div>
+            <p className="text-xs text-text-secondary">
+              Ngày nhập kho tối: <span className="font-medium text-foreground">{format(enteredAt, "dd/MM/yyyy")}</span>
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
