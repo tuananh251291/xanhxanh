@@ -5,19 +5,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PenLine, Loader2, Lock, TriangleAlert, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
+import EndInstructionEarlyButton from "./end-instruction-early-button";
 
 // Cùng định dạng hệ số mà KY_THUAT dùng lúc nhập "Tỉ lệ nhân MM"/"Tỉ lệ ra TP" lúc tạo chỉ định (xem
 // fmtRatio ở instructions/[id]/page.tsx) — số cụm/cây ra trên 1 đơn vị MM dùng, không phải %.
 const formatRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 
 type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
+type VariantPlantType = { id: string; code: string; name: string };
 type Instruction = {
   id: string;
   code: string;
-  plantType: { name: string };
+  // Nhóm biến thể (đột biến) của mã cây chỉ định — có VÀ có >1 thành viên mới hiện được checkbox "Phát
+  // sinh cây cần phân loại" (xem PlantType.variantGroupId, /plant-types).
+  plantType: { name: string; variantGroup: { id: string; members: VariantPlantType[] } | null };
   weekStart: string | null;
   inputMotherQuantity: number;
   expectedFinishedOutput: number | null;
@@ -70,6 +75,10 @@ export default function DailyRecordPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [motherRatioTargetPct, setMotherRatioTargetPct] = useState(80);
   const [finishedRatioTargetPct, setFinishedRatioTargetPct] = useState(80);
+  // "Phát sinh cây cần phân loại" — theo TỪNG NGÀY (reset mỗi khi đổi chỉ định/sau khi lưu), không dính
+  // liền chỉ định. Key theo plantTypeId.
+  const [showVariantSplit, setShowVariantSplit] = useState(false);
+  const [variantQty, setVariantQty] = useState<Record<string, { m05: string; t05: string; t01: string }>>({});
 
   const today = useMemo(() => new Date(), []);
   const currentWeekStart = useMemo(() => startOfWeek(today, { weekStartsOn: 1 }), [today]);
@@ -192,6 +201,50 @@ export default function DailyRecordPage() {
   const cumulativeMotherChecked = totals.motherChecked + (Number(form.motherChecked) || 0);
   const motherCheckedExceeded = !!selectedInst && !todayRecord && cumulativeMotherChecked > selectedInst.inputMotherQuantity;
 
+  // "Phát sinh cây cần phân loại" — chỉ hiện khi mã cây chỉ định thuộc 1 nhóm biến thể có >1 thành viên.
+  // Tích chọn thì tổng số lượng phân loại theo TỪNG cột (M05/T05/T01) phải khớp CHÍNH XÁC số đã nhập ở
+  // cột gốc tương ứng — khớp validate ở POST /api/daily-records.
+  const variantMembers = selectedInst?.plantType.variantGroup?.members ?? [];
+  const hasVariantGroup = variantMembers.length > 1;
+  const variantSum = (stage: "m05" | "t05" | "t01") =>
+    variantMembers.reduce((s, m) => s + (Number(variantQty[m.id]?.[stage]) || 0), 0);
+  const m05VariantSum = variantSum("m05");
+  const t05VariantSum = variantSum("t05");
+  const t01VariantSum = variantSum("t01");
+  const m05Total = Number(form.m05) || 0;
+  const t05Total = Number(form.t05) || 0;
+  const t01Total = Number(form.t01) || 0;
+  const variantMismatch =
+    showVariantSplit && (m05VariantSum !== m05Total || t05VariantSum !== t05Total || t01VariantSum !== t01Total);
+
+  const setVariantField = (plantTypeId: string, stage: "m05" | "t05" | "t01") => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setVariantQty((prev) => ({
+      ...prev,
+      [plantTypeId]: { ...(prev[plantTypeId] ?? { m05: "", t05: "", t01: "" }), [stage]: value },
+    }));
+  };
+
+  // Nạp lại danh sách chỉ định (tuần hiện tại) — dùng chung sau khi lưu dữ liệu hôm nay LẪN sau khi bấm
+  // "Kết thúc chỉ định sớm" (cả 2 đều có thể khiến chỉ định đang chọn không còn ACTIVE nữa).
+  const refreshInstructions = async () => {
+    const instRes = await fetch("/api/instructions?status=ACTIVE");
+    const instData: Instruction[] = await instRes.json();
+    const inWeek = (Array.isArray(instData) ? instData : []).filter(
+      (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
+    );
+    setInstructions(inWeek);
+    setSelectedId((prev) => (prev && inWeek.some((i) => i.id === prev && i.motherReceivedAt) ? prev : (inWeek.find((i) => i.motherReceivedAt)?.id ?? "")));
+    return inWeek;
+  };
+
+  const onEndedEarly = async () => {
+    setForm(emptyForm);
+    setShowVariantSplit(false);
+    setVariantQty({});
+    await refreshInstructions();
+  };
+
   const onSubmitToday = async () => {
     if (!selectedId) return;
     // Đã lưu là KHÔNG sửa lại được nữa (chỉ Admin mới sửa được sau này) — bắt buộc dừng lại xác nhận
@@ -201,6 +254,8 @@ export default function DailyRecordPage() {
     }
     setSubmitting(true);
     try {
+      const variantPayload = (stage: "m05" | "t05" | "t01") =>
+        variantMembers.map((m) => ({ plantTypeId: m.id, quantity: Number(variantQty[m.id]?.[stage]) || 0 }));
       const res = await fetch("/api/daily-records", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,6 +267,9 @@ export default function DailyRecordPage() {
           m05: Number(form.m05) || 0,
           t05: Number(form.t05) || 0,
           t01: Number(form.t01) || 0,
+          ...(showVariantSplit
+            ? { m05Variants: variantPayload("m05"), t05Variants: variantPayload("t05"), t01Variants: variantPayload("t01") }
+            : {}),
         }),
       });
       const json = await res.json();
@@ -233,16 +291,12 @@ export default function DailyRecordPage() {
         );
       }
       setForm(emptyForm);
-      const [instRes, recRes] = await Promise.all([
-        fetch("/api/instructions?status=ACTIVE"),
+      setShowVariantSplit(false);
+      setVariantQty({});
+      const [, recRes] = await Promise.all([
+        refreshInstructions(),
         fetch(`/api/daily-records?instructionId=${selectedId}`),
       ]);
-      const instData: Instruction[] = await instRes.json();
-      const inWeek = (Array.isArray(instData) ? instData : []).filter(
-        (inst) => inst.weekStart && isSameDay(startOfWeek(new Date(inst.weekStart), { weekStartsOn: 1 }), currentWeekStart)
-      );
-      setInstructions(inWeek);
-      setSelectedId((prev) => (prev && inWeek.some((i) => i.id === prev && i.motherReceivedAt) ? prev : (inWeek.find((i) => i.motherReceivedAt)?.id ?? "")));
       setRecords(await recRes.json());
     } finally {
       setSubmitting(false);
@@ -288,7 +342,11 @@ export default function DailyRecordPage() {
               <Select
                 items={confirmedInstructions.map((inst) => ({ value: inst.id, label: `${inst.code} — ${inst.plantType.name}` }))}
                 value={selectedId}
-                onValueChange={(v) => setSelectedId(v as string)}
+                onValueChange={(v) => {
+                  setSelectedId(v as string);
+                  setShowVariantSplit(false);
+                  setVariantQty({});
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn chỉ định cấy" />
@@ -310,6 +368,12 @@ export default function DailyRecordPage() {
             <CardTitle className="text-base">
               Bảng nhập liệu tuần ({format(currentWeekStart, "dd/MM")} – {format(addDays(currentWeekStart, 6), "dd/MM")})
             </CardTitle>
+            <p className="text-xs text-text-secondary">
+              Tổng MM đã sử dụng: <span className="font-semibold text-foreground">{fmt(projectedMotherUsed)}</span> / {fmt(selectedInst.inputMotherQuantity)} MM được giao
+            </p>
+            <p className="text-xs text-text-secondary">
+              Tổng MM đã kiểm tra: <span className="font-semibold text-foreground">{fmt(cumulativeMotherChecked)}</span> / {fmt(selectedInst.inputMotherQuantity)} MM được giao
+            </p>
           </CardHeader>
           <CardContent>
             {!todayRecord && (
@@ -419,6 +483,55 @@ export default function DailyRecordPage() {
               </div>
             ) : (
               <>
+                {hasVariantGroup && (
+                  <div className="mt-4 border rounded-lg p-3 space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox checked={showVariantSplit} onCheckedChange={(c) => setShowVariantSplit(!!c)} />
+                      <span className="text-sm font-medium text-foreground">Phát sinh cây cần phân loại</span>
+                    </label>
+                    {showVariantSplit && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-primary-light text-primary-strong">
+                              <th className="px-2 py-1.5 text-left font-bold">Mã cây</th>
+                              <th className="px-2 py-1.5 text-right font-bold">M05 (cụm)</th>
+                              <th className="px-2 py-1.5 text-right font-bold">T05 (cây)</th>
+                              <th className="px-2 py-1.5 text-right font-bold">T01 (cây)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {variantMembers.map((m) => (
+                              <tr key={m.id} className="border-b">
+                                <td className="px-2 py-1.5 font-mono">{m.code}</td>
+                                <td className="px-1 py-1">
+                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.m05 ?? ""} onChange={setVariantField(m.id, "m05")} />
+                                </td>
+                                <td className="px-1 py-1">
+                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.t05 ?? ""} onChange={setVariantField(m.id, "t05")} />
+                                </td>
+                                <td className="px-1 py-1">
+                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.t01 ?? ""} onChange={setVariantField(m.id, "t01")} />
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className={`font-semibold ${variantMismatch ? "text-destructive" : ""}`}>
+                              <td className="px-2 py-1.5">Tổng đã phân loại / cột gốc</td>
+                              <td className="px-1 py-1 text-right">{m05VariantSum} / {m05Total}</td>
+                              <td className="px-1 py-1 text-right">{t05VariantSum} / {t05Total}</td>
+                              <td className="px-1 py-1 text-right">{t01VariantSum} / {t01Total}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        {variantMismatch && (
+                          <p className="text-xs text-destructive mt-2">
+                            Tổng số lượng phân loại phải khớp đúng số đã nhập ở cột M05/T05/T01 phía trên mới lưu được.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {motherCheckedExceeded && (
                   <div className="mt-4 flex items-center gap-2 text-sm font-medium text-destructive bg-danger-light rounded p-3">
                     <TriangleAlert className="w-4 h-4 shrink-0" />
@@ -428,7 +541,7 @@ export default function DailyRecordPage() {
                 )}
                 <Button
                   className="mt-4 w-full bg-primary hover:bg-primary-hover"
-                  disabled={submitting || loading || motherCheckedExceeded}
+                  disabled={submitting || loading || motherCheckedExceeded || variantMismatch}
                   onClick={onSubmitToday}
                 >
                   {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -436,6 +549,9 @@ export default function DailyRecordPage() {
                 </Button>
               </>
             )}
+            <div className="mt-4">
+              <EndInstructionEarlyButton instructionId={selectedInst.id} instructionCode={selectedInst.code} onEnded={onEndedEarly} />
+            </div>
           </CardContent>
         </Card>
       )}

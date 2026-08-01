@@ -76,11 +76,14 @@ enum InstructionStatus {
   ENDED // Kết thúc — tự động chuyển khi hết thời gian (qua Chủ nhật tuần chỉ định) hoặc dùng hết mẫu mẹ
 }
 
-// Lý do 1 chỉ định chuyển sang ENDED — chỉ TIME_UP mới có "MM dư" để bàn giao (MOTHER_USED_UP nghĩa là
-// dùng hết mẫu mẹ được cấp, không còn dư).
+// Lý do 1 chỉ định chuyển sang ENDED — TIME_UP và EARLY_END_BY_STAFF đều có thể còn "MM dư" để bàn giao
+// (MOTHER_USED_UP nghĩa là dùng hết mẫu mẹ được cấp, không còn dư).
 enum InstructionEndReason {
   TIME_UP
   MOTHER_USED_UP
+  // NV cấy mô tự bấm "Kết thúc chỉ định sớm" ở trang Nhập dữ liệu cấy (VD nghỉ đột xuất giữa tuần,
+  // không làm nốt các ngày còn lại) — xem PATCH /api/instructions/[id] nhánh endEarly.
+  EARLY_END_BY_STAFF
 }
 
 // Phân loại các kệ "chung" (chưa gán NV, assignedStaffId null) trong Phòng mẫu mẹ — dùng để tách nơi
@@ -397,6 +400,12 @@ model PlantType {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  // Nhóm biến thể (đột biến) — 1 mã cây chỉ thuộc ĐÚNG 1 nhóm (VD MT047 thuộc nhóm {MT047, MT005,
+  // MT042}). Có nhóm (khác null) VÀ nhóm có >1 thành viên thì chỉ định cấy dùng mã cây này mới hiện
+  // được checkbox "Phát sinh cây cần phân loại" lúc nhập dữ liệu cấy — xem POST /api/daily-records.
+  variantGroupId     String?
+  variantGroup       PlantVariantGroup? @relation(fields: [variantGroupId], references: [id])
+
   lots                 Lot[]
   plantingInstructions PlantingInstruction[]
   shelves              Shelf[]
@@ -407,6 +416,19 @@ model PlantType {
 
   @@unique([categoryId, seq])
   @@map("plant_types")
+}
+
+// Nhóm các mã cây có thể "lẫn" nhau khi cấy ra thực tế (đột biến) — VD cấy mẫu mẹ MT047 nhưng cây/cụm
+// tạo ra có thể là MT047 (đúng chỉ định), MT005 hoặc MT042. Admin quản lý tại /plant-types. Khi NV cấy
+// mô tích "Phát sinh cây cần phân loại" lúc nhập dữ liệu, được chọn nhập số lượng riêng cho từng mã
+// trong nhóm (thay vì gộp chung vào đúng 1 mã của chỉ định như mặc định).
+model PlantVariantGroup {
+  id        String      @id @default(cuid())
+  name      String
+  members   PlantType[]
+  createdAt DateTime    @default(now())
+
+  @@map("plant_variant_groups")
 }
 
 // ============================================================
@@ -885,10 +907,11 @@ model PlantingInstruction {
 
   // Lý do chuyển ENDED — chỉ có giá trị khi status = ENDED. TIME_UP: hết ngày Chủ nhật của tuần chỉ
   // định (kiểm tra ngay khi NV cấy mô bấm "Lưu dữ liệu hôm nay"). MOTHER_USED_UP: tổng "MM sử dụng"
-  // đã đạt/vượt inputMotherQuantity.
+  // đã đạt/vượt inputMotherQuantity. EARLY_END_BY_STAFF: NV cấy mô tự bấm kết thúc sớm.
   endReason        InstructionEndReason?
-  // NV cấy mô bấm "Bàn giao MM dư" (chỉ áp dụng khi endReason = TIME_UP và còn dư) — set khi đã tạo
-  // Transfer bàn giao phần mẫu mẹ dư cho Kho mô, tránh bàn giao lặp lại.
+  // NV cấy mô bấm "Bàn giao MM dư" (áp dụng khi endReason = TIME_UP hoặc EARLY_END_BY_STAFF và còn dư
+  // — 2 lý do duy nhất có thể còn MM chưa dùng hết) — set khi đã tạo Transfer bàn giao phần mẫu mẹ dư
+  // cho Kho mô, tránh bàn giao lặp lại.
   surplusHandedOverAt DateTime?
 
   createdAt   DateTime          @default(now())
@@ -1263,8 +1286,13 @@ model TransferInspectionItem {
   contaminatedQuantity Int
   passedQuantity       Int
   randomCheckPassRate  Float
-  // = round(randomCheckPassRate/100 * handedOverQuantity) — chỉ dùng tính lương sau này, KHÔNG
-  // dùng để trừ vào số lượng thực tế đem xếp kệ (số đó luôn là passedQuantity).
+  // NV cấy mô tự khai "không đạt" (VD cây thành phẩm quá nhỏ) lúc bàn giao (xem
+  // TransferItem.unqualifiedQuantity) — Kho mô xác nhận/sửa lại ở đây cho luồng Đỏ (luồng Xanh không qua
+  // bước này, tin tưởng tuyệt đối số NV tự khai). CHỈ áp dụng cho quy cách thành phẩm (T01/T05) — mẫu mẹ
+  // (M05) luôn coi là đạt hết, giữ 0.
+  unqualifiedQuantity  Int                @default(0)
+  // = round(randomCheckPassRate/100 * handedOverQuantity) − unqualifiedQuantity (không âm) — chỉ dùng
+  // tính lương sau này, KHÔNG dùng để trừ vào số lượng thực tế đem xếp kệ (số đó luôn là passedQuantity).
   creditedQuantity     Int
 
   @@unique([inspectionId, stageCode])
@@ -1279,6 +1307,12 @@ model TransferItem {
   lot         Lot       @relation(fields: [lotId], references: [id])
   quantity    Int
   notes       String?
+  // NV cấy mô tự khai "không đạt" trong số `quantity` đang bàn giao (VD cây thành phẩm quá nhỏ) — CHỈ áp
+  // dụng cho lô thành phẩm (T01/T05), luôn 0 với lô mẫu mẹ (M05, coi như đạt hết). KHÔNG ảnh hưởng tới
+  // số lượng thực tế đem xếp kệ (`quantity` giữ nguyên, không tách vật lý) — chỉ dùng để tính "số lượng
+  // ghi nhận" cho lương: luồng Xanh dùng thẳng số này, luồng Đỏ cho Kho mô xác nhận/sửa lại lúc kiểm tra
+  // (xem TransferInspectionItem.unqualifiedQuantity).
+  unqualifiedQuantity Int @default(0)
   // Đã được xếp kệ (mẫu mẹ hoặc ra rễ) — dùng cho luồng bàn giao Phòng tối Xanh (xem
   // /transfers/receive-phong-toi), cho phép xác nhận ĐỘC LẬP từng nhóm (mẫu mẹ / ra rễ) trong cùng 1
   // phiếu thay vì phải xong cả phiếu mới CONFIRMED. null = chưa xếp.

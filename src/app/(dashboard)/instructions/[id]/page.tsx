@@ -92,6 +92,10 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   // chia lại có thể lệch nhẹ so với số NV đã gõ.
   const targetMotherRatio = inst.items.find((i) => i.stageCode === "M05" && i.motherSampleRatio !== null)?.motherSampleRatio ?? null;
   const targetFinishedRatio = inst.items.find((i) => i.rootingRatio !== null)?.rootingRatio ?? null;
+  // Môi trường dùng chung cho mọi dòng quy cách trong chỉ định (xem create-instruction-dialog.tsx —
+  // "Tỉ lệ + môi trường dùng chung"), lấy dòng đầu có giá trị là đủ, cùng cách lấy targetMotherRatio ở trên.
+  const motherMediumInfo = inst.items.find((i) => i.motherMedium)?.motherMedium ?? null;
+  const finishedMediumInfo = inst.items.find((i) => i.finishedMedium)?.finishedMedium ?? null;
   const actualMotherRatio = actualMotherUsed > 0 ? actualMotherOutput / actualMotherUsed : null;
   const actualFinishedRatio = actualMotherUsed > 0 ? actualFinishedOutput / actualMotherUsed : null;
   const fmtRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
@@ -235,6 +239,10 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             <p className="pi-notes-text">
               <strong>Tỉ lệ nhân MM:</strong> {targetMotherRatio === null ? "—" : fmtRatio(targetMotherRatio)}
               &nbsp;&nbsp; <strong>Tỉ lệ ra TP:</strong> {targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}
+            </p>
+            <p className="pi-notes-text">
+              <strong>Môi trường nhân MM:</strong> {motherMediumInfo?.code ?? "—"}
+              &nbsp;&nbsp; <strong>Môi trường ra TP:</strong> {finishedMediumInfo?.code ?? "—"}
             </p>
           </section>
 

@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 
-type Column = { stageCode: string; handedOverQuantity: number };
+type Column = { stageCode: string; handedOverQuantity: number; selfReportedUnqualifiedQuantity: number };
 type Meta = { transferCode: string; staffCode: string; staffName: string; columns: Column[] };
-type InputState = { contaminatedQuantity: number; randomCheckPassRate: number };
+type InputState = { contaminatedQuantity: number; randomCheckPassRate: number; unqualifiedQuantity: number };
 
 export default function InspectForm({ transferId }: { transferId: string }) {
   const router = useRouter();
@@ -30,7 +30,8 @@ export default function InspectForm({ transferId }: { transferId: string }) {
       setMeta(data);
       const initial: Record<string, InputState> = {};
       for (const col of data.columns as Column[]) {
-        initial[col.stageCode] = { contaminatedQuantity: 0, randomCheckPassRate: 100 };
+        // Hiện sẵn số NV cấy mô tự khai lúc bàn giao — Kho mô xem lại, sửa nếu cần rồi mới xác nhận.
+        initial[col.stageCode] = { contaminatedQuantity: 0, randomCheckPassRate: 100, unqualifiedQuantity: col.selfReportedUnqualifiedQuantity };
       }
       setInputs(initial);
     } finally {
@@ -58,6 +59,10 @@ export default function InspectForm({ transferId }: { transferId: string }) {
     const clamped = Math.max(0, Math.min(value, 100));
     setInputs((prev) => ({ ...prev, [stageCode]: { ...prev[stageCode], randomCheckPassRate: clamped } }));
   };
+  const setUnqualified = (stageCode: string, value: number, max: number) => {
+    const clamped = Math.max(0, Math.min(value, max));
+    setInputs((prev) => ({ ...prev, [stageCode]: { ...prev[stageCode], unqualifiedQuantity: clamped } }));
+  };
 
   const submit = async () => {
     setSubmitting(true);
@@ -66,6 +71,7 @@ export default function InspectForm({ transferId }: { transferId: string }) {
         stageCode: col.stageCode,
         contaminatedQuantity: inputs[col.stageCode]?.contaminatedQuantity ?? 0,
         randomCheckPassRate: inputs[col.stageCode]?.randomCheckPassRate ?? 100,
+        unqualifiedQuantity: col.stageCode === "M05" ? 0 : (inputs[col.stageCode]?.unqualifiedQuantity ?? 0),
       }));
       const res = await fetch(`/api/transfers/receive-phong-toi/inspect/${transferId}`, {
         method: "POST",
@@ -152,11 +158,33 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                     </td>
                   ))}
                 </tr>
+                <tr className="border-b even:bg-primary-light/30">
+                  <td className="px-4 py-3 font-medium text-foreground">
+                    Số lượng không đạt (NV tự khai, VD cây quá nhỏ)
+                  </td>
+                  {meta.columns.map((col) =>
+                    col.stageCode === "M05" ? (
+                      <td key={col.stageCode} className="px-4 py-3 text-center text-text-muted">— (mẫu mẹ luôn đạt)</td>
+                    ) : (
+                      <td key={col.stageCode} className="px-4 py-3 text-center">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={col.handedOverQuantity}
+                          className="w-24 h-8 mx-auto text-center"
+                          value={inputs[col.stageCode]?.unqualifiedQuantity ?? 0}
+                          onChange={(e) => setUnqualified(col.stageCode, parseInt(e.target.value, 10) || 0, col.handedOverQuantity)}
+                        />
+                      </td>
+                    )
+                  )}
+                </tr>
                 <tr>
                   <td className="px-4 py-3 font-medium text-foreground">Số lượng NV cấy mô được ghi nhận</td>
                   {meta.columns.map((col) => {
                     const rate = inputs[col.stageCode]?.randomCheckPassRate ?? 100;
-                    const credited = Math.round((rate / 100) * col.handedOverQuantity);
+                    const unqualified = col.stageCode === "M05" ? 0 : (inputs[col.stageCode]?.unqualifiedQuantity ?? 0);
+                    const credited = Math.max(0, Math.round((rate / 100) * col.handedOverQuantity) - unqualified);
                     return (
                       <td key={col.stageCode} className="px-4 py-3 text-center font-medium text-foreground">
                         {credited.toLocaleString("vi-VN")}

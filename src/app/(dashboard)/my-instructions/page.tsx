@@ -16,6 +16,7 @@ import DoneInstructionsTable from "./done-instructions-table";
 const END_REASON_LABELS: Record<string, string> = {
   TIME_UP: "Hết thời gian (qua Chủ nhật)",
   MOTHER_USED_UP: "Đã dùng hết mẫu mẹ được cấp",
+  EARLY_END_BY_STAFF: "NV tự kết thúc sớm",
 };
 
 // Với chỉ định đang ACTIVE, badge không thể chỉ lấy status DB (luôn là "Đang thực hiện" ngay từ lúc
@@ -132,12 +133,15 @@ export default async function MyInstructionsPage() {
                   <tbody>
                     {ended.map((inst) => {
                       const surplus = surplusOf(inst);
+                      // TIME_UP (hết tuần) và EARLY_END_BY_STAFF (NV tự kết thúc sớm) là 2 lý do duy
+                      // nhất có thể còn MM chưa dùng hết — MOTHER_USED_UP thì chắc chắn không còn dư.
+                      const mayHaveSurplus = inst.endReason === "TIME_UP" || inst.endReason === "EARLY_END_BY_STAFF";
                       // Chưa từng xác nhận nhận mẫu mẹ (motherReceivedAt null) — lô gốc chưa hề bị đụng
                       // tới, "surplus" tính ra lúc này chỉ là toàn bộ inputMotherQuantity chứ không phải
                       // dư thật — không cho bàn giao (server cũng chặn, xem surplus-handover/route.ts)
                       // và không hiển thị số dư gây hiểu nhầm.
                       const canHandoverSurplus =
-                        inst.endReason === "TIME_UP" && !inst.surplusHandedOverAt && surplus > 0 && !!inst.motherReceivedAt;
+                        mayHaveSurplus && !inst.surplusHandedOverAt && surplus > 0 && !!inst.motherReceivedAt;
                       return (
                         <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light/30">
                           <td className="px-4 py-3 font-mono font-medium text-info-foreground">{inst.code}</td>
@@ -146,9 +150,9 @@ export default async function MyInstructionsPage() {
                             {inst.endReason ? END_REASON_LABELS[inst.endReason] : "—"}
                           </td>
                           <td className="px-4 py-3 text-text-secondary">
-                            {inst.endReason === "TIME_UP" && !inst.motherReceivedAt ? (
+                            {mayHaveSurplus && !inst.motherReceivedAt ? (
                               <span className="text-xs text-text-muted">Chưa từng nhận mẫu mẹ — không có gì để bàn giao</span>
-                            ) : inst.endReason === "TIME_UP" ? (
+                            ) : mayHaveSurplus ? (
                               <>
                                 <strong>{Math.max(0, surplus).toLocaleString("vi-VN")}</strong>
                                 {inst.surplusHandedOverAt && (

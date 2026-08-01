@@ -5,9 +5,14 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Send, Loader2, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays } from "date-fns";
+
+// Quy cách thành phẩm (T01/T05) mới cho khai "không đạt" (VD cây quá nhỏ) — mẫu mẹ (M05) luôn đạt hết,
+// không hiện ô nhập. Khớp quy ước mã quy cách dùng xuyên suốt hệ thống (M... = mẫu mẹ, T... = thành phẩm).
+const isFinishedStage = (stageCode: string) => stageCode.startsWith("T");
 
 type Lot = {
   id: string;
@@ -24,9 +29,15 @@ const MIN_DAYS_SINCE_PLANTED = 7;
 function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: () => void }) {
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // "Không đạt" NV cấy mô tự khai (VD cây thành phẩm quá nhỏ) — theo lotId, chỉ áp dụng lô thành phẩm.
+  const [unqualified, setUnqualified] = useState<Record<string, string>>({});
 
   const allInspected = group.every((l) => l.inspectedAt);
   const daysSince = differenceInCalendarDays(new Date(), new Date(group[0].enteredAt));
+
+  const unqualifiedExceeded = group.some(
+    (lot) => isFinishedStage(lot.stageCode) && (Number(unqualified[lot.id]) || 0) > lot.quantity
+  );
 
   const submit = async () => {
     setSubmitting(true);
@@ -35,7 +46,11 @@ function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: group.map((lot) => ({ lotId: lot.id, quantity: lot.quantity })),
+          items: group.map((lot) => ({
+            lotId: lot.id,
+            quantity: lot.quantity,
+            unqualifiedQuantity: isFinishedStage(lot.stageCode) ? Number(unqualified[lot.id]) || 0 : 0,
+          })),
         }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
@@ -65,6 +80,7 @@ function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: 
                 <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Tên cây chi tiết</th>
                 <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Quy cách</th>
                 <th className="text-right px-4 py-2 text-primary-strong font-bold text-base">Số lượng</th>
+                <th className="text-right px-4 py-2 text-primary-strong font-bold text-base">Không đạt</th>
               </tr>
             </thead>
             <tbody>
@@ -74,6 +90,21 @@ function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: 
                   <td className="px-4 py-2">{lot.plantType.name}</td>
                   <td className="px-4 py-2">{lot.stageCode}</td>
                   <td className="px-4 py-2 text-right font-medium">{lot.quantity.toLocaleString("vi-VN")}</td>
+                  <td className="px-4 py-2 text-right">
+                    {isFinishedStage(lot.stageCode) ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={lot.quantity}
+                        placeholder="0"
+                        className="w-20 h-8 ml-auto text-right"
+                        value={unqualified[lot.id] ?? ""}
+                        onChange={(e) => setUnqualified((prev) => ({ ...prev, [lot.id]: e.target.value }))}
+                      />
+                    ) : (
+                      <span className="text-text-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -81,19 +112,27 @@ function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: 
         </div>
 
         {allInspected ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-divider">
-            <label className="flex items-center gap-2 text-sm text-text-secondary">
-              <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(v === true)} />
-              Tôi đã xác nhận thông tin chính xác
-            </label>
-            <Button
-              className="bg-primary hover:bg-primary-hover"
-              disabled={!confirmed || submitting}
-              onClick={submit}
-            >
-              {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              Bàn giao sang kho sáng
-            </Button>
+          <div className="space-y-2 pt-3 border-t border-divider">
+            <p className="text-xs text-text-secondary">
+              Cây thành phẩm quá nhỏ chưa đạt chuẩn thì ghi số lượng vào ô &quot;Không đạt&quot; — vẫn bàn giao đủ số lượng thực tế, chỉ khác số được ghi nhận tính công.
+            </p>
+            {unqualifiedExceeded && (
+              <p className="text-xs text-destructive font-medium">Số không đạt không được vượt quá số lượng bàn giao.</p>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-sm text-text-secondary">
+                <Checkbox checked={confirmed} onCheckedChange={(v) => setConfirmed(v === true)} />
+                Tôi đã xác nhận thông tin chính xác
+              </label>
+              <Button
+                className="bg-primary hover:bg-primary-hover"
+                disabled={!confirmed || submitting || unqualifiedExceeded}
+                onClick={submit}
+              >
+                {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                Bàn giao sang kho sáng
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-divider">

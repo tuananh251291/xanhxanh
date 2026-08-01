@@ -20,6 +20,10 @@ const createSchema = z.object({
     lotId: z.string(),
     quantity: z.number().int().positive(),
     notes: z.string().optional(),
+    // NV cấy mô tự khai "không đạt" (VD cây thành phẩm quá nhỏ) trong số `quantity` — CHỈ áp dụng cho lô
+    // thành phẩm (T01/T05), validate lại ở dưới (chặn nếu gửi cho lô mẫu mẹ hoặc vượt quá quantity). Xem
+    // TransferItem.unqualifiedQuantity.
+    unqualifiedQuantity: z.number().int().min(0).default(0),
   })).min(1, "Cần chọn ít nhất 1 lô"),
 });
 
@@ -119,14 +123,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Cần chọn kho hoặc phòng đích" }, { status: 400 });
   }
 
-  // Bàn giao từ phòng tối cá nhân → bắt buộc mọi lô đã "Đã kiểm tra" nhiễm trước khi bàn giao.
+  // Bàn giao từ phòng tối cá nhân → bắt buộc mọi lô đã "Đã kiểm tra" nhiễm trước khi bàn giao. Đồng thời
+  // validate "không đạt" NV tự khai (chỉ cho lô thành phẩm T01/T05, không cho mẫu mẹ — mẫu mẹ luôn đạt
+  // hết) — không vượt quá số lượng đang bàn giao của đúng lô đó.
   if (isFromDarkRoom) {
     const lots = await prisma.lot.findMany({
       where: { id: { in: items.map((i) => i.lotId) } },
-      select: { id: true, inspectedAt: true },
+      select: { id: true, inspectedAt: true, stage: true },
     });
     if (lots.some((lot) => !lot.inspectedAt)) {
       return NextResponse.json({ message: "Cần kiểm tra nhiễm trước khi bàn giao" }, { status: 400 });
+    }
+    const lotById = new Map(lots.map((l) => [l.id, l]));
+    for (const item of items) {
+      if (item.unqualifiedQuantity <= 0) continue;
+      const lot = lotById.get(item.lotId);
+      if (lot?.stage !== "THANH_PHAM") {
+        return NextResponse.json({ message: "Chỉ được khai \"không đạt\" cho lô thành phẩm, không áp dụng cho mẫu mẹ" }, { status: 400 });
+      }
+      if (item.unqualifiedQuantity > item.quantity) {
+        return NextResponse.json({ message: "Số lượng không đạt không được vượt quá số lượng bàn giao" }, { status: 400 });
+      }
     }
   }
 

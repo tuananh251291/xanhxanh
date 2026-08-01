@@ -19,6 +19,7 @@ async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
         select: {
           id: true,
           lotId: true,
+          unqualifiedQuantity: true,
           lot: { select: { id: true, code: true, quantity: true, stageCode: true, stage: true, plantTypeId: true, plantType: { select: { code: true } } } },
         },
       },
@@ -30,6 +31,16 @@ function buildHandedOverByStageCode(items: { lot: { stageCode: string; quantity:
   const map = new Map<string, number>();
   for (const item of items) {
     map.set(item.lot.stageCode, (map.get(item.lot.stageCode) ?? 0) + item.lot.quantity);
+  }
+  return map;
+}
+
+// Tổng "không đạt" NV cấy mô tự khai lúc bàn giao (xem TransferItem.unqualifiedQuantity), gộp theo quy
+// cách — dùng để hiện sẵn (pre-fill) cho Kho mô xác nhận/sửa lại ở bước kiểm tra luồng Đỏ.
+function buildUnqualifiedByStageCode(items: { lot: { stageCode: string }; unqualifiedQuantity: number }[]) {
+  const map = new Map<string, number>();
+  for (const item of items) {
+    map.set(item.lot.stageCode, (map.get(item.lot.stageCode) ?? 0) + item.unqualifiedQuantity);
   }
   return map;
 }
@@ -50,9 +61,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
   if (transfer.items.length === 0) return NextResponse.json({ message: "Phiếu không còn lô nào để kiểm tra" }, { status: 400 });
 
   const handedOverByStageCode = buildHandedOverByStageCode(transfer.items);
+  const unqualifiedByStageCode = buildUnqualifiedByStageCode(transfer.items);
   const columns = STAGE_CODES
     .filter((code) => (handedOverByStageCode.get(code) ?? 0) > 0)
-    .map((stageCode) => ({ stageCode, handedOverQuantity: handedOverByStageCode.get(stageCode)! }));
+    .map((stageCode) => ({
+      stageCode,
+      handedOverQuantity: handedOverByStageCode.get(stageCode)!,
+      // NV cấy mô tự khai lúc bàn giao — hiện sẵn để Kho mô xác nhận/sửa lại (chỉ có ý nghĩa với quy
+      // cách thành phẩm T01/T05, luôn 0 với M05).
+      selfReportedUnqualifiedQuantity: unqualifiedByStageCode.get(stageCode) ?? 0,
+    }));
 
   return NextResponse.json({
     transferCode: transfer.code,
@@ -66,6 +84,9 @@ const itemSchema = z.object({
   stageCode: z.enum(STAGE_CODES),
   contaminatedQuantity: z.number().int().min(0),
   randomCheckPassRate: z.number().min(0).max(100),
+  // Kho mô xác nhận/sửa lại số "không đạt" NV cấy mô tự khai — CHỈ áp dụng quy cách thành phẩm (T01/T05),
+  // mẫu mẹ (M05) luôn đạt hết nên bắt buộc 0 (validate ở dưới).
+  unqualifiedQuantity: z.number().int().min(0),
 });
 const postSchema = z.object({ items: z.array(itemSchema).min(1) });
 
@@ -98,6 +119,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
     if (item.contaminatedQuantity > handedOver) {
       return NextResponse.json({ message: `Số nhiễm quy cách ${item.stageCode} vượt quá số lượng bàn giao` }, { status: 400 });
     }
+    if (item.stageCode === "M05" && item.unqualifiedQuantity > 0) {
+      return NextResponse.json({ message: "Mẫu mẹ (M05) luôn tính đạt hết — không được nhập số không đạt" }, { status: 400 });
+    }
+    if (item.unqualifiedQuantity > handedOver) {
+      return NextResponse.json({ message: `Số không đạt quy cách ${item.stageCode} vượt quá số lượng bàn giao` }, { status: 400 });
+    }
   }
 
   const warehouseId = transfer.fromRoom!.warehouseId;
@@ -117,7 +144,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
               contaminatedQuantity: item.contaminatedQuantity,
               passedQuantity: handedOverQuantity - item.contaminatedQuantity,
               randomCheckPassRate: item.randomCheckPassRate,
-              creditedQuantity: Math.round((item.randomCheckPassRate / 100) * handedOverQuantity),
+              unqualifiedQuantity: item.unqualifiedQuantity,
+              // Trừ dồn độc lập với nhiễm — 2 lý do loại riêng biệt (VD nhỏ quá vs nhiễm), không gộp
+              // chung 1 phép tính. Không âm vì có thể Kho mô nhập "không đạt" lớn hơn phần "đạt" theo
+              // tỉ lệ kiểm tra ngẫu nhiên.
+              creditedQuantity: Math.max(0, Math.round((item.randomCheckPassRate / 100) * handedOverQuantity) - item.unqualifiedQuantity),
             };
           }),
         },

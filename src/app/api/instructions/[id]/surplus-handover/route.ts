@@ -23,7 +23,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (instruction.assignedToId !== session.user.id) {
     return NextResponse.json({ message: "Không phải chỉ định của bạn" }, { status: 403 });
   }
-  if (instruction.status !== "ENDED" || instruction.endReason !== "TIME_UP") {
+  // Chỉ TIME_UP (hết tuần) và EARLY_END_BY_STAFF (NV tự kết thúc sớm) mới có thể còn MM chưa dùng hết —
+  // MOTHER_USED_UP nghĩa là đã dùng hết, không còn gì để bàn giao dư.
+  if (instruction.status !== "ENDED" || (instruction.endReason !== "TIME_UP" && instruction.endReason !== "EARLY_END_BY_STAFF")) {
     return NextResponse.json({ message: "Chỉ định chưa kết thúc do hết thời gian — chưa thể bàn giao MM dư" }, { status: 400 });
   }
   if (instruction.surplusHandedOverAt) {

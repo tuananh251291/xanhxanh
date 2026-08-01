@@ -4,11 +4,14 @@ import { auth } from "@/lib/auth";
 
 // Danh sách phiếu bàn giao (Phòng tối → Kho sáng) của chính NV cấy mô đang đăng nhập, kèm đối chiếu
 // "số lượng bàn giao" (TransferItem.quantity, qua lô) với "số lượng ghi nhận":
-// - Luồng Xanh: không qua bước Kiểm tra, luôn tin tưởng — ghi nhận = đúng số đã bàn giao.
-// - Luồng Đỏ (hoặc chưa cài đặt luồng): ghi nhận = TransferInspectionItem.creditedQuantity, chỉ có
-//   sau khi Kho mô bấm "Kiểm tra" (xem /api/transfers/receive-phong-toi/inspect/[transferId]) — trước
-//   đó trả về null (đang chờ kiểm tra). creditedQuantity tính theo TỪNG stageCode gộp cả phiếu (có thể
-//   gộp nhiều lô khác loại cây cùng stageCode), nên gom theo stageCode chứ không tách theo từng lô.
+// - Luồng Xanh: không qua bước Kiểm tra, luôn tin tưởng tuyệt đối — ghi nhận = số đã bàn giao trừ đúng
+//   số "không đạt" (VD cây quá nhỏ) NV tự khai lúc bàn giao (TransferItem.unqualifiedQuantity), không ai
+//   sửa lại được.
+// - Luồng Đỏ (hoặc chưa cài đặt luồng): ghi nhận = TransferInspectionItem.creditedQuantity (đã trừ cả
+//   nhiễm lẫn không đạt do Kho mô xác nhận), chỉ có sau khi Kho mô bấm "Kiểm tra" (xem
+//   /api/transfers/receive-phong-toi/inspect/[transferId]) — trước đó trả về null (đang chờ kiểm tra).
+//   creditedQuantity tính theo TỪNG stageCode gộp cả phiếu (có thể gộp nhiều lô khác loại cây cùng
+//   stageCode), nên gom theo stageCode chứ không tách theo từng lô.
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "CAY_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -39,12 +42,18 @@ export async function GET() {
   const result = transfers.map((t) => {
     const groups = new Map<
       string,
-      { stageCode: string; handedOverQuantity: number; lots: { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number }[] }
+      {
+        stageCode: string;
+        handedOverQuantity: number;
+        unqualifiedQuantity: number;
+        lots: { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number }[];
+      }
     >();
     for (const item of t.items) {
       const key = item.lot.stageCode;
-      const group = groups.get(key) ?? { stageCode: key, handedOverQuantity: 0, lots: [] };
+      const group = groups.get(key) ?? { stageCode: key, handedOverQuantity: 0, unqualifiedQuantity: 0, lots: [] };
       group.handedOverQuantity += item.quantity;
+      group.unqualifiedQuantity += item.unqualifiedQuantity;
       group.lots.push({
         lotCode: item.lot.code,
         plantTypeCode: item.lot.plantType.code,
@@ -67,7 +76,7 @@ export async function GET() {
       inspected: !!t.inspection,
       groups: [...groups.values()].map((g) => ({
         ...g,
-        recordedQuantity: isXanh ? g.handedOverQuantity : (t.inspection ? (creditedByStageCode.get(g.stageCode) ?? null) : null),
+        recordedQuantity: isXanh ? g.handedOverQuantity - g.unqualifiedQuantity : (t.inspection ? (creditedByStageCode.get(g.stageCode) ?? null) : null),
       })),
     };
   });

@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { startOfWeek } from "date-fns";
 import { detachInstructionFromMediumOrder, syncInstructionMediumOrder } from "@/lib/instruction-medium-order";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 import { z } from "zod";
 
 // Mẫu mẹ nguồn (shelfItems[].lotId lúc tạo) CHỈ thật sự trừ khỏi tồn kệ (status ACTIVE -> PLANTED) đúng
@@ -51,6 +52,7 @@ const patchSchema = z.union([
   z.object({ confirmHandover: z.literal(true) }),
   z.object({ undoHandover: z.literal(true) }),
   z.object({ confirmMotherReceived: z.literal(true) }),
+  z.object({ endEarly: z.literal(true) }),
   z.object({ cancelInstruction: z.literal(true) }),
   z.object({
     edit: z.object({
@@ -142,6 +144,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const updated = await prisma.plantingInstruction.update({
       where: { id },
       data: { motherReceivedAt: instruction.motherReceivedAt ?? new Date() },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // NV cấy mô tự bấm "Kết thúc chỉ định sớm" ở trang Nhập dữ liệu cấy (VD nghỉ đột xuất giữa tuần,
+  // không làm nốt các ngày còn lại — hết Thứ 7 mà không đi làm Chủ nhật thì bấm) — thay vì để chỉ định
+  // treo "Đang thực hiện" tới tận khi ensureInstructionsEnded tự đóng lúc sang tuần mới. Cùng bản chất
+  // "hết thời gian sử dụng" như TIME_UP (chỉ khác lý do: NV chủ động dừng, không phải hết tuần) nên vẫn
+  // có thể còn MM dư cần bàn giao — xem endReason EARLY_END_BY_STAFF được cho phép ở
+  // POST /api/instructions/[id]/surplus-handover và my-instructions/page.tsx.
+  if ("endEarly" in parsed.data) {
+    const instruction = await prisma.plantingInstruction.findUnique({ where: { id } });
+    if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    if (instruction.assignedToId !== session?.user?.id) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    if (instruction.status !== "ACTIVE" && instruction.status !== "DRAFT") {
+      return NextResponse.json({ message: "Chỉ định đã kết thúc hoặc đã hủy — không thể kết thúc sớm" }, { status: 400 });
+    }
+    const updated = await prisma.plantingInstruction.update({
+      where: { id },
+      data: { status: "ENDED", endReason: "EARLY_END_BY_STAFF" },
     });
     return NextResponse.json(updated);
   }
@@ -406,6 +430,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const isFirstHandover = !instruction.handedOverAt;
+    // Chỉ định dự phòng được TẠO trước (chọn tuần hiện tại hoặc tuần sau chỉ để tổ chức nguồn mẫu mẹ,
+    // xem POST /api/instructions) nhưng "Tuần thực hiện" THẬT SỰ phải theo đúng lúc Kho mô bàn giao cho 1
+    // NV cụ thể — VD tạo sẵn cho tuần sau nhưng NV hoàn thành sớm chỉ định đang làm nên được bàn giao
+    // ngay trong tuần này, thì chỉ định dự phòng đó phải tính là việc của TUẦN NÀY (NV cần nhập dữ liệu
+    // ngay hôm nay), không giữ nguyên tuần đã chọn lúc tạo — nếu không "Nhập dữ liệu cấy" sẽ không hiện
+    // chỉ định vừa nhận cho tới khi sang đúng tuần đã chọn lúc tạo.
+    const weekStartAtHandover = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
     const updated = await prisma.$transaction(async (tx) => {
       if (isFirstHandover) await markSourceLotsPlanted(tx, instruction.items);
       await tx.extraWorkRequest.update({
@@ -418,6 +449,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           assignedToId: extraWorkRequest.staff.id,
           handedOverAt: instruction.handedOverAt ?? new Date(),
           handedOverById: instruction.handedOverById ?? session!.user!.id,
+          weekStart: weekStartAtHandover,
         },
         include: { assignedTo: { select: { name: true } } },
       });

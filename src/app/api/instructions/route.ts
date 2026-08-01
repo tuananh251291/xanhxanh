@@ -64,7 +64,15 @@ export async function GET(req: NextRequest) {
   const instructions = await prisma.plantingInstruction.findMany({
     where,
     include: {
-      plantType: { select: { code: true, name: true } },
+      plantType: {
+        select: {
+          code: true,
+          name: true,
+          // "Phát sinh cây cần phân loại" lúc nhập dữ liệu cấy (xem POST /api/daily-records) chỉ hiện
+          // khi mã cây của chỉ định thuộc 1 nhóm biến thể có >1 thành viên.
+          variantGroup: { select: { id: true, name: true, members: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } } } },
+        },
+      },
       createdBy: { select: { name: true } },
       assignedTo: { select: { name: true } },
       items: {

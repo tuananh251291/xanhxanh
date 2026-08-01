@@ -11,6 +11,7 @@ import { TRANSFER_STATUS_LABELS } from "@/types";
 type Group = {
   stageCode: string;
   handedOverQuantity: number;
+  unqualifiedQuantity: number;
   recordedQuantity: number | null;
   lots: { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number }[];
 };
@@ -71,6 +72,7 @@ function TransferCard({ transfer, isXanh }: { transfer: TransferRow; isXanh: boo
                   <tr key={`${g.stageCode}-recorded`} className="border-b last:border-0 bg-muted/40">
                     <td colSpan={3} className="px-4 py-2 text-right text-text-secondary text-xs">
                       ↳ Số lượng được ghi nhận {g.lots.length > 1 ? `(quy cách ${g.stageCode})` : ""}
+                      {g.unqualifiedQuantity > 0 && ` — trong đó ${g.unqualifiedQuantity.toLocaleString("vi-VN")} không đạt`}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold">
                       {g.recordedQuantity === null ? (
@@ -131,7 +133,7 @@ export default function HandoverRecordBoard() {
         <p className="text-text-secondary text-sm mt-1">
           Đối chiếu số lượng đã bàn giao với số lượng được ghi nhận cho từng phiếu —{" "}
           {isXanh
-            ? "bạn thuộc luồng Xanh, số ghi nhận luôn bằng số đã bàn giao"
+            ? "bạn thuộc luồng Xanh, số ghi nhận theo đúng số bạn tự khai lúc bàn giao (đã trừ không đạt nếu có)"
             : "bạn thuộc luồng Đỏ, số ghi nhận theo kết quả Kho mô kiểm tra"}
         </p>
       </div>

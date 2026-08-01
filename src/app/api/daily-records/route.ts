@@ -9,6 +9,13 @@ import { z } from "zod";
 import { addDays, addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 import { canManageDailyRecords, isAdminRole } from "@/types";
 
+// "Phát sinh cây cần phân loại" — chỉ NV cấy mô tích chọn khi mã cây của chỉ định thuộc 1 nhóm biến thể
+// (PlantType.variantGroupId) có >1 thành viên (xem /plant-types). Truyền kèm breakdown số lượng theo
+// từng mã trong nhóm cho ĐÚNG cột đang tách (m05/t05/t01) — tổng breakdown phải khớp con số đã nhập ở
+// cột gốc tương ứng (m05/t05/t01), validate ở dưới. Không truyền (hoặc mảng rỗng) = giữ hành vi cũ,
+// toàn bộ số lượng cột đó tính là đúng mã cây của chỉ định.
+const variantBreakdownSchema = z.array(z.object({ plantTypeId: z.string(), quantity: z.number().int().min(0) })).optional();
+
 const schema = z.object({
   instructionId: z.string(),
   motherChecked: z.number().int().min(0),
@@ -17,6 +24,9 @@ const schema = z.object({
   m05: z.number().int().min(0),
   t05: z.number().int().min(0),
   t01: z.number().int().min(0),
+  m05Variants: variantBreakdownSchema,
+  t05Variants: variantBreakdownSchema,
+  t01Variants: variantBreakdownSchema,
   notes: z.string().optional(),
   // Chỉ Admin/Admin cấp cao/KHO_MO (cùng kho) mới truyền — bù dữ liệu cho 1 ngày cụ thể trong tuần mà
   // NV cấy mô bỏ sót (xem nhánh canActOnBehalf bên dưới). NV cấy mô tự nhập luôn bỏ qua field này, luôn
@@ -35,12 +45,12 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ", errors: parsed.error.flatten() }, { status: 400 });
 
-  const { instructionId, motherChecked, motherContaminatedM05, motherUsed, m05, t05, t01, notes } = parsed.data;
+  const { instructionId, motherChecked, motherContaminatedM05, motherUsed, m05, t05, t01, m05Variants, t05Variants, t01Variants, notes } = parsed.data;
 
   const instruction = await prisma.plantingInstruction.findUnique({
     where: { id: instructionId },
     include: {
-      plantType: true,
+      plantType: { include: { variantGroup: { include: { members: true } } } },
       assignedTo: { select: { name: true } },
       items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } },
     },
@@ -123,15 +133,61 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
+  // "Phát sinh cây cần phân loại" — NV cấy mô có thể tách số lượng M05/T05/T01 theo nhiều mã cây khác
+  // nhau nếu mã cây của chỉ định thuộc 1 nhóm biến thể (VD MT047 tự nhân ra cả MT047/MT005/MT042, xem
+  // PlantType.variantGroupId). Chỉ cho chọn mã THUỘC ĐÚNG nhóm biến thể của chỉ định, và tổng breakdown
+  // mỗi cột phải khớp CHÍNH XÁC số đã nhập ở cột gốc tương ứng — không có breakdown thì giữ nguyên hành
+  // vi cũ (toàn bộ số lượng tính là đúng mã cây của chỉ định).
+  const variantMembers = instruction.plantType.variantGroup?.members ?? [];
+  const variantMemberIds = new Set(variantMembers.map((m) => m.id));
+
+  function validateVariantBreakdown(
+    total: number,
+    breakdown: { plantTypeId: string; quantity: number }[] | undefined,
+    label: string
+  ): string | null {
+    if (!breakdown || breakdown.length === 0) return null;
+    if (variantMemberIds.size === 0) return `Chỉ định này không thuộc nhóm biến thể nào — không thể phân loại ${label}`;
+    const sum = breakdown.reduce((s, b) => s + b.quantity, 0);
+    if (sum !== total) return `Tổng số lượng phân loại ${label} (${sum}) không khớp số đã nhập ở cột gốc (${total})`;
+    if (breakdown.some((b) => !variantMemberIds.has(b.plantTypeId))) {
+      return `Có mã cây phân loại ${label} không thuộc nhóm biến thể của chỉ định`;
+    }
+    return null;
+  }
+
+  const breakdownError =
+    validateVariantBreakdown(m05, m05Variants, "M05") ??
+    validateVariantBreakdown(t05, t05Variants, "T05") ??
+    validateVariantBreakdown(t01, t01Variants, "T01");
+  if (breakdownError) {
+    return NextResponse.json({ message: breakdownError }, { status: 400 });
+  }
+
   // Luôn dùng đúng Phòng tối cá nhân của NV đứng tên bản ghi (staffId) — kể cả khi Admin/KHO_MO là người
   // bấm lưu (bù dữ liệu hộ), vì đây là "không gian vật lý" của NV cấy mô, không phải của người thao tác.
   const personalRoom = await getOrCreatePersonalDarkRoom(staffId, warehouseId);
 
-  const items = ([
-    { stage: "MAU_ME" as const, stageCode: "M05" as const, quantityCreated: m05 },
-    { stage: "THANH_PHAM" as const, stageCode: "T05" as const, quantityCreated: t05 },
-    { stage: "THANH_PHAM" as const, stageCode: "T01" as const, quantityCreated: t01 },
-  ]).filter((i) => i.quantityCreated > 0);
+  // Có breakdown thì tạo 1 dòng/mã cây (bỏ qua mã có số lượng 0) — không thì 1 dòng duy nhất dùng đúng
+  // mã cây của chỉ định, y hệt hành vi cũ.
+  const primaryPlantTypeId = instruction.plantTypeId;
+  function resolveStageItems(
+    stage: "MAU_ME" | "THANH_PHAM",
+    stageCode: "M05" | "T05" | "T01",
+    total: number,
+    breakdown: { plantTypeId: string; quantity: number }[] | undefined
+  ) {
+    if (breakdown && breakdown.length > 0) {
+      return breakdown.filter((b) => b.quantity > 0).map((b) => ({ stage, stageCode, plantTypeId: b.plantTypeId, quantityCreated: b.quantity }));
+    }
+    return total > 0 ? [{ stage, stageCode, plantTypeId: primaryPlantTypeId, quantityCreated: total }] : [];
+  }
+
+  const items = [
+    ...resolveStageItems("MAU_ME", "M05", m05, m05Variants),
+    ...resolveStageItems("THANH_PHAM", "T05", t05, t05Variants),
+    ...resolveStageItems("THANH_PHAM", "T01", t01, t01Variants),
+  ];
 
   const recordItems = [];
   const lotsCreated = [];
@@ -139,18 +195,26 @@ export async function POST(req: NextRequest) {
   // Lô sản phẩm: mỗi ngày trong tuần chỉ định luôn tạo 1 lô riêng (mã = mã chỉ định + 1 ký tự 2-8 ứng
   // với Thứ 2 - Chủ nhật của ngày nhập) — không gộp nhiều ngày vào 1 lô như trước. "Mỗi ngày chỉ được
   // nhập 1 lần" (existingForDate ở trên) nên không lo trùng mã trong cùng 1 chỉ định. Dùng targetDate
-  // (không phải "hôm nay" thao tác) để mã lô/hạn cấy chuyển đúng theo ngày đang bù dữ liệu.
+  // (không phải "hôm nay" thao tác) để mã lô/hạn cấy chuyển đúng theo ngày đang bù dữ liệu. Lô đúng mã
+  // cây chỉ định giữ nguyên mã lô này; lô biến thể (mã cây khác) thêm hậu tố mã cây để không đụng ràng
+  // buộc duy nhất (code, stageCode) khi cùng ngày/cùng stage có nhiều mã cây.
   const productLotCode = generateProductLotCode(instruction.code, targetDate);
+  const plantTypeById = new Map<string, { code: string; transferWaitWeeks: number; rootingWeeks: number }>([
+    [instruction.plantTypeId, instruction.plantType],
+    ...variantMembers.map((m) => [m.id, m] as const),
+  ]);
 
   for (const item of items) {
+    const itemPlantType = plantTypeById.get(item.plantTypeId)!;
     const expectedMoveAt =
       item.stage === "MAU_ME"
-        ? addWeeks(targetDate, instruction.plantType.transferWaitWeeks)
-        : addWeeks(targetDate, instruction.plantType.rootingWeeks);
+        ? addWeeks(targetDate, itemPlantType.transferWaitWeeks)
+        : addWeeks(targetDate, itemPlantType.rootingWeeks);
+    const isPrimary = item.plantTypeId === instruction.plantTypeId;
     const lot = await prisma.lot.create({
       data: {
-        code: productLotCode,
-        plantTypeId: instruction.plantTypeId,
+        code: isPrimary ? productLotCode : `${productLotCode}-${itemPlantType.code}`,
+        plantTypeId: item.plantTypeId,
         stage: item.stage,
         stageCode: item.stageCode,
         quantity: item.quantityCreated,
@@ -348,8 +412,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Tự động chuyển chỉ định sang "Kết thúc" ngay khi thao tác Lưu, nếu xảy ra 1 trong 2 trường hợp:
-  // 1. Đã dùng hết mẫu mẹ được cấp (tổng "MM sử dụng" >= inputMotherQuantity) — ưu tiên kiểm tra trước
-  //    vì trường hợp này không còn dư gì để bàn giao.
+  // 1. Đã kiểm tra hết mẫu mẹ được cấp (tổng "MM đã kiểm tra" — cumulativeChecked tính ở trên — >=
+  //    inputMotherQuantity, KHÔNG dùng tổng "MM sử dụng") — vì "MM đã kiểm tra = MM nhiễm + MM sử dụng",
+  //    hễ kiểm tra hết là không còn gì để cấy tiếp (dùng hay nhiễm), không còn dư gì để bàn giao. Trước
+  //    đây so bằng "MM sử dụng" khiến chỉ định có mẫu mẹ nhiễm KHÔNG BAO GIỜ tự kết thúc được qua trường
+  //    hợp này (nhiễm không tính vào "sử dụng" nên "sử dụng" không bao giờ chạm tới inputMotherQuantity dù
+  //    đã kiểm tra hết 100%) — kẹt "Đang thực hiện" tới tận cuối tuần mới đóng qua trường hợp 2.
   // 2. Hôm nay là Thứ 7 hoặc Chủ nhật của tuần chỉ định — Thứ 7 là ngày làm việc chính thức, Chủ nhật là
   //    ngày làm thêm (có thể có hoặc không), nên chấp nhận lưu vào 1 trong 2 ngày này là đủ coi như hết
   //    tuần. Chỉ kiểm tra tại đúng thời điểm Lưu này (không có cơ chế quét nền/cron), nên nếu NV không lưu
@@ -358,7 +426,7 @@ export async function POST(req: NextRequest) {
   let endReason: "MOTHER_USED_UP" | "TIME_UP" | null = null;
   if (instruction.status !== "ENDED") {
     const saturday = addDays(weekEnd, -1);
-    if (totalMotherUsed >= instruction.inputMotherQuantity) {
+    if (cumulativeChecked >= instruction.inputMotherQuantity) {
       endReason = "MOTHER_USED_UP";
     } else if (isSameDay(today, saturday) || isSameDay(today, weekEnd)) {
       endReason = "TIME_UP";

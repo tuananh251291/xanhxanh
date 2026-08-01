@@ -5,6 +5,8 @@ import { isPageAllowed } from "@/lib/permissions";
 import PlantCategoryDialog from "./plant-category-dialog";
 import PlantTypeDialog from "./plant-type-dialog";
 import PlantTypeTable from "./plant-type-table";
+import PlantVariantGroupDialog from "./plant-variant-group-dialog";
+import PlantVariantGroupDeleteButton from "./plant-variant-group-delete-button";
 
 export default async function PlantTypesPage() {
   const session = await auth();
@@ -15,6 +17,11 @@ export default async function PlantTypesPage() {
     orderBy: { code: "asc" },
     include: { category: { select: { id: true, code: true, name: true } } },
   });
+  const variantGroups = await prisma.plantVariantGroup.findMany({
+    orderBy: { createdAt: "asc" },
+    include: { members: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } } },
+  });
+  const otherGroupedIds = new Set(plantTypes.filter((p) => p.variantGroupId).map((p) => p.id));
 
   return (
     <div className="space-y-6">
@@ -44,6 +51,42 @@ export default async function PlantTypesPage() {
       ) : (
         <PlantTypeTable plantTypes={plantTypes} categories={categories} />
       )}
+
+      <div className="border-t pt-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-foreground">Nhóm biến thể (đột biến)</h2>
+            <p className="text-text-secondary text-sm mt-1">
+              Chỉ định cấy dùng mã cây thuộc 1 nhóm bên dưới sẽ có thêm lựa chọn &quot;Phát sinh cây cần phân loại&quot; lúc nhập dữ liệu cấy —
+              mỗi mã cây chỉ thuộc đúng 1 nhóm.
+            </p>
+          </div>
+          <PlantVariantGroupDialog allPlantTypes={plantTypes} otherGroupedIds={otherGroupedIds} />
+        </div>
+
+        {variantGroups.length === 0 ? (
+          <p className="text-sm text-text-muted text-center py-8">Chưa có nhóm biến thể nào</p>
+        ) : (
+          <div className="space-y-2">
+            {variantGroups.map((g) => (
+              <div key={g.id} className="flex items-center justify-between border rounded-lg px-4 py-3 bg-white">
+                <div>
+                  <p className="font-medium text-foreground">{g.name}</p>
+                  <p className="text-sm text-text-secondary font-mono">{g.members.map((m) => m.code).join(", ")}</p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <PlantVariantGroupDialog
+                    allPlantTypes={plantTypes}
+                    group={g}
+                    otherGroupedIds={new Set(Array.from(otherGroupedIds).filter((id) => !g.members.some((m) => m.id === id)))}
+                  />
+                  <PlantVariantGroupDeleteButton id={g.id} name={g.name} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
