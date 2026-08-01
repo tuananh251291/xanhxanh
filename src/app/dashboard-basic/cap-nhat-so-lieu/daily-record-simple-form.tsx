@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Lock, TriangleAlert, CheckCircle2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { isSameDay, startOfWeek } from "date-fns";
@@ -79,6 +80,12 @@ export default function DailyRecordSimpleForm() {
   // "Phát sinh cây cần phân loại" — theo TỪNG NGÀY (reset mỗi khi đổi chỉ định/sau khi lưu).
   const [showVariantSplit, setShowVariantSplit] = useState(false);
   const [variantQty, setVariantQty] = useState<Record<string, { m05: string; t05: string; t01: string }>>({});
+  // Hỏi "làm thêm Chủ nhật không" ngay sau khi lưu dữ liệu Thứ 7 (nếu chỉ định chưa tự kết thúc luôn qua
+  // lần lưu này) — trả lời "Không" thì kết thúc sớm chỉ định luôn (giống bấm "Kết thúc chỉ định sớm"),
+  // để "Bàn giao MM dư" biết cần nhắc NV bàn giao nếu còn dư — xem POST /api/daily-records (Thứ 7/CN mới
+  // tự kết thúc được, không có cơ chế quét nền).
+  const [showSundayPrompt, setShowSundayPrompt] = useState(false);
+  const [confirmingSunday, setConfirmingSunday] = useState(false);
 
   const today = useMemo(() => new Date(), []);
   const currentWeekStart = useMemo(() => startOfWeek(today, { weekStartsOn: 1 }), [today]);
@@ -186,6 +193,25 @@ export default function DailyRecordSimpleForm() {
     await refreshInstructions();
   };
 
+  const answerSundayPrompt = async (willWorkSunday: boolean) => {
+    setShowSundayPrompt(false);
+    if (willWorkSunday || !selectedId) return;
+    setConfirmingSunday(true);
+    try {
+      const res = await fetch(`/api/instructions/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endEarly: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã kết thúc chỉ định — nhớ bàn giao MM dư nếu còn ở mục \"Bàn giao MM dư\"");
+      await onEndedEarly();
+    } finally {
+      setConfirmingSunday(false);
+    }
+  };
+
   const setField = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setForm((f) => {
@@ -243,6 +269,10 @@ export default function DailyRecordSimpleForm() {
             ? "Chỉ định đã kết thúc — đã dùng hết số mẫu mẹ được cấp"
             : "Chỉ định đã kết thúc — hết thời gian thực hiện (qua Chủ nhật)"
         );
+      } else if (new Date().getDay() === 6) {
+        // Thứ 7 (6) mà chỉ định chưa tự kết thúc qua lần lưu này — hỏi luôn có làm thêm Chủ nhật không,
+        // vì đây là ngày DUY NHẤT có thể quyết định trước (Chủ nhật thì chỉ định đã tự kết thúc rồi).
+        setShowSundayPrompt(true);
       }
       setForm(emptyForm);
       setShowVariantSplit(false);
@@ -417,6 +447,38 @@ export default function DailyRecordSimpleForm() {
       {selectedInst && (
         <EndInstructionEarlyButton instructionId={selectedInst.id} instructionCode={selectedInst.code} onEnded={onEndedEarly} />
       )}
+
+      <Dialog open={showSundayPrompt} onOpenChange={setShowSundayPrompt}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Bạn có làm thêm Chủ nhật không?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">
+            Hôm nay là Thứ 7 — nếu không làm thêm Chủ nhật, chỉ định sẽ được kết thúc sớm ngay bây giờ và bạn cần
+            bàn giao mẫu mẹ dư (nếu còn) cho Kho mô ở mục &quot;Bàn giao MM dư&quot;.
+          </p>
+          <div className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={confirmingSunday}
+              onClick={() => answerSundayPrompt(false)}
+            >
+              {confirmingSunday && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Không
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 bg-primary hover:bg-primary-hover"
+              disabled={confirmingSunday}
+              onClick={() => answerSundayPrompt(true)}
+            >
+              Có
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

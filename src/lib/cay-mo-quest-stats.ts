@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getInspectionDueAt } from "@/lib/inspection";
+import { getSurplusHandoverCandidates } from "@/lib/surplus-handover";
 import { startOfDay, endOfDay, subDays, format, startOfWeek, endOfWeek, differenceInCalendarDays } from "date-fns";
 
 const STREAK_LOOKBACK_DAYS = 365;
@@ -8,7 +9,7 @@ const DAYS_PER_LEVEL = 5;
 // ngày ủ tối thiểu này.
 const MIN_DAYS_SINCE_PLANTED_FOR_HANDOVER = 7;
 
-export type QuestKey = "motherReceived" | "dailyRecordDone" | "contaminationChecked" | "handoverDone";
+export type QuestKey = "motherReceived" | "dailyRecordDone" | "contaminationChecked" | "handoverDone" | "surplusHandover";
 
 export type Quest = {
   key: QuestKey;
@@ -96,6 +97,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     handoverToday,
     unreadInspectionResults,
     recentRecordDates,
+    surplusCandidates,
   ] = await Promise.all([
     prisma.plantingInstruction.findFirst({
       where: { assignedToId: userId, handedOverAt: { not: null }, motherReceivedAt: null },
@@ -111,12 +113,14 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     }),
     // Lấy TẤT CẢ lô đang ở phòng tối cá nhân (không chỉ lô chưa kiểm tra) — dùng chung cho 2 quest:
     // "Kiểm tra nhiễm" (lô chưa kiểm tra và đã quá hạn) và "Bàn giao sản phẩm" (lô đã đủ điều kiện bàn
-    // giao — đã kiểm tra hết + đủ ngày ủ tối thiểu, khớp readyGroups của handover-simple-form.tsx).
+    // giao — đã kiểm tra hết + đủ ngày ủ tối thiểu, khớp readyGroups của handover-simple-form.tsx). Gồm
+    // CẢ lô có chỉ định cấy gán cho mình LẪN lô nằm thẳng trong đúng phòng tối của mình dù không gắn chỉ
+    // định nào (VD Admin/KHO_MO nhập tay qua Nhập kho thủ công — instructionId null) — thiếu vế "room"
+    // sẽ khiến lô nhập tay bị bỏ sót hoàn toàn, quest không bao giờ báo dù đã quá hạn thật.
     prisma.lot.findMany({
       where: {
         status: "ACTIVE",
-        instruction: { assignedToId: userId },
-        room: { type: "PHONG_TOI" },
+        room: { type: "PHONG_TOI", assignedStaffId: userId },
       },
       select: { code: true, enteredAt: true, inspectedAt: true },
     }),
@@ -134,6 +138,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       where: { staffId: userId, recordDate: { gte: subDays(todayStart, STREAK_LOOKBACK_DAYS) } },
       select: { recordDate: true },
     }),
+    getSurplusHandoverCandidates(userId),
   ]);
 
   const hasOverdueDarkRoomLot = darkRoomLots.some(
@@ -185,6 +190,23 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       done: !hasReadyForHandoverGroup || !!handoverToday,
     },
   ];
+
+  // "Bàn giao MM dư" — KHÔNG hiện cố định như 4 nhiệm vụ trên, chỉ hiện khi thực sự có mẫu mẹ dư cần bàn
+  // giao (VD vừa "Kết thúc chỉ định sớm") HOẶC vào đúng Thứ 7/Chủ nhật (nhắc trước, vì đây là 2 ngày duy
+  // nhất 1 chỉ định có thể kết thúc — xem POST /api/daily-records) — tránh làm rối danh sách việc các
+  // ngày thường khi chưa có gì cần xử lý.
+  const dayOfWeek = now.getDay(); // 0 = Chủ nhật, 6 = Thứ 7
+  const isWeekendDay = dayOfWeek === 6 || dayOfWeek === 0;
+  const hasPendingSurplus = surplusCandidates.length > 0;
+  if (hasPendingSurplus || isWeekendDay) {
+    quests.push({
+      key: "surplusHandover",
+      title: "Bàn giao MM dư",
+      description: "Bàn giao mẫu mẹ dư của chỉ định đã kết thúc cho Kho mô",
+      href: "/dashboard-basic/ban-giao-mm-du",
+      done: !hasPendingSurplus,
+    });
+  }
 
   const { currentStreak, bestStreak, totalActiveDays } = computeStreaks(
     recentRecordDates.map((r) => r.recordDate)
