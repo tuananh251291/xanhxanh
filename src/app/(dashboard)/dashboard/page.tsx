@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
   PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
-  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, type LucideIcon,
+  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import type { UserRole } from "@prisma/client";
@@ -506,9 +506,18 @@ function CayMoDashboard({
   const today = format(new Date(), "EEEE, dd/MM/yyyy", { locale: vi });
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
-        <p className="text-text-secondary text-sm mt-1 capitalize">Nhân viên nuôi cấy mô · {today}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+          <p className="text-text-secondary text-sm mt-1 capitalize">Nhân viên nuôi cấy mô · {today}</p>
+        </div>
+        <Link
+          href="/dashboard-basic"
+          className="flex items-center gap-1.5 text-sm font-medium text-primary-strong hover:underline shrink-0"
+        >
+          <LayoutList className="w-4 h-4" />
+          Giao diện cơ bản
+        </Link>
       </div>
       <GreetingBanner />
 
