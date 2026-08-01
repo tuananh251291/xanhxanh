@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, PackageCheck } from "lucide-react";
+import { Send, Loader2, PackageCheck, Info } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays } from "date-fns";
 
@@ -110,22 +110,30 @@ export default function HandoverSimpleForm() {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   }
 
-  if (readyGroups.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-16 text-center text-text-muted">
-          <PackageCheck className="w-10 h-10 mx-auto mb-3 text-text-muted" />
-          <p>Không có lô nào cần bàn giao hôm nay</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      {readyGroups.map((group) => (
-        <HandoverGroupCard key={group[0].code} group={group} onHandedOver={load} />
-      ))}
+      <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        <p>
+          Trang này KHÔNG có ô &quot;Không đạt&quot; — tính năng cho phép tự khai số cây thành phẩm chưa đạt chuẩn lúc
+          bàn giao (có ở trang &quot;Bàn giao sản phẩm&quot; của Giao diện nâng cao) chưa được đưa vào bản rút gọn.
+          Toàn bộ số lượng lô sẽ được ghi nhận nguyên vẹn khi bàn giao qua trang này — nếu có cây không đạt cần khai
+          báo, hãy dùng trang &quot;Bàn giao sản phẩm&quot; của Giao diện nâng cao thay vì trang này.
+        </p>
+      </div>
+
+      {readyGroups.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center text-text-muted">
+            <PackageCheck className="w-10 h-10 mx-auto mb-3 text-text-muted" />
+            <p>Không có lô nào cần bàn giao hôm nay</p>
+          </CardContent>
+        </Card>
+      ) : (
+        readyGroups.map((group) => (
+          <HandoverGroupCard key={group[0].code} group={group} onHandedOver={load} />
+        ))
+      )}
     </div>
   );
 }
