@@ -414,17 +414,20 @@ export async function POST(req: NextRequest) {
   //    đây so bằng "MM sử dụng" khiến chỉ định có mẫu mẹ nhiễm KHÔNG BAO GIỜ tự kết thúc được qua trường
   //    hợp này (nhiễm không tính vào "sử dụng" nên "sử dụng" không bao giờ chạm tới inputMotherQuantity dù
   //    đã kiểm tra hết 100%) — kẹt "Đang thực hiện" tới tận cuối tuần mới đóng qua trường hợp 2.
-  // 2. Hôm nay là Thứ 7 hoặc Chủ nhật của tuần chỉ định — Thứ 7 là ngày làm việc chính thức, Chủ nhật là
-  //    ngày làm thêm (có thể có hoặc không), nên chấp nhận lưu vào 1 trong 2 ngày này là đủ coi như hết
-  //    tuần. Chỉ kiểm tra tại đúng thời điểm Lưu này (không có cơ chế quét nền/cron), nên nếu NV không lưu
-  //    vào đúng 2 ngày này thì chỉ định sẽ không tự kết thúc qua đây.
+  // 2. Hôm nay là Chủ nhật của tuần chỉ định — hết tuần thật sự, không còn ngày nào khác để làm tiếp.
+  //    KHÔNG tự kết thúc vào Thứ 7 nữa (khác trước đây) — Thứ 7 là ngày làm việc chính thức nhưng Chủ
+  //    nhật có thể làm thêm hoặc không, nên client hỏi NV ngay sau khi lưu Thứ 7 "có làm thêm Chủ nhật
+  //    không" (xem daily-record-simple-form.tsx / (dashboard)/daily-record/page.tsx) — chọn "Không" mới
+  //    gọi endEarly kết thúc sớm, chọn "Có" thì chỉ định vẫn ACTIVE qua Chủ nhật. Chỉ kiểm tra tại đúng
+  //    thời điểm Lưu này (không có cơ chế quét nền/cron), nên nếu NV không lưu vào đúng Chủ nhật thì chỉ
+  //    định sẽ không tự kết thúc qua đây (vẫn kết thúc được qua endEarly hoặc ensureInstructionsEnded khi
+  //    sang tuần mới).
   let ended = false;
   let endReason: "MOTHER_USED_UP" | "TIME_UP" | null = null;
   if (instruction.status !== "ENDED") {
-    const saturday = addDays(weekEnd, -1);
     if (cumulativeChecked >= instruction.inputMotherQuantity) {
       endReason = "MOTHER_USED_UP";
-    } else if (isSameDay(today, saturday) || isSameDay(today, weekEnd)) {
+    } else if (isSameDay(today, weekEnd)) {
       endReason = "TIME_UP";
     }
 
