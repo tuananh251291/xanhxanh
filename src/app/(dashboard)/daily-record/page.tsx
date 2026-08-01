@@ -190,11 +190,10 @@ export default function DailyRecordPage() {
   const finishedRatioPct = targetFinishedRatio > 0 ? (actualFinishedRatio / targetFinishedRatio) * 100 : null;
   const motherRatioLow = motherRatioPct !== null && motherRatioPct < motherRatioTargetPct;
   const finishedRatioLow = finishedRatioPct !== null && finishedRatioPct < finishedRatioTargetPct;
-  // Chỉ định có thể chỉ có mục tiêu 1 trong 2 tỉ lệ (bên kia để trống) — tỉ lệ nào không có mục tiêu thì
-  // bỏ qua, không bắt buộc đủ cả 2 mới cảnh báo (khớp thuật toán server ở /api/daily-records).
-  const hasAnyTargetRatio = motherRatioPct !== null || finishedRatioPct !== null;
-  const allAvailableRatiosLow = (motherRatioPct === null || motherRatioLow) && (finishedRatioPct === null || finishedRatioLow);
-  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && hasAnyTargetRatio && allAvailableRatiosLow;
+  // Chỉ cần 1 trong 2 tỉ lệ CÓ mục tiêu và thấp hơn ngưỡng là cảnh báo — tỉ lệ nào không có mục tiêu (bên
+  // kia để trống lúc tạo) thì bỏ qua, không cần tỉ lệ còn lại (nếu có) cũng phải thấp mới báo (khớp thuật
+  // toán server ở /api/daily-records).
+  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && (motherRatioLow || finishedRatioLow);
 
   // Tổng MM đã kiểm tra lũy kế (các ngày đã lưu + số đang nhập hôm nay) không được vượt quá số mẫu mẹ
   // được cấp cho chỉ định (inputMotherQuantity) — chặn nút Lưu nếu vượt, khớp validate ở API.
@@ -471,9 +470,11 @@ export default function DailyRecordPage() {
             {isDeviating && (
               <div className="mt-3 flex items-center gap-2 text-sm font-bold text-destructive bg-danger-light rounded p-3">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
-                Bạn đang cấy lệch so với chỉ định cấy — {motherRatioPct !== null && finishedRatioPct !== null
-                  ? "cả 2 tỉ lệ trên đều thấp hơn ngưỡng cần đạt"
-                  : "tỉ lệ có mục tiêu ở trên đang thấp hơn ngưỡng cần đạt"}
+                Bạn đang cấy lệch so với chỉ định cấy — {motherRatioLow && finishedRatioLow
+                  ? "cả 2 hệ số trên đều thấp hơn ngưỡng cần đạt"
+                  : motherRatioLow
+                  ? "hệ số nhân MM đang thấp hơn ngưỡng cần đạt"
+                  : "hệ số ra thành phẩm đang thấp hơn ngưỡng cần đạt"}
               </div>
             )}
 
