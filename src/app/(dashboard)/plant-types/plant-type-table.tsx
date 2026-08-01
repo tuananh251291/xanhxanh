@@ -4,7 +4,8 @@ import { useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Leaf } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Leaf, ChevronLeft, ChevronRight } from "lucide-react";
 import PlantTypeDialog from "./plant-type-dialog";
 
 type Category = { id: string; code: string; name: string };
@@ -19,8 +20,11 @@ type PlantType = {
   category: Category;
 };
 
+const PAGE_SIZE = 10;
+
 export default function PlantTypeTable({ plantTypes, categories }: { plantTypes: PlantType[]; categories: Category[] }) {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -33,13 +37,22 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
     );
   }, [plantTypes, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
+
   return (
     <div className="space-y-4">
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <Input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => changeSearch(e.target.value)}
           placeholder="Tìm theo mã, tên, loại cây..."
           className="pl-9"
         />
@@ -64,7 +77,7 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
                 {filtered.length === 0 ? (
                   <tr><td colSpan={7} className="text-center text-sm text-text-muted py-10">Không tìm thấy chi tiết loại cây nào khớp</td></tr>
                 ) : (
-                  filtered.map((p) => (
+                  paginated.map((p) => (
                     <tr key={p.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                       <td className="px-4 py-3 text-sm font-mono font-medium text-primary-strong">{p.code}</td>
                       <td className="px-4 py-3 text-sm font-medium text-foreground">
@@ -91,6 +104,30 @@ export default function PlantTypeTable({ plantTypes, categories }: { plantTypes:
           </div>
         </CardContent>
       </Card>
+
+      {filtered.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm text-text-secondary">Trang {currentPage}/{totalPages} — {filtered.length} chi tiết loại cây</p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage <= 1}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> Trước
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Sau <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
