@@ -348,9 +348,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction ----
+  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction — chỉ khi cả file không còn dòng lỗi nào ----
   let successCount = 0;
-  if (validRows.length > 0) {
+  if (validRows.length > 0 && errors.length === 0) {
     const claimedLotCodes = new Set<string>();
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {

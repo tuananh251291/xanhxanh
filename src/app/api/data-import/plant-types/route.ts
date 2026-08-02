@@ -211,8 +211,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Chỉ ghi khi cả file không còn dòng lỗi nào — tránh nửa vời khi NV sửa lỗi rồi tải lại.
   let successCount = 0;
-  if (validRows.length > 0) {
+  if (validRows.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       const categoryIdByCode = new Map<string, string>();
       for (const [categoryCode, categoryName] of claimedCategoryCreations) {

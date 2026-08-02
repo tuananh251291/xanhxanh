@@ -575,9 +575,9 @@ export async function POST(req: NextRequest) {
     instructionByGroup.set(groupKey, validInstruction);
   }
 
-  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction ----
+  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction — chỉ khi cả file không còn dòng lỗi nào ----
   let successCount = 0;
-  if (instructionByGroup.size > 0) {
+  if (instructionByGroup.size > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const groupKey of groupOrder) {
         const vr = instructionByGroup.get(groupKey);

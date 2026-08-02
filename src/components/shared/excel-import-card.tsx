@@ -62,11 +62,13 @@ export default function ExcelImportCard({
         return;
       }
       setResult(json);
-      const label = successLabel ? successLabel(json.successCount) : `Đã nhập ${json.successCount} dòng`;
       if (json.errors.length === 0) {
+        const label = successLabel ? successLabel(json.successCount) : `Đã nhập ${json.successCount} dòng`;
         toast.success(label);
       } else {
-        toast.error(`${label} — ${json.errors.length} dòng lỗi, xem chi tiết bên dưới`);
+        // File có dòng lỗi = KHÔNG ghi gì cả (xem các route /api/data-import/*) — báo rõ chưa nhập được
+        // gì, tránh hiểu nhầm "đã nhập 0 dòng" là hệ thống có lỗi, thay vì hiểu đúng là cần sửa & tải lại.
+        toast.error(`Chưa nhập được gì — file có ${json.errors.length} dòng lỗi, xem chi tiết bên dưới rồi sửa lại và tải lên lại`);
       }
       router.refresh();
     } finally {
@@ -109,8 +111,10 @@ export default function ExcelImportCard({
 
         {result && (
           <div className="space-y-2 pt-1">
-            <p className="text-sm font-medium text-foreground">
-              Đã nhập {result.successCount} dòng{result.errors.length > 0 ? ` — ${result.errors.length} dòng lỗi` : ""}
+            <p className={`text-sm font-medium ${result.errors.length > 0 ? "text-destructive" : "text-foreground"}`}>
+              {result.errors.length > 0
+                ? `Chưa nhập được gì — file có ${result.errors.length} dòng lỗi, cần sửa hết rồi tải lên lại`
+                : `Đã nhập ${result.successCount} dòng`}
             </p>
             {result.errors.length > 0 && (
               <div className="max-h-56 overflow-y-auto border border-divider rounded-lg divide-y divide-divider">

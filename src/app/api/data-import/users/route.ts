@@ -246,9 +246,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction ----
+  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction — CHỈ khi cả file không còn dòng lỗi nào (tất cả
+  // hoặc không gì cả), tránh nửa vời: NV vừa sửa xong vài dòng lỗi rồi tải lại thì không bị tạo trùng
+  // các dòng đã lỡ tạo ở lần tải trước.
   let successCount = 0;
-  if (validRows.length > 0) {
+  if (validRows.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
         const hashed = await bcrypt.hash(vr.password, 10);

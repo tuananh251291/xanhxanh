@@ -328,10 +328,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ---- Tạo hàng loạt trong 1 transaction ----
+  // ---- Tạo hàng loạt trong 1 transaction — chỉ khi cả file không còn dòng lỗi nào ----
   let successCount = 0;
   const createdForAlerts: { id: string; code: string; isFromDarkRoom: boolean; isFromRootingRoom: boolean; itemCount: number }[] = [];
-  if (validGroups.length > 0) {
+  if (validGroups.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const g of validGroups) {
         const code = await generateTransferCode(tx);

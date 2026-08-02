@@ -148,8 +148,9 @@ export async function POST(req: NextRequest) {
     validRows.push({ row: parsed.row, name: parsed.name, type: parsed.type ?? null, rotationKind, rotationOrder });
   }
 
+  // Chỉ ghi khi cả file không còn dòng lỗi nào — tránh nửa vời khi NV sửa lỗi rồi tải lại.
   let successCount = 0;
-  if (validRows.length > 0) {
+  if (validRows.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
         await tx.shelfGroup.create({
