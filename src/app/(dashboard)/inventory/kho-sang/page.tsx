@@ -8,8 +8,10 @@ import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { STAGE_LABELS, sumLotQuantity } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
+import type { RoomType } from "@prisma/client";
 import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
+import MotherShelfTable from "./mother-shelf-table";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-text-muted";
@@ -31,16 +33,62 @@ export default async function KhoSangPage() {
   // bị giới hạn, làm việc được ở mọi kho.
   const workplaceWarehouseId = role !== "KY_THUAT" ? session?.user?.workplaceWarehouseId : null;
 
+  const roomTypeFilter: RoomType | { in: RoomType[] } = onlyMotherRoom ? "PHONG_MAU_ME" : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] };
+
+  // Chỉ tải danh sách phòng (nhẹ) — KHÔNG kèm shelves/lots nữa, vì có phòng tới 600+ kệ khiến trang tải
+  // ~9 giây. Phòng mẫu mẹ giờ tự tải kệ theo trang qua GET /api/shelves/mother-room (xem MotherShelfTable).
   const rooms = await prisma.room.findMany({
     where: {
-      type: onlyMotherRoom ? "PHONG_MAU_ME" : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] },
+      type: roomTypeFilter,
       isActive: true,
       ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
     },
-    include: {
-      warehouse: { select: { name: true } },
-      shelves: {
-        where: { isActive: true },
+    include: { warehouse: { select: { name: true } } },
+    orderBy: [{ warehouse: { name: "asc" } }],
+  });
+
+  // Số liệu tổng ("Tổng: X lô...", bảng theo loại cây) tính bằng groupBy/aggregate trực tiếp trên DB
+  // thay vì tải hết lô vào bộ nhớ rồi cộng bằng JS như trước — cùng phạm vi phòng/kho với rooms ở trên.
+  const lotWhere = {
+    status: "ACTIVE" as const,
+    shelf: {
+      room: {
+        type: roomTypeFilter,
+        isActive: true,
+        ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
+      },
+    },
+  };
+  const [lotAgg, totalLotCount] = await Promise.all([
+    prisma.lot.groupBy({ by: ["plantTypeId", "stage"], where: lotWhere, _sum: { quantity: true } }),
+    prisma.lot.count({ where: lotWhere }),
+  ]);
+  const totalMother = lotAgg.filter((a) => a.stage === "MAU_ME").reduce((s, a) => s + (a._sum?.quantity ?? 0), 0);
+  const totalFinished = lotAgg.filter((a) => a.stage === "THANH_PHAM").reduce((s, a) => s + (a._sum?.quantity ?? 0), 0);
+
+  const plantTypeIds = [...new Set(lotAgg.map((a) => a.plantTypeId))];
+  const plantTypeNames = plantTypeIds.length
+    ? await prisma.plantType.findMany({ where: { id: { in: plantTypeIds } }, select: { id: true, code: true, name: true } })
+    : [];
+  const plantTypeById = new Map(plantTypeNames.map((p) => [p.id, p]));
+  const summaryByTypeEntries = (() => {
+    const byType: Record<string, { name: string; mother: number; finished: number }> = {};
+    for (const a of lotAgg) {
+      const pt = plantTypeById.get(a.plantTypeId);
+      if (!pt) continue;
+      if (!byType[a.plantTypeId]) byType[a.plantTypeId] = { name: `${pt.name} (${pt.code})`, mother: 0, finished: 0 };
+      if (a.stage === "MAU_ME") byType[a.plantTypeId].mother += a._sum?.quantity ?? 0;
+      else byType[a.plantTypeId].finished += a._sum?.quantity ?? 0;
+    }
+    return Object.values(byType);
+  })();
+
+  // Phòng ra rễ (chỉ KHO_MO xem, KY_THUAT không có) vẫn hiển thị dạng thẻ theo kệ như cũ, ít kệ hơn nhiều
+  // so với Phòng mẫu mẹ nên chưa cần phân trang — tải riêng, không dính vào query rooms ở trên nữa.
+  const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE").map((r) => r.id);
+  const raReShelves = raReRoomIds.length
+    ? await prisma.shelf.findMany({
+        where: { roomId: { in: raReRoomIds }, isActive: true },
         include: {
           plantType: { select: { name: true } },
           assignedStaff: { select: { name: true } },
@@ -51,14 +99,22 @@ export default async function KhoSangPage() {
           },
         },
         orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
-      },
-    },
-    orderBy: [{ warehouse: { name: "asc" } }],
-  });
+      })
+    : [];
+  const raReShelvesByRoom = new Map<string, typeof raReShelves>();
+  for (const shelf of raReShelves) {
+    const list = raReShelvesByRoom.get(shelf.roomId!) ?? [];
+    list.push(shelf);
+    raReShelvesByRoom.set(shelf.roomId!, list);
+  }
 
-  const totalLots = rooms.flatMap((r) => r.shelves.flatMap((s) => s.lots));
-  const totalMother = totalLots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.quantity, 0);
-  const totalFinished = totalLots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.quantity, 0);
+  const motherRoomIds = rooms.filter((r) => r.type === "PHONG_MAU_ME").map((r) => r.id);
+  const [assignedCounts, unassignedCounts] = await Promise.all([
+    Promise.all(motherRoomIds.map((id) => prisma.shelf.count({ where: { roomId: id, isActive: true, assignedStaffId: { not: null } } }))),
+    Promise.all(motherRoomIds.map((id) => prisma.shelf.count({ where: { roomId: id, isActive: true, assignedStaffId: null } }))),
+  ]);
+  const assignedCountByRoom = new Map(motherRoomIds.map((id, i) => [id, assignedCounts[i]]));
+  const unassignedCountByRoom = new Map(motherRoomIds.map((id, i) => [id, unassignedCounts[i]]));
 
   return (
     <div className="space-y-6">
@@ -68,87 +124,41 @@ export default async function KhoSangPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {onlyMotherRoom
-            ? `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm`
-            : `Tổng: ${totalLots.length} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")} cây`}
+            ? `Tổng: ${totalLotCount} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm`
+            : `Tổng: ${totalLotCount} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")} cây`}
         </p>
       </div>
 
       {/* Summary by plant type */}
-      <SummaryByType entries={(() => {
-        const byType: Record<string, { name: string; mother: number; finished: number }> = {};
-        for (const lot of totalLots) {
-          const key = lot.plantTypeId;
-          if (!byType[key]) byType[key] = { name: `${lot.plantType.name} (${lot.plantType.code})`, mother: 0, finished: 0 };
-          if (lot.stage === "MAU_ME") byType[key].mother += lot.quantity;
-          else byType[key].finished += lot.quantity;
-        }
-        return Object.values(byType);
-      })()} />
+      <SummaryByType entries={summaryByTypeEntries} />
 
       {/* Per phòng sáng and shelf */}
       {rooms.map((room) => (
         <CollapsibleRoom key={room.id} title={`${room.warehouse.name} — ${room.name}`}>
-          {room.shelves.length === 0 ? (
+          {room.type === "PHONG_MAU_ME" ? (
+            (assignedCountByRoom.get(room.id) ?? 0) + (unassignedCountByRoom.get(room.id) ?? 0) === 0 ? (
+              <p className="text-sm text-text-muted pl-2">Chưa có kệ</p>
+            ) : (
+              <div className="space-y-4">
+                <MotherShelfTable
+                  roomId={room.id}
+                  assigned
+                  label="Kho mẫu mẹ đã chia"
+                  emptyLabel="Chưa có kệ nào được gán nhân viên"
+                />
+                <MotherShelfTable
+                  roomId={room.id}
+                  assigned={false}
+                  label="Kho mẫu mẹ chung"
+                  emptyLabel="Không còn kệ nào chưa gán nhân viên"
+                />
+              </div>
+            )
+          ) : (raReShelvesByRoom.get(room.id) ?? []).length === 0 ? (
             <p className="text-sm text-text-muted pl-2">Chưa có kệ</p>
-          ) : room.type === "PHONG_MAU_ME" ? (
-            (() => {
-              const renderRow = (shelf: (typeof room.shelves)[number]) => {
-                const bagsByCode = shelf.lots.reduce<Record<string, number>>((acc, l) => {
-                  acc[l.stageCode] = (acc[l.stageCode] ?? 0) + l.quantity;
-                  return acc;
-                }, {});
-                return (
-                  <tr key={shelf.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                    <td className="px-3 py-2 text-sm font-bold text-foreground whitespace-nowrap">{shelf.code}</td>
-                    <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap">{shelf.name}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.plantType?.name ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.assignedStaff?.name ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{(bagsByCode["M05"] ?? 0).toLocaleString("vi-VN")}</td>
-                  </tr>
-                );
-              };
-              const renderTable = (rows: typeof room.shelves) => (
-                <div className="overflow-x-auto border rounded-lg">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-primary-light">
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã kệ</th>
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhân viên phụ trách</th>
-                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">M05 (cụm)</th>
-                      </tr>
-                    </thead>
-                    <tbody>{rows.map(renderRow)}</tbody>
-                  </table>
-                </div>
-              );
-              const assignedShelves = room.shelves.filter((s) => s.assignedStaff);
-              const unassignedShelves = room.shelves.filter((s) => !s.assignedStaff);
-              return (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold text-text-secondary mb-2">
-                      Kho mẫu mẹ đã chia <span className="font-normal text-text-muted">({assignedShelves.length} kệ)</span>
-                    </p>
-                    {assignedShelves.length === 0 ? (
-                      <p className="text-xs text-text-muted pl-1">Chưa có kệ nào được gán nhân viên</p>
-                    ) : renderTable(assignedShelves)}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-text-secondary mb-2">
-                      Kho mẫu mẹ chung <span className="font-normal text-text-muted">({unassignedShelves.length} kệ)</span>
-                    </p>
-                    {unassignedShelves.length === 0 ? (
-                      <p className="text-xs text-text-muted pl-1">Không còn kệ nào chưa gán nhân viên</p>
-                    ) : renderTable(unassignedShelves)}
-                  </div>
-                </div>
-              );
-            })()
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {room.shelves.map((shelf) => {
+              {(raReShelvesByRoom.get(room.id) ?? []).map((shelf) => {
                 const shelfMother = sumLotQuantity(shelf.lots.filter((l) => l.stage === "MAU_ME"));
                 const shelfFinished = sumLotQuantity(shelf.lots.filter((l) => l.stage === "THANH_PHAM"));
                 // Nhánh này chỉ vẽ Phòng ra rễ (Phòng mẫu mẹ đã có bảng riêng ở trên) — sức chứa kệ tính
