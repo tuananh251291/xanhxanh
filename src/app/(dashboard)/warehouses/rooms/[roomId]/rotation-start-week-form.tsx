@@ -73,9 +73,18 @@ export default function RotationStartWeekForm({ kind }: { kind: RotationKind }) 
           Lưu
         </Button>
       </div>
-      <p className="text-xs text-text-secondary max-w-xs">
-        VD chọn Tuần 27 → Nhóm 2 là tuần 28, Nhóm 3 là tuần 29, Nhóm 4 là tuần 30, rồi quay lại Nhóm 1 ở tuần 31, cứ thế lặp lại sang các năm sau.
-      </p>
+      {kind === "RA_RE" ? (
+        <p className="text-xs text-text-secondary max-w-xs">
+          VD chọn Tuần 27 → Nhóm 2 là tuần 28, Nhóm 3 là tuần 29, Nhóm 4 là tuần 30, rồi quay lại Nhóm 1 ở tuần 31, cứ thế lặp lại sang các năm sau.
+        </p>
+      ) : (
+        <p className="text-xs text-text-secondary max-w-xs">
+          VD chọn Tuần 27 → Nhóm 2 là tuần 28, Nhóm 3 là tuần 29... rồi quay lại Nhóm 1, nhưng chu kỳ bao
+          nhiêu tuần thì quay lại (N) tính riêng theo &quot;Thời gian đợi cấy chuyển&quot; của TỪNG mã cây
+          đang xếp trên kệ, không cố định theo số Nhóm đã tạo — mã cây N=4 tuần và mã cây N=6 tuần cùng
+          nằm trong 1 Nhóm (VD cùng &quot;MM1&quot;) sẽ đến hạn ở các tuần khác nhau sau vòng đầu tiên.
+        </p>
+      )}
     </div>
   );
 }
