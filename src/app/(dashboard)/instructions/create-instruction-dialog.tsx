@@ -345,7 +345,7 @@ export default function CreateInstructionDialog({
     // Cho phép để trống 1 hoặc cả 2 tỉ lệ (KY_THUAT có thể chưa xác định lúc tạo) — vẫn chặn nếu NHẬP
     // nhưng không hợp lệ (VD gõ "0" hoặc số âm), chỉ hỏi xác nhận khi thật sự để trống.
     if (motherRatioEntered && sharedMotherRatioNum <= 0) { toast.error("Tỉ lệ nhân MM phải lớn hơn 0"); return; }
-    if (rootingRatioEntered && sharedRootingRatioNum <= 0) { toast.error("Tỉ lệ ra rễ phải lớn hơn 0"); return; }
+    if (rootingRatioEntered && sharedRootingRatioNum < 0) { toast.error("Tỉ lệ ra rễ không được âm"); return; }
     if (!motherRatioEntered && !window.confirm("Bạn đang để trống Tỉ lệ nhân MM — chỉ định sẽ không có mẫu mẹ dự kiến. Bạn có muốn tiếp tục không?")) return;
     if (!rootingRatioEntered && !window.confirm("Bạn đang để trống Tỉ lệ ra rễ (TP) — chỉ định sẽ không có thành phẩm dự kiến. Bạn có muốn tiếp tục không?")) return;
     // Môi trường chỉ bắt buộc chọn khi ĐÃ nhập tỉ lệ tương ứng — để trống tỉ lệ nào thì không cần môi

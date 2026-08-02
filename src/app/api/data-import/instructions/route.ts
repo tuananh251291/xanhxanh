@@ -134,7 +134,7 @@ export async function GET() {
     { column: "Quy cách nguồn (M05)", required: true, description: "Chỉ nhận giá trị M05." },
     { column: "Số lượng dùng (cụm)", required: true, description: "Số nguyên dương, tính theo CỤM (không phải túi) — số mẫu mẹ lấy từ lô nguồn để cấy." },
     { column: "Tỉ lệ nhân mẫu mẹ", required: true, description: "Số dương — dùng tính sản lượng mẫu mẹ dự kiến, đơn vị cụm (Số lượng dùng × tỉ lệ)." },
-    { column: "Tỉ lệ ra rễ", required: true, description: "Số dương — dùng tính sản lượng thành phẩm dự kiến, đơn vị cây (Số lượng dùng × tỉ lệ)." },
+    { column: "Tỉ lệ ra rễ", required: true, description: "Số không âm (0 = xác nhận chỉ định không ra thành phẩm) — dùng tính sản lượng thành phẩm dự kiến, đơn vị cây (Số lượng dùng × tỉ lệ)." },
     { column: "Mã môi trường nhân mẫu mẹ", required: true, description: "Mã môi trường dùng để nhân mẫu mẹ, xem sheet Danh mục." },
     { column: "Mã môi trường ra rễ", required: true, description: "Mã môi trường dùng để ra rễ thành phẩm, xem sheet Danh mục." },
     { column: "Mã NV cấy mô phụ trách", required: false, description: "Bỏ trống nếu kệ nguồn đã \"chia\" sẵn cho 1 NV (hệ thống tự gán). Bắt buộc nếu muốn nhập kèm ngày cấy và kệ nguồn chưa chia sẵn NV." },
@@ -381,8 +381,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
     const rootingRatio = Number(definingRow.rootingRatio);
-    if (!definingRow.rootingRatio || !Number.isFinite(rootingRatio) || rootingRatio <= 0) {
-      errors.push({ row: definingRow.row, label: definingRow.shelfCode, message: "Tỉ lệ ra rễ phải là số dương" });
+    if (!definingRow.rootingRatio || !Number.isFinite(rootingRatio) || rootingRatio < 0) {
+      errors.push({ row: definingRow.row, label: definingRow.shelfCode, message: "Tỉ lệ ra rễ phải là số không âm" });
       continue;
     }
 

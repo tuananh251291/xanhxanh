@@ -22,7 +22,9 @@ const shelfItemSchema = z.object({
   // được expectedMotherOutput/expectedFinishedOutput cho dòng đó (giữ null, không phải 0 — 0 sẽ hiểu
   // nhầm thành "dự kiến ra 0", trong khi thực chất là "chưa có dự kiến").
   motherSampleRatio: z.number().positive().nullable(),
-  rootingRatio: z.number().positive().nullable(),
+  // Cho phép 0 (khác null) — 0 nghĩa là "chủ động xác nhận chỉ định này không ra thành phẩm" (VD lô chỉ
+  // dùng nhân mẫu mẹ tiếp), còn null vẫn là "chưa xác định tỉ lệ" (xem comment ở shelfItemSchema trên).
+  rootingRatio: z.number().nonnegative().nullable(),
   // Chỉ bắt buộc chọn khi tỉ lệ tương ứng có nhập (chặn ở client) — null nếu tỉ lệ đó để trống, vì
   // không dùng tới (xem buildInstructionMediumNeeds ở src/lib/medium-orders.ts).
   motherMediumTypeId: z.string().min(1).nullable(),

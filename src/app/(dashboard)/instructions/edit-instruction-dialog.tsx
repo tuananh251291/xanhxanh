@@ -132,7 +132,7 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
       }
     }
     if (motherRatioEntered && sharedMotherRatioNum <= 0) { toast.error("Tỉ lệ nhân MM phải lớn hơn 0"); return; }
-    if (rootingRatioEntered && sharedRootingRatioNum <= 0) { toast.error("Tỉ lệ ra rễ phải lớn hơn 0"); return; }
+    if (rootingRatioEntered && sharedRootingRatioNum < 0) { toast.error("Tỉ lệ ra rễ không được âm"); return; }
     if (!motherRatioEntered && !window.confirm("Bạn đang để trống Tỉ lệ nhân MM — chỉ định sẽ không có mẫu mẹ dự kiến. Bạn có muốn tiếp tục không?")) return;
     if (!rootingRatioEntered && !window.confirm("Bạn đang để trống Tỉ lệ ra rễ (TP) — chỉ định sẽ không có thành phẩm dự kiến. Bạn có muốn tiếp tục không?")) return;
     if (motherRatioEntered && !sharedMotherMediumTypeId) { toast.error("Chọn môi trường nhân MM"); return; }

@@ -40,7 +40,9 @@ const editItemSchema = z.object({
   itemId: z.string(),
   quantity: z.number().int().positive(),
   motherSampleRatio: z.number().positive().nullable(),
-  rootingRatio: z.number().positive().nullable(),
+  // Cho phép 0 (khác null) — 0 nghĩa là chủ động xác nhận chỉ định không ra thành phẩm, null vẫn là
+  // chưa xác định tỉ lệ (xem comment ở api/instructions/route.ts).
+  rootingRatio: z.number().nonnegative().nullable(),
   motherMediumTypeId: z.string().min(1).nullable(),
   finishedMediumTypeId: z.string().min(1).nullable(),
 });
