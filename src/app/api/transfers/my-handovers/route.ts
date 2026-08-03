@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { startOfMonth, endOfMonth, parse, isValid } from "date-fns";
 
 // Danh sách phiếu bàn giao (Phòng tối → Kho sáng) của chính NV cấy mô đang đăng nhập, kèm đối chiếu
 // "số lượng bàn giao" (TransferItem.quantity, qua lô) với "số lượng ghi nhận":
@@ -12,9 +13,18 @@ import { auth } from "@/lib/auth";
 //   /api/transfers/receive-phong-toi/inspect/[transferId]) — trước đó trả về null (đang chờ kiểm tra).
 //   creditedQuantity tính theo TỪNG stageCode gộp cả phiếu (có thể gộp nhiều lô khác loại cây cùng
 //   stageCode), nên gom theo stageCode chứ không tách theo từng lô.
-export async function GET() {
+//
+// Query param "month" (YYYY-MM, tùy chọn) — lọc theo đúng tháng chọn (dựa theo Transfer.createdAt, thời
+// điểm NV bấm bàn giao). Không truyền = tháng hiện tại (mặc định), tránh tải toàn bộ lịch sử mỗi lần mở.
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "CAY_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+
+  const monthParam = req.nextUrl.searchParams.get("month");
+  const parsedMonth = monthParam ? parse(monthParam, "yyyy-MM", new Date()) : new Date();
+  const monthDate = isValid(parsedMonth) ? parsedMonth : new Date();
+  const rangeStart = startOfMonth(monthDate);
+  const rangeEnd = endOfMonth(monthDate);
 
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -22,7 +32,11 @@ export async function GET() {
   });
 
   const transfers = await prisma.transfer.findMany({
-    where: { fromUserId: session.user.id, fromRoom: { type: "PHONG_TOI" } },
+    where: {
+      fromUserId: session.user.id,
+      fromRoom: { type: "PHONG_TOI" },
+      createdAt: { gte: rangeStart, lte: rangeEnd },
+    },
     include: {
       items: {
         include: {
@@ -34,10 +48,13 @@ export async function GET() {
       inspection: { include: { items: true } },
     },
     orderBy: { createdAt: "desc" },
-    take: 50,
   });
 
   const isXanh = me?.inspectionLane === "XANH";
+
+  // Tổng theo quy cách (M05/T05/T01...) cộng dồn TOÀN BỘ tháng đang lọc — cộng cả recordedQuantity null
+  // (luồng Đỏ chưa kiểm tra) là 0, không tính vào "đã ghi nhận" vì thực tế chưa có con số nào cả.
+  const totalsByStage = new Map<string, { handedOver: number; recorded: number }>();
 
   const result = transfers.map((t) => {
     const groups = new Map<
@@ -65,6 +82,15 @@ export async function GET() {
 
     const creditedByStageCode = new Map((t.inspection?.items ?? []).map((i) => [i.stageCode, i.creditedQuantity]));
 
+    const resultGroups = [...groups.values()].map((g) => {
+      const recordedQuantity = isXanh ? g.handedOverQuantity - g.unqualifiedQuantity : (t.inspection ? (creditedByStageCode.get(g.stageCode) ?? null) : null);
+      const stageTotal = totalsByStage.get(g.stageCode) ?? { handedOver: 0, recorded: 0 };
+      stageTotal.handedOver += g.handedOverQuantity;
+      stageTotal.recorded += recordedQuantity ?? 0;
+      totalsByStage.set(g.stageCode, stageTotal);
+      return { ...g, recordedQuantity };
+    });
+
     return {
       id: t.id,
       code: t.code,
@@ -74,12 +100,14 @@ export async function GET() {
       status: t.inspection && t.status === "PENDING" ? "CONFIRMED" : t.status,
       createdAt: t.createdAt,
       inspected: !!t.inspection,
-      groups: [...groups.values()].map((g) => ({
-        ...g,
-        recordedQuantity: isXanh ? g.handedOverQuantity - g.unqualifiedQuantity : (t.inspection ? (creditedByStageCode.get(g.stageCode) ?? null) : null),
-      })),
+      groups: resultGroups,
     };
   });
 
-  return NextResponse.json({ lane: me?.inspectionLane ?? null, transfers: result });
+  return NextResponse.json({
+    lane: me?.inspectionLane ?? null,
+    month: `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, "0")}`,
+    totalsByStage: Object.fromEntries(totalsByStage),
+    transfers: result,
+  });
 }

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Send, Loader2, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays, format } from "date-fns";
+import HandoverHistory from "./handover-history";
 
 // Quy cách thành phẩm (T01/T05) mới cho khai "không đạt" (VD cây quá nhỏ) — mẫu mẹ (M05) luôn đạt hết,
 // không hiện ô nhập. Khớp quy ước mã quy cách dùng xuyên suốt hệ thống (M... = mẫu mẹ, T... = thành phẩm).
@@ -186,6 +187,8 @@ export default function ProductHandoverBoard() {
           Các lô đã cấy từ {MIN_DAYS_SINCE_PLANTED} ngày trở lên trong phòng tối cá nhân — sẵn sàng bàn giao sang kho sáng
         </p>
       </div>
+
+      <HandoverHistory />
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
