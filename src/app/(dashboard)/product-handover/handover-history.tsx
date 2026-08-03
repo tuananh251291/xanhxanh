@@ -118,7 +118,6 @@ export default function HandoverHistory() {
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Ngày bàn giao</th>
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Phiếu</th>
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Quy cách</th>
-                        <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Lô / Mã cây</th>
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Ngày nhập kho tối</th>
                         <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">SL bàn giao</th>
                         <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">SL ghi nhận</th>
@@ -130,11 +129,6 @@ export default function HandoverHistory() {
                           <td className="px-3 py-2 whitespace-nowrap">{format(new Date(r.createdAt), "dd/MM/yyyy")}</td>
                           <td className="px-3 py-2 font-mono">{r.transferCode}</td>
                           <td className="px-3 py-2">{STAGE_LABELS[r.stageCode] ?? r.stageCode}</td>
-                          <td className="px-3 py-2">
-                            {r.lots.map((l, i) => (
-                              <div key={i}>{l.plantTypeCode} x{l.quantity.toLocaleString("vi-VN")}</div>
-                            ))}
-                          </td>
                           <td className="px-3 py-2 whitespace-nowrap">
                             {r.lots.map((l, i) => (
                               <div key={i}>{format(new Date(l.enteredAt), "dd/MM/yyyy")}</div>
