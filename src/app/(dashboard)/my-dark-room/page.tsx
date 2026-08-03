@@ -236,8 +236,12 @@ export default function MyDarkRoomPage() {
 
   useEffect(() => { loadLots(); }, [loadLots]);
 
+  // Nhóm theo CẢ mã lẫn ngày nhập thật (không chỉ mã) — mã lô không đảm bảo duy nhất theo ngày (công cụ
+  // nhập liệu có thể tạo trùng mã cho 2 lô nhập 2 ngày khác nhau), nếu chỉ nhóm theo mã sẽ gộp nhầm lô
+  // khác ngày vào chung 1 thẻ, khiến "Ngày nhập kho tối" hiển thị sai cho lô còn lại trong nhóm.
   const byCode = lots.reduce<Record<string, Lot[]>>((acc, lot) => {
-    (acc[lot.code] ??= []).push(lot);
+    const key = `${lot.code}__${lot.enteredAt.slice(0, 10)}`;
+    (acc[key] ??= []).push(lot);
     return acc;
   }, {});
 
