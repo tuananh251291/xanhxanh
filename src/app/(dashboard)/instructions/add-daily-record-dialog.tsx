@@ -15,7 +15,17 @@ import { vi } from "date-fns/locale";
 // thuộc tuần chỉ định đang là tuần hiện tại và không sau hôm nay (server validate lại, xem POST
 // /api/daily-records nhánh isAdmin). Bản ghi tạo ra đứng tên đúng NV đã được gán (staffId = assignedToId),
 // không đứng tên Admin.
-export default function AddDailyRecordDialog({ instructionId, date, staffName }: { instructionId: string; date: Date; staffName: string }) {
+export default function AddDailyRecordDialog({
+  instructionId,
+  date,
+  staffName,
+  onSaved,
+}: {
+  instructionId: string;
+  date: Date;
+  staffName: string;
+  onSaved?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   // Để trống (không mặc định "0") — dễ gõ nhầm nếu có sẵn "0" (VD gõ "5" thành "05" rồi quên xoá).
@@ -53,6 +63,7 @@ export default function AddDailyRecordDialog({ instructionId, date, staffName }:
       toast.success(`Đã bù dữ liệu cấy ngày ${format(date, "dd/MM", { locale: vi })}`);
       setOpen(false);
       router.refresh();
+      onSaved?.();
     } finally {
       setLoading(false);
     }

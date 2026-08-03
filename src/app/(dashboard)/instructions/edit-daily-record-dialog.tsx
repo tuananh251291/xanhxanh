@@ -27,7 +27,7 @@ type RecordDetail = {
 // mô nhập sai số liệu và NV không tự sửa lại được (mỗi ngày chỉ nhập 1 lần). Server tự chặn (trả cờ
 // "locked") nếu bất kỳ lô nào đã tạo từ bản ghi này bị động tới ở nơi khác (bàn giao/kiểm tra
 // nhiễm/nhiễm) — hiển thị rõ lý do thay vì cho sửa rồi mới báo lỗi.
-export default function EditDailyRecordDialog({ recordId }: { recordId: string }) {
+export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId: string; onSaved?: () => void }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<RecordDetail | null>(null);
@@ -80,6 +80,7 @@ export default function EditDailyRecordDialog({ recordId }: { recordId: string }
       toast.success("Đã lưu chỉnh sửa nhật ký cấy");
       setOpen(false);
       router.refresh();
+      onSaved?.();
     } finally {
       setLoading(false);
     }

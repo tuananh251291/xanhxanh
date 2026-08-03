@@ -63,6 +63,11 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status");
   if (status) where.status = status;
 
+  // Tìm theo mã chỉ định (không phân biệt hoa/thường, khớp 1 phần) — dùng cho trang "Sửa cập nhật dữ
+  // liệu cấy" của Admin/Admin cấp cao (gõ mã, tìm đúng chỉ định để hiện bảng nhật ký cả tuần).
+  const code = searchParams.get("code");
+  if (code) where.code = { contains: code, mode: "insensitive" };
+
   const instructions = await prisma.plantingInstruction.findMany({
     where,
     include: {
