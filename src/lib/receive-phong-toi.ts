@@ -51,6 +51,7 @@ export type PlacementRow = {
   shelfCode: string;
   pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
   isBackup: boolean;
+  enteredAt: string;
 };
 
 export type StagePreview = {
@@ -80,6 +81,7 @@ function toPlacementRows(placements: Awaited<ReturnType<typeof planShelfAssignme
     shelfCode: p.shelfCode,
     pool: p.pool,
     isBackup: !!p.lot.instruction?.isBackup,
+    enteredAt: p.lot.enteredAt.toISOString(),
   }));
 }
 

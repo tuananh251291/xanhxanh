@@ -65,7 +65,7 @@ export async function GET() {
       transfers,
       // Danh sách lô gộp chung (không tách ra rễ/mẫu mẹ) — dùng cho bảng tổng hợp; trang chi tiết
       // "Sắp xếp vào kho" dùng rootingPlacements/motherPlacements bên dưới để tách riêng theo từng lô.
-      items: pendingItems.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.lot.quantity })),
+      items: pendingItems.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.lot.quantity, enteredAt: i.lot.enteredAt })),
       ...preview,
     });
   }

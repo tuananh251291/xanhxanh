@@ -15,7 +15,7 @@ type Row = {
   staffCode: string;
   staffName: string;
   transfers: { code: string; transferredAt: string }[];
-  items: { lotCode: string; stageCode: string; quantity: number }[];
+  items: { lotCode: string; stageCode: string; quantity: number; enteredAt: string }[];
 };
 
 export default function ReceivePhongToiBoard() {
@@ -80,9 +80,18 @@ export default function ReceivePhongToiBoard() {
                     <Badge className={INSPECTION_LANE_COLORS.XANH}>{INSPECTION_LANE_LABELS.XANH}</Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {[...new Set(row.items.map((item) => item.lotCode))].map((lotCode) => (
-                        <Badge key={lotCode} variant="outline" className="font-mono text-[11px]">{lotCode}</Badge>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.values(
+                        row.items.reduce<Record<string, { lotCode: string; enteredAt: string }>>((acc, item) => {
+                          const key = `${item.lotCode}__${item.enteredAt.slice(0, 10)}`;
+                          acc[key] ??= { lotCode: item.lotCode, enteredAt: item.enteredAt };
+                          return acc;
+                        }, {})
+                      ).map(({ lotCode, enteredAt }, idx) => (
+                        <div key={`${lotCode}-${idx}`} className="text-center">
+                          <Badge variant="outline" className="font-mono text-[11px]">{lotCode}</Badge>
+                          <div className="text-[10px] text-text-muted mt-0.5">{format(new Date(enteredAt), "dd/MM/yyyy", { locale: vi })}</div>
+                        </div>
                       ))}
                     </div>
                   </td>

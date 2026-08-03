@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PackageCheck, Loader2, Check, AlertTriangle, ArrowLeft, Wand2, Plus, Trash2, ShieldPlus } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 
 type PlacementRow = {
   plantTypeCode: string;
@@ -17,6 +19,7 @@ type PlacementRow = {
   shelfCode: string;
   pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
   isBackup: boolean;
+  enteredAt: string;
 };
 
 type Row = {
@@ -79,6 +82,7 @@ function StageRows({
               <td className="px-4 py-3 text-right font-medium">
                 {p.quantity.toLocaleString("vi-VN")} {p.stageCode.startsWith("M") ? "cụm" : "cây"}
               </td>
+              <td className="px-4 py-3 text-text-secondary">{format(new Date(p.enteredAt), "dd/MM/yyyy", { locale: vi })}</td>
               <td className="px-4 py-3">
                 <Badge variant="secondary">{p.shelfCode}</Badge>
                 {POOL_LABELS[p.pool] && <Badge className="bg-warning-light text-warning-foreground ml-1">{POOL_LABELS[p.pool]}</Badge>}
@@ -86,7 +90,7 @@ function StageRows({
               </td>
             </>
           ) : (
-            <td className="px-4 py-3" colSpan={5}>
+            <td className="px-4 py-3" colSpan={6}>
               <span className="text-destructive text-xs flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {error}</span>
             </td>
           )}
@@ -296,6 +300,7 @@ export default function PlaceBoard({ transferId }: { transferId: string }) {
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên cây</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Quy cách</th>
                 <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Số lượng</th>
+                <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Ngày nhập kho tối</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Kệ chỉ định</th>
                 <th className="text-left px-4 py-3 font-bold text-base">Hành động</th>
               </tr>

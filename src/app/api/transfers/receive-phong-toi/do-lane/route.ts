@@ -30,7 +30,7 @@ export async function GET() {
       inspection: { select: { id: true } },
       items: {
         where: { confirmedAt: null },
-        select: { quantity: true, lot: { select: { code: true, stageCode: true } } },
+        select: { quantity: true, lot: { select: { code: true, stageCode: true, enteredAt: true } } },
       },
     },
     orderBy: { transferredAt: "asc" },
@@ -44,7 +44,7 @@ export async function GET() {
       transferredAt: t.transferredAt,
       staffCode: t.fromUser.code,
       staffName: t.fromUser.name,
-      items: t.items.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.quantity })),
+      items: t.items.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.quantity, enteredAt: i.lot.enteredAt })),
       totalQuantity: t.items.reduce((s, i) => s + i.quantity, 0),
       hasInspection: t.inspection !== null,
     }));
