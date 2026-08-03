@@ -6,7 +6,7 @@ import { lotSelect, buildStagePreview, confirmStage, confirmStageManual } from "
 import { z } from "zod";
 
 async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
-  const transfer = await prisma.transfer.findFirst({
+  return prisma.transfer.findFirst({
     where: { id: transferId, fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId } },
     include: {
       fromUser: { select: { id: true, code: true, name: true } },
@@ -17,10 +17,6 @@ async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
       },
     },
   });
-  if (!transfer) return null;
-  // Gắn transferredAt của chính phiếu này vào từng dòng — planShelfAssignments cần đúng ngày bàn giao
-  // (không phải lúc xác nhận) để tính đúng Nhóm tuần ra rễ (xem PendingItem.transferredAt).
-  return { ...transfer, items: transfer.items.map((i) => ({ ...i, transferredAt: transfer.transferredAt })) };
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ transferId: string }> }) {

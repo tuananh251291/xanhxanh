@@ -1,3 +1,4 @@
+import { addWeeks } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getCurrentWeekSlot, isoWeekStringToMonday, ROOTING_ROTATION_START_WEEK_KEY } from "@/lib/rooting-week-group";
 import { getSystemConfig } from "@/lib/inventory";
@@ -28,6 +29,11 @@ type LotForAssign = {
   quantity: number;
   plantTypeId: string;
   plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
+  // Ngày lô THẬT SỰ vào Phòng tối (nhập nhật ký cấy hoặc nhập kho thủ công) — dùng làm mốc xác định
+  // Nhóm tuần ra rễ (xem nhánh THANH_PHAM bên dưới), KHÔNG dùng ngày Transfer được tạo ("Bàn giao") vì
+  // NV/Kho mô có thể gộp nhiều ngày bàn giao 1 lần, khiến khoảng cách giữa nhập kho và bàn giao thật
+  // trôi dạt nhiều ngày/tuần — Nhóm tuần phải cố định theo ngày nhập, không phụ thuộc lúc nào bấm nút.
+  enteredAt: Date;
   instructionId: string | null;
   instruction: { assignedToId: string | null; isBackup: boolean } | null;
   // Chủ Phòng tối cá nhân đang chứa lô này (trước khi bàn giao) — dùng làm fallback xác định
@@ -94,7 +100,7 @@ export type ShelfPlacement = {
  *   "Cho phép xếp". Hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
  */
 export async function planShelfAssignments(
-  transferItems: { lotId: string; lot: LotForAssign; transferredAt: Date }[],
+  transferItems: { lotId: string; lot: LotForAssign }[],
   warehouseId: string
 ): Promise<ShelfPlacement[]> {
   const shelves = await prisma.shelf.findMany({
@@ -116,13 +122,13 @@ export async function planShelfAssignments(
   });
   const startWeekValue = raReGroups.length > 0 ? await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "") : "";
   const epochMonday = startWeekValue ? isoWeekStringToMonday(startWeekValue) : null;
-  // Xác định Nhóm tuần ra rễ "đang tới lượt" tại ĐÚNG thời điểm lô đó được NV cấy mô bàn giao khỏi Phòng
-  // tối (transferredAt của Transfer chứa lô, KHÔNG PHẢI lúc Kho mô bấm xác nhận nhận — 2 thời điểm này
-  // có thể lệch vài ngày, thậm chí lệch sang tuần khác nếu Kho mô xử lý chậm hoặc bàn giao đúng lúc giao
-  // tuần, VD nhập kho tối Chủ nhật nhưng bàn giao Thứ 2 — nếu tính theo lúc xác nhận thì lô có thể bị
-  // xếp nhầm sang Nhóm của tuần xác nhận thay vì đúng Nhóm của tuần bàn giao). Từng lô trong 1 đợt xác
-  // nhận (đặc biệt luồng Xanh gộp nhiều phiếu) có thể có transferredAt khác nhau nên phải tính riêng
-  // từng lô, không dùng chung 1 "hôm nay" cho cả batch như trước.
+  // Xác định Nhóm tuần ra rễ "đang tới lượt" tại mốc CỐ ĐỊNH = tuần kế tiếp NGAY SAU tuần lô đó vào
+  // Phòng tối (lot.enteredAt + 1 tuần) — KHÔNG dùng lúc Transfer được tạo ("Bàn giao") hay lúc Kho mô
+  // xác nhận nhận: cả 2 mốc này đều là thời điểm THAO TÁC (có thể trôi dạt nhiều ngày, thậm chí cả tuần
+  // so với ngày nhập thật, VD NV gộp nhiều ngày bàn giao 1 lần) — nếu dùng sẽ khiến Nhóm tuần của 1 lô
+  // đổi theo tốc độ xử lý hành chính thay vì cố định theo ngày nhập, gây khó đoán trước. Từng lô trong 1
+  // đợt xác nhận (đặc biệt luồng Xanh gộp nhiều phiếu) có thể có enteredAt khác nhau nên tính riêng
+  // từng lô, không dùng chung 1 "hôm nay" cho cả batch.
   function resolveRaReGroupAt(atDate: Date): { id: string; rotationOrder: number | null } | "BEFORE_EPOCH" | undefined {
     if (raReGroups.length === 0) return undefined;
     // Tuần của atDate còn TRƯỚC mốc "Tuần khởi đầu Nhóm tuần ra rễ 1" đã cấu hình — lịch xoay vòng thật
@@ -156,12 +162,12 @@ export async function planShelfAssignments(
 
   const placements: ShelfPlacement[] = [];
 
-  for (const { lotId, lot, transferredAt } of transferItems) {
+  for (const { lotId, lot } of transferItems) {
     if (lot.stage === "THANH_PHAM") {
       let pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
       if (pool.length === 0) throw new ShelfAssignError("Không có kệ Phòng ra rễ nào trong kho này");
       if (rootingUsesRotationGroup) {
-        const resolvedGroup = resolveRaReGroupAt(transferredAt);
+        const resolvedGroup = resolveRaReGroupAt(addWeeks(lot.enteredAt, 1));
         if (resolvedGroup === "BEFORE_EPOCH") {
           throw new ShelfAssignError(
             `Chưa tới tuần bắt đầu lịch xoay vòng Nhóm tuần ra rễ (SUPER_ADMIN đã cấu hình ở /settings/shelf-groups nhưng còn ở tuần sau) — chưa xác định được Nhóm nào đang tới lượt`

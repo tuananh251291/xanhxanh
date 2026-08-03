@@ -14,6 +14,9 @@ export const lotSelect = {
   quantity: true,
   plantTypeId: true,
   plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
+  // Ngày lô THẬT SỰ vào Phòng tối — planShelfAssignments dùng làm mốc xác định Nhóm tuần ra rễ (cố định
+  // theo ngày nhập, không phụ thuộc lúc nào Transfer được tạo/xác nhận, xem comment ở LotForAssign).
+  enteredAt: true,
   instructionId: true,
   instruction: { select: { assignedToId: true, isBackup: true } },
   room: { select: { assignedStaffId: true } },
@@ -23,10 +26,6 @@ export type PendingItem = {
   id: string;
   lotId: string;
   transferId: string;
-  // Ngày Transfer chứa lô này được TẠO RA (NV cấy mô bấm "Bàn giao" khỏi Phòng tối) — dùng để tính Nhóm
-  // tuần ra rễ đang tới lượt TẠI ĐÚNG THỜI ĐIỂM ĐÓ (xem planShelfAssignments), không dùng lúc Kho mô xác
-  // nhận (có thể trễ hơn vài ngày, sang tuần khác).
-  transferredAt: Date;
   lot: {
     id: string;
     code: string;
@@ -35,6 +34,7 @@ export type PendingItem = {
     quantity: number;
     plantTypeId: string;
     plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
+    enteredAt: Date;
     instructionId: string | null;
     instruction: { assignedToId: string | null; isBackup: boolean } | null;
     room: { assignedStaffId: string | null } | null;
@@ -93,7 +93,7 @@ export async function buildStagePreview(pendingItems: PendingItem[], workplaceWa
   let rootingError: string | null = null;
   if (rootingItems.length > 0) {
     try {
-      const preview = await planShelfAssignments(rootingItems.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: i.transferredAt })), workplaceWarehouseId);
+      const preview = await planShelfAssignments(rootingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), workplaceWarehouseId);
       rootingPlacements = toPlacementRows(preview);
     } catch (e) {
       rootingError = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
@@ -104,7 +104,7 @@ export async function buildStagePreview(pendingItems: PendingItem[], workplaceWa
   let motherError: string | null = null;
   if (motherItems.length > 0) {
     try {
-      const preview = await planShelfAssignments(motherItems.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: i.transferredAt })), workplaceWarehouseId);
+      const preview = await planShelfAssignments(motherItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), workplaceWarehouseId);
       motherPlacements = toPlacementRows(preview);
     } catch (e) {
       motherError = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
@@ -146,7 +146,7 @@ async function applyPlacements(pendingItemsForStage: PendingItem[], placements: 
 // hoặc chỉ 1 phiếu (luồng Đỏ).
 export async function confirmStage(pendingItemsForStage: PendingItem[], workplaceWarehouseId: string): Promise<ShelfPlacement[]> {
   const placements = await planShelfAssignments(
-    pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: i.transferredAt })),
+    pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot })),
     workplaceWarehouseId
   );
   await applyPlacements(pendingItemsForStage, placements);

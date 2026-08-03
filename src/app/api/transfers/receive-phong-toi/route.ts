@@ -34,7 +34,7 @@ async function findPendingItems(
   });
   const withPendingItems = transfers.filter((t) => t.items.length > 0);
   return {
-    items: withPendingItems.flatMap((t) => t.items.map((i) => ({ ...i, transferredAt: t.transferredAt }))),
+    items: withPendingItems.flatMap((t) => t.items),
     transfers: withPendingItems.map((t) => ({ code: t.code, transferredAt: t.transferredAt })),
   };
 }

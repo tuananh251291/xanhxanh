@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     try {
       placements = isSurplusTransfer
         ? await planSurplusPlacement(pendingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), warehouseId)
-        : await planShelfAssignments(pendingItems.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: transfer.transferredAt })), warehouseId);
+        : await planShelfAssignments(pendingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), warehouseId);
     } catch (e) {
       if (e instanceof ShelfAssignError) return NextResponse.json({ message: e.message }, { status: 409 });
       throw e;
