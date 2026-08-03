@@ -257,7 +257,7 @@ async function handOffToLightRoom(params: { instructionId: string; staffId: stri
   });
 
   const placements = await planShelfAssignments(
-    lots.map((l) => ({ lotId: l.id, lot: l })),
+    lots.map((l) => ({ lotId: l.id, lot: l, transferredAt: transfer.transferredAt })),
     params.warehouseId
   );
   for (const p of placements) {

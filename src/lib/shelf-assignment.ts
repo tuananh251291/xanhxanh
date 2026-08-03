@@ -94,7 +94,7 @@ export type ShelfPlacement = {
  *   "Cho phép xếp". Hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
  */
 export async function planShelfAssignments(
-  transferItems: { lotId: string; lot: LotForAssign }[],
+  transferItems: { lotId: string; lot: LotForAssign; transferredAt: Date }[],
   warehouseId: string
 ): Promise<ShelfPlacement[]> {
   const shelves = await prisma.shelf.findMany({
@@ -114,22 +114,26 @@ export async function planShelfAssignments(
     where: { rotationKind: "RA_RE" },
     select: { id: true, rotationOrder: true },
   });
-  let currentGroup: { id: string; rotationOrder: number | null } | undefined;
-  // Tuần hiện tại còn TRƯỚC mốc "Tuần khởi đầu Nhóm tuần ra rễ 1" đã cấu hình — lịch xoay vòng thật sự
-  // CHƯA bắt đầu. getCurrentWeekSlot tính theo mod N nên tự "quay ngược" ra 1 khe hợp lệ cho tuần trước
-  // epoch (VD epoch tuần 31 thì tuần 30 bị tính thành khe cuối cùng của chu kỳ trước), không có ý nghĩa
-  // gì và có thể khớp NHẦM với 1 Nhóm thật — chặn tường minh, coi như chưa xác định được Nhóm nào đang
-  // tới lượt (giống hệt lỗi đã sửa ở summarizeRootingWeekGroups/summarizeMotherWeekGroups).
-  let beforeEpoch = false;
-  if (raReGroups.length > 0) {
-    const startWeekValue = await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "");
-    const epochMonday = startWeekValue ? isoWeekStringToMonday(startWeekValue) : null;
-    beforeEpoch = !!epochMonday && new Date().getTime() < epochMonday.getTime();
-    if (!beforeEpoch) {
-      currentGroup = raReGroups.find(
-        (g) => g.rotationOrder === (epochMonday ? getCurrentWeekSlot(raReGroups.length, new Date(), epochMonday) : getCurrentWeekSlot(raReGroups.length))
-      );
-    }
+  const startWeekValue = raReGroups.length > 0 ? await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "") : "";
+  const epochMonday = startWeekValue ? isoWeekStringToMonday(startWeekValue) : null;
+  // Xác định Nhóm tuần ra rễ "đang tới lượt" tại ĐÚNG thời điểm lô đó được NV cấy mô bàn giao khỏi Phòng
+  // tối (transferredAt của Transfer chứa lô, KHÔNG PHẢI lúc Kho mô bấm xác nhận nhận — 2 thời điểm này
+  // có thể lệch vài ngày, thậm chí lệch sang tuần khác nếu Kho mô xử lý chậm hoặc bàn giao đúng lúc giao
+  // tuần, VD nhập kho tối Chủ nhật nhưng bàn giao Thứ 2 — nếu tính theo lúc xác nhận thì lô có thể bị
+  // xếp nhầm sang Nhóm của tuần xác nhận thay vì đúng Nhóm của tuần bàn giao). Từng lô trong 1 đợt xác
+  // nhận (đặc biệt luồng Xanh gộp nhiều phiếu) có thể có transferredAt khác nhau nên phải tính riêng
+  // từng lô, không dùng chung 1 "hôm nay" cho cả batch như trước.
+  function resolveRaReGroupAt(atDate: Date): { id: string; rotationOrder: number | null } | "BEFORE_EPOCH" | undefined {
+    if (raReGroups.length === 0) return undefined;
+    // Tuần của atDate còn TRƯỚC mốc "Tuần khởi đầu Nhóm tuần ra rễ 1" đã cấu hình — lịch xoay vòng thật
+    // sự CHƯA bắt đầu tại thời điểm đó. getCurrentWeekSlot tính theo mod N nên tự "quay ngược" ra 1 khe
+    // hợp lệ cho tuần trước epoch (VD epoch tuần 31 thì tuần 30 bị tính thành khe cuối cùng của chu kỳ
+    // trước), không có ý nghĩa gì và có thể khớp NHẦM với 1 Nhóm thật — chặn tường minh (giống hệt lỗi
+    // đã sửa ở summarizeRootingWeekGroups/summarizeMotherWeekGroups).
+    if (epochMonday && atDate.getTime() < epochMonday.getTime()) return "BEFORE_EPOCH";
+    return raReGroups.find(
+      (g) => g.rotationOrder === (epochMonday ? getCurrentWeekSlot(raReGroups.length, atDate, epochMonday) : getCurrentWeekSlot(raReGroups.length, atDate))
+    );
   }
   const rootingUsesRotationGroup = shelves.some(
     (s) => s.room?.type === "PHONG_RA_RE" && s.rotationGroupId !== null
@@ -152,25 +156,26 @@ export async function planShelfAssignments(
 
   const placements: ShelfPlacement[] = [];
 
-  for (const { lotId, lot } of transferItems) {
+  for (const { lotId, lot, transferredAt } of transferItems) {
     if (lot.stage === "THANH_PHAM") {
       let pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
       if (pool.length === 0) throw new ShelfAssignError("Không có kệ Phòng ra rễ nào trong kho này");
       if (rootingUsesRotationGroup) {
-        if (beforeEpoch) {
+        const resolvedGroup = resolveRaReGroupAt(transferredAt);
+        if (resolvedGroup === "BEFORE_EPOCH") {
           throw new ShelfAssignError(
             `Chưa tới tuần bắt đầu lịch xoay vòng Nhóm tuần ra rễ (SUPER_ADMIN đã cấu hình ở /settings/shelf-groups nhưng còn ở tuần sau) — chưa xác định được Nhóm nào đang tới lượt`
           );
         }
-        if (!currentGroup) {
+        if (!resolvedGroup) {
           throw new ShelfAssignError(
             `Chưa cấu hình Nhóm tuần ra rễ nào — SUPER_ADMIN cần tạo Nhóm ở /settings/shelf-groups`
           );
         }
-        const weekPool = pool.filter((c) => c.rotationGroupId === currentGroup.id);
+        const weekPool = pool.filter((c) => c.rotationGroupId === resolvedGroup.id);
         if (weekPool.length === 0) {
           throw new ShelfAssignError(
-            `Chưa có kệ Phòng ra rễ nào được gán Nhóm tuần ra rễ (thứ tự ${currentGroup.rotationOrder}) — SUPER_ADMIN cần cấu hình ở /settings/shelf-groups`
+            `Chưa có kệ Phòng ra rễ nào được gán Nhóm tuần ra rễ (thứ tự ${resolvedGroup.rotationOrder}) — SUPER_ADMIN cần cấu hình ở /settings/shelf-groups`
           );
         }
         pool = weekPool;

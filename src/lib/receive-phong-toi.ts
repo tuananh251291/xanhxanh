@@ -23,6 +23,10 @@ export type PendingItem = {
   id: string;
   lotId: string;
   transferId: string;
+  // Ngày Transfer chứa lô này được TẠO RA (NV cấy mô bấm "Bàn giao" khỏi Phòng tối) — dùng để tính Nhóm
+  // tuần ra rễ đang tới lượt TẠI ĐÚNG THỜI ĐIỂM ĐÓ (xem planShelfAssignments), không dùng lúc Kho mô xác
+  // nhận (có thể trễ hơn vài ngày, sang tuần khác).
+  transferredAt: Date;
   lot: {
     id: string;
     code: string;
@@ -89,7 +93,7 @@ export async function buildStagePreview(pendingItems: PendingItem[], workplaceWa
   let rootingError: string | null = null;
   if (rootingItems.length > 0) {
     try {
-      const preview = await planShelfAssignments(rootingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), workplaceWarehouseId);
+      const preview = await planShelfAssignments(rootingItems.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: i.transferredAt })), workplaceWarehouseId);
       rootingPlacements = toPlacementRows(preview);
     } catch (e) {
       rootingError = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
@@ -100,7 +104,7 @@ export async function buildStagePreview(pendingItems: PendingItem[], workplaceWa
   let motherError: string | null = null;
   if (motherItems.length > 0) {
     try {
-      const preview = await planShelfAssignments(motherItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), workplaceWarehouseId);
+      const preview = await planShelfAssignments(motherItems.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: i.transferredAt })), workplaceWarehouseId);
       motherPlacements = toPlacementRows(preview);
     } catch (e) {
       motherError = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
@@ -142,7 +146,7 @@ async function applyPlacements(pendingItemsForStage: PendingItem[], placements: 
 // hoặc chỉ 1 phiếu (luồng Đỏ).
 export async function confirmStage(pendingItemsForStage: PendingItem[], workplaceWarehouseId: string): Promise<ShelfPlacement[]> {
   const placements = await planShelfAssignments(
-    pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot })),
+    pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot, transferredAt: i.transferredAt })),
     workplaceWarehouseId
   );
   await applyPlacements(pendingItemsForStage, placements);
