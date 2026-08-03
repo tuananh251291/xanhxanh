@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, PackageCheck, Info } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Send, Loader2, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays } from "date-fns";
 
@@ -19,11 +20,25 @@ type Lot = {
 
 const MIN_DAYS_SINCE_PLANTED = 7;
 
+// Quy cách thành phẩm (T01/T05) mới cho khai "không đạt" (VD cây quá nhỏ) — mẫu mẹ (M05) luôn đạt hết,
+// không hiện ô nhập. Khớp đúng quy ước đã dùng ở bản nâng cao (product-handover-board.tsx).
+const isFinishedStage = (stageCode: string) => stageCode.startsWith("T");
+
 function HandoverGroupCard({ group, onHandedOver }: { group: Lot[]; onHandedOver: () => void }) {
   const [submitting, setSubmitting] = useState(false);
+  // "Không đạt" NV tự khai (VD cây thành phẩm quá nhỏ) — theo lotId, chỉ áp dụng lô thành phẩm.
+  const [unqualified, setUnqualified] = useState<Record<string, string>>({});
   const daysSince = differenceInCalendarDays(new Date(), new Date(group[0].enteredAt));
 
+  const unqualifiedExceeded = group.some(
+    (lot) => isFinishedStage(lot.stageCode) && (Number(unqualified[lot.id]) || 0) > lot.quantity
+  );
+
   const submit = async () => {
+    if (unqualifiedExceeded) {
+      toast.error("Số không đạt không được vượt quá số lượng bàn giao");
+      return;
+    }
     const ok = window.confirm(`Xác nhận bàn giao lô ${group[0].code} sang kho sáng?`);
     if (!ok) return;
     setSubmitting(true);
@@ -32,7 +47,11 @@ function HandoverGroupCard({ group, onHandedOver }: { group: Lot[]; onHandedOver
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: group.map((lot) => ({ lotId: lot.id, quantity: lot.quantity })),
+          items: group.map((lot) => ({
+            lotId: lot.id,
+            quantity: lot.quantity,
+            unqualifiedQuantity: isFinishedStage(lot.stageCode) ? Number(unqualified[lot.id]) || 0 : 0,
+          })),
         }),
       });
       if (!res.ok) {
@@ -58,16 +77,36 @@ function HandoverGroupCard({ group, onHandedOver }: { group: Lot[]; onHandedOver
 
         <div className="divide-y divide-divider">
           {group.map((lot) => (
-            <div key={lot.id} className="flex items-center justify-between py-2.5 text-sm">
+            <div key={lot.id} className="flex items-center justify-between py-2.5 text-sm gap-3">
               <span className="text-foreground">
                 {lot.stageCode} · <span className="font-mono">{lot.plantType.code}</span> — {lot.plantType.name}
               </span>
-              <span className="font-semibold text-foreground">{lot.quantity.toLocaleString("vi-VN")}</span>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="font-semibold text-foreground">{lot.quantity.toLocaleString("vi-VN")}</span>
+                {isFinishedStage(lot.stageCode) && (
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-text-secondary whitespace-nowrap">Không đạt</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={lot.quantity}
+                      placeholder="0"
+                      className="w-16 h-8 text-right"
+                      value={unqualified[lot.id] ?? ""}
+                      onChange={(e) => setUnqualified((prev) => ({ ...prev, [lot.id]: e.target.value }))}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
-        <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
+        {unqualifiedExceeded && (
+          <p className="text-xs text-destructive font-medium">Số không đạt không được vượt quá số lượng bàn giao.</p>
+        )}
+
+        <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting || unqualifiedExceeded} onClick={submit}>
           {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
           Bàn giao sang kho sáng
         </Button>
@@ -117,16 +156,6 @@ export default function HandoverSimpleForm() {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
-        <Info className="w-4 h-4 shrink-0 mt-0.5" />
-        <p>
-          Trang này KHÔNG có ô &quot;Không đạt&quot; — tính năng cho phép tự khai số cây thành phẩm chưa đạt chuẩn lúc
-          bàn giao (có ở trang &quot;Bàn giao sản phẩm&quot; của Giao diện nâng cao) chưa được đưa vào bản rút gọn.
-          Toàn bộ số lượng lô sẽ được ghi nhận nguyên vẹn khi bàn giao qua trang này — nếu có cây không đạt cần khai
-          báo, hãy dùng trang &quot;Bàn giao sản phẩm&quot; của Giao diện nâng cao thay vì trang này.
-        </p>
-      </div>
-
       {readyGroups.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-text-muted">
