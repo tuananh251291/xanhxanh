@@ -16,6 +16,7 @@ export const lotSelect = {
   plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
   instructionId: true,
   instruction: { select: { assignedToId: true, isBackup: true } },
+  room: { select: { assignedStaffId: true } },
 } as const;
 
 export type PendingItem = {
@@ -32,6 +33,7 @@ export type PendingItem = {
     plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
     instructionId: string | null;
     instruction: { assignedToId: string | null; isBackup: boolean } | null;
+    room: { assignedStaffId: string | null } | null;
   };
 };
 

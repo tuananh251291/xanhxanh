@@ -30,6 +30,12 @@ type LotForAssign = {
   plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
   instructionId: string | null;
   instruction: { assignedToId: string | null; isBackup: boolean } | null;
+  // Chủ Phòng tối cá nhân đang chứa lô này (trước khi bàn giao) — dùng làm fallback xác định
+  // ownerStaffId khi lô KHÔNG có chỉ định cấy (VD tạo qua "Nhập kho thủ công" ở
+  // src/app/api/inventory/stock-in/route.ts, không set instructionId) nhưng vẫn nằm trong đúng Phòng
+  // tối của 1 NV cụ thể — nếu không có fallback này, lô sẽ bị coi là "không có chủ" và rớt thẳng xuống
+  // Kho mẫu mẹ chung dù đã nằm sẵn trong phòng của đúng NV đó.
+  room: { assignedStaffId: string | null } | null;
 };
 
 type ShelfCandidate = {
@@ -67,7 +73,9 @@ export type ShelfPlacement = {
  *   (đơn vị cây) và không đủ chỗ, phần dư tự tràn sang kệ trống kế tiếp (chia lô thành nhiều dòng xếp
  *   kệ). Kệ không đặt sức chứa (capacity = null) coi như không giới hạn.
  * - Mẫu mẹ (MAU_ME, M05) → xếp vào đúng kệ của nhân viên phụ trách (Kho mẫu mẹ đã chia — kệ có
- *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây). Sức chứa kệ Phòng
+ *   assignedStaffId = NV được giao chỉ định cấy đã tạo ra lô này, và đúng mã cây; lô không có chỉ định
+ *   cấy — VD tạo qua "Nhập kho thủ công" — dùng chủ Phòng tối cá nhân đang chứa lô đó làm chủ thay thế).
+ *   Sức chứa kệ Phòng
  *   mẫu mẹ tính theo CỤM (Lot.quantity của M05 luôn là cụm) — khi phải chia 1 lô ra nhiều kệ do
  *   tràn sức chứa, phần đặt lên mỗi kệ luôn làm tròn xuống nguyên túi (roundDownToBag) vì túi là đơn vị
  *   vật lý không tách rời. Kệ đã chia có thể chứa nhiều lô cùng lúc (không còn giới hạn 1 lô/kệ)
@@ -187,7 +195,9 @@ export async function planShelfAssignments(
     // nhánh Kho mẫu mẹ chung bên dưới. Lý do: kệ đã chia của NV được cấp phát theo chỉ tiêu SẢN LƯỢNG
     // THƯỜNG XUYÊN của họ, không tính phần việc dự phòng làm thêm/hoàn thành sớm — gộp vào sẽ làm sai
     // lệch sức chứa đã tính cho công việc chính của NV đó.
-    const ownerStaffId = lot.instruction?.isBackup ? null : (lot.instruction?.assignedToId ?? null);
+    const ownerStaffId = lot.instruction?.isBackup
+      ? null
+      : (lot.instruction?.assignedToId ?? lot.room?.assignedStaffId ?? null);
     let remainingBags = lot.quantity;
 
     if (ownerStaffId) {

@@ -37,6 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             include: {
               plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
               instruction: { select: { assignedToId: true, isBackup: true } },
+              room: { select: { assignedStaffId: true } },
             },
           },
         },

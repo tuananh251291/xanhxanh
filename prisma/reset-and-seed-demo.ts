@@ -236,7 +236,11 @@ async function seedDailyRecord(params: { instructionId: string; instructionCode:
 async function handOffToLightRoom(params: { instructionId: string; staffId: string; warehouseId: string }) {
   const lots = await prisma.lot.findMany({
     where: { instructionId: params.instructionId, status: "ACTIVE" },
-    include: { plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } }, instruction: { select: { assignedToId: true, isBackup: true } } },
+    include: {
+      plantType: { select: { code: true, name: true, rootingWeeks: true, transferWaitWeeks: true } },
+      instruction: { select: { assignedToId: true, isBackup: true } },
+      room: { select: { assignedStaffId: true } },
+    },
   });
   if (lots.length === 0) return;
 
