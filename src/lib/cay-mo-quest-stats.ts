@@ -94,7 +94,6 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     activeInstructionThisWeek,
     dailyRecordToday,
     darkRoomLots,
-    handoverToday,
     unreadInspectionResults,
     recentRecordDates,
     surplusCandidates,
@@ -124,13 +123,6 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       },
       select: { code: true, enteredAt: true, inspectedAt: true },
     }),
-    prisma.transfer.findFirst({
-      where: {
-        fromUserId: userId,
-        fromRoom: { type: "PHONG_TOI" },
-        createdAt: { gte: todayStart, lte: todayEnd },
-      },
-    }),
     prisma.alert.count({
       where: { userId, type: "INSPECTION_RESULT_READY", status: "UNREAD" },
     }),
@@ -145,19 +137,24 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     (lot) => !lot.inspectedAt && getInspectionDueAt(lot.enteredAt) <= now
   );
 
-  // Nhóm theo mã lô (1 mã = 1 lô sản phẩm của 1 ngày cấy, xem generateProductLotCode) — khớp đúng cách
-  // handover-simple-form.tsx nhóm lô để xác định "sẵn sàng bàn giao": mọi lô cùng mã phải đã kiểm tra
-  // nhiễm xong VÀ đã đủ số ngày ủ tối thiểu.
+  // Nhóm theo CẢ mã lẫn ngày nhập thật (không chỉ mã) — mã lô không đảm bảo duy nhất theo ngày, khớp
+  // đúng cách product-handover-board.tsx/handover-simple-form.tsx đã sửa (gộp theo mã sẽ gộp nhầm lô
+  // khác ngày trùng mã vào chung 1 nhóm).
   const darkRoomGroups = new Map<string, typeof darkRoomLots>();
   for (const lot of darkRoomLots) {
-    const group = darkRoomGroups.get(lot.code);
+    const key = `${lot.code}__${format(lot.enteredAt, "yyyy-MM-dd")}`;
+    const group = darkRoomGroups.get(key);
     if (group) group.push(lot);
-    else darkRoomGroups.set(lot.code, [lot]);
+    else darkRoomGroups.set(key, [lot]);
   }
-  const hasReadyForHandoverGroup = Array.from(darkRoomGroups.values()).some(
-    (group) =>
-      group.every((l) => l.inspectedAt) &&
-      differenceInCalendarDays(now, group[0].enteredAt) >= MIN_DAYS_SINCE_PLANTED_FOR_HANDOVER
+  // "Còn việc cần bàn giao" = có ít nhất 1 nhóm đã đủ ngày ủ tối thiểu, KHÔNG đòi hỏi đã kiểm tra nhiễm
+  // xong — khớp đúng điều kiện product-handover-board.tsx dùng để HIỆN 1 thẻ lô (thẻ vẫn hiện, chỉ bị
+  // khoá nút bàn giao, kèm nhắc "Cần kiểm tra nhiễm trước khi bàn giao" nếu chưa kiểm tra). Trước đây đòi
+  // hỏi "đã kiểm tra nhiễm xong" mới tính là "còn việc" khiến quest báo "Đã xong" sai khi NV chưa kiểm tra
+  // nhiễm lô nào cả (không có nhóm nào "sẵn sàng" nên hasReadyForHandoverGroup=false → done=true), dù rõ
+  // ràng còn nhiều lô quá hạn đang treo (chỉ đang bị chặn bởi nhiệm vụ "Kiểm tra nhiễm" riêng).
+  const hasPendingHandoverGroup = Array.from(darkRoomGroups.values()).some(
+    (group) => differenceInCalendarDays(now, group[0].enteredAt) >= MIN_DAYS_SINCE_PLANTED_FOR_HANDOVER
   );
 
   const quests: Quest[] = [
@@ -187,7 +184,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       title: "Bàn giao sản phẩm",
       description: "Bàn giao lô từ phòng tối cho Kho mô",
       href: "/dashboard-basic/ban-giao",
-      done: !hasReadyForHandoverGroup || !!handoverToday,
+      done: !hasPendingHandoverGroup,
     },
   ];
 
