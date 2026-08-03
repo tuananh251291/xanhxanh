@@ -183,7 +183,13 @@ export async function confirmStageManual(
   const shelfCodes = [...new Set(manualPlacements.map((m) => m.shelfCode.trim().toUpperCase()))];
   const shelves = await prisma.shelf.findMany({
     where: { code: { in: shelfCodes }, warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
-    select: { id: true, code: true, capacity: true, lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } } },
+    select: {
+      id: true,
+      code: true,
+      capacity: true,
+      lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
+      rotationGroup: { select: { rotationOrder: true } },
+    },
   });
   const shelfByCode = new Map(shelves.map((s) => [s.code, s]));
   const missing = shelfCodes.filter((c) => !shelfByCode.has(c));
@@ -227,7 +233,7 @@ export async function confirmStageManual(
       const current = manualQueue[queueIdx];
       if (!current) throw new ShelfAssignError("Không đủ số cụm đã nhập để xếp hết mẫu mẹ đang chờ");
       const take = Math.min(remaining, current.remaining);
-      placements.push({ lotId: item.lotId, lot: item.lot, shelfId: current.shelf.id, shelfCode: current.shelf.code, quantity: take, pool: "MANUAL" });
+      placements.push({ lotId: item.lotId, lot: item.lot, shelfId: current.shelf.id, shelfCode: current.shelf.code, quantity: take, pool: "MANUAL", rotationOrder: current.shelf.rotationGroup?.rotationOrder ?? null });
       current.remaining -= take;
       remaining -= take;
       if (current.remaining <= 0) queueIdx++;

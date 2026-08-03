@@ -65,6 +65,10 @@ export type ShelfPlacement = {
   // MANUAL = KHO_MO tự nhập kệ + số lượng (bỏ qua thuật toán), chỉ áp dụng cho mẫu mẹ — xem
   // confirmStageManual (src/lib/receive-phong-toi.ts).
   pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
+  // Nhóm tuần mẫu mẹ của ĐÚNG kệ vừa xếp (null nếu kệ chưa thuộc Nhóm nào, hoặc không áp dụng với
+  // THANH_PHAM) — dark-room-shelf-commit.ts dùng để tính hạn cấy chuyển đúng theo lịch xoay vòng của
+  // kệ thật sự nhận lô, thay vì chỉ tính từ thời điểm bàn giao + số tuần chờ.
+  rotationOrder: number | null;
 };
 
 /**
@@ -179,7 +183,7 @@ export async function planShelfAssignments(
         const capLeft = (shelf.capacity ?? Infinity) - (usedById.get(shelf.id) ?? 0);
         const placeBags = Math.max(0, Math.min(capLeft, remainingBags));
         if (placeBags <= 0) continue;
-        placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "RA_RE" });
+        placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "RA_RE", rotationOrder: null });
         usedById.set(shelf.id, (usedById.get(shelf.id) ?? 0) + placeBags);
         remainingBags -= placeBags;
       }
@@ -201,9 +205,14 @@ export async function planShelfAssignments(
     let remainingBags = lot.quantity;
 
     if (ownerStaffId) {
-      const primaryOwned = candidates.find(
-        (c) => c.roomType === "PHONG_MAU_ME" && c.assignedStaffId === ownerStaffId && c.plantTypeId === lot.plantTypeId
-      );
+      // Chọn kệ "chính" ỔN ĐỊNH thay vì kệ đầu tiên Prisma trả về (không đảm bảo thứ tự) — ưu tiên
+      // rotationOrder nhỏ nhất (VD Nhóm MM1 trước MM4) rồi tới mã kệ (VD C01 trước C02), để cùng 1 tình
+      // huống luôn xếp vào đúng 1 Nhóm/kệ như nhau, không "bốc" ngẫu nhiên sang Nhóm khác giữa các lần
+      // xác nhận bàn giao (đã từng gây nhầm lẫn thật — anh mong đợi MM3 nhưng hệ thống chọn MM4).
+      const ownedForPlantType = candidates
+        .filter((c) => c.roomType === "PHONG_MAU_ME" && c.assignedStaffId === ownerStaffId && c.plantTypeId === lot.plantTypeId)
+        .sort((a, b) => (a.rotationOrder ?? Number.MAX_SAFE_INTEGER) - (b.rotationOrder ?? Number.MAX_SAFE_INTEGER) || a.code.localeCompare(b.code));
+      const primaryOwned = ownedForPlantType[0];
       if (primaryOwned) {
         // Kệ đầu tiên tìm được đầy thì thử tiếp sang các Nhóm tuần mẫu mẹ KHÁC cũng của đúng NV này,
         // đúng mã cây — theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ tìm thấy đầu tiên, tăng dần
@@ -237,7 +246,7 @@ export async function planShelfAssignments(
             })
             .map(([groupId]) => groupId);
           orderedOwnedShelves = orderedGroupIds.flatMap((groupId) =>
-            groupedOwnedShelves.filter((c) => c.rotationGroupId === groupId)
+            groupedOwnedShelves.filter((c) => c.rotationGroupId === groupId).sort((a, b) => a.code.localeCompare(b.code))
           );
         } else {
           orderedOwnedShelves = [primaryOwned];
@@ -257,7 +266,7 @@ export async function planShelfAssignments(
             const capLeft = (shelf.capacity ?? Infinity) - (usedById.get(shelf.id) ?? 0);
             const placeBags = roundDownToBag(Math.min(capLeft, remainingBags), lot.stageCode);
             if (placeBags <= 0) continue;
-            placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "OWNED" });
+            placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "OWNED", rotationOrder: shelf.rotationOrder });
             usedById.set(shelf.id, (usedById.get(shelf.id) ?? 0) + placeBags);
             remainingBags -= placeBags;
             madeProgressThisLap = true;
@@ -299,7 +308,7 @@ export async function planShelfAssignments(
       if (capLeft < remainingBags) {
         throw new ShelfAssignError(`Kệ ${target.code} (Kho mẫu mẹ chung) không đủ chỗ cho phần dư của lô ${lot.code}`);
       }
-      placements.push({ lotId, lot, shelfId: target.id, shelfCode: target.code, quantity: remainingBags, pool: "SHARED" });
+      placements.push({ lotId, lot, shelfId: target.id, shelfCode: target.code, quantity: remainingBags, pool: "SHARED", rotationOrder: target.rotationOrder });
       usedById.set(target.id, (usedById.get(target.id) ?? 0) + remainingBags);
     }
   }
@@ -330,6 +339,7 @@ export async function planSurplusPlacement(
       capacity: true,
       allowedCodes: true,
       lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
+      rotationGroup: { select: { rotationOrder: true } },
     },
   });
 
@@ -355,7 +365,7 @@ export async function planSurplusPlacement(
       const capLeft = (shelf.capacity ?? Infinity) - (usedById.get(shelf.id) ?? 0);
       const placeBags = roundDownToBag(Math.min(capLeft, remainingBags), lot.stageCode);
       if (placeBags <= 0) continue;
-      placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "SHARED" });
+      placements.push({ lotId, lot, shelfId: shelf.id, shelfCode: shelf.code, quantity: placeBags, pool: "SHARED", rotationOrder: shelf.rotationGroup?.rotationOrder ?? null });
       usedById.set(shelf.id, (usedById.get(shelf.id) ?? 0) + placeBags);
       remainingBags -= placeBags;
     }
