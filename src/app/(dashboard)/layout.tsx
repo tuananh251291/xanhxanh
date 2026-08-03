@@ -16,8 +16,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  if (session.user.status !== "APPROVED") {
-    return <PendingStatusScreen status={session.user.status} />;
+  if (session.user.status !== "APPROVED" || session.user.sessionRevoked) {
+    return <PendingStatusScreen status={session.user.status} sessionRevoked={session.user.sessionRevoked} />;
   }
 
   const role = session.user.role as UserRole;

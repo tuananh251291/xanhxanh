@@ -40,6 +40,7 @@ export const authConfig: NextAuthConfig = {
         session.user.avatar = (token.avatar as string | null) ?? null;
         session.user.workplaceWarehouseId = (token.workplaceWarehouseId as string | null) ?? null;
         session.user.holdDays = (token.holdDays as number | null) ?? null;
+        session.user.sessionRevoked = !!token.sessionRevoked;
       }
       return session;
     },

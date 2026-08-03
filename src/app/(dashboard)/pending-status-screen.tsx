@@ -3,11 +3,40 @@
 import { signOut } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock, XCircle, LogOut } from "lucide-react";
+import { Clock, XCircle, LogOut, Smartphone } from "lucide-react";
 import type { UserStatus } from "@prisma/client";
 
-export default function PendingStatusScreen({ status }: { status: UserStatus }) {
+// sessionRevoked (đăng nhập ở thiết bị khác) ưu tiên hiện TRƯỚC status — vì lúc bị đăng nhập nơi khác,
+// token.status vẫn có thể là "APPROVED" bình thường (không liên quan gì tới việc tài khoản có được
+// duyệt hay không), 2 khái niệm hoàn toàn độc lập, không dùng chung 1 field/message.
+export default function PendingStatusScreen({ status, sessionRevoked }: { status: UserStatus; sessionRevoked?: boolean }) {
   const isRejected = status === "REJECTED";
+
+  if (sessionRevoked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-bg to-primary-light p-4">
+        <Card className="w-full max-w-md shadow-lg text-center">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="bg-info-light text-info-foreground p-3 rounded-xl">
+                <Smartphone className="w-8 h-8" />
+              </div>
+            </div>
+            <CardTitle className="text-xl font-bold text-foreground">Tài khoản vừa đăng nhập ở nơi khác</CardTitle>
+            <CardDescription className="text-text-secondary">
+              Mỗi tài khoản chỉ được đăng nhập ở 1 thiết bị/trình duyệt tại 1 thời điểm — phiên này đã bị thay
+              thế. Nếu không phải bạn vừa đăng nhập, hãy đổi mật khẩu ngay.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
+              <LogOut className="w-4 h-4 mr-2" /> Đăng xuất
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-bg to-primary-light p-4">

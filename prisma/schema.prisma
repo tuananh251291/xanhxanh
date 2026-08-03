@@ -221,6 +221,11 @@ model User {
   // Khác null = tài khoản đang bị khóa do đăng nhập sai quá 5 lần — chặn đăng nhập dù đúng mật khẩu.
   // Chỉ SUPER_ADMIN mở khóa lại được (PATCH /api/users/[id] { unlockAccount: true }).
   lockedAt DateTime?
+  // ID phiên đăng nhập ĐANG hoạt động — mỗi lần đăng nhập thành công (authorize() ở src/lib/auth.ts) ghi
+  // đè bằng 1 giá trị random mới, tự động vô hiệu phiên cũ (đăng nhập ở thiết bị/trình duyệt khác thì
+  // JWT của thiết bị trước đó không còn khớp field này nữa — chỉ CHO PHÉP 1 phiên hoạt động/tài khoản).
+  // null = chưa từng đăng nhập lần nào (tài khoản mới tạo).
+  currentSessionId String?
   // Địa điểm làm việc — áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG (ràng buộc 1 kho sản xuất/SAN_XUAT) và
   // SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng đạt tiêu chuẩn ở đó, xem thêm RoomAccess cho
   // các Phòng thị trường được cấp quyền riêng). KHO_THANH_PHAM cũng gán được 1 kho THÀNH PHẨM nhưng
