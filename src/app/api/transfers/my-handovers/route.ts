@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       items: {
         include: {
           lot: {
-            select: { code: true, stageCode: true, quantity: true, plantType: { select: { code: true, name: true } } },
+            select: { code: true, stageCode: true, quantity: true, enteredAt: true, plantType: { select: { code: true, name: true } } },
           },
         },
       },
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
         stageCode: string;
         handedOverQuantity: number;
         unqualifiedQuantity: number;
-        lots: { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number }[];
+        lots: { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number; enteredAt: Date }[];
       }
     >();
     for (const item of t.items) {
@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
         plantTypeCode: item.lot.plantType.code,
         plantTypeName: item.lot.plantType.name,
         quantity: item.quantity,
+        enteredAt: item.lot.enteredAt,
       });
       groups.set(key, group);
     }

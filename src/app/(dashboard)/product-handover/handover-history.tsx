@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, History, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
-type LotLine = { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number };
+type LotLine = { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number; enteredAt: string };
 type Group = {
   stageCode: string;
   handedOverQuantity: number;
@@ -115,10 +115,11 @@ export default function HandoverHistory() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-primary-light">
-                        <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Ngày</th>
+                        <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Ngày bàn giao</th>
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Phiếu</th>
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Quy cách</th>
                         <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Lô / Mã cây</th>
+                        <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Ngày nhập kho tối</th>
                         <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">SL bàn giao</th>
                         <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">SL ghi nhận</th>
                       </tr>
@@ -129,7 +130,16 @@ export default function HandoverHistory() {
                           <td className="px-3 py-2 whitespace-nowrap">{format(new Date(r.createdAt), "dd/MM/yyyy")}</td>
                           <td className="px-3 py-2 font-mono">{r.transferCode}</td>
                           <td className="px-3 py-2">{STAGE_LABELS[r.stageCode] ?? r.stageCode}</td>
-                          <td className="px-3 py-2">{r.lots.map((l) => `${l.plantTypeCode} x${l.quantity.toLocaleString("vi-VN")}`).join(", ")}</td>
+                          <td className="px-3 py-2">
+                            {r.lots.map((l, i) => (
+                              <div key={i}>{l.plantTypeCode} x{l.quantity.toLocaleString("vi-VN")}</div>
+                            ))}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {r.lots.map((l, i) => (
+                              <div key={i}>{format(new Date(l.enteredAt), "dd/MM/yyyy")}</div>
+                            ))}
+                          </td>
                           <td className="px-3 py-2 text-right font-medium">{r.handedOverQuantity.toLocaleString("vi-VN")}</td>
                           <td className="px-3 py-2 text-right">
                             {r.recordedQuantity === null ? (
