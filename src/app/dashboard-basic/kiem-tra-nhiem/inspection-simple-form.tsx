@@ -121,8 +121,12 @@ export default function InspectionSimpleForm() {
     Promise.resolve().then(() => load());
   }, [load]);
 
+  // Nhóm theo CẢ mã lẫn ngày nhập thật (không chỉ mã) — mã lô không đảm bảo duy nhất theo ngày, nếu chỉ
+  // nhóm theo mã sẽ gộp nhầm lô khác ngày (VD 1 lô đã kiểm tra + 1 lô chưa) vào chung 1 phiếu, khiến
+  // API chặn cứng cả nhóm (xem cùng lỗi đã sửa ở my-dark-room/page.tsx).
   const byCode = lots.reduce<Record<string, Lot[]>>((acc, lot) => {
-    (acc[lot.code] ??= []).push(lot);
+    const key = `${lot.code}__${lot.enteredAt.slice(0, 10)}`;
+    (acc[key] ??= []).push(lot);
     return acc;
   }, {});
 
@@ -151,7 +155,7 @@ export default function InspectionSimpleForm() {
   return (
     <div className="space-y-4">
       {dueGroups.map((group) => (
-        <InspectionGroupCard key={group[0].code} group={group} onDone={load} />
+        <InspectionGroupCard key={`${group[0].code}__${group[0].enteredAt.slice(0, 10)}`} group={group} onDone={load} />
       ))}
     </div>
   );

@@ -95,8 +95,13 @@ export default function HandoverSimpleForm() {
     Promise.resolve().then(() => load());
   }, [load]);
 
+  // Nhóm theo CẢ mã lẫn ngày nhập thật (không chỉ mã) — mã lô không đảm bảo duy nhất theo ngày (công cụ
+  // nhập liệu có thể tạo trùng mã cho 2 lô nhập 2 ngày khác nhau). Nếu chỉ nhóm theo mã, 2 lô khác ngày
+  // trùng mã bị gộp chung 1 nhóm — hễ 1 trong 2 lô chưa kiểm tra nhiễm là cả nhóm bị loại khỏi danh sách
+  // "cần bàn giao" dù lô còn lại đã sẵn sàng thật (xem cùng lỗi đã sửa ở my-dark-room/page.tsx).
   const byCode = lots.reduce<Record<string, Lot[]>>((acc, lot) => {
-    (acc[lot.code] ??= []).push(lot);
+    const key = `${lot.code}__${lot.enteredAt.slice(0, 10)}`;
+    (acc[key] ??= []).push(lot);
     return acc;
   }, {});
 
@@ -131,7 +136,7 @@ export default function HandoverSimpleForm() {
         </Card>
       ) : (
         readyGroups.map((group) => (
-          <HandoverGroupCard key={group[0].code} group={group} onHandedOver={load} />
+          <HandoverGroupCard key={`${group[0].code}__${group[0].enteredAt.slice(0, 10)}`} group={group} onHandedOver={load} />
         ))
       )}
     </div>

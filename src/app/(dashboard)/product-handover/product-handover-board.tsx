@@ -168,8 +168,12 @@ export default function ProductHandoverBoard() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Nhóm theo CẢ mã lẫn ngày nhập thật (không chỉ mã) — mã lô không đảm bảo duy nhất theo ngày, nếu chỉ
+  // nhóm theo mã sẽ gộp nhầm lô khác ngày vào chung 1 phiếu bàn giao (xem cùng lỗi đã sửa ở
+  // my-dark-room/page.tsx và dashboard-basic/ban-giao/handover-simple-form.tsx).
   const byCode = lots.reduce<Record<string, Lot[]>>((acc, lot) => {
-    (acc[lot.code] ??= []).push(lot);
+    const key = `${lot.code}__${lot.enteredAt.slice(0, 10)}`;
+    (acc[key] ??= []).push(lot);
     return acc;
   }, {});
 
@@ -200,7 +204,7 @@ export default function ProductHandoverBoard() {
       ) : (
         <div className="space-y-4">
           {groups.map((group) => (
-            <ProductLotTable key={group[0].code} group={group} onHandedOver={load} />
+            <ProductLotTable key={`${group[0].code}__${group[0].enteredAt.slice(0, 10)}`} group={group} onHandedOver={load} />
           ))}
         </div>
       )}
