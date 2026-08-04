@@ -10,7 +10,7 @@ import { z } from "zod";
 // PENDING của họ lại — 1 NV có thể gửi nhiều phiếu khác ngày trước khi Kho mô xử lý.
 async function findPendingItems(
   staffId: string
-): Promise<{ items: PendingItem[]; transfers: { code: string; transferredAt: Date }[] }> {
+): Promise<{ items: PendingItem[]; transfers: { id: string; code: string; transferredAt: Date }[] }> {
   const transfers = await prisma.transfer.findMany({
     where: {
       status: "PENDING",
@@ -35,7 +35,7 @@ async function findPendingItems(
   const withPendingItems = transfers.filter((t) => t.items.length > 0);
   return {
     items: withPendingItems.flatMap((t) => t.items),
-    transfers: withPendingItems.map((t) => ({ code: t.code, transferredAt: t.transferredAt })),
+    transfers: withPendingItems.map((t) => ({ id: t.id, code: t.code, transferredAt: t.transferredAt })),
   };
 }
 

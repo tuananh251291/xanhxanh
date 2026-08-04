@@ -4,9 +4,11 @@ import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
+import { SURPLUS_TRANSFER_TAG } from "@/types";
 import { z } from "zod";
 
 class DuplicateTransferError extends Error {}
+class PendingOldHandoverError extends Error {}
 
 // toWarehouseId/toRoomId để trống khi bàn giao "phòng tối → kho sáng": đích cụ thể (Phòng mẫu mẹ hay
 // Phòng ra rễ, kệ nào) do hệ thống tự chỉ định lúc KHO_MO xác nhận (xem PATCH /api/transfers/[id]),
@@ -156,6 +158,30 @@ export async function POST(req: NextRequest) {
   try {
     transfer = await prisma.$transaction(
       async (tx) => {
+        // Khoá "1 phiếu bàn giao tại 1 thời điểm" cho mỗi NV cấy mô — chỉ áp dụng bàn giao SẢN PHẨM từ
+        // Phòng tối (không áp dụng bàn giao thành phẩm từ Phòng ra rễ, vốn do KHO_MO/KHO_THANH_PHAM tự
+        // thao tác; cũng KHÔNG tính phiếu bàn giao MM dư — notes=SURPLUS_TRANSFER_TAG — vì phiếu đó xử lý
+        // ở luồng riêng, xếp thẳng vào Kho quá hạn, không qua hàng chờ "sắp xếp về kho" hàng ngày, giữ
+        // đồng bộ với findPendingItems/do-lane đã loại surplus khỏi danh sách chờ tương tự). Còn phiếu cũ
+        // nào của đúng NV này CHƯA được Kho mô sắp xếp xong hết (còn TransferItem nào confirmedAt = null,
+        // kể cả đã kiểm tra nhiễm xong nhưng chưa xếp kệ) thì chặn không cho gửi phiếu mới — buộc Kho mô
+        // xử lý lần lượt từng phiếu, không bị dồn nhiều phiếu treo cùng lúc.
+        if (isFromDarkRoom) {
+          const oldPending = await tx.transfer.findFirst({
+            where: {
+              fromUserId: session.user.id,
+              status: "PENDING",
+              fromRoom: { type: "PHONG_TOI" },
+              OR: [{ notes: null }, { notes: { not: SURPLUS_TRANSFER_TAG } }],
+              items: { some: { confirmedAt: null } },
+            },
+            select: { id: true },
+          });
+          if (oldPending) {
+            throw new PendingOldHandoverError("Bạn cần đợi Quản lý kho mô sắp xếp xong lô cũ, hãy quay lại sau.");
+          }
+        }
+
         const alreadyPending = await tx.transferItem.findFirst({
           where: { lotId: { in: items.map((i) => i.lotId) }, transfer: { status: "PENDING" } },
           select: { lot: { select: { code: true } } },
@@ -189,7 +215,7 @@ export async function POST(req: NextRequest) {
       { isolationLevel: "Serializable" }
     );
   } catch (err) {
-    if (err instanceof DuplicateTransferError) {
+    if (err instanceof DuplicateTransferError || err instanceof PendingOldHandoverError) {
       return NextResponse.json({ message: err.message }, { status: 409 });
     }
     // Postgres huỷ 1 trong 2 transaction đụng nhau (write conflict) — báo lỗi rõ ràng để client thử lại,

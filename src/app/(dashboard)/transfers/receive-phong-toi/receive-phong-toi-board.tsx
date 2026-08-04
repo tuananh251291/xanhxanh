@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PackageCheck, Loader2, ArrowRight } from "lucide-react";
+import { PackageCheck, Loader2, ArrowRight, Undo2 } from "lucide-react";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
@@ -14,13 +15,14 @@ type Row = {
   staffId: string;
   staffCode: string;
   staffName: string;
-  transfers: { code: string; transferredAt: string }[];
+  transfers: { id: string; code: string; transferredAt: string }[];
   items: { lotCode: string; stageCode: string; quantity: number; enteredAt: string }[];
 };
 
 export default function ReceivePhongToiBoard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reverting, setReverting] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -34,6 +36,24 @@ export default function ReceivePhongToiBoard() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const revert = async (row: Row) => {
+    if (!window.confirm(`Hoàn lại phiếu bàn giao của ${row.staffName}? NV sẽ cần bàn giao lại từ đầu.`)) return;
+    setReverting(row.staffId);
+    try {
+      const res = await fetch("/api/transfers/receive-phong-toi/revert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transferIds: row.transfers.map((t) => t.id) }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã hoàn lại phiếu bàn giao của ${row.staffName}`);
+      loadData();
+    } finally {
+      setReverting(null);
+    }
+  };
 
   if (loading) {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
@@ -96,11 +116,23 @@ export default function ReceivePhongToiBoard() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/transfers/receive-phong-toi/place-staff/${row.staffId}`}>
-                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
-                        <ArrowRight className="w-3.5 h-3.5 mr-1.5" /> Sắp xếp vào kho
+                    <div className="flex items-center gap-1.5">
+                      <Link href={`/transfers/receive-phong-toi/place-staff/${row.staffId}`}>
+                        <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                          <ArrowRight className="w-3.5 h-3.5 mr-1.5" /> Sắp xếp vào kho
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-8"
+                        disabled={reverting === row.staffId}
+                        onClick={() => revert(row)}
+                      >
+                        {reverting === row.staffId ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Undo2 className="w-3.5 h-3.5 mr-1.5" />}
+                        Hoàn lại
                       </Button>
-                    </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
