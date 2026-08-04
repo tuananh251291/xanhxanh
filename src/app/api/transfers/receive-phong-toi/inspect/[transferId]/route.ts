@@ -20,7 +20,7 @@ async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
           id: true,
           lotId: true,
           unqualifiedQuantity: true,
-          lot: { select: { id: true, code: true, quantity: true, stageCode: true, stage: true, plantTypeId: true, plantType: { select: { code: true } } } },
+          lot: { select: { id: true, code: true, quantity: true, stageCode: true, stage: true, enteredAt: true, plantTypeId: true, plantType: { select: { code: true, name: true } } } },
         },
       },
     },
@@ -72,10 +72,27 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
       selfReportedUnqualifiedQuantity: unqualifiedByStageCode.get(stageCode) ?? 0,
     }));
 
+  // Chi tiết TỪNG lô đang chờ kiểm tra (mã cây/tên cây/ngày nhập kho tối/số lượng riêng) — kết quả kiểm
+  // tra (nhiễm/tỉ lệ đạt/không đạt) chỉ lưu được theo QUY CÁCH (TransferInspectionItem unique theo
+  // [inspectionId, stageCode], không theo từng lô — 1 phiếu có thể gộp nhiều mã cây cùng quy cách, VD 2
+  // mã cây cùng bàn giao T01), nên KHÔNG tách được input theo từng lô — chỉ hiện breakdown RIÊNG (đọc,
+  // không nhập) để Kho mô thấy rõ số bàn giao của quy cách đó gồm những lô nào, tránh hiểu nhầm là 1 số
+  // gộp mù mờ không biết của mã cây nào/ngày nào.
+  const lots = transfer.items.map((i) => ({
+    lotId: i.lot.id,
+    lotCode: i.lot.code,
+    plantTypeCode: i.lot.plantType.code,
+    plantTypeName: i.lot.plantType.name,
+    stageCode: i.lot.stageCode,
+    quantity: i.lot.quantity,
+    enteredAt: i.lot.enteredAt.toISOString(),
+  }));
+
   return NextResponse.json({
     transferCode: transfer.code,
     staffCode: transfer.fromUser.code,
     staffName: transfer.fromUser.name,
+    lots,
     columns,
   });
 }

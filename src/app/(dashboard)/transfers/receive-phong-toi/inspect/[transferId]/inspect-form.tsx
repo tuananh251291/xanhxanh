@@ -7,9 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 
 type Column = { stageCode: string; handedOverQuantity: number; selfReportedUnqualifiedQuantity: number };
-type Meta = { transferCode: string; staffCode: string; staffName: string; columns: Column[] };
+type LotRow = { lotId: string; lotCode: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; enteredAt: string };
+type Meta = {
+  transferCode: string; staffCode: string; staffName: string;
+  lots: LotRow[];
+  columns: Column[];
+};
 type InputState = { contaminatedQuantity: number; randomCheckPassRate: number; unqualifiedQuantity: number };
 
 export default function InspectForm({ transferId }: { transferId: string }) {
@@ -96,6 +103,39 @@ export default function InspectForm({ transferId }: { transferId: string }) {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-primary-light">
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã cây</th>
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên cây</th>
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Quy cách</th>
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Ngày nhập kho tối</th>
+                  <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Số lượng bàn giao</th>
+                </tr>
+              </thead>
+              <tbody>
+                {meta.lots.map((l) => (
+                  <tr key={l.lotId} className="border-b last:border-0 even:bg-primary-light/30">
+                    <td className="px-4 py-3 font-mono text-text-secondary">{l.plantTypeCode}</td>
+                    <td className="px-4 py-3 text-foreground">{l.plantTypeName}</td>
+                    <td className="px-4 py-3"><span className="font-mono text-xs">{l.stageCode}</span></td>
+                    <td className="px-4 py-3 text-text-secondary">{format(new Date(l.enteredAt), "dd/MM/yyyy", { locale: vi })}</td>
+                    <td className="px-4 py-3 text-right font-medium text-foreground">
+                      {l.quantity.toLocaleString("vi-VN")} {l.stageCode.startsWith("M") ? "cụm" : "cây"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Kết quả kiểm tra (nhiễm/tỉ lệ đạt/không đạt) chỉ lưu được theo QUY CÁCH, không theo từng lô ở
+          trên — xem comment ở GET /api/transfers/receive-phong-toi/inspect/[transferId]. */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
