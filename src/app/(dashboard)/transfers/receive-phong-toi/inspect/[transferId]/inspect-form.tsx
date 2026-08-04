@@ -135,103 +135,79 @@ export default function InspectForm({ transferId }: { transferId: string }) {
       </Card>
 
       {/* Kết quả kiểm tra (nhiễm/tỉ lệ đạt/không đạt) chỉ lưu được theo QUY CÁCH, không theo từng lô ở
-          trên — xem comment ở GET /api/transfers/receive-phong-toi/inspect/[transferId]. */}
+          bảng trên — xem comment ở GET /api/transfers/receive-phong-toi/inspect/[transferId]. Mỗi HÀNG
+          ở đây là 1 quy cách (kèm mã cây góp vào quy cách đó, thường chỉ 1 mã) — không phải 1 lô riêng,
+          vì input bên dưới dùng CHUNG cho mọi lô cùng quy cách nếu phiếu gộp nhiều mã cây cùng quy cách. */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-primary-light">
-                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Chỉ số</th>
-                  {meta.columns.map((col) => (
-                    <th key={col.stageCode} className="text-center px-4 py-3 text-primary-strong font-bold text-base">
-                      {col.stageCode} ({col.stageCode.startsWith("M") ? "cụm" : "cây"})
-                    </th>
-                  ))}
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã cây</th>
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Quy cách</th>
+                  <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL bàn giao</th>
+                  <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">SL nhiễm không đạt</th>
+                  <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL thực tế sau kiểm tra</th>
+                  <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ đạt kiểm tra ngẫu nhiên (%)</th>
+                  <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">SL không đạt (NV tự khai)</th>
+                  <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL NV cấy mô được ghi nhận</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b">
-                  <td className="px-4 py-3 font-medium text-foreground">Số lượng NV Cấy mô bàn giao</td>
-                  {meta.columns.map((col) => (
-                    <td key={col.stageCode} className="px-4 py-3 text-center font-medium text-foreground">{col.handedOverQuantity.toLocaleString("vi-VN")}</td>
-                  ))}
-                </tr>
-                <tr className="border-b even:bg-primary-light/30">
-                  <td className="px-4 py-3 font-medium text-foreground">Số lượng nhiễm không đạt</td>
-                  {meta.columns.map((col) => (
-                    <td key={col.stageCode} className="px-4 py-3 text-center">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={col.handedOverQuantity}
-                        className="w-24 h-8 mx-auto text-center"
-                        value={inputs[col.stageCode]?.contaminatedQuantity ?? 0}
-                        onChange={(e) => setContaminated(col.stageCode, parseInt(e.target.value, 10) || 0, col.handedOverQuantity)}
-                      />
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b">
-                  <td className="px-4 py-3 font-medium text-foreground">Số lượng thực tế ghi nhận sau kiểm tra</td>
-                  {meta.columns.map((col) => {
-                    const contaminated = inputs[col.stageCode]?.contaminatedQuantity ?? 0;
-                    return (
-                      <td key={col.stageCode} className="px-4 py-3 text-center font-medium text-primary-strong">
-                        {(col.handedOverQuantity - contaminated).toLocaleString("vi-VN")}
-                      </td>
-                    );
-                  })}
-                </tr>
-                <tr className="border-b even:bg-primary-light/30">
-                  <td className="px-4 py-3 font-medium text-foreground">Tỉ lệ đạt kiểm tra ngẫu nhiên (%)</td>
-                  {meta.columns.map((col) => (
-                    <td key={col.stageCode} className="px-4 py-3 text-center">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        className="w-24 h-8 mx-auto text-center"
-                        value={inputs[col.stageCode]?.randomCheckPassRate ?? 100}
-                        onChange={(e) => setRate(col.stageCode, parseFloat(e.target.value) || 0)}
-                      />
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b even:bg-primary-light/30">
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    Số lượng không đạt (NV tự khai, VD cây quá nhỏ)
-                  </td>
-                  {meta.columns.map((col) =>
-                    col.stageCode === "M05" ? (
-                      <td key={col.stageCode} className="px-4 py-3 text-center text-text-muted">— (mẫu mẹ luôn đạt)</td>
-                    ) : (
-                      <td key={col.stageCode} className="px-4 py-3 text-center">
+                {meta.columns.map((col) => {
+                  const unit = col.stageCode.startsWith("M") ? "cụm" : "cây";
+                  const plantCodes = [...new Set(meta.lots.filter((l) => l.stageCode === col.stageCode).map((l) => l.plantTypeCode))].join(", ");
+                  const contaminated = inputs[col.stageCode]?.contaminatedQuantity ?? 0;
+                  const rate = inputs[col.stageCode]?.randomCheckPassRate ?? 100;
+                  const unqualified = col.stageCode === "M05" ? 0 : (inputs[col.stageCode]?.unqualifiedQuantity ?? 0);
+                  const credited = Math.max(0, Math.round((rate / 100) * col.handedOverQuantity) - unqualified);
+                  return (
+                    <tr key={col.stageCode} className="border-b last:border-0 even:bg-primary-light/30">
+                      <td className="px-4 py-3 font-mono text-text-secondary">{plantCodes}</td>
+                      <td className="px-4 py-3"><span className="font-mono text-xs">{col.stageCode}</span></td>
+                      <td className="px-4 py-3 text-right font-medium text-foreground">{col.handedOverQuantity.toLocaleString("vi-VN")} {unit}</td>
+                      <td className="px-4 py-3 text-center">
                         <Input
                           type="number"
                           min={0}
                           max={col.handedOverQuantity}
                           className="w-24 h-8 mx-auto text-center"
-                          value={inputs[col.stageCode]?.unqualifiedQuantity ?? 0}
-                          onChange={(e) => setUnqualified(col.stageCode, parseInt(e.target.value, 10) || 0, col.handedOverQuantity)}
+                          value={contaminated}
+                          onChange={(e) => setContaminated(col.stageCode, parseInt(e.target.value, 10) || 0, col.handedOverQuantity)}
                         />
                       </td>
-                    )
-                  )}
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 font-medium text-foreground">Số lượng NV cấy mô được ghi nhận</td>
-                  {meta.columns.map((col) => {
-                    const rate = inputs[col.stageCode]?.randomCheckPassRate ?? 100;
-                    const unqualified = col.stageCode === "M05" ? 0 : (inputs[col.stageCode]?.unqualifiedQuantity ?? 0);
-                    const credited = Math.max(0, Math.round((rate / 100) * col.handedOverQuantity) - unqualified);
-                    return (
-                      <td key={col.stageCode} className="px-4 py-3 text-center font-medium text-foreground">
-                        {credited.toLocaleString("vi-VN")}
+                      <td className="px-4 py-3 text-right font-medium text-primary-strong">
+                        {(col.handedOverQuantity - contaminated).toLocaleString("vi-VN")} {unit}
                       </td>
-                    );
-                  })}
-                </tr>
+                      <td className="px-4 py-3 text-center">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="w-24 h-8 mx-auto text-center"
+                          value={rate}
+                          onChange={(e) => setRate(col.stageCode, parseFloat(e.target.value) || 0)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {col.stageCode === "M05" ? (
+                          <span className="text-text-muted text-xs">— (mẫu mẹ luôn đạt)</span>
+                        ) : (
+                          <Input
+                            type="number"
+                            min={0}
+                            max={col.handedOverQuantity}
+                            className="w-24 h-8 mx-auto text-center"
+                            value={unqualified}
+                            onChange={(e) => setUnqualified(col.stageCode, parseInt(e.target.value, 10) || 0, col.handedOverQuantity)}
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-foreground">{credited.toLocaleString("vi-VN")} {unit}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
