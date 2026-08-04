@@ -222,6 +222,7 @@ export async function POST(req: NextRequest) {
         instructionId,
         roomId: personalRoom.id,
         enteredAt: targetDate,
+        darkRoomEnteredAt: targetDate,
         expectedMoveAt,
       },
     });

@@ -17,6 +17,8 @@ export const lotSelect = {
   // Ngày lô THẬT SỰ vào Phòng tối — planShelfAssignments dùng làm mốc xác định Nhóm tuần ra rễ (cố định
   // theo ngày nhập, không phụ thuộc lúc nào Transfer được tạo/xác nhận, xem comment ở LotForAssign).
   enteredAt: true,
+  // Chỉ để truyền qua cho lô con khi tách (xem commitShelfPlacements) — không đọc trực tiếp ở đây.
+  darkRoomEnteredAt: true,
   instructionId: true,
   instruction: { select: { assignedToId: true, isBackup: true } },
   room: { select: { assignedStaffId: true } },
@@ -35,6 +37,7 @@ export type PendingItem = {
     plantTypeId: string;
     plantType: { code: string; name: string; rootingWeeks: number; transferWaitWeeks: number };
     enteredAt: Date;
+    darkRoomEnteredAt: Date | null;
     instructionId: string | null;
     instruction: { assignedToId: string | null; isBackup: boolean } | null;
     room: { assignedStaffId: string | null } | null;

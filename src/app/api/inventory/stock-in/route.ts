@@ -187,6 +187,7 @@ export async function POST(req: NextRequest) {
               initialQuantity: item.quantity,
               status: "ACTIVE",
               enteredAt,
+              darkRoomEnteredAt: enteredAt,
               expectedMoveAt,
             },
           });

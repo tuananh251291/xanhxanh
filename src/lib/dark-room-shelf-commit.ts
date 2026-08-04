@@ -69,6 +69,8 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
         // /product-handover như thể chưa bàn giao dù Kho mô đã xác nhận xong.
         roomId: null,
         enteredAt,
+        // KHÔNG đụng vào darkRoomEnteredAt ở đây — giữ nguyên giá trị gốc đã set lúc tạo lô (ngày nhập
+        // kho tối thật), tách biệt hẳn khỏi enteredAt vừa bị ghi đè thành ngày lên kệ ở trên.
         expectedMoveAt: computeExpectedMoveAt(first.lot.stage, first.lot.plantType, enteredAt, first.rotationOrder, motherEpochMonday),
         ...(isSplit ? { quantity: first.quantity, initialQuantity: first.quantity } : {}),
       },
@@ -94,6 +96,9 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
           initialQuantity: part.quantity,
           status: "ACTIVE",
           enteredAt,
+          // Lô con kế thừa ĐÚNG ngày nhập kho tối gốc của lô cha (part.lot), không phải "enteredAt" vừa
+          // tính lại ở trên (đó là ngày lên kệ, dùng riêng cho expectedMoveAt).
+          darkRoomEnteredAt: part.lot.darkRoomEnteredAt,
           expectedMoveAt: computeExpectedMoveAt(part.lot.stage, part.lot.plantType, enteredAt, part.rotationOrder, motherEpochMonday),
           instructionId: part.lot.instructionId,
           parentLotId: lotId,

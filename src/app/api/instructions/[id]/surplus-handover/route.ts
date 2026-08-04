@@ -87,6 +87,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         instructionId: id,
         status: "ACTIVE",
         enteredAt: new Date(),
+        darkRoomEnteredAt: new Date(),
       },
     });
     lotsCreated.push(lot);

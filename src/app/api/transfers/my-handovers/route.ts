@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       items: {
         include: {
           lot: {
-            select: { code: true, stageCode: true, quantity: true, enteredAt: true, plantType: { select: { code: true, name: true } } },
+            select: { code: true, stageCode: true, quantity: true, enteredAt: true, darkRoomEnteredAt: true, plantType: { select: { code: true, name: true } } },
           },
         },
       },
@@ -76,7 +76,11 @@ export async function GET(req: NextRequest) {
         plantTypeCode: item.lot.plantType.code,
         plantTypeName: item.lot.plantType.name,
         quantity: item.quantity,
-        enteredAt: item.lot.enteredAt,
+        // Ưu tiên darkRoomEnteredAt (ngày nhập kho tối GỐC, bất biến) — enteredAt bị commitShelfPlacements
+        // ghi đè thành ngày lên kệ ngay khi Kho mô xác nhận, không còn đáng tin ở đây (xem
+        // dark-room-shelf-commit.ts). Fallback về enteredAt cho lô cũ tạo trước khi có field này (chấp
+        // nhận có thể sai với lô đã lên kệ — không còn cách khôi phục ngày gốc).
+        enteredAt: item.lot.darkRoomEnteredAt ?? item.lot.enteredAt,
       });
       groups.set(key, group);
     }

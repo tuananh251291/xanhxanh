@@ -824,6 +824,17 @@ model Lot {
   status          LotStatus  @default(ACTIVE)
 
   enteredAt       DateTime   @default(now())
+  // Ngày nhập kho tối GỐC (bất biến, không đổi theo vòng đời lô) — TÁCH RIÊNG khỏi enteredAt vì
+  // enteredAt bị commitShelfPlacements (src/lib/dark-room-shelf-commit.ts) GHI ĐÈ thành thời điểm lên kệ
+  // kho sáng mỗi khi Kho mô xác nhận bàn giao (để tính đúng hạn "đến lịch chuyển kho tiếp theo" từ lúc
+  // lên kệ, không phải lúc nhập kho tối) — nếu không tách riêng, mọi nơi hiển thị "Ngày nhập kho tối" cho
+  // lô ĐÃ lên kệ sẽ hiện sai thành ngày lên kệ (xem handover-history.tsx, phát hiện qua báo lỗi thực tế:
+  // "ngày bàn giao 03/08 nhưng ngày nhập kho tối lại 04/08" — vô lý vì nhập kho tối phải TRƯỚC bàn giao).
+  // Set 1 LẦN DUY NHẤT lúc tạo lô (mọi nơi prisma.lot.create khi lô vào Phòng tối), KHÔNG BAO GIỜ update
+  // lại sau đó. Null với lô tạo trước khi có field này (không khôi phục được ngày gốc đã mất) hoặc lô
+  // không thuộc luồng Phòng tối (VD lô Phòng nhiễm, lô Kho thành phẩm nhập trực tiếp) — nơi hiển thị nên
+  // fallback về enteredAt nếu null.
+  darkRoomEnteredAt DateTime?
   expectedMoveAt  DateTime?
   // Chỉ có giá trị khi status = PLANNED — ngày dự kiến hàng thật về, lấy từ GoodsReceipt.expectedDate lúc
   // tạo Kế hoạch nhập kho. Dùng so sánh với Order.expectedShipAt để quyết định lô này có tính vào khả

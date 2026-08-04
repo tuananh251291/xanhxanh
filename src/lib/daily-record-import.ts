@@ -119,6 +119,7 @@ export async function applyDailyRecordDay(tx: Prisma.TransactionClient, p: Apply
         instructionId: p.instructionId,
         roomId: p.personalRoomId,
         enteredAt: p.recordDate,
+        darkRoomEnteredAt: p.recordDate,
         expectedMoveAt,
       },
     });

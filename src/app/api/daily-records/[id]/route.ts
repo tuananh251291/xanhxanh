@@ -208,6 +208,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             instructionId: record.instructionId,
             roomId: personalRoom!.id,
             enteredAt: record.recordDate,
+            darkRoomEnteredAt: record.recordDate,
             expectedMoveAt,
           },
         });

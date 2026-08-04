@@ -34,6 +34,10 @@ type LotForAssign = {
   // NV/Kho mô có thể gộp nhiều ngày bàn giao 1 lần, khiến khoảng cách giữa nhập kho và bàn giao thật
   // trôi dạt nhiều ngày/tuần — Nhóm tuần phải cố định theo ngày nhập, không phụ thuộc lúc nào bấm nút.
   enteredAt: Date;
+  // Ngày nhập kho tối GỐC, bất biến — khác enteredAt (bị commitShelfPlacements ghi đè thành ngày lên kệ
+  // lúc xác nhận). Chỉ cần truyền qua để lô con (khi bị tách do tràn kệ) giữ đúng giá trị gốc của lô cha,
+  // xem dark-room-shelf-commit.ts. Null với lô tạo trước khi có field này.
+  darkRoomEnteredAt: Date | null;
   instructionId: string | null;
   instruction: { assignedToId: string | null; isBackup: boolean } | null;
   // Chủ Phòng tối cá nhân đang chứa lô này (trước khi bàn giao) — dùng làm fallback xác định
