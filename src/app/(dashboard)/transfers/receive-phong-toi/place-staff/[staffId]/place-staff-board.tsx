@@ -6,6 +6,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { PackageCheck, Loader2, Check, AlertTriangle, ArrowLeft, Wand2, Plus, Trash2, ShieldPlus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -52,6 +62,7 @@ function BackupInstructionNotice({ hasMother, hasRooting }: { hasMother: boolean
 
 type Placement = { lotCode: string; shelfCode: string; quantity: number; pool: string };
 type ManualRow = { shelfCode: string; quantity: string };
+type ShelfOption = { value: string; label: string };
 
 const POOL_LABELS: Record<string, string> = { SHARED: "Dư", MANUAL: "Tự nhập" };
 
@@ -129,10 +140,12 @@ function LotGroupRows({
 }
 
 function ManualPlacementForm({
-  totalRequired, processing, onSubmit, onCancel,
+  totalRequired, processing, shelfOptions, loadingShelfOptions, onSubmit, onCancel,
 }: {
   totalRequired: number;
   processing: boolean;
+  shelfOptions: ShelfOption[];
+  loadingShelfOptions: boolean;
   onSubmit: (rows: { shelfCode: string; quantity: number }[]) => void;
   onCancel: () => void;
 }) {
@@ -160,12 +173,24 @@ function ManualPlacementForm({
       <div className="space-y-2">
         {rows.map((r, idx) => (
           <div key={idx} className="flex items-center gap-2">
-            <Input
-              placeholder="Mã kệ, VD: SX-A-PM-A01C01"
-              value={r.shelfCode}
-              onChange={(e) => setRow(idx, "shelfCode", e.target.value)}
-              className="w-64"
-            />
+            <Combobox
+              items={shelfOptions}
+              value={shelfOptions.find((o) => o.value === r.shelfCode) ?? null}
+              isItemEqualToValue={(a: ShelfOption, b: ShelfOption) => a.value === b.value}
+              onValueChange={(v) => setRow(idx, "shelfCode", v ? (v as ShelfOption).value : "")}
+              disabled={loadingShelfOptions}
+            >
+              <ComboboxInputGroup className="w-64 h-11 md:h-8">
+                <ComboboxInput placeholder="Gõ mã kệ, VD: SX-A-PM-A01C01" />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy kệ phù hợp</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: ShelfOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
             <Input
               type="number"
               min={0}
@@ -209,6 +234,11 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
   const [processingLotId, setProcessingLotId] = useState<string | null>(null);
   // Lô nào đang mở form "tự nhập kệ" — chỉ 1 form mở cùng lúc, bấm sang lô khác thì tự đóng form cũ.
   const [manualLotId, setManualLotId] = useState<string | null>(null);
+  // Gợi ý mã kệ Phòng mẫu mẹ (autocomplete) — chỉ tải 1 lần khi thật sự mở form tự nhập, không tải sẵn
+  // lúc vào trang vì phần lớn lượt xếp kệ đi theo nguyên tắc, không cần tới danh sách này.
+  const [shelfOptions, setShelfOptions] = useState<ShelfOption[]>([]);
+  const [loadingShelfOptions, setLoadingShelfOptions] = useState(false);
+  const [shelfOptionsLoaded, setShelfOptionsLoaded] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -223,6 +253,17 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
   }, [staffId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Mở form tự nhập kệ lần đầu mới tải gợi ý mã kệ — chỉ tải đúng 1 lần cho cả phiên xem trang này.
+  useEffect(() => {
+    if (!manualLotId || shelfOptionsLoaded) return;
+    setShelfOptionsLoaded(true);
+    setLoadingShelfOptions(true);
+    fetch("/api/transfers/receive-phong-toi/shelf-suggestions")
+      .then((res) => res.json())
+      .then((codes: string[]) => setShelfOptions(codes.map((c) => ({ value: c, label: c }))))
+      .finally(() => setLoadingShelfOptions(false));
+  }, [manualLotId, shelfOptionsLoaded]);
 
   const showToast = (stage: "THANH_PHAM" | "MAU_ME", placements: Placement[]) => {
     const lines = placements.map((p) =>
@@ -339,6 +380,8 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
           <ManualPlacementForm
             totalRequired={manualGroup.quantity}
             processing={processingLotId === manualGroup.lotId}
+            shelfOptions={shelfOptions}
+            loadingShelfOptions={loadingShelfOptions}
             onSubmit={(rows) => confirmManual(manualGroup.lotId, rows)}
             onCancel={() => setManualLotId(null)}
           />
