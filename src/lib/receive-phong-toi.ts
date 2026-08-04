@@ -41,48 +41,61 @@ export type PendingItem = {
   };
 };
 
-// 1 dòng hiển thị = 1 lô (hoặc 1 phần lô nếu bị chia do tràn kệ, VD phần dư mẫu mẹ đưa sang Kho
-// chung) đã được xếp vào đúng 1 kệ cụ thể — xem planShelfAssignments (src/lib/shelf-assignment.ts).
-export type PlacementRow = {
+// 1 dòng đặt kệ = 1 phần của lô (có thể tràn sang nhiều kệ, VD phần dư mẫu mẹ đưa sang Kho chung) —
+// xem planShelfAssignments (src/lib/shelf-assignment.ts).
+export type PlacementLine = { shelfCode: string; quantity: number; pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL" };
+
+// 1 NHÓM = ĐÚNG 1 LÔ (1 mã cây + 1 quy cách) đang chờ xếp — xác nhận/tự nhập kệ theo TỪNG nhóm độc lập
+// (không gộp chung cả đợt như trước), để KHO_MO xử lý xong lô này thì xác nhận ngay, không phải chờ xử lý
+// xong hết mọi lô khác trong cùng phiếu/đợt mới xác nhận được lô đầu tiên.
+export type LotGroup = {
+  lotId: string;
+  lotCode: string;
   plantTypeCode: string;
   plantTypeName: string;
   stageCode: string;
   quantity: number;
-  shelfCode: string;
-  pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
-  isBackup: boolean;
   enteredAt: string;
+  isBackup: boolean;
+  placements: PlacementLine[];
+  error: string | null;
 };
 
 export type StagePreview = {
-  rootingPlacements: PlacementRow[];
-  motherPlacements: PlacementRow[];
+  rootingGroups: LotGroup[];
+  motherGroups: LotGroup[];
   hasPendingRooting: boolean;
   hasPendingMotherStock: boolean;
-  rootingError: string | null;
-  motherError: string | null;
-  // Tổng số cụm mẫu mẹ đang chờ xếp — tính RIÊNG, không suy từ motherPlacements vì nếu thuật toán lỗi
-  // (motherError khác null) thì motherPlacements rỗng nhưng KHO_MO vẫn cần biết tổng để tự nhập kệ thủ
-  // công (xem confirmStageManual) đủ đúng số, không thiếu không thừa.
-  motherPendingQuantity: number;
-  // Có lô nào (mẫu mẹ hoặc cây ra rễ) đến từ chỉ định cấy DỰ PHÒNG hay không — tính RIÊNG từ pendingItems
-  // (không suy từ *Placements) vì cần đúng cả khi thuật toán báo lỗi/KHO_MO tự nhập tay, để UI luôn hiện
-  // được thông báo dù ở nhánh nào. Dùng để hiện banner nhắc KHO_MO (xem place-staff-board.tsx/place-board.tsx).
-  motherHasBackup: boolean;
-  rootingHasBackup: boolean;
 };
 
-function toPlacementRows(placements: Awaited<ReturnType<typeof planShelfAssignments>>): PlacementRow[] {
-  return placements.map((p) => ({
-    plantTypeCode: p.lot.plantType.code,
-    plantTypeName: p.lot.plantType.name,
-    stageCode: p.lot.stageCode,
-    quantity: p.quantity,
-    shelfCode: p.shelfCode,
-    pool: p.pool,
-    isBackup: !!p.lot.instruction?.isBackup,
-    enteredAt: p.lot.enteredAt.toISOString(),
-  }));
+// Chạy thuật toán RIÊNG cho TỪNG lô (không gộp chung 1 lần gọi planShelfAssignments như trước) — để xem
+// trước ĐÚNG kết quả sẽ xảy ra nếu xác nhận CHỈ lô này ngay bây giờ (độc lập với các lô khác còn đang chờ
+// trong cùng đợt, vì chúng chưa thật sự chiếm chỗ kệ nào cho tới khi được xác nhận riêng). Chạy song
+// song (Promise.all) vì mỗi lô chỉ đọc dữ liệu (preview), không ghi gì cả.
+async function buildLotGroups(items: PendingItem[], workplaceWarehouseId: string): Promise<LotGroup[]> {
+  return Promise.all(
+    items.map(async (item): Promise<LotGroup> => {
+      let placements: ShelfPlacement[] = [];
+      let error: string | null = null;
+      try {
+        placements = await planShelfAssignments([{ lotId: item.lotId, lot: item.lot }], workplaceWarehouseId);
+      } catch (e) {
+        error = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
+      }
+      return {
+        lotId: item.lotId,
+        lotCode: item.lot.code,
+        plantTypeCode: item.lot.plantType.code,
+        plantTypeName: item.lot.plantType.name,
+        stageCode: item.lot.stageCode,
+        quantity: item.lot.quantity,
+        enteredAt: item.lot.enteredAt.toISOString(),
+        isBackup: !!item.lot.instruction?.isBackup,
+        placements: placements.map((p) => ({ shelfCode: p.shelfCode, quantity: p.quantity, pool: p.pool })),
+        error,
+      };
+    })
+  );
 }
 
 // Xem trước (không ghi DB) kết quả xếp kệ cho 1 tập TransferItem đang chờ — dùng cho cả trang liệt
@@ -91,38 +104,16 @@ export async function buildStagePreview(pendingItems: PendingItem[], workplaceWa
   const rootingItems = pendingItems.filter((i) => i.lot.stage === "THANH_PHAM");
   const motherItems = pendingItems.filter((i) => i.lot.stage === "MAU_ME");
 
-  let rootingPlacements: PlacementRow[] = [];
-  let rootingError: string | null = null;
-  if (rootingItems.length > 0) {
-    try {
-      const preview = await planShelfAssignments(rootingItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), workplaceWarehouseId);
-      rootingPlacements = toPlacementRows(preview);
-    } catch (e) {
-      rootingError = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
-    }
-  }
-
-  let motherPlacements: PlacementRow[] = [];
-  let motherError: string | null = null;
-  if (motherItems.length > 0) {
-    try {
-      const preview = await planShelfAssignments(motherItems.map((i) => ({ lotId: i.lotId, lot: i.lot })), workplaceWarehouseId);
-      motherPlacements = toPlacementRows(preview);
-    } catch (e) {
-      motherError = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
-    }
-  }
+  const [rootingGroups, motherGroups] = await Promise.all([
+    buildLotGroups(rootingItems, workplaceWarehouseId),
+    buildLotGroups(motherItems, workplaceWarehouseId),
+  ]);
 
   return {
-    rootingPlacements,
-    motherPlacements,
+    rootingGroups,
+    motherGroups,
     hasPendingRooting: rootingItems.length > 0,
     hasPendingMotherStock: motherItems.length > 0,
-    rootingError,
-    motherError,
-    motherPendingQuantity: motherItems.reduce((s, i) => s + i.lot.quantity, 0),
-    motherHasBackup: motherItems.some((i) => i.lot.instruction?.isBackup),
-    rootingHasBackup: rootingItems.some((i) => i.lot.instruction?.isBackup),
   };
 }
 

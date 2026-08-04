@@ -11,28 +11,26 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
-type PlacementRow = {
+type PlacementLine = { shelfCode: string; quantity: number; pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL" };
+type LotGroup = {
+  lotId: string;
+  lotCode: string;
   plantTypeCode: string;
   plantTypeName: string;
   stageCode: string;
   quantity: number;
-  shelfCode: string;
-  pool: "OWNED" | "SHARED" | "RA_RE" | "MANUAL";
-  isBackup: boolean;
   enteredAt: string;
+  isBackup: boolean;
+  placements: PlacementLine[];
+  error: string | null;
 };
 
 type Row = {
   staffId: string;
-  rootingPlacements: PlacementRow[];
-  motherPlacements: PlacementRow[];
+  rootingGroups: LotGroup[];
+  motherGroups: LotGroup[];
   hasPendingRooting: boolean;
   hasPendingMotherStock: boolean;
-  rootingError: string | null;
-  motherError: string | null;
-  motherPendingQuantity: number;
-  motherHasBackup: boolean;
-  rootingHasBackup: boolean;
 };
 
 // Hiện khi trong lô đang chờ xếp có lô đến từ chỉ định cấy DỰ PHÒNG (isBackup) — nhắc KHO_MO biết mẫu
@@ -57,41 +55,45 @@ type ManualRow = { shelfCode: string; quantity: string };
 
 const POOL_LABELS: Record<string, string> = { SHARED: "Dư", MANUAL: "Tự nhập" };
 
-function StageRows({
-  placements, error, buttonLabel, disabled, processing, onConfirm, borderTop, secondaryButton,
+// 1 nhóm = ĐÚNG 1 lô (mã cây + quy cách) — cặp nút "Xác nhận theo nguyên tắc"/"Tự nhập kệ" gắn riêng
+// cho từng lô (rowSpan chỉ trong phạm vi các dòng của lô đó), không còn gộp chung theo cả stage như
+// trước — KHO_MO xử lý xong lô nào xác nhận ngay lô đó, không phải chờ xong hết mọi lô khác.
+function LotGroupRows({
+  group, buttonLabel, processing, onConfirm, borderTop, secondaryButton,
 }: {
-  placements: PlacementRow[];
-  error: string | null;
+  group: LotGroup;
   buttonLabel: string;
-  disabled: boolean;
   processing: boolean;
   onConfirm: () => void;
   borderTop?: boolean;
   secondaryButton?: { label: string; onClick: () => void; disabled: boolean };
 }) {
-  const rows = placements.length > 0 ? placements : [null];
+  const rows = group.error ? [null] : group.placements.length > 0 ? group.placements : [null];
   return (
     <>
       {rows.map((p, idx) => (
         <tr key={idx} className={`border-b last:border-0 even:bg-primary-light/30 ${borderTop && idx === 0 ? "border-t-2 border-t-border" : ""}`}>
           {p ? (
             <>
-              <td className="px-4 py-3 font-mono text-text-secondary">{p.plantTypeCode}</td>
-              <td className="px-4 py-3 text-foreground">{p.plantTypeName}</td>
-              <td className="px-4 py-3"><Badge variant="outline">{p.stageCode}</Badge></td>
+              <td className="px-4 py-3 font-mono text-text-secondary">{group.plantTypeCode}</td>
+              <td className="px-4 py-3 text-foreground">{group.plantTypeName}</td>
+              <td className="px-4 py-3"><Badge variant="outline">{group.stageCode}</Badge></td>
               <td className="px-4 py-3 text-right font-medium">
-                {p.quantity.toLocaleString("vi-VN")} {p.stageCode.startsWith("M") ? "cụm" : "cây"}
+                {p.quantity.toLocaleString("vi-VN")} {group.stageCode.startsWith("M") ? "cụm" : "cây"}
               </td>
-              <td className="px-4 py-3 text-text-secondary">{format(new Date(p.enteredAt), "dd/MM/yyyy", { locale: vi })}</td>
+              <td className="px-4 py-3 text-text-secondary">{format(new Date(group.enteredAt), "dd/MM/yyyy", { locale: vi })}</td>
               <td className="px-4 py-3">
                 <Badge variant="secondary">{p.shelfCode}</Badge>
                 {POOL_LABELS[p.pool] && <Badge className="bg-warning-light text-warning-foreground ml-1">{POOL_LABELS[p.pool]}</Badge>}
-                {p.isBackup && <Badge className="bg-info-light text-info-foreground ml-1">Dự phòng</Badge>}
+                {group.isBackup && <Badge className="bg-info-light text-info-foreground ml-1">Dự phòng</Badge>}
               </td>
             </>
           ) : (
             <td className="px-4 py-3" colSpan={6}>
-              <span className="text-destructive text-xs flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {error}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-text-secondary">{group.plantTypeCode}</span>
+                <span className="text-destructive text-xs flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {group.error}</span>
+              </div>
             </td>
           )}
           {idx === 0 && (
@@ -100,7 +102,7 @@ function StageRows({
                 <Button
                   size="sm"
                   className="h-8 bg-primary hover:bg-primary-hover"
-                  disabled={disabled}
+                  disabled={processing || !!group.error}
                   onClick={onConfirm}
                 >
                   {processing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
@@ -203,8 +205,10 @@ function ManualPlacementForm({
 export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
   const [row, setRow] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState<string | null>(null);
-  const [manualMode, setManualMode] = useState(false);
+  // Đang xử lý lô nào (lotId) — chỉ 1 lô xử lý cùng lúc trên UI này, không khoá các lô khác.
+  const [processingLotId, setProcessingLotId] = useState<string | null>(null);
+  // Lô nào đang mở form "tự nhập kệ" — chỉ 1 form mở cùng lúc, bấm sang lô khác thì tự đóng form cũ.
+  const [manualLotId, setManualLotId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -227,38 +231,38 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
     toast.success(stage === "THANH_PHAM" ? "Đã xếp kệ cây ra rễ" : "Đã xếp kệ mẫu mẹ", { description: lines.join(" · ") });
   };
 
-  const confirmStage = async (stage: "THANH_PHAM" | "MAU_ME") => {
-    setProcessing(stage);
+  const confirmLot = async (stage: "THANH_PHAM" | "MAU_ME", lotId: string) => {
+    setProcessingLotId(lotId);
     try {
       const res = await fetch("/api/transfers/receive-phong-toi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId, stage }),
+        body: JSON.stringify({ staffId, stage, lotId }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       showToast(stage, json.placements ?? []);
       loadData();
     } finally {
-      setProcessing(null);
+      setProcessingLotId(null);
     }
   };
 
-  const confirmManual = async (manualRows: { shelfCode: string; quantity: number }[]) => {
-    setProcessing("MAU_ME");
+  const confirmManual = async (lotId: string, manualRows: { shelfCode: string; quantity: number }[]) => {
+    setProcessingLotId(lotId);
     try {
       const res = await fetch("/api/transfers/receive-phong-toi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId, stage: "MAU_ME", manualPlacements: manualRows }),
+        body: JSON.stringify({ staffId, stage: "MAU_ME", lotId, manualPlacements: manualRows }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       showToast("MAU_ME", json.placements ?? []);
-      setManualMode(false);
+      setManualLotId(null);
       loadData();
     } finally {
-      setProcessing(null);
+      setProcessingLotId(null);
     }
   };
 
@@ -280,10 +284,15 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
     );
   }
 
+  const manualGroup = row.motherGroups.find((g) => g.lotId === manualLotId) ?? null;
+
   return (
     <Card>
       <CardContent className="p-0">
-        <BackupInstructionNotice hasMother={row.motherHasBackup} hasRooting={row.rootingHasBackup} />
+        <BackupInstructionNotice
+          hasMother={row.motherGroups.some((g) => g.isBackup)}
+          hasRooting={row.rootingGroups.some((g) => g.isBackup)}
+        />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -298,41 +307,40 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
               </tr>
             </thead>
             <tbody>
-              {row.hasPendingRooting && (
-                <StageRows
-                  placements={row.rootingPlacements}
-                  error={row.rootingError}
-                  buttonLabel="Xác nhận xếp cây ra rễ xong"
-                  disabled={processing === "THANH_PHAM" || !!row.rootingError}
-                  processing={processing === "THANH_PHAM"}
-                  onConfirm={() => confirmStage("THANH_PHAM")}
+              {row.rootingGroups.map((g, idx) => (
+                <LotGroupRows
+                  key={g.lotId}
+                  group={g}
+                  buttonLabel="Xác nhận xếp xong"
+                  processing={processingLotId === g.lotId}
+                  onConfirm={() => confirmLot("THANH_PHAM", g.lotId)}
+                  borderTop={idx === 0}
                 />
-              )}
-              {row.hasPendingMotherStock && (
-                <StageRows
-                  placements={row.motherPlacements}
-                  error={row.motherError}
+              ))}
+              {row.motherGroups.map((g, idx) => (
+                <LotGroupRows
+                  key={g.lotId}
+                  group={g}
                   buttonLabel="Xác nhận sắp xếp theo nguyên tắc"
-                  disabled={processing === "MAU_ME" || !!row.motherError}
-                  processing={processing === "MAU_ME" && !manualMode}
-                  onConfirm={() => confirmStage("MAU_ME")}
-                  borderTop={row.hasPendingRooting}
+                  processing={processingLotId === g.lotId && manualLotId !== g.lotId}
+                  onConfirm={() => confirmLot("MAU_ME", g.lotId)}
+                  borderTop={idx === 0 && row.rootingGroups.length > 0}
                   secondaryButton={{
-                    label: manualMode ? "Đang tự nhập kệ..." : "Không theo nguyên tắc — tự nhập kệ",
-                    onClick: () => setManualMode((v) => !v),
-                    disabled: processing === "MAU_ME" && !manualMode,
+                    label: manualLotId === g.lotId ? "Đang tự nhập kệ..." : "Không theo nguyên tắc — tự nhập kệ",
+                    onClick: () => setManualLotId((v) => (v === g.lotId ? null : g.lotId)),
+                    disabled: processingLotId === g.lotId && manualLotId !== g.lotId,
                   }}
                 />
-              )}
+              ))}
             </tbody>
           </table>
         </div>
-        {row.hasPendingMotherStock && manualMode && (
+        {manualGroup && (
           <ManualPlacementForm
-            totalRequired={row.motherPendingQuantity}
-            processing={processing === "MAU_ME"}
-            onSubmit={confirmManual}
-            onCancel={() => setManualMode(false)}
+            totalRequired={manualGroup.quantity}
+            processing={processingLotId === manualGroup.lotId}
+            onSubmit={(rows) => confirmManual(manualGroup.lotId, rows)}
+            onCancel={() => setManualLotId(null)}
           />
         )}
       </CardContent>

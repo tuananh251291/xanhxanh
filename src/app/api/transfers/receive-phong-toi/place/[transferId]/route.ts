@@ -42,6 +42,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
 
 const confirmSchema = z.object({
   stage: z.enum(["THANH_PHAM", "MAU_ME"]),
+  // Có mặt = chỉ xác nhận ĐÚNG 1 lô (xem LotGroup ở receive-phong-toi.ts) thay vì cả stage — mỗi lô xác
+  // nhận độc lập. Không truyền = xác nhận toàn bộ stage (giữ tương thích ngược).
+  lotId: z.string().optional(),
   manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().positive() })).optional(),
 });
 
@@ -55,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   const body = await req.json();
   const parsed = confirmSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { stage, manualPlacements } = parsed.data;
+  const { stage, lotId, manualPlacements } = parsed.data;
   if (manualPlacements && stage !== "MAU_ME") {
     return NextResponse.json({ message: "Chỉ hỗ trợ tự nhập kệ cho mẫu mẹ" }, { status: 400 });
   }
@@ -64,7 +67,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy phiếu bàn giao" }, { status: 404 });
   if (!transfer.inspection) return NextResponse.json({ message: "Cần kiểm tra trước khi sắp xếp về kho" }, { status: 400 });
 
-  const matchingItems = transfer.items.filter((i) => i.lot.stage === stage);
+  let matchingItems = transfer.items.filter((i) => i.lot.stage === stage);
+  if (lotId) matchingItems = matchingItems.filter((i) => i.lotId === lotId);
   if (matchingItems.length === 0) {
     return NextResponse.json({ message: "Không có lô nào đang chờ xếp cho nhóm này" }, { status: 400 });
   }

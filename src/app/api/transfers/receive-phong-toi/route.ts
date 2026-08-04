@@ -64,7 +64,7 @@ export async function GET() {
       staffName: staff.name,
       transfers,
       // Danh sách lô gộp chung (không tách ra rễ/mẫu mẹ) — dùng cho bảng tổng hợp; trang chi tiết
-      // "Sắp xếp vào kho" dùng rootingPlacements/motherPlacements bên dưới để tách riêng theo từng lô.
+      // "Sắp xếp vào kho" dùng rootingGroups/motherGroups bên dưới (đã tách riêng theo từng lô).
       items: pendingItems.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.lot.quantity, enteredAt: i.lot.enteredAt })),
       ...preview,
     });
@@ -76,6 +76,10 @@ export async function GET() {
 const confirmSchema = z.object({
   staffId: z.string(),
   stage: z.enum(["THANH_PHAM", "MAU_ME"]),
+  // Có mặt = chỉ xác nhận ĐÚNG 1 lô (xem LotGroup ở receive-phong-toi.ts) thay vì cả stage — mỗi lô xác
+  // nhận độc lập, không còn bắt buộc xử lý xong hết mọi lô cùng stage mới xác nhận được lô đầu tiên.
+  // Không truyền = xác nhận toàn bộ stage (giữ tương thích ngược, hiện không còn UI nào gọi kiểu này).
+  lotId: z.string().optional(),
   // Có mặt = KHO_MO chọn tự nhập kệ (bỏ qua nguyên tắc), chỉ hợp lệ khi stage = MAU_ME — xem
   // confirmStageManual (src/lib/receive-phong-toi.ts).
   manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().positive() })).optional(),
@@ -90,7 +94,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = confirmSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { staffId, stage, manualPlacements } = parsed.data;
+  const { staffId, stage, lotId, manualPlacements } = parsed.data;
   if (manualPlacements && stage !== "MAU_ME") {
     return NextResponse.json({ message: "Chỉ hỗ trợ tự nhập kệ cho mẫu mẹ" }, { status: 400 });
   }
@@ -105,7 +109,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { items: pendingItems } = await findPendingItems(staffId);
-  const matchingItems = pendingItems.filter((i) => i.lot.stage === stage);
+  let matchingItems = pendingItems.filter((i) => i.lot.stage === stage);
+  if (lotId) matchingItems = matchingItems.filter((i) => i.lotId === lotId);
   if (matchingItems.length === 0) {
     return NextResponse.json({ message: "Không có lô nào đang chờ xếp cho nhân viên này" }, { status: 400 });
   }
