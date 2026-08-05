@@ -8,9 +8,11 @@ const schema = z.object({
   transferIds: z.array(z.string()).min(1, "Cần ít nhất 1 phiếu"),
 });
 
-// Kho mô "Hoàn lại" 1 hoặc nhiều phiếu bàn giao Phòng tối CHƯA xử lý gì cả (chưa kiểm tra luồng Đỏ, chưa
-// xếp kệ) — dùng khi NV cấy mô bàn giao nhầm/muốn rút lại. Chỉ xoá phiếu (Transfer + TransferItem) — lô
-// gốc trong Phòng tối giữ nguyên (vẫn còn inspectedAt nếu đã kiểm tra), quay lại đúng trạng thái "đã
+// Kho mô "Hoàn lại" 1 hoặc nhiều phiếu bàn giao Phòng tối CHƯA xử lý gì cả (chưa xếp kệ, và chưa kiểm tra
+// luồng Đỏ HOẶC đã bấm kiểm tra nhưng chưa thực nhập gì — xem isTrivialInspection bên dưới) — dùng khi NV
+// cấy mô bàn giao nhầm/muốn rút lại, hoặc Kho mô lỡ bấm "Xác nhận kiểm tra xong" nhầm phiếu mà chưa kịp
+// nhập số liệu thật. Xoá phiếu (Transfer + TransferItem, và TransferInspection rỗng nếu có) — lô gốc
+// trong Phòng tối giữ nguyên (vẫn còn inspectedAt nếu đã kiểm tra nhiễm), quay lại đúng trạng thái "đã
 // kiểm tra xong nhưng chưa bàn giao" trên /my-dark-room, /product-handover của NV.
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -28,7 +30,12 @@ export async function POST(req: NextRequest) {
     include: {
       fromRoom: { select: { type: true, warehouseId: true } },
       items: { select: { id: true, confirmedAt: true } },
-      inspection: { select: { id: true } },
+      inspection: {
+        select: {
+          id: true,
+          items: { select: { contaminatedQuantity: true, unqualifiedQuantity: true, randomCheckPassRate: true } },
+        },
+      },
     },
   });
 
@@ -37,9 +44,17 @@ export async function POST(req: NextRequest) {
   }
 
   // Chặn cứng — chỉ hoàn lại được phiếu CHƯA bị động tới ở bất kỳ đâu: đúng kho mình phụ trách, đang
-  // PENDING, chưa có dòng nào được xác nhận xếp kệ (confirmedAt), và (luồng Đỏ) chưa được Kho mô kiểm
-  // tra (inspection null) — khớp đúng 2 chỗ nút "Hoàn lại" xuất hiện (cạnh "Kiểm tra"/"Sắp xếp vào kho",
-  // đều là trạng thái chưa xử lý gì).
+  // PENDING, chưa có dòng nào được xác nhận xếp kệ (confirmedAt). Riêng bước kiểm tra (luồng Đỏ) vẫn cho
+  // hoàn lại NẾU phiếu kiểm tra chưa thực sự ghi nhận gì — mọi dòng còn nguyên giá trị mặc định lúc mở
+  // form (contaminatedQuantity=0, unqualifiedQuantity=0, randomCheckPassRate=100%, xem inspect-form.tsx)
+  // — nghĩa là Kho mô mới bấm "Xác nhận kiểm tra xong" mà chưa thật sự đếm/nhập gì, không có Lot.quantity
+  // nào bị trừ, không có bản ghi Phòng nhiễm nào được tạo (xem POST .../inspect bỏ qua item có
+  // contaminatedQuantity <= 0) — hoàn lại lúc này an toàn tuyệt đối, không mất dữ liệu kiểm tra thật nào.
+  // Chỉ cần MỘT dòng khác mặc định (có nhập số nhiễm/không đạt thật, hoặc đổi tỉ lệ kiểm tra ngẫu nhiên)
+  // là coi như đã kiểm tra thật — chặn như cũ.
+  const isTrivialInspection = (items: { contaminatedQuantity: number; unqualifiedQuantity: number; randomCheckPassRate: number }[]) =>
+    items.every((i) => i.contaminatedQuantity === 0 && i.unqualifiedQuantity === 0 && i.randomCheckPassRate === 100);
+
   for (const t of transfers) {
     if (t.fromRoom?.type !== "PHONG_TOI" || t.fromRoom.warehouseId !== workplaceWarehouseId) {
       return NextResponse.json({ message: `Phiếu ${t.code} không thuộc kho bạn phụ trách` }, { status: 403 });
@@ -50,12 +65,20 @@ export async function POST(req: NextRequest) {
     if (t.items.some((i) => i.confirmedAt)) {
       return NextResponse.json({ message: `Phiếu ${t.code} đã có lô được xếp kệ — không thể hoàn lại` }, { status: 409 });
     }
-    if (t.inspection) {
-      return NextResponse.json({ message: `Phiếu ${t.code} đã được Kho mô kiểm tra — không thể hoàn lại` }, { status: 409 });
+    if (t.inspection && !isTrivialInspection(t.inspection.items)) {
+      return NextResponse.json({ message: `Phiếu ${t.code} đã được Kho mô kiểm tra và ghi nhận số liệu — không thể hoàn lại` }, { status: 409 });
     }
   }
 
+  const inspectionIds = transfers.map((t) => t.inspection?.id).filter((id): id is string => !!id);
+
   await prisma.$transaction(async (tx) => {
+    // Phiếu có kiểm tra "rỗng" (đủ điều kiện hoàn lại ở trên) — xoá luôn cả phiếu kiểm tra trước, tránh
+    // vướng ràng buộc khoá ngoại khi xoá Transfer.
+    if (inspectionIds.length > 0) {
+      await tx.transferInspectionItem.deleteMany({ where: { inspectionId: { in: inspectionIds } } });
+      await tx.transferInspection.deleteMany({ where: { id: { in: inspectionIds } } });
+    }
     await tx.transferItem.deleteMany({ where: { transferId: { in: transferIds } } });
     await tx.transfer.deleteMany({ where: { id: { in: transferIds } } });
   });
