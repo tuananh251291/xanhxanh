@@ -1,6 +1,7 @@
 import { addWeeks } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getCurrentWeekSlot, isoWeekStringToMonday, ROOTING_ROTATION_START_WEEK_KEY } from "@/lib/rooting-week-group";
+import { getMotherRotationEpoch } from "@/lib/mother-week-group";
 import { getSystemConfig } from "@/lib/inventory";
 import { sumLotQuantity, MOTHER_SPEC_BAG_SIZE } from "@/types";
 
@@ -94,14 +95,20 @@ export type ShelfPlacement = {
  *   tràn sức chứa, phần đặt lên mỗi kệ luôn làm tròn xuống nguyên túi (roundDownToBag) vì túi là đơn vị
  *   vật lý không tách rời. Kệ đã chia có thể chứa nhiều lô cùng lúc (không còn giới hạn 1 lô/kệ)
  *   — chỉ giới hạn bởi sức chứa còn lại (capLeft), giống hệt cách xếp cây ra rễ.
- *   Nếu kệ được tìm thấy đầu tiên đã đầy, KHÔNG coi ngay là dư — hệ thống xếp tiếp sang TẤT CẢ các Nhóm
- *   tuần mẫu mẹ KHÁC cũng của đúng NV đó, đúng mã cây (VD 1 NV có 8 kệ chia 4 Nhóm tuần MM1-MM4, mỗi
- *   nhóm 2 kệ), theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ tìm thấy đầu tiên, tăng dần theo
- *   rotationOrder rồi quay lại từ đầu nếu hết vòng — VD kệ đầu tiên thuộc MM2 thì thứ tự xét là
- *   MM2 → MM3 → MM4 → MM1 (mỗi Nhóm chỉ xét 1 lượt). Kệ chưa thuộc Nhóm tuần nào (rotationGroupId =
- *   null) thì chỉ xếp đúng 1 kệ đó, giữ hành vi cũ. Chỉ khi hết TẤT CẢ các Nhóm của NV đó (đúng mã cây)
- *   mà vẫn còn dư mới thật sự tràn sang 1 kệ Phòng mẫu mẹ chưa gán nhân viên (Kho mẫu mẹ chung) khớp
- *   "Cho phép xếp". Hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
+ *   Kệ "chính" được thử TRƯỚC TIÊN là kệ thuộc đúng Nhóm tuần ĐANG TỚI LƯỢT cấy chuyển của mã cây đó
+ *   ngay lúc xếp (khớp getCurrentWeekSlot theo N = transferWaitWeeks của mã cây, cùng công thức dùng ở
+ *   summarizeMotherWeekGroups/computeExpectedMoveAt) — VD hôm nay đang là khe MM3 thì ưu tiên kệ thuộc
+ *   MM3 trước, để lô mẫu mẹ mới bàn giao rơi đúng vào nhóm sắp cấy chuyển thay vì luôn dồn về nhóm nhỏ
+ *   nhất. Rơi về kệ có rotationOrder nhỏ nhất (hành vi cũ) khi CHƯA cấu hình "Tuần khởi đầu Nhóm tuần mẫu
+ *   mẹ" (SUPER_ADMIN chưa cài ở /settings/shelf-groups) hoặc NV đó không có kệ nào thuộc đúng Nhóm đang
+ *   tới lượt. Nếu kệ chính đã đầy, KHÔNG coi ngay là dư — hệ thống xếp tiếp sang TẤT CẢ các Nhóm tuần
+ *   mẫu mẹ KHÁC cũng của đúng NV đó, đúng mã cây (VD 1 NV có 8 kệ chia 4 Nhóm tuần MM1-MM4, mỗi nhóm 2
+ *   kệ), theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ chính, tăng dần theo rotationOrder rồi quay
+ *   lại từ đầu nếu hết vòng — VD kệ chính thuộc MM3 thì thứ tự xét là MM3 → MM4 → MM1 → MM2 (mỗi Nhóm chỉ
+ *   xét 1 lượt/vòng). Kệ chưa thuộc Nhóm tuần nào (rotationGroupId = null) thì chỉ xếp đúng 1 kệ đó, giữ
+ *   hành vi cũ. Chỉ khi hết TẤT CẢ các Nhóm của NV đó (đúng mã cây) mà vẫn còn dư mới thật sự tràn sang 1
+ *   kệ Phòng mẫu mẹ chưa gán nhân viên (Kho mẫu mẹ chung) khớp "Cho phép xếp". Hệ thống tự chọn kệ, không
+ *   cần KHO_MO chọn tay.
  */
 export async function planShelfAssignments(
   transferItems: { lotId: string; lot: LotForAssign }[],
@@ -164,6 +171,12 @@ export async function planShelfAssignments(
   }));
   const usedById = new Map(candidates.map((c) => [c.id, c.used]));
 
+  // Chỉ đọc "Tuần khởi đầu Nhóm tuần mẫu mẹ" khi batch thật sự có lô MAU_ME cần xếp kệ đã chia — dùng để
+  // xác định Nhóm nào đang tới lượt cấy chuyển ngay lúc xếp (xem lựa chọn primaryOwned bên dưới).
+  const motherEpochMonday = transferItems.some((i) => i.lot.stage !== "THANH_PHAM")
+    ? await getMotherRotationEpoch()
+    : undefined;
+
   const placements: ShelfPlacement[] = [];
 
   for (const { lotId, lot } of transferItems) {
@@ -220,14 +233,21 @@ export async function planShelfAssignments(
     let remainingBags = lot.quantity;
 
     if (ownerStaffId) {
-      // Chọn kệ "chính" ỔN ĐỊNH thay vì kệ đầu tiên Prisma trả về (không đảm bảo thứ tự) — ưu tiên
-      // rotationOrder nhỏ nhất (VD Nhóm MM1 trước MM4) rồi tới mã kệ (VD C01 trước C02), để cùng 1 tình
-      // huống luôn xếp vào đúng 1 Nhóm/kệ như nhau, không "bốc" ngẫu nhiên sang Nhóm khác giữa các lần
-      // xác nhận bàn giao (đã từng gây nhầm lẫn thật — anh mong đợi MM3 nhưng hệ thống chọn MM4).
+      // Chọn kệ "chính" ỔN ĐỊNH thay vì kệ đầu tiên Prisma trả về (không đảm bảo thứ tự) — sắp theo
+      // rotationOrder nhỏ nhất (VD Nhóm MM1 trước MM4) rồi tới mã kệ (VD C01 trước C02) làm nền tảng thứ
+      // tự vòng tuần hoàn bên dưới; kệ CHÍNH thật sự (điểm bắt đầu) lại ưu tiên đúng Nhóm đang tới lượt
+      // cấy chuyển tuần này (xem dueSlot bên dưới), không phải luôn rotationOrder nhỏ nhất — để cùng 1
+      // tình huống luôn xếp vào đúng 1 Nhóm/kệ như nhau, không "bốc" ngẫu nhiên sang Nhóm khác giữa các
+      // lần xác nhận bàn giao (đã từng gây nhầm lẫn thật — anh mong đợi MM3 nhưng hệ thống chọn MM4).
       const ownedForPlantType = candidates
         .filter((c) => c.roomType === "PHONG_MAU_ME" && c.assignedStaffId === ownerStaffId && c.plantTypeId === lot.plantTypeId)
         .sort((a, b) => (a.rotationOrder ?? Number.MAX_SAFE_INTEGER) - (b.rotationOrder ?? Number.MAX_SAFE_INTEGER) || a.code.localeCompare(b.code));
-      const primaryOwned = ownedForPlantType[0];
+      // Nhóm tuần đang tới lượt cấy chuyển NGAY LÚC XẾP (không phải lúc lô nhập kho tối) — dùng đúng N =
+      // transferWaitWeeks của mã cây trên lô, cùng công thức summarizeMotherWeekGroups/computeExpectedMoveAt
+      // đã dùng, để nhất quán với chỗ báo "đến hạn" cho KY_THUAT và chỗ tính hạn cấy chuyển của lô.
+      const totalSlots = lot.plantType.transferWaitWeeks;
+      const dueSlot = motherEpochMonday && totalSlots > 0 ? getCurrentWeekSlot(totalSlots, new Date(), motherEpochMonday) : null;
+      const primaryOwned = (dueSlot !== null ? ownedForPlantType.find((c) => c.rotationOrder === dueSlot) : undefined) ?? ownedForPlantType[0];
       if (primaryOwned) {
         // Kệ đầu tiên tìm được đầy thì thử tiếp sang các Nhóm tuần mẫu mẹ KHÁC cũng của đúng NV này,
         // đúng mã cây — theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ tìm thấy đầu tiên, tăng dần
