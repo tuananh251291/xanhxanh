@@ -8,7 +8,9 @@ import { Download, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export type ImportRowError = { row: number; label: string; message: string };
-export type ImportResult = { successCount: number; errors: ImportRowError[] };
+// zeroedCount: riêng cho mục "Lô tồn kho hiện có" (chế độ CẬP NHẬT THAY THẾ) — số lô bị đưa quantity về
+// 0 vì không còn xuất hiện trong file cho đúng vị trí đó. Các mục nhập Excel khác không trả field này.
+export type ImportResult = { successCount: number; zeroedCount?: number; errors: ImportRowError[] };
 
 // Card nhập Excel dùng chung cho mọi mục ở trang "Nhập liệu trực tiếp" (/settings/data-import) —
 // generalize từ warehouses/rooms/[roomId]/import-export-shelves-dialog.tsx (dialog cho 1 phòng) sang
@@ -64,7 +66,8 @@ export default function ExcelImportCard({
       setResult(json);
       if (json.errors.length === 0) {
         const label = successLabel ? successLabel(json.successCount) : `Đã nhập ${json.successCount} dòng`;
-        toast.success(label);
+        const zeroedSuffix = json.zeroedCount > 0 ? ` — kèm ${json.zeroedCount} lô bị đưa về 0 (không còn trong file)` : "";
+        toast.success(`${label}${zeroedSuffix}`);
       } else {
         // File có dòng lỗi = KHÔNG ghi gì cả (xem các route /api/data-import/*) — báo rõ chưa nhập được
         // gì, tránh hiểu nhầm "đã nhập 0 dòng" là hệ thống có lỗi, thay vì hiểu đúng là cần sửa & tải lại.
@@ -114,7 +117,7 @@ export default function ExcelImportCard({
             <p className={`text-sm font-medium ${result.errors.length > 0 ? "text-destructive" : "text-foreground"}`}>
               {result.errors.length > 0
                 ? `Chưa nhập được gì — file có ${result.errors.length} dòng lỗi, cần sửa hết rồi tải lên lại`
-                : `Đã nhập ${result.successCount} dòng`}
+                : `Đã nhập ${result.successCount} dòng${result.zeroedCount ? ` — kèm ${result.zeroedCount} lô bị đưa về 0 (không còn trong file)` : ""}`}
             </p>
             {result.errors.length > 0 && (
               <div className="max-h-56 overflow-y-auto border border-divider rounded-lg divide-y divide-divider">

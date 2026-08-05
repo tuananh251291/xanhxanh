@@ -5,8 +5,7 @@ import ExcelJS from "exceljs";
 import { addWeeks } from "date-fns";
 import { lotCodeBase } from "@/lib/codes";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
-import { resolveShelfAttributeUpdate, type ShelfAttributeUpdateData } from "@/lib/shelf-attribute-update";
-import { sumLotQuantity } from "@/types";
+import { resolveShelfAttributeUpdate } from "@/lib/shelf-attribute-update";
 
 const MAX_CODE_ATTEMPTS = 50;
 const FINISHED_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
@@ -18,6 +17,13 @@ type RowError = { row: number; label: string; message: string };
 // dùng chung cho cả kệ lẫn phòng — server tự phân biệt bằng cách tra Shelf trước, không thấy thì tra
 // Room. Với kệ Phòng mẫu mẹ, tái dùng đúng logic gán mã cây/mã NV + giới hạn theo sức chứa (capacity)
 // như /api/shelves/import để không lệch quy tắc nghiệp vụ.
+//
+// CẬP NHẬT THAY THẾ (không còn "chỉ thêm" như trước): với MỖI vị trí (kệ/phòng) xuất hiện trong file,
+// toàn bộ số liệu của vị trí đó được ghi đè theo đúng file — combo (mã cây, quy cách) có trong file thì
+// lô hiện có bị sửa quantity thành đúng số mới (để trống ô số lượng = 0), combo KHÔNG xuất hiện trong
+// file cho đúng vị trí đó thì lô hiện có bị đưa quantity về 0 (không xoá bản ghi Lot, chỉ để 0 — giữ lại
+// mã lô/lịch sử). Vị trí HOÀN TOÀN KHÔNG xuất hiện trong file thì không đụng tới. Xem addGuideSheet bên
+// dưới để hiểu chi tiết.
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "SUPER_ADMIN") {
@@ -68,21 +74,23 @@ export async function GET() {
   for (const s of staff) helpSheet.addRow({ type: "Mã NV", code: s.code, name: s.name });
   for (const r of finishedRooms) helpSheet.addRow({ type: "Phòng kho TP", code: r.code, name: `${r.name} (${r.warehouse.code})` });
   helpSheet.addRow({});
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Tải lên chỉ THÊM lô mới — không xoá/sửa lô đã có trong hệ thống." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "CẬP NHẬT THAY THẾ: với MỖI vị trí (kệ/phòng) có mặt trong file, toàn bộ tồn kho của đúng vị trí đó bị ghi đè theo file — vị trí không xuất hiện trong file thì không đụng tới." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Với 1 vị trí có mặt trong file: combo (mã cây + quy cách) có khai số lượng thì lô hiện có được sửa đúng số đó (không có lô thì tạo mới); combo KHÔNG khai (kể cả bỏ hẳn không có dòng nào) thì lô hiện có bị đưa số lượng về 0." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống ô Số lượng (khi vị trí/mã cây đó CÓ xuất hiện trong file) = hiểu là 0." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã vị trí: gõ mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "M05 chỉ dùng cho kệ Phòng mẫu mẹ. T01/T05 dùng cho kệ Phòng ra rễ hoặc phòng kho TP." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV cấy mô chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền cả 2 cột Số lượng phù hợp với vị trí (VD cả T01 lẫn T05 cho 1 kệ ra rễ) để tạo đồng thời 2 lô — miễn tổng không vượt sức chứa (capacity) của kệ." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã lô (nếu điền) chỉ áp dụng được khi dòng đó CHỈ có đúng 1 cột Số lượng — cần 2 mã lô riêng cho 2 quy cách thì tách thành 2 dòng." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Với kệ Phòng mẫu mẹ: Ngày nhập lô không còn dùng để tính hạn cấy chuyển — hạn tự tính theo Nhóm tuần mẫu mẹ đã gán cho giàn kệ đích (nếu giàn chưa gán Nhóm thì không có hạn)." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Kệ Phòng mẫu mẹ chỉ nên xuất hiện đúng 1 dòng/file (1 kệ chỉ dedicate 1 mã cây) — Phòng ra rễ/phòng kho TP có thể nhiều dòng (nhiều mã cây khác nhau)." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền cả 2 cột Số lượng phù hợp với vị trí (VD cả T01 lẫn T05 cho 1 kệ ra rễ) để cập nhật đồng thời 2 lô — miễn tổng không vượt sức chứa (capacity) của kệ." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã lô (nếu điền) chỉ có tác dụng khi TẠO LÔ MỚI (vị trí + mã cây + quy cách đó chưa có lô nào) và dòng chỉ có đúng 1 cột Số lượng khác 0 — nếu vị trí đó đã có lô sẵn (đang cập nhật số lượng) thì cột này bị bỏ qua, lô giữ nguyên mã cũ." });
 
   addGuideSheet(workbook, [
     { column: "Mã vị trí (kệ hoặc phòng kho TP)", required: true, description: "Mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm — hệ thống tự phân biệt." },
     { column: "Mã cây", required: true, description: "Mã loại cây, xem sheet Danh mục." },
     { column: "Mã NV cấy mô phụ trách", required: false, description: "Chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." },
     { column: "Ngày nhập lô", required: true, description: "Định dạng dd/mm/yyyy." },
-    { column: "Mã lô (để trống = tự sinh)", required: false, description: "Để trống để hệ thống tự sinh mã theo quy tắc chuẩn, hoặc gõ tay mã lô có sẵn ngoài đời — chỉ áp dụng khi dòng chỉ có đúng 1 cột Số lượng." },
-    { column: "Số lượng M05 / T01 / T05", required: false, description: "Bắt buộc điền ÍT NHẤT 1 cột phù hợp với vị trí (M05 cho kệ Phòng mẫu mẹ, T01/T05 cho kệ Phòng ra rễ/phòng kho TP) — có thể điền cả T01 lẫn T05 cùng lúc để tạo 2 lô, tổng không vượt sức chứa của kệ." },
+    { column: "Mã lô (để trống = tự sinh)", required: false, description: "Chỉ áp dụng khi tạo lô mới (vị trí + mã cây + quy cách chưa từng có lô) — bỏ qua nếu vị trí đó đã có lô, chỉ đang cập nhật số lượng." },
+    { column: "Số lượng M05 / T01 / T05", required: false, description: "Để trống = 0 (nghĩa là combo mã cây + quy cách đó không còn tồn tại ở vị trí này). Điền ÍT NHẤT 1 cột phù hợp với vị trí để dòng có tác dụng (M05 cho kệ Phòng mẫu mẹ, T01/T05 cho kệ Phòng ra rễ/phòng kho TP)." },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -158,32 +166,26 @@ export async function POST(req: NextRequest) {
     label: string;
     shelfId?: string;
     roomId?: string;
-    shelfUpdateData?: ShelfAttributeUpdateData;
+    isMauMeShelf: boolean;
+    shelfCapacity: number | null;
     plantType: ResolvedPlantType;
     lotStage: "MAU_ME" | "THANH_PHAM";
     staffCode: string | null;
+    resolvedStaffId?: string;
     enteredAt: Date;
     expectedMoveAt: Date | null;
     stageEntries: StageEntry[];
   };
 
-  // ---- Giai đoạn 1: validate toàn bộ, không ghi DB ----
+  // ---- Giai đoạn 1: validate từng dòng riêng lẻ, không ghi DB ----
   const errors: RowError[] = [];
   const validRows: ValidRow[] = [];
-  const claimedShelfUsage = new Map<string, number>();
   const claimedLotCodeOverrides = new Set<string>();
 
   for (const parsed of parsedRows) {
     const shelf = await prisma.shelf.findFirst({
       where: { code: parsed.location, isActive: true, room: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] } } },
-      select: {
-        id: true,
-        plantTypeId: true,
-        assignedStaffId: true,
-        capacity: true,
-        room: { select: { type: true } },
-        lots: { where: { status: "ACTIVE" }, select: { quantity: true } },
-      },
+      select: { id: true, plantTypeId: true, assignedStaffId: true, capacity: true, room: { select: { type: true } } },
     });
 
     const room = shelf
@@ -225,30 +227,24 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // Ghi đè: MỖI cột số lượng phù hợp với vị trí luôn tạo ra 1 entry — để trống = 0 (nghĩa là "vị trí
+    // này không còn tồn combo mã cây + quy cách đó"), khác hẳn kiểu "để trống = bỏ qua dòng đó" như bản
+    // cũ (chỉ thêm). Không còn yêu cầu "phải điền ít nhất 1 cột" vì để trống hết vẫn có nghĩa (0 tất cả).
     const ownCols: [string, string | undefined][] = isMauMeShelf
       ? [["M05", parsed.quantityM05]]
       : [["T01", parsed.quantityT01], ["T05", parsed.quantityT05]];
     const stageEntries: StageEntry[] = [];
     let stageError = false;
     for (const [stageCode, raw] of ownCols) {
-      if (!raw) continue;
-      const n = Number(raw);
-      if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-        errors.push({ row: parsed.row, label: parsed.location, message: `Số lượng ${stageCode} phải là số nguyên dương` });
+      const n = raw ? Number(raw) : 0;
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        errors.push({ row: parsed.row, label: parsed.location, message: `Số lượng ${stageCode} phải là số nguyên không âm` });
         stageError = true;
         break;
       }
       stageEntries.push({ stageCode, quantity: n });
     }
     if (stageError) continue;
-    if (stageEntries.length === 0) {
-      errors.push({
-        row: parsed.row,
-        label: parsed.location,
-        message: `Cần điền ít nhất 1 cột Số lượng phù hợp (${ownCols.map(([c]) => c).join("/")}) cho vị trí này`,
-      });
-      continue;
-    }
 
     let staffCode: string | null = null;
     let resolvedStaffId: string | undefined;
@@ -269,50 +265,20 @@ export async function POST(req: NextRequest) {
     }
     const enteredAt = enteredAtParsed ?? new Date();
 
-    let shelfUpdateData: ShelfAttributeUpdateData | undefined;
-    if (shelf) {
-      // Sức chứa (capacity) áp dụng cho CẢ kệ Phòng mẫu mẹ lẫn Phòng ra rễ như nhau — 1 kệ ra rễ có thể
-      // chứa nhiều quy cách cùng lúc (T01+T05), giới hạn duy nhất là capacity. Cộng
-      // dồn theo claimedShelfUsage vì cùng 1 kệ có thể xuất hiện ở nhiều dòng trong CÙNG 1 file import.
-      const totalQuantity = stageEntries.reduce((s, e) => s + e.quantity, 0);
-      const used = sumLotQuantity(shelf.lots) + (claimedShelfUsage.get(shelf.id) ?? 0);
-      if (shelf.capacity != null && used + totalQuantity > shelf.capacity) {
-        errors.push({
-          row: parsed.row,
-          label: parsed.location,
-          message: `Kệ ${parsed.location} không đủ chỗ (còn trống ${Math.max(0, shelf.capacity - used)}/${shelf.capacity})`,
-        });
-        continue;
-      }
-
-      // Gán mã cây/mã NV thẳng vào Shelf chỉ có ý nghĩa ở Phòng mẫu mẹ (field đó luôn null ở Phòng ra
-      // rễ — 1 kệ ra rễ có thể chứa nhiều mã cây khác nhau cùng lúc, xem shelves/import/route.ts).
-      if (isMauMeShelf) {
-        const attrResult = await resolveShelfAttributeUpdate(prisma, shelf.id, {
-          plantTypeId: plantType.id === shelf.plantTypeId ? undefined : plantType.id,
-          assignedStaffId: resolvedStaffId && resolvedStaffId !== shelf.assignedStaffId ? resolvedStaffId : undefined,
-        });
-        if (!attrResult.ok) {
-          errors.push({ row: parsed.row, label: parsed.location, message: attrResult.message });
-          continue;
-        }
-        shelfUpdateData = attrResult.data;
-      }
-      claimedShelfUsage.set(shelf.id, used + totalQuantity);
-    }
-
-    // Mã lô nhập tay chỉ áp dụng được khi dòng chỉ có đúng 1 quy cách — 2 quy cách trên cùng 1 dòng
-    // không có chỗ để phân biệt 2 mã lô riêng, cần tách thành 2 dòng nếu cần chỉ định mã tay cho cả 2.
+    // Mã lô nhập tay chỉ có ý nghĩa khi TẠO MỚI — chỉ chấp nhận khi dòng có đúng 1 cột Số lượng KHÁC 0
+    // (không rõ nên gán cho combo nào nếu 2 cột cùng khác 0). Việc "vị trí đã có lô sẵn nên bỏ qua mã
+    // này" được xử lý ở Giai đoạn 2 (không biết trước ở đây vì còn phụ thuộc lô hiện có lúc ghi).
     if (parsed.lotCode) {
-      if (stageEntries.length !== 1) {
+      const nonZero = stageEntries.filter((e) => e.quantity > 0);
+      if (nonZero.length !== 1) {
         errors.push({
           row: parsed.row,
           label: parsed.location,
-          message: "Mã lô chỉ áp dụng được khi dòng chỉ có đúng 1 cột Số lượng — tách thành 2 dòng nếu cần 2 mã lô riêng",
+          message: "Mã lô chỉ áp dụng được khi dòng có đúng 1 cột Số lượng khác 0 — tách thành 2 dòng nếu cần 2 mã lô riêng",
         });
         continue;
       }
-      const stageCode = stageEntries[0].stageCode;
+      const stageCode = nonZero[0].stageCode;
       const key = `${parsed.lotCode}::${stageCode}`;
       if (claimedLotCodeOverrides.has(key)) {
         errors.push({ row: parsed.row, label: parsed.location, message: `Mã lô "${parsed.lotCode}" (${stageCode}) trùng 1 dòng khác trong file` });
@@ -324,13 +290,12 @@ export async function POST(req: NextRequest) {
         continue;
       }
       claimedLotCodeOverrides.add(key);
-      stageEntries[0].lotCodeOverride = parsed.lotCode;
+      nonZero[0].lotCodeOverride = parsed.lotCode;
     }
 
-    // Mẫu mẹ (MAU_ME): KHÔNG còn tính expectedMoveAt từ Ngày nhập lô — "đạt hạn cấy chuyển" giờ tính
-    // thuần theo Nhóm tuần mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups ở
-    // src/lib/mother-week-group.ts), không phụ thuộc ngày lô cụ thể vào kệ. Ngày nhập lô vẫn bắt buộc
-    // điền vì còn dùng để sắp thứ tự rút FIFO khi dồn/xếp lại giàn (xem moveMotherStock).
+    // Mẫu mẹ (MAU_ME): KHÔNG tính expectedMoveAt từ Ngày nhập lô — "đạt hạn cấy chuyển" tính thuần theo
+    // Nhóm tuần mẫu mẹ của giàn kệ đích. Ngày nhập lô vẫn bắt buộc điền vì còn dùng để sắp thứ tự rút
+    // FIFO khi dồn/xếp lại giàn (xem moveMotherStock).
     const expectedMoveAt = isRaReShelf ? addWeeks(enteredAt, plantType.rootingWeeks) : null;
 
     validRows.push({
@@ -338,39 +303,151 @@ export async function POST(req: NextRequest) {
       label: parsed.location,
       shelfId: shelf?.id,
       roomId: room?.id,
-      shelfUpdateData,
+      isMauMeShelf,
+      shelfCapacity: shelf?.capacity ?? null,
       plantType,
       lotStage: isMauMeShelf ? "MAU_ME" : "THANH_PHAM",
       staffCode,
+      resolvedStaffId,
       enteredAt,
       expectedMoveAt,
       stageEntries,
     });
   }
 
-  // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction — chỉ khi cả file không còn dòng lỗi nào ----
-  let successCount = 0;
-  if (validRows.length > 0 && errors.length === 0) {
+  // ---- Giai đoạn 1.5: gộp các dòng theo vị trí (kệ/phòng), xây "trạng thái đích" — mỗi vị trí có mặt
+  // trong file thì TOÀN BỘ combo (mã cây, quy cách) của vị trí đó phải khớp đúng file sau khi ghi ----
+  type Target = { plantTypeId: string; stageCode: string; quantity: number; source: ValidRow; lotCodeOverride?: string };
+  type LocationGroup = {
+    shelfId?: string;
+    roomId?: string;
+    isMauMeShelf: boolean;
+    capacity: number | null;
+    label: string;
+    targets: Map<string, Target>; // key = `${plantTypeId}::${stageCode}`
+    mauMeRows: ValidRow[]; // dùng để validate + áp dụng gán mã cây/NV (chỉ có ý nghĩa ở Phòng mẫu mẹ)
+  };
+  const groups = new Map<string, LocationGroup>();
+  for (const vr of validRows) {
+    const key = vr.shelfId ? `shelf:${vr.shelfId}` : `room:${vr.roomId}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { shelfId: vr.shelfId, roomId: vr.roomId, isMauMeShelf: vr.isMauMeShelf, capacity: vr.shelfCapacity, label: vr.label, targets: new Map(), mauMeRows: [] };
+      groups.set(key, g);
+    }
+    for (const entry of vr.stageEntries) {
+      const comboKey = `${vr.plantType.id}::${entry.stageCode}`;
+      if (g.targets.has(comboKey)) {
+        errors.push({ row: vr.row, label: vr.label, message: `Trùng dữ liệu quy cách ${entry.stageCode} + mã cây ${vr.plantType.code} tại vị trí này — đã khai ở 1 dòng khác trong file` });
+        continue;
+      }
+      g.targets.set(comboKey, { plantTypeId: vr.plantType.id, stageCode: entry.stageCode, quantity: entry.quantity, source: vr, lotCodeOverride: entry.lotCodeOverride });
+    }
+    if (vr.isMauMeShelf) g.mauMeRows.push(vr);
+  }
+
+  // Kệ Phòng mẫu mẹ chỉ dedicate được 1 mã cây — nếu xuất hiện >1 dòng/kệ trong file thì không rõ nên
+  // gán mã cây/NV nào cho kệ, báo lỗi thay vì tự chọn đại 1 dòng.
+  for (const g of groups.values()) {
+    if (g.mauMeRows.length > 1) {
+      const rowsList = g.mauMeRows.map((r) => r.row).join(", ");
+      errors.push({ row: g.mauMeRows[0].row, label: g.label, message: `Kệ Phòng mẫu mẹ chỉ nên xuất hiện 1 dòng/file (đang trùng ở các dòng ${rowsList})` });
+    }
+  }
+
+  // Sức chứa: tổng TOÀN BỘ số lượng đích (sau khi ghi đè) của 1 kệ không được vượt capacity.
+  for (const g of groups.values()) {
+    if (g.capacity == null) continue;
+    const total = [...g.targets.values()].reduce((s, t) => s + t.quantity, 0);
+    if (total > g.capacity) {
+      const anyTarget = [...g.targets.values()][0];
+      errors.push({
+        row: anyTarget.source.row,
+        label: g.label,
+        message: `Vị trí ${g.label} không đủ sức chứa sau khi cập nhật (cần ${total.toLocaleString("vi-VN")}, tối đa ${g.capacity.toLocaleString("vi-VN")})`,
+      });
+    }
+  }
+
+  // ---- Giai đoạn 2: áp dụng — chỉ khi cả file không còn dòng lỗi nào ----
+  let updatedCount = 0; // số lô được tạo mới hoặc sửa số lượng khác 0 cũ
+  let zeroedCount = 0; // số lô bị đưa quantity về 0 vì không còn xuất hiện trong file cho đúng vị trí đó
+  if (groups.size > 0 && errors.length === 0) {
     const claimedLotCodes = new Set<string>();
     await prisma.$transaction(async (tx) => {
-      for (const vr of validRows) {
-        if (vr.shelfId && vr.shelfUpdateData && Object.keys(vr.shelfUpdateData).length > 0) {
-          await tx.shelf.update({ where: { id: vr.shelfId }, data: vr.shelfUpdateData });
+      for (const g of groups.values()) {
+        const whereLoc = g.shelfId ? { shelfId: g.shelfId } : { roomId: g.roomId };
+        const existingLots = await tx.lot.findMany({ where: { ...whereLoc, status: "ACTIVE" }, orderBy: { enteredAt: "asc" } });
+        const existingByCombo = new Map<string, typeof existingLots>();
+        for (const lot of existingLots) {
+          const comboKey = `${lot.plantTypeId}::${lot.stageCode}`;
+          const arr = existingByCombo.get(comboKey) ?? [];
+          arr.push(lot);
+          existingByCombo.set(comboKey, arr);
         }
 
-        for (const entry of vr.stageEntries) {
-          let code = entry.lotCodeOverride;
+        // Gán mã cây dedicate + NV phụ trách cho kệ Phòng mẫu mẹ (đã đảm bảo tối đa 1 dòng/kệ ở trên).
+        if (g.isMauMeShelf && g.mauMeRows.length === 1 && g.shelfId) {
+          const vr = g.mauMeRows[0];
+          const shelfCurrent = await tx.shelf.findUnique({ where: { id: g.shelfId }, select: { plantTypeId: true, assignedStaffId: true } });
+          const attrResult = await resolveShelfAttributeUpdate(tx, g.shelfId, {
+            plantTypeId: shelfCurrent && vr.plantType.id === shelfCurrent.plantTypeId ? undefined : vr.plantType.id,
+            assignedStaffId: vr.resolvedStaffId && vr.resolvedStaffId !== shelfCurrent?.assignedStaffId ? vr.resolvedStaffId : undefined,
+          });
+          if (attrResult.ok && Object.keys(attrResult.data).length > 0) {
+            await tx.shelf.update({ where: { id: g.shelfId }, data: attrResult.data });
+          }
+          // Lỗi ở đây (VD kệ còn lô mã cây khác còn ACTIVE) không nên xảy ra vì đã validate ở Giai đoạn 1
+          // — bỏ qua silently nếu có lệch state hiếm gặp (2 lượt nhập trùng thời điểm), không rollback cả
+          // batch vì lỗi chỉ ảnh hưởng đúng 2 field này, không ảnh hưởng số lượng.
+        }
+
+        // Combo hiện có nhưng KHÔNG xuất hiện trong file cho vị trí này → đưa quantity về 0 (giữ nguyên
+        // bản ghi Lot, không xoá — vẫn còn mã lô/lịch sử để tra cứu).
+        for (const [comboKey, lots] of existingByCombo) {
+          if (g.targets.has(comboKey)) continue;
+          for (const lot of lots) {
+            if (lot.quantity !== 0) {
+              await tx.lot.update({ where: { id: lot.id }, data: { quantity: 0 } });
+              zeroedCount += 1;
+            }
+          }
+        }
+
+        // Áp trạng thái đích: combo có trong file thì sửa lô hiện có (lấy lô CŨ NHẤT nếu lỡ có nhiều lô
+        // trùng combo — các lô dư còn lại đưa về 0) hoặc tạo mới nếu chưa từng có.
+        for (const [comboKey, target] of g.targets) {
+          const existing = existingByCombo.get(comboKey) ?? [];
+          if (existing.length > 0) {
+            const [primary, ...rest] = existing;
+            if (primary.quantity !== target.quantity) {
+              await tx.lot.update({ where: { id: primary.id }, data: { quantity: target.quantity } });
+              updatedCount += 1;
+            }
+            for (const dup of rest) {
+              if (dup.quantity !== 0) {
+                await tx.lot.update({ where: { id: dup.id }, data: { quantity: 0 } });
+                zeroedCount += 1;
+              }
+            }
+            continue;
+          }
+
+          if (target.quantity <= 0) continue; // chưa từng có lô + số lượng 0 → không có gì để tạo
+
+          const vr = target.source;
+          let code = target.lotCodeOverride;
           if (!code) {
             const base = lotCodeBase({ plantTypeCode: vr.plantType.code, staffCode: vr.staffCode ?? "NV000", date: vr.enteredAt });
             let attempt = 0;
             for (;;) {
               attempt += 1;
               code = attempt === 1 ? base : `${base}-${attempt}`;
-              const key = `${code}::${entry.stageCode}`;
+              const key = `${code}::${target.stageCode}`;
               if (attempt > MAX_CODE_ATTEMPTS) throw new Error(`Không sinh được mã lô duy nhất cho ${vr.label}`);
               if (claimedLotCodes.has(key)) continue;
-              const existingLot = await tx.lot.findFirst({ where: { code, stageCode: entry.stageCode }, select: { id: true } });
-              if (existingLot) continue;
+              const existingCode = await tx.lot.findFirst({ where: { code, stageCode: target.stageCode }, select: { id: true } });
+              if (existingCode) continue;
               claimedLotCodes.add(key);
               break;
             }
@@ -379,24 +456,23 @@ export async function POST(req: NextRequest) {
           await tx.lot.create({
             data: {
               code: code!,
-              plantTypeId: vr.plantType.id,
+              plantTypeId: target.plantTypeId,
               stage: vr.lotStage,
-              stageCode: entry.stageCode,
-              shelfId: vr.shelfId,
-              roomId: vr.roomId,
-              quantity: entry.quantity,
-              initialQuantity: entry.quantity,
+              stageCode: target.stageCode,
+              shelfId: g.shelfId,
+              roomId: g.roomId,
+              quantity: target.quantity,
+              initialQuantity: target.quantity,
               status: "ACTIVE",
               enteredAt: vr.enteredAt,
               expectedMoveAt: vr.expectedMoveAt,
             },
           });
-
-          successCount += 1;
+          updatedCount += 1;
         }
       }
     });
   }
 
-  return NextResponse.json({ successCount, errors });
+  return NextResponse.json({ successCount: updatedCount, zeroedCount, errors });
 }
