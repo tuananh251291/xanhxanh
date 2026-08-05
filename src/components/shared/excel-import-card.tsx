@@ -8,8 +8,9 @@ import { Download, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export type ImportRowError = { row: number; label: string; message: string };
-// zeroedCount: riêng cho mục "Lô tồn kho hiện có" (chế độ CẬP NHẬT THAY THẾ) — số lô bị đưa quantity về
-// 0 vì không còn xuất hiện trong file cho đúng vị trí đó. Các mục nhập Excel khác không trả field này.
+// zeroedCount: riêng cho mục "Lô tồn kho hiện có" — số lô TRÙNG combo (vị trí + mã cây + quy cách, dữ
+// liệu cũ lỡ có nhiều lô cùng combo) bị đưa quantity về 0 khi combo đó được ghi đè, trường hợp hiếm gặp.
+// Các mục nhập Excel khác không trả field này.
 export type ImportResult = { successCount: number; zeroedCount?: number; errors: ImportRowError[] };
 
 // Card nhập Excel dùng chung cho mọi mục ở trang "Nhập liệu trực tiếp" (/settings/data-import) —
@@ -66,7 +67,7 @@ export default function ExcelImportCard({
       setResult(json);
       if (json.errors.length === 0) {
         const label = successLabel ? successLabel(json.successCount) : `Đã nhập ${json.successCount} dòng`;
-        const zeroedSuffix = json.zeroedCount > 0 ? ` — kèm ${json.zeroedCount} lô bị đưa về 0 (không còn trong file)` : "";
+        const zeroedSuffix = json.zeroedCount > 0 ? ` — kèm ${json.zeroedCount} lô trùng dữ liệu bị dồn về 0` : "";
         toast.success(`${label}${zeroedSuffix}`);
       } else {
         // File có dòng lỗi = KHÔNG ghi gì cả (xem các route /api/data-import/*) — báo rõ chưa nhập được
@@ -117,7 +118,7 @@ export default function ExcelImportCard({
             <p className={`text-sm font-medium ${result.errors.length > 0 ? "text-destructive" : "text-foreground"}`}>
               {result.errors.length > 0
                 ? `Chưa nhập được gì — file có ${result.errors.length} dòng lỗi, cần sửa hết rồi tải lên lại`
-                : `Đã nhập ${result.successCount} dòng${result.zeroedCount ? ` — kèm ${result.zeroedCount} lô bị đưa về 0 (không còn trong file)` : ""}`}
+                : `Đã nhập ${result.successCount} dòng${result.zeroedCount ? ` — kèm ${result.zeroedCount} lô trùng dữ liệu bị dồn về 0` : ""}`}
             </p>
             {result.errors.length > 0 && (
               <div className="max-h-56 overflow-y-auto border border-divider rounded-lg divide-y divide-divider">

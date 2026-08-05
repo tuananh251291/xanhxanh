@@ -18,12 +18,11 @@ type RowError = { row: number; label: string; message: string };
 // Room. Với kệ Phòng mẫu mẹ, tái dùng đúng logic gán mã cây/mã NV + giới hạn theo sức chứa (capacity)
 // như /api/shelves/import để không lệch quy tắc nghiệp vụ.
 //
-// CẬP NHẬT THAY THẾ (không còn "chỉ thêm" như trước): với MỖI vị trí (kệ/phòng) xuất hiện trong file,
-// toàn bộ số liệu của vị trí đó được ghi đè theo đúng file — combo (mã cây, quy cách) có trong file thì
-// lô hiện có bị sửa quantity thành đúng số mới (để trống ô số lượng = 0), combo KHÔNG xuất hiện trong
-// file cho đúng vị trí đó thì lô hiện có bị đưa quantity về 0 (không xoá bản ghi Lot, chỉ để 0 — giữ lại
-// mã lô/lịch sử). Vị trí HOÀN TOÀN KHÔNG xuất hiện trong file thì không đụng tới. Xem addGuideSheet bên
-// dưới để hiểu chi tiết.
+// CẬP NHẬT THAY THẾ (không còn "chỉ thêm" như trước): CHỈ đúng combo (vị trí + mã cây + quy cách) xuất
+// hiện trong file mới bị ghi đè — lô hiện có của đúng combo đó bị sửa quantity thành số mới (để trống ô
+// số lượng = 0, kể cả về 0 vẫn giữ nguyên bản ghi Lot, không xoá). Vị trí KHÔNG xuất hiện trong file, hoặc
+// combo (mã cây/quy cách khác) trên CÙNG 1 vị trí có mặt trong file nhưng không được khai ở dòng nào —
+// GIỮ NGUYÊN số lượng cũ, không đụng tới. Xem addGuideSheet bên dưới để hiểu chi tiết.
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "SUPER_ADMIN") {
@@ -74,9 +73,9 @@ export async function GET() {
   for (const s of staff) helpSheet.addRow({ type: "Mã NV", code: s.code, name: s.name });
   for (const r of finishedRooms) helpSheet.addRow({ type: "Phòng kho TP", code: r.code, name: `${r.name} (${r.warehouse.code})` });
   helpSheet.addRow({});
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "CẬP NHẬT THAY THẾ: với MỖI vị trí (kệ/phòng) có mặt trong file, toàn bộ tồn kho của đúng vị trí đó bị ghi đè theo file — vị trí không xuất hiện trong file thì không đụng tới." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Với 1 vị trí có mặt trong file: combo (mã cây + quy cách) có khai số lượng thì lô hiện có được sửa đúng số đó (không có lô thì tạo mới); combo KHÔNG khai (kể cả bỏ hẳn không có dòng nào) thì lô hiện có bị đưa số lượng về 0." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống ô Số lượng (khi vị trí/mã cây đó CÓ xuất hiện trong file) = hiểu là 0." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "CẬP NHẬT THAY THẾ: CHỈ đúng combo (vị trí + mã cây + quy cách) có dòng khai trong file mới bị ghi đè số lượng — mọi vị trí/combo KHÔNG xuất hiện trong file đều GIỮ NGUYÊN số lượng cũ, không đụng tới." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Với combo có dòng khai trong file: lô hiện có được sửa đúng số lượng mới (không có lô thì tạo mới, số lượng 0 thì không tạo gì)." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống ô Số lượng (khi dòng đó CÓ khai vị trí/mã cây này) = hiểu là 0 — tức lô combo đó bị đưa về 0." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã vị trí: gõ mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "M05 chỉ dùng cho kệ Phòng mẫu mẹ. T01/T05 dùng cho kệ Phòng ra rễ hoặc phòng kho TP." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV cấy mô chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." });
@@ -90,7 +89,7 @@ export async function GET() {
     { column: "Mã NV cấy mô phụ trách", required: false, description: "Chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." },
     { column: "Ngày nhập lô", required: true, description: "Định dạng dd/mm/yyyy." },
     { column: "Mã lô (để trống = tự sinh)", required: false, description: "Chỉ áp dụng khi tạo lô mới (vị trí + mã cây + quy cách chưa từng có lô) — bỏ qua nếu vị trí đó đã có lô, chỉ đang cập nhật số lượng." },
-    { column: "Số lượng M05 / T01 / T05", required: false, description: "Để trống = 0 (nghĩa là combo mã cây + quy cách đó không còn tồn tại ở vị trí này). Điền ÍT NHẤT 1 cột phù hợp với vị trí để dòng có tác dụng (M05 cho kệ Phòng mẫu mẹ, T01/T05 cho kệ Phòng ra rễ/phòng kho TP)." },
+    { column: "Số lượng M05 / T01 / T05", required: false, description: "Để trống = 0 (combo mã cây + quy cách đó ở đúng vị trí này bị đưa về 0). Combo/vị trí không có dòng nào khai trong file thì giữ nguyên số lượng cũ, không bị đụng tới." },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -315,8 +314,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ---- Giai đoạn 1.5: gộp các dòng theo vị trí (kệ/phòng), xây "trạng thái đích" — mỗi vị trí có mặt
-  // trong file thì TOÀN BỘ combo (mã cây, quy cách) của vị trí đó phải khớp đúng file sau khi ghi ----
+  // ---- Giai đoạn 1.5: gộp các dòng theo vị trí (kệ/phòng), xây "trạng thái đích" cho ĐÚNG các combo
+  // (mã cây, quy cách) được khai trong file — combo khác trên cùng vị trí không có trong targets thì giữ
+  // nguyên, không đụng tới (xử lý ở Giai đoạn 2) ----
   type Target = { plantTypeId: string; stageCode: string; quantity: number; source: ValidRow; lotCodeOverride?: string };
   type LocationGroup = {
     shelfId?: string;
@@ -355,10 +355,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Sức chứa: tổng TOÀN BỘ số lượng đích (sau khi ghi đè) của 1 kệ không được vượt capacity.
+  // Sức chứa: tổng số lượng SAU khi ghi đè = số lượng các combo GIỮ NGUYÊN (không có trong targets) +
+  // tổng targets — không được vượt capacity. Cần đọc lô hiện có (chỉ shelf mới có capacity, room luôn
+  // capacity=null nên nhánh này chỉ chạy cho shelf).
   for (const g of groups.values()) {
-    if (g.capacity == null) continue;
-    const total = [...g.targets.values()].reduce((s, t) => s + t.quantity, 0);
+    if (g.capacity == null || !g.shelfId) continue;
+    const existingLots = await prisma.lot.findMany({
+      where: { shelfId: g.shelfId, status: "ACTIVE" },
+      select: { plantTypeId: true, stageCode: true, quantity: true },
+    });
+    const untouchedQuantity = existingLots
+      .filter((l) => !g.targets.has(`${l.plantTypeId}::${l.stageCode}`))
+      .reduce((s, l) => s + l.quantity, 0);
+    const targetQuantity = [...g.targets.values()].reduce((s, t) => s + t.quantity, 0);
+    const total = untouchedQuantity + targetQuantity;
     if (total > g.capacity) {
       const anyTarget = [...g.targets.values()][0];
       errors.push({
@@ -370,8 +380,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Giai đoạn 2: áp dụng — chỉ khi cả file không còn dòng lỗi nào ----
-  let updatedCount = 0; // số lô được tạo mới hoặc sửa số lượng khác 0 cũ
-  let zeroedCount = 0; // số lô bị đưa quantity về 0 vì không còn xuất hiện trong file cho đúng vị trí đó
+  let updatedCount = 0; // số lô được tạo mới hoặc sửa số lượng theo đúng combo khai trong file
+  // zeroedCount: chỉ phát sinh trong trường hợp hiếm — 1 combo (vị trí + mã cây + quy cách) lỡ có NHIỀU
+  // hơn 1 lô ACTIVE trùng nhau (dữ liệu cũ trước khi có quy tắc này) — lô dư (không phải lô cũ nhất) bị
+  // đưa về 0 khi combo đó được ghi đè, KHÔNG liên quan gì tới việc combo có mặt hay không trong file.
+  let zeroedCount = 0;
   if (groups.size > 0 && errors.length === 0) {
     const claimedLotCodes = new Set<string>();
     await prisma.$transaction(async (tx) => {
@@ -402,17 +415,7 @@ export async function POST(req: NextRequest) {
           // batch vì lỗi chỉ ảnh hưởng đúng 2 field này, không ảnh hưởng số lượng.
         }
 
-        // Combo hiện có nhưng KHÔNG xuất hiện trong file cho vị trí này → đưa quantity về 0 (giữ nguyên
-        // bản ghi Lot, không xoá — vẫn còn mã lô/lịch sử để tra cứu).
-        for (const [comboKey, lots] of existingByCombo) {
-          if (g.targets.has(comboKey)) continue;
-          for (const lot of lots) {
-            if (lot.quantity !== 0) {
-              await tx.lot.update({ where: { id: lot.id }, data: { quantity: 0 } });
-              zeroedCount += 1;
-            }
-          }
-        }
+        // Combo hiện có nhưng KHÔNG xuất hiện trong file cho vị trí này → GIỮ NGUYÊN, không đụng tới.
 
         // Áp trạng thái đích: combo có trong file thì sửa lô hiện có (lấy lô CŨ NHẤT nếu lỡ có nhiều lô
         // trùng combo — các lô dư còn lại đưa về 0) hoặc tạo mới nếu chưa từng có.

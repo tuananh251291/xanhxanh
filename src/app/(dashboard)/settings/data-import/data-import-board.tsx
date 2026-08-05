@@ -58,7 +58,7 @@ export default function DataImportBoard() {
       <ExcelImportCard
         icon={<Sprout className="w-5 h-5" />}
         title="5. Lô tồn kho hiện có"
-        description={'Nhập lô mẫu mẹ/ra rễ đang trên kệ hoặc lô thành phẩm đang trong kho — nền tảng bắt buộc để Chỉ định cấy và Phiếu bàn giao bên dưới có lô để tham chiếu. CẬP NHẬT THAY THẾ: mỗi vị trí (kệ/phòng) có mặt trong file sẽ bị ghi đè TOÀN BỘ theo file — combo mã cây/quy cách không khai (hoặc để trống số lượng) sẽ bị đưa về 0. Vị trí không xuất hiện trong file thì không đụng tới.'}
+        description={'Nhập lô mẫu mẹ/ra rễ đang trên kệ hoặc lô thành phẩm đang trong kho — nền tảng bắt buộc để Chỉ định cấy và Phiếu bàn giao bên dưới có lô để tham chiếu. CẬP NHẬT THAY THẾ: chỉ đúng combo (vị trí + mã cây + quy cách) có dòng khai trong file mới bị ghi đè số lượng (để trống ô = 0). Vị trí/combo không xuất hiện trong file thì giữ nguyên số lượng cũ, không đụng tới.'}
         templateUrl="/api/data-import/lots"
         uploadUrl="/api/data-import/lots"
         successLabel={(n) => `Đã cập nhật ${n} lô`}
