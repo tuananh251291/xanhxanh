@@ -68,7 +68,7 @@ export default async function PhongToiRoomDetailPage({ params }: { params: Promi
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên cây</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Quy cách</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Số lượng</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Ngày nhập kho tối</th>
+                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">{isPhongNhiem ? "Ngày phát sinh đầu tiên" : "Ngày nhập kho tối"}</th>
                   </tr>
                 </thead>
                 <tbody>
