@@ -182,6 +182,15 @@ export const INSTRUCTION_STATUS_LABELS = {
   ENDED: "Kết thúc",
 } as const;
 
+export const REPACK_STATUS_LABELS = {
+  CREATED: "Chờ gán NV",
+  ASSIGNED: "Chờ NV nhận bàn giao",
+  IN_PROGRESS: "Đang xử lý",
+  PENDING_PLACEMENT: "Chờ kiểm tra & sắp xếp",
+  COMPLETED: "Hoàn thành",
+  CANCELLED: "Đã hủy",
+} as const;
+
 export const TRANSFER_STATUS_LABELS = {
   PENDING: "Chờ xác nhận",
   CONFIRMED: "Đã xác nhận",
@@ -298,6 +307,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/instructions/backup", label: "Chỉ định cấy dự phòng", icon: "ShieldPlus" },
+    { href: "/repack-instructions", label: "Chỉ định cấy xử lý", icon: "RefreshCw" },
     { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
     { href: "/mother-ready", label: "Mẫu mẹ đạt chưa chỉ định", icon: "Sprout" },
     { href: "/planting-check", label: "Kiểm tra tình trạng cấy", icon: "ClipboardCheck" },
@@ -318,6 +328,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy chưa bàn giao", icon: "ClipboardList" },
+    { href: "/repack-instructions", label: "Chỉ định cấy xử lý", icon: "RefreshCw" },
     { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },

@@ -59,6 +59,30 @@ export async function generateInstructionCode(params: {
   return candidate;
 }
 
+// Mã chỉ định cấy xử lý = CX + mã kho sản xuất (1 ký tự) + phần cuối mã giàn kệ NGUỒN (Phòng ra rễ) +
+// ngày tạo "ddMMyy" — cùng công thức generateInstructionCode nhưng tiền tố "CX" để không trùng "CD"
+// (PlantingInstruction) hay "XL" (ProcessingTicket, feature khác hẳn — xem RepackInstruction ở schema).
+export async function generateRepackInstructionCode(params: {
+  warehouseCode: string;
+  shelfCode: string;
+  date?: Date;
+  client?: Prisma.TransactionClient | typeof prisma;
+}): Promise<string> {
+  const { warehouseCode, shelfCode, date = new Date(), client = prisma } = params;
+  const warehouseLetter = warehouseCode.split("-").pop() ?? warehouseCode;
+  const rackCode = shelfCode.split("-").pop() ?? shelfCode;
+  const dateStr = format(date, "ddMMyy");
+  const base = `CX${warehouseLetter}${rackCode}${dateStr}`;
+
+  let candidate = base;
+  let n = 1;
+  while (await client.repackInstruction.findFirst({ where: { code: candidate } })) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
+}
+
 // client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD POST /api/transfers) để tính mã kế tiếp
 // dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton như trước.
 export async function generateTransferCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {

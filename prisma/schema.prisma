@@ -271,6 +271,11 @@ model User {
   extraWorkRequests         ExtraWorkRequest[] @relation("ExtraWorkRequestStaff")
   extraWorkRequestsResponded ExtraWorkRequest[] @relation("ExtraWorkRequestRespondedBy")
   productPrices             ProductPrice[]
+  repackCreated             RepackInstruction[] @relation("RepackCreatedBy")
+  repackAssignedTo          RepackInstruction[] @relation("RepackAssignedTo")
+  repackAssignedBy          RepackInstruction[] @relation("RepackAssignedBy")
+  repackInspectedBy         RepackInstruction[] @relation("RepackInspectedBy")
+  repackPlacedBy            RepackInstruction[] @relation("RepackPlacedBy")
 
   @@map("users")
 }
@@ -418,6 +423,7 @@ model PlantType {
   processingTickets    ProcessingTicket[]
   orderProcessingRequests OrderProcessingRequest[]
   goodsReceiptItems    GoodsReceiptItem[]
+  repackInstructions   RepackInstruction[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -766,6 +772,8 @@ model Shelf {
 
   lots             Lot[]
   instructionItems PlantingInstructionItem[]
+  repackAsSource   RepackInstruction[] @relation("RepackSourceShelf")
+  repackAsOutput   RepackInstruction[] @relation("RepackActualOutputShelf")
 
   @@map("shelves")
 }
@@ -870,6 +878,8 @@ model Lot {
   // Ngược của GoodsReceiptItem.plannedLotId — chỉ có giá trị khi lô này là lô "ảo" do 1 Kế hoạch nhập
   // kho tạo ra (status = PLANNED).
   goodsReceiptPlan GoodsReceiptItem?
+  repackAsSource   RepackInstruction[] @relation("RepackSourceLot")
+  repackAsOutput   RepackInstruction[] @relation("RepackOutputLot")
 
   @@unique([code, stageCode])
   @@map("lots")
@@ -979,6 +989,99 @@ model PlantingInstructionItem {
   finishedMedium         MediumType? @relation("ItemFinishedMedium", fields: [finishedMediumTypeId], references: [id])
 
   @@map("planting_instruction_items")
+}
+
+// ============================================================
+// REPACK INSTRUCTIONS — "Chỉ định cấy xử lý": đóng gói lại hàng THÀNH PHẨM đã có sẵn trên 1 kệ Phòng ra
+// rễ từ quy cách này sang quy cách khác (VD T05 -> T01), KHÔNG liên quan mẫu mẹ/chu kỳ tuần. Chạy SONG
+// SONG với PlantingInstruction của NV cấy mô — model độc lập hoàn toàn, không có FK/quan hệ nào tới
+// PlantingInstruction/ExtraWorkRequest, nên không bao giờ lọt vào các query "1 chỉ định tại 1 thời điểm"
+// (PATCH /api/instructions/[id] nhánh confirmMotherReceived) hay activeInstructionThisWeek
+// (src/lib/cay-mo-quest-stats.ts) — cả 2 chỉ đọc bảng planting_instructions.
+// ============================================================
+
+// Trạng thái vòng đời — luồng tuyến tính, KHÔNG có khái niệm tuần/auto-end như PlantingInstruction (thời
+// lượng ngắn 1-2 ngày, không cần sweep tự động — xem RepackInstruction.staffConfirmedAt).
+enum RepackInstructionStatus {
+  CREATED           // KY_THUAT vừa tạo, chưa gán NV cấy mô
+  ASSIGNED          // Kho mô đã chọn NV cấy mô, chờ NV xác nhận "Nhận bàn giao"
+  IN_PROGRESS       // NV đã xác nhận nhận — ĐÃ trừ inputQuantity khỏi lô nguồn, đang xử lý
+  PENDING_PLACEMENT // NV đã bàn giao kết quả (đạt/không đạt tự khai) — chờ Kho mô kiểm tra + sắp xếp
+  COMPLETED         // Kho mô đã sắp xếp xong lên kệ — kết thúc vòng đời
+  CANCELLED         // Hủy trước khi NV xác nhận nhận (không cần hoàn tồn kho)
+}
+
+model RepackInstruction {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+
+  // Kệ + lô nguồn CỤ THỂ trong Phòng ra rễ (không qua thuật toán chọn kệ) — cũng là đích "gợi ý" mặc định
+  // khi Kho mô sắp xếp thành phẩm quay lại (xem actualOutputShelfId, src/lib/repack-placement.ts).
+  sourceShelfId String
+  sourceShelf   Shelf  @relation("RepackSourceShelf", fields: [sourceShelfId], references: [id])
+  sourceLotId   String
+  sourceLot     Lot    @relation("RepackSourceLot", fields: [sourceLotId], references: [id])
+
+  inputStageCode String // VD "T05" — quy cách của sourceLot lúc tạo, lấy từ sourceLot (không tin client)
+  // Số CÂY (không phải số túi — Lot.quantity của thành phẩm luôn tính theo cây trong toàn hệ thống, xem
+  // FINISHED_SPEC_BAG_SIZE ở src/types/index.ts) — sẽ bị trừ khỏi sourceLot NGAY LÚC NV cấy mô xác nhận
+  // "Nhận bàn giao" (staffConfirmedAt), KHÁC thời điểm trừ của PlantingInstruction (trừ lúc Kho mô bàn
+  // giao, không phải lúc NV tự xác nhận nhận).
+  inputQuantity Int
+  // VD "T01" — quy cách đích, luôn khác inputStageCode (validate ở POST /api/repack-instructions).
+  outputStageCode String
+  // = inputQuantity — đóng gói lại KHÔNG sinh thêm cây, lưu tường minh để đối chiếu đạt/không đạt.
+  expectedOutputQuantity Int
+
+  createdById String
+  createdBy   User     @relation("RepackCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  // Kho mô (KHÔNG phải KY_THUAT) tự chọn NV cấy mô thực hiện — mirror nhánh assignedToId của "kệ chung"
+  // ở PATCH /api/instructions/[id], KHÔNG qua ExtraWorkRequest/chỉ định dự phòng.
+  assignedToId String?
+  assignedTo   User?     @relation("RepackAssignedTo", fields: [assignedToId], references: [id])
+  assignedById String?
+  assignedBy   User?     @relation("RepackAssignedBy", fields: [assignedById], references: [id])
+  assignedAt   DateTime?
+
+  // NV cấy mô tự bấm "Nhận bàn giao" — ĐÂY là mốc trừ tồn kho (xem inputQuantity ở trên).
+  staffConfirmedAt DateTime?
+
+  // NV cấy mô tự khai kết quả CUỐI CÙNG (1 lần duy nhất khi bấm "Hoàn thành – Bàn giao kết quả", không
+  // có bảng ngày như DailyRecord — công việc ngắn 1-2 ngày, chỉ cần 1 con số kết quả sau cùng).
+  staffHandedBackAt      DateTime?
+  reportedPassedQuantity Int?
+  reportedFailedQuantity Int?
+
+  // Kho mô kiểm tra lại (mức độ review tương tự chỉ định thường) — có thể giữ nguyên hoặc sửa số NV tự
+  // khai trước khi tính lương. Không chia luồng Xanh/Đỏ như TransferInspection — luôn kiểm tra 1 bước.
+  khoMoInspectedAt        DateTime?
+  khoMoInspectedById      String?
+  khoMoInspectedBy        User?     @relation("RepackInspectedBy", fields: [khoMoInspectedById], references: [id])
+  confirmedPassedQuantity Int?
+  confirmedFailedQuantity Int?
+  // = confirmedPassedQuantity — chỉ số "đạt" DUY NHẤT tính lương/năng suất (không đạt vẫn được xếp kho
+  // thật ở bước Sắp xếp, chỉ không tính công — cùng nguyên tắc TransferItem.unqualifiedQuantity).
+  creditedQuantity Int?
+
+  // Kho mô "Sắp xếp" — LUÔN gợi ý mặc định đúng sourceShelfId trước, chỉ đổi sang kệ khác nếu kệ gốc hết
+  // chỗ (Kho mô tự nhập mã kệ khác — xem src/lib/repack-placement.ts).
+  placedAt            DateTime?
+  placedById          String?
+  placedBy            User?   @relation("RepackPlacedBy", fields: [placedById], references: [id])
+  actualOutputShelfId String?
+  actualOutputShelf   Shelf?  @relation("RepackActualOutputShelf", fields: [actualOutputShelfId], references: [id])
+  outputLotId         String?
+  outputLot           Lot?    @relation("RepackOutputLot", fields: [outputLotId], references: [id])
+
+  status    RepackInstructionStatus @default(CREATED)
+  notes     String?
+  updatedAt DateTime                @updatedAt
+
+  @@map("repack_instructions")
 }
 
 // ============================================================

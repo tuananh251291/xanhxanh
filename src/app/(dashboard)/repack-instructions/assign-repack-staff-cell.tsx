@@ -1,0 +1,52 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Loader2, Send } from "lucide-react";
+import { toast } from "sonner";
+
+type Staff = { id: string; name: string };
+
+export default function AssignRepackStaffCell({ instructionId, staffList }: { instructionId: string; staffList: Staff[] }) {
+  const [staffId, setStaffId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const assign = async () => {
+    if (!staffId) { toast.error("Chọn nhân viên cấy mô trước"); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/repack-instructions/${instructionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedToId: staffId }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã bàn giao chỉ định xử lý cho nhân viên cấy mô");
+      router.refresh();
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <Select
+        items={staffList.map((s) => ({ value: s.id, label: s.name }))}
+        value={staffId || null}
+        onValueChange={(v) => setStaffId(v as string)}
+      >
+        <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Chọn NV cấy mô" /></SelectTrigger>
+        <SelectContent>
+          {staffList.map((s) => (
+            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={loading} onClick={assign}>
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+        Bàn giao
+      </Button>
+    </div>
+  );
+}

@@ -3,10 +3,20 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PackageCheck, Loader2, Clock } from "lucide-react";
+import { PackageCheck, Loader2, Clock, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { TRANSFER_STATUS_LABELS } from "@/types";
+
+type CompletedRepack = {
+  id: string;
+  code: string;
+  plantType: { code: string; name: string };
+  inputStageCode: string;
+  outputStageCode: string;
+  creditedQuantity: number | null;
+  placedAt: string | null;
+};
 
 type Group = {
   stageCode: string;
@@ -104,16 +114,24 @@ function TransferCard({ transfer, isXanh }: { transfer: TransferRow; isXanh: boo
 export default function HandoverRecordBoard() {
   const [lane, setLane] = useState<"XANH" | "DO" | null>(null);
   const [transfers, setTransfers] = useState<TransferRow[]>([]);
+  const [repacks, setRepacks] = useState<CompletedRepack[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/transfers/my-handovers");
-      if (res.ok) {
-        const data = await res.json();
+      const [handoversRes, repacksRes] = await Promise.all([
+        fetch("/api/transfers/my-handovers"),
+        fetch("/api/repack-instructions?status=COMPLETED"),
+      ]);
+      if (handoversRes.ok) {
+        const data = await handoversRes.json();
         setLane(data.lane);
         setTransfers(Array.isArray(data.transfers) ? data.transfers : []);
+      }
+      if (repacksRes.ok) {
+        const data = await repacksRes.json();
+        setRepacks(Array.isArray(data) ? data : []);
       }
     } finally {
       setLoading(false);
@@ -150,6 +168,44 @@ export default function HandoverRecordBoard() {
           {transfers.map((t) => (
             <TransferCard key={t.id} transfer={t} isXanh={isXanh} />
           ))}
+        </div>
+      )}
+
+      {!loading && repacks.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <RefreshCw className="w-5 h-5 text-primary-strong" /> Chỉ định cấy xử lý đã hoàn thành
+          </h2>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Mã chỉ định</th>
+                      <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Mã cây</th>
+                      <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Quy cách</th>
+                      <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Ngày hoàn thành</th>
+                      <th className="text-right px-4 py-2 text-primary-strong font-bold text-base">Số lượng được ghi nhận</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {repacks.map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 even:bg-primary-light">
+                        <td className="px-4 py-2 font-mono">{r.code}</td>
+                        <td className="px-4 py-2">{r.plantType.code} — {r.plantType.name}</td>
+                        <td className="px-4 py-2">{r.inputStageCode} → {r.outputStageCode}</td>
+                        <td className="px-4 py-2">{r.placedAt ? format(new Date(r.placedAt), "dd/MM/yyyy", { locale: vi }) : "—"}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-primary-strong">
+                          {r.creditedQuantity?.toLocaleString("vi-VN") ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

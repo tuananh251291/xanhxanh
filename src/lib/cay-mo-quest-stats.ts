@@ -9,7 +9,7 @@ const DAYS_PER_LEVEL = 5;
 // ngày ủ tối thiểu này.
 const MIN_DAYS_SINCE_PLANTED_FOR_HANDOVER = 7;
 
-export type QuestKey = "motherReceived" | "dailyRecordDone" | "contaminationChecked" | "handoverDone" | "surplusHandover";
+export type QuestKey = "motherReceived" | "dailyRecordDone" | "contaminationChecked" | "handoverDone" | "surplusHandover" | "repackPending";
 
 export type Quest = {
   key: QuestKey;
@@ -97,6 +97,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     unreadInspectionResults,
     recentRecordDates,
     surplusCandidates,
+    pendingRepack,
   ] = await Promise.all([
     prisma.plantingInstruction.findFirst({
       where: { assignedToId: userId, handedOverAt: { not: null }, motherReceivedAt: null },
@@ -131,6 +132,14 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       select: { recordDate: true },
     }),
     getSurplusHandoverCandidates(userId),
+    // Chỉ định cấy xử lý (RepackInstruction) — model ĐỘC LẬP hoàn toàn với PlantingInstruction (xem
+    // prisma/schema.prisma), query THÊM MỚI riêng biệt, không đụng gì tới activeInstructionThisWeek ở
+    // trên. Chỉ hiện quest khi thực sự có việc (ASSIGNED chờ nhận, hoặc IN_PROGRESS đang xử lý) — tránh
+    // làm rối danh sách các ngày NV không được giao việc này, giống hệt cách surplusHandover chỉ hiện có
+    // điều kiện.
+    prisma.repackInstruction.findFirst({
+      where: { assignedToId: userId, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
+    }),
   ]);
 
   const hasOverdueDarkRoomLot = darkRoomLots.some(
@@ -202,6 +211,19 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       description: "Bàn giao mẫu mẹ dư của chỉ định đã kết thúc cho Kho mô",
       href: "/dashboard-basic/ban-giao-mm-du",
       done: !hasPendingSurplus,
+    });
+  }
+
+  // "Chỉ định cấy xử lý" — chạy SONG SONG với các nhiệm vụ trên, chỉ hiện khi có việc thật (xem
+  // pendingRepack ở trên) — luôn done=false khi hiện, tự biến mất khỏi danh sách khi hoàn thành
+  // (PENDING_PLACEMENT/COMPLETED không còn khớp điều kiện query).
+  if (pendingRepack) {
+    quests.push({
+      key: "repackPending",
+      title: "Chỉ định cấy xử lý",
+      description: "Nhận bàn giao/bàn giao kết quả xử lý đóng gói lại",
+      href: "/dashboard-basic/cap-nhat-so-lieu",
+      done: false,
     });
   }
 

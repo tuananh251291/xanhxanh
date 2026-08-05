@@ -11,6 +11,7 @@ import { PenLine, Loader2, Lock, TriangleAlert, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
 import EndInstructionEarlyButton from "./end-instruction-early-button";
+import RepackInstructionPanel from "./repack-instruction-panel";
 
 // Cùng định dạng hệ số mà KY_THUAT dùng lúc nhập "Tỉ lệ nhân MM"/"Tỉ lệ ra TP" lúc tạo chỉ định (xem
 // fmtRatio ở instructions/[id]/page.tsx) — số cụm/cây ra trên 1 đơn vị MM dùng, không phải %.
@@ -596,6 +597,8 @@ export default function DailyRecordPage() {
           </CardContent>
         </Card>
       )}
+
+      <RepackInstructionPanel />
 
       <Dialog open={showSundayPrompt} onOpenChange={setShowSundayPrompt}>
         <DialogContent className="max-w-sm">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   Flame, Trophy, Swords, Sparkles, Medal, Bell, CheckCircle2, XCircle,
-  PackageCheck, PenLine, Moon, Send, Loader2, Volume2, VolumeX, CalendarPlus, ChevronRight, PackageMinus, type LucideIcon,
+  PackageCheck, PenLine, Moon, Send, Loader2, Volume2, VolumeX, CalendarPlus, ChevronRight, PackageMinus, RefreshCw, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ const QUEST_ICONS: Record<Quest["key"], LucideIcon> = {
   contaminationChecked: Moon,
   handoverDone: Send,
   surplusHandover: PackageMinus,
+  repackPending: RefreshCw,
 };
 
 const MUTE_STORAGE_KEY = "caymo-quest-sound-muted";

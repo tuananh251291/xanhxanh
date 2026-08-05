@@ -11,6 +11,7 @@ import { Loader2, Lock, TriangleAlert, CheckCircle2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { isSameDay, startOfWeek } from "date-fns";
 import EndInstructionEarlyButton from "@/app/(dashboard)/daily-record/end-instruction-early-button";
+import RepackInstructionPanel from "@/app/(dashboard)/daily-record/repack-instruction-panel";
 
 type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
 type VariantPlantType = { id: string; code: string; name: string };
@@ -290,15 +291,18 @@ export default function DailyRecordSimpleForm() {
 
   if (confirmedInstructions.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-16 text-center text-text-muted">
-          <p>
-            {hasUnconfirmed
-              ? "Bạn có chỉ định tuần này nhưng chưa xác nhận nhận mẫu mẹ — vào \"Nhận bàn giao mẫu mẹ\" để xác nhận trước khi nhập dữ liệu."
-              : "Không có chỉ định cấy nào của bạn trong tuần này"}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="py-16 text-center text-text-muted">
+            <p>
+              {hasUnconfirmed
+                ? "Bạn có chỉ định tuần này nhưng chưa xác nhận nhận mẫu mẹ — vào \"Nhận bàn giao mẫu mẹ\" để xác nhận trước khi nhập dữ liệu."
+                : "Không có chỉ định cấy nào của bạn trong tuần này"}
+            </p>
+          </CardContent>
+        </Card>
+        <RepackInstructionPanel />
+      </div>
     );
   }
 
@@ -447,6 +451,8 @@ export default function DailyRecordSimpleForm() {
       {selectedInst && (
         <EndInstructionEarlyButton instructionId={selectedInst.id} instructionCode={selectedInst.code} onEnded={onEndedEarly} />
       )}
+
+      <RepackInstructionPanel />
 
       <Dialog open={showSundayPrompt} onOpenChange={setShowSundayPrompt}>
         <DialogContent className="max-w-sm">
