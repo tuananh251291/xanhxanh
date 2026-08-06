@@ -39,6 +39,14 @@ export async function placeRepackOutput(
   if (!shelf) {
     throw new RepackPlacementError(`Không tìm thấy kệ ${shelfCode} đang hoạt động trong Phòng ra rễ của kho này`);
   }
+  // Chỉ cho chọn kệ ĐÃ CÓ SẴN cây thành phẩm — trừ đúng kệ nguồn (luôn cho phép, kể cả khi vừa lấy hết
+  // sạch hàng để xử lý nên tạm thời trống, vì đây là gợi ý mặc định "về đúng kệ gốc" — xem
+  // [id]/place/route.ts). Tránh Kho mô gõ nhầm sang 1 kệ trống/kệ khác loại chưa từng chứa thành phẩm.
+  if (shelf.id !== repackInstruction.sourceShelfId && shelf.lots.length === 0) {
+    throw new RepackPlacementError(
+      `Kệ ${shelf.code} đang trống — chỉ được chọn kệ đã có sẵn cây thành phẩm (Phòng ra rễ), hoặc để trống để dùng kệ gốc`
+    );
+  }
 
   const passed = repackInstruction.confirmedPassedQuantity ?? 0;
   const failed = repackInstruction.confirmedFailedQuantity ?? 0;

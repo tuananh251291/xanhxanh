@@ -44,7 +44,7 @@ export default async function RepackInstructionsPage() {
       where,
       include: {
         plantType: { select: { code: true, name: true } },
-        sourceShelf: { select: { code: true } },
+        sourceShelf: { select: { code: true, warehouseId: true } },
         sourceLot: { select: { code: true } },
         assignedTo: { select: { name: true } },
       },
@@ -118,7 +118,7 @@ export default async function RepackInstructionsPage() {
                     khoMoInspectedAt: inst.khoMoInspectedAt ? inst.khoMoInspectedAt.toISOString() : null,
                     confirmedPassedQuantity: inst.confirmedPassedQuantity,
                     confirmedFailedQuantity: inst.confirmedFailedQuantity,
-                    sourceShelf: inst.sourceShelf,
+                    sourceShelf: { code: inst.sourceShelf.code, warehouseId: inst.sourceShelf.warehouseId },
                   }}
                 />
               </CardContent>
