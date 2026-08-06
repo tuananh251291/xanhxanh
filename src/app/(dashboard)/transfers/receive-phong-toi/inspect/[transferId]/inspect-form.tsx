@@ -16,8 +16,16 @@ type LotRow = {
 };
 type Meta = { transferCode: string; staffCode: string; staffName: string; lots: LotRow[] };
 // contaminatedQuantity = SL nhiễm; unqualifiedQuantity = A (Kho mô tự kiểm tra) — độc lập với B
-// (LotRow.selfReportedUnqualifiedQuantity, NV cấy mô tự khai lúc bàn giao).
-type InputState = { contaminatedQuantity: number; randomCheckPassRate: number; unqualifiedQuantity: number };
+// (LotRow.selfReportedUnqualifiedQuantity, NV cấy mô tự khai lúc bàn giao). Lưu dạng string (không phải
+// number) để ô nhập hiện được TRỐNG thật sự thay vì luôn có sẵn 1 số (0/100) — parse ra số lúc tính toán/
+// gửi lên, rỗng coi như đúng giá trị mặc định cũ (xem parseOrDefault) để công thức không đổi.
+type InputState = { contaminatedQuantity: string; randomCheckPassRate: string; unqualifiedQuantity: string };
+
+const parseOrDefault = (raw: string | undefined, fallback: number): number => {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+};
 
 export default function InspectForm({ transferId }: { transferId: string }) {
   const router = useRouter();
@@ -37,7 +45,7 @@ export default function InspectForm({ transferId }: { transferId: string }) {
       setMeta(data);
       const initial: Record<string, InputState> = {};
       for (const l of data.lots as LotRow[]) {
-        initial[l.lotId] = { contaminatedQuantity: 0, randomCheckPassRate: 100, unqualifiedQuantity: 0 };
+        initial[l.lotId] = { contaminatedQuantity: "", randomCheckPassRate: "", unqualifiedQuantity: "" };
       }
       setInputs(initial);
     } finally {
@@ -57,28 +65,51 @@ export default function InspectForm({ transferId }: { transferId: string }) {
     );
   }
 
-  const setContaminated = (lotId: string, value: number, max: number) => {
-    const clamped = Math.max(0, Math.min(value, max));
-    setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], contaminatedQuantity: clamped } }));
+  // Cho phép ô trống thật sự (không ép về 0/100 ngay khi gõ) — chỉ clamp khi đã có số hợp lệ, xoá hết ký
+  // tự thì giữ nguyên trạng thái trống, không tự điền lại số cũ.
+  const setContaminated = (lotId: string, raw: string, max: number) => {
+    if (raw.trim() === "") {
+      setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], contaminatedQuantity: "" } }));
+      return;
+    }
+    const parsed = parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return;
+    const clamped = Math.max(0, Math.min(parsed, max));
+    setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], contaminatedQuantity: String(clamped) } }));
   };
-  const setRate = (lotId: string, value: number) => {
-    const clamped = Math.max(0, Math.min(value, 100));
-    setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], randomCheckPassRate: clamped } }));
+  const setRate = (lotId: string, raw: string) => {
+    if (raw.trim() === "") {
+      setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], randomCheckPassRate: "" } }));
+      return;
+    }
+    const parsed = parseFloat(raw);
+    if (Number.isNaN(parsed)) return;
+    const clamped = Math.max(0, Math.min(parsed, 100));
+    setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], randomCheckPassRate: String(clamped) } }));
   };
-  const setUnqualified = (lotId: string, value: number, max: number) => {
-    const clamped = Math.max(0, Math.min(value, max));
-    setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], unqualifiedQuantity: clamped } }));
+  const setUnqualified = (lotId: string, raw: string, max: number) => {
+    if (raw.trim() === "") {
+      setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], unqualifiedQuantity: "" } }));
+      return;
+    }
+    const parsed = parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return;
+    const clamped = Math.max(0, Math.min(parsed, max));
+    setInputs((prev) => ({ ...prev, [lotId]: { ...prev[lotId], unqualifiedQuantity: String(clamped) } }));
   };
 
   const submit = async () => {
     setSubmitting(true);
     try {
-      const items = meta.lots.map((l) => ({
-        lotId: l.lotId,
-        contaminatedQuantity: inputs[l.lotId]?.contaminatedQuantity ?? 0,
-        randomCheckPassRate: inputs[l.lotId]?.randomCheckPassRate ?? 100,
-        unqualifiedQuantity: l.stageCode === "M05" ? 0 : (inputs[l.lotId]?.unqualifiedQuantity ?? 0),
-      }));
+      const items = meta.lots.map((l) => {
+        const state = inputs[l.lotId];
+        return {
+          lotId: l.lotId,
+          contaminatedQuantity: parseOrDefault(state?.contaminatedQuantity, 0),
+          randomCheckPassRate: parseOrDefault(state?.randomCheckPassRate, 100),
+          unqualifiedQuantity: l.stageCode === "M05" ? 0 : parseOrDefault(state?.unqualifiedQuantity, 0),
+        };
+      });
       const res = await fetch(`/api/transfers/receive-phong-toi/inspect/${transferId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -105,8 +136,11 @@ export default function InspectForm({ transferId }: { transferId: string }) {
       {/* Mỗi HÀNG = 1 lô (mã cây + quy cách riêng) — nhập độc lập cho từng lô. Kết quả kiểm tra chỉ LƯU
           được gộp theo quy cách (TransferInspectionItem unique theo [inspectionId, stageCode]) nên khi
           xác nhận, các lô cùng quy cách sẽ được gộp lại (cộng dồn số lượng, trung bình tỉ lệ) — xem
-          route.ts. SL ghi nhận = (SL bàn giao - max(A, B)) x tỉ lệ đạt kiểm tra ngẫu nhiên, trong đó
-          A = Kho mô tự kiểm tra (nhập ở đây), B = NV cấy mô tự khai lúc bàn giao (chỉ đọc). */}
+          route.ts. SL ghi nhận = (SL bàn giao - max(A, B)) x Tỉ lệ nhiễm (%) — tên gọi đổi từ "tỉ lệ đạt
+          kiểm tra ngẫu nhiên" nhưng CÔNG THỨC GIỮ NGUYÊN như cũ, không đảo ngược giá trị. A = Kho mô tự
+          kiểm tra (nhập ở đây), B = NV cấy mô tự khai lúc bàn giao (chỉ đọc). Cả 3 ô nhập (SL nhiễm, Tỉ lệ
+          nhiễm, SL không đạt A) mặc định TRỐNG (không hiện sẵn 0/100) — trống lúc gửi coi như đúng giá
+          trị mặc định cũ (0/100/0, xem parseOrDefault), chỉ khác ở chỗ không hiện số trên màn hình. */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -120,7 +154,7 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                   <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL bàn giao</th>
                   <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">SL nhiễm</th>
                   <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL thực tế sau kiểm tra</th>
-                  <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ đạt kiểm tra ngẫu nhiên (%)</th>
+                  <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ nhiễm (%)</th>
                   <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">SL không đạt NV kho kiểm tra</th>
                   <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">SL không đạt NVCM nhập</th>
                   <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL NV cấy mô được ghi nhận</th>
@@ -130,9 +164,12 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                 {meta.lots.map((l) => {
                   const unit = l.stageCode.startsWith("M") ? "cụm" : "cây";
                   const isM05 = l.stageCode === "M05";
-                  const contaminated = inputs[l.lotId]?.contaminatedQuantity ?? 0;
-                  const rate = inputs[l.lotId]?.randomCheckPassRate ?? 100;
-                  const a = isM05 ? 0 : (inputs[l.lotId]?.unqualifiedQuantity ?? 0);
+                  const contaminatedRaw = inputs[l.lotId]?.contaminatedQuantity ?? "";
+                  const rateRaw = inputs[l.lotId]?.randomCheckPassRate ?? "";
+                  const unqualifiedRaw = inputs[l.lotId]?.unqualifiedQuantity ?? "";
+                  const contaminated = parseOrDefault(contaminatedRaw, 0);
+                  const rate = parseOrDefault(rateRaw, 100);
+                  const a = isM05 ? 0 : parseOrDefault(unqualifiedRaw, 0);
                   const b = l.selfReportedUnqualifiedQuantity;
                   const credited = Math.max(0, Math.round((l.quantity - Math.max(a, b)) * (rate / 100)));
                   return (
@@ -148,22 +185,25 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                           min={0}
                           max={l.quantity}
                           className="w-24 h-8 mx-auto text-center"
-                          value={contaminated}
-                          onChange={(e) => setContaminated(l.lotId, parseInt(e.target.value, 10) || 0, l.quantity)}
+                          value={contaminatedRaw}
+                          onChange={(e) => setContaminated(l.lotId, e.target.value, l.quantity)}
                         />
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-primary-strong">
                         {(l.quantity - contaminated).toLocaleString("vi-VN")} {unit}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          className="w-24 h-8 mx-auto text-center"
-                          value={rate}
-                          onChange={(e) => setRate(l.lotId, parseFloat(e.target.value) || 0)}
-                        />
+                        <div className="relative w-24 mx-auto">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            className="w-24 h-8 text-center pr-5"
+                            value={rateRaw}
+                            onChange={(e) => setRate(l.lotId, e.target.value)}
+                          />
+                          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-text-muted">%</span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-center">
                         {isM05 ? (
@@ -174,8 +214,8 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                             min={0}
                             max={l.quantity}
                             className="w-24 h-8 mx-auto text-center"
-                            value={a}
-                            onChange={(e) => setUnqualified(l.lotId, parseInt(e.target.value, 10) || 0, l.quantity)}
+                            value={unqualifiedRaw}
+                            onChange={(e) => setUnqualified(l.lotId, e.target.value, l.quantity)}
                           />
                         )}
                       </td>
