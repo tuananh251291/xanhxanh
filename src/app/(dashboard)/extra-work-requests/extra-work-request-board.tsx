@@ -37,7 +37,9 @@ export default function ExtraWorkRequestBoard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/extra-work-requests");
+      // Ẩn hẳn đăng ký đã bị từ chối khỏi bảng này — NV đã được báo qua Alert (xem PATCH [id]/route.ts),
+      // không cần Kho mô theo dõi tiếp trong danh sách thao tác hàng ngày.
+      const res = await fetch("/api/extra-work-requests?excludeRejected=true");
       setRequests(await res.json());
     } finally {
       setLoading(false);
@@ -120,12 +122,17 @@ export default function ExtraWorkRequestBoard() {
                     {r.status === "PENDING" && (
                       <div className="flex gap-1 justify-end">
                         {r.type === "EARLY_COMPLETION" ? (
-                          <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === r.id} onClick={() => respond(r.id, "confirm")}>
-                            {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Xác nhận</>}
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={processingId === r.id} onClick={() => respond(r.id, "reject")} title="Từ chối">
+                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                            </Button>
+                            <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === r.id} onClick={() => respond(r.id, "confirm")}>
+                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Xác nhận</>}
+                            </Button>
+                          </>
                         ) : (
                           <>
-                            <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={processingId === r.id} onClick={() => respond(r.id, "reject")}>
+                            <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={processingId === r.id} onClick={() => respond(r.id, "reject")} title="Từ chối">
                               {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                             </Button>
                             <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === r.id} onClick={() => respond(r.id, "approve")}>

@@ -168,6 +168,9 @@ enum AlertType {
   // NV cấy mô đăng ký hoàn thành sớm chỉ định hoặc đăng ký làm thêm ngoài giờ (xem ExtraWorkRequest) —
   // báo cho KHO_MO (targetRole) cùng kho sản xuất biết để xác nhận/duyệt.
   EXTRA_WORK_REQUEST
+  // Kho mô bấm "Từ chối" 1 đăng ký hoàn thành sớm/làm thêm ngoài giờ — báo cho đúng NV cấy mô đã gửi
+  // đăng ký đó (userId) biết lý do đăng ký không được duyệt. Xem PATCH /api/extra-work-requests/[id].
+  EXTRA_WORK_REQUEST_REJECTED
   // NV cấy mô bấm "Số lượng không đủ" khi nhận bàn giao Chỉ định cấy xử lý — số cây thực tế thấy trên kệ
   // không khớp inputQuantity của chỉ định. Báo cho đúng Kho mô đã gán chỉ định đó (userId) biết để kiểm
   // tra lại kệ trước khi gán lại — xem RepackInstruction.quantityIssueReportedAt.

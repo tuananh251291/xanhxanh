@@ -52,10 +52,16 @@ export async function GET(req: NextRequest) {
   // lý (xem AssignRepackStaffCell) và cần chọn "nhân viên đã đăng ký" — chỉ lấy đăng ký ĐÃ DUYỆT và CHƯA
   // được dùng gán cho việc nào (chung 1 cờ fulfilledAt cho cả 2 loại việc, xem schema.prisma).
   const availableToAssign = searchParams.get("availableToAssign") === "true";
+  // Dùng cho bảng "Đăng ký cấy thêm" của Kho mô (ExtraWorkRequestBoard) — đăng ký đã bị từ chối không
+  // còn cần theo dõi tiếp (NV đã được báo qua Alert, xem PATCH [id]/route.ts), ẩn hẳn khỏi danh sách
+  // thao tác hàng ngày thay vì hiện mãi kèm badge "Từ chối". NV cấy mô xem lịch sử đăng ký của CHÍNH
+  // mình (ExtraWorkRequestForm) vẫn gọi KHÔNG kèm cờ này nên vẫn thấy đủ cả đăng ký đã bị từ chối.
+  const excludeRejected = searchParams.get("excludeRejected") === "true";
   const role = session.user.role;
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
+  else if (excludeRejected) where.status = { not: "REJECTED" };
   if (availableToAssign) {
     where.status = "APPROVED";
     where.fulfilledAt = null;
