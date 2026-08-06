@@ -168,6 +168,10 @@ enum AlertType {
   // NV cấy mô đăng ký hoàn thành sớm chỉ định hoặc đăng ký làm thêm ngoài giờ (xem ExtraWorkRequest) —
   // báo cho KHO_MO (targetRole) cùng kho sản xuất biết để xác nhận/duyệt.
   EXTRA_WORK_REQUEST
+  // NV cấy mô bấm "Số lượng không đủ" khi nhận bàn giao Chỉ định cấy xử lý — số cây thực tế thấy trên kệ
+  // không khớp inputQuantity của chỉ định. Báo cho đúng Kho mô đã gán chỉ định đó (userId) biết để kiểm
+  // tra lại kệ trước khi gán lại — xem RepackInstruction.quantityIssueReportedAt.
+  REPACK_QUANTITY_MISMATCH
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -276,6 +280,7 @@ model User {
   repackAssignedBy          RepackInstruction[] @relation("RepackAssignedBy")
   repackInspectedBy         RepackInstruction[] @relation("RepackInspectedBy")
   repackPlacedBy            RepackInstruction[] @relation("RepackPlacedBy")
+  repackQuantityIssueReportedBy RepackInstruction[] @relation("RepackQuantityIssueReportedBy")
 
   @@map("users")
 }
@@ -1049,6 +1054,17 @@ model RepackInstruction {
 
   // NV cấy mô tự bấm "Nhận bàn giao" — ĐÂY là mốc trừ tồn kho (xem inputQuantity ở trên).
   staffConfirmedAt DateTime?
+
+  // NV cấy mô bấm "Số lượng không đủ" thay vì "Nhận bàn giao" — số cây thực tế thấy trên kệ KHÔNG khớp
+  // inputQuantity ghi trên chỉ định. KHÔNG trừ tồn kho (chưa từng xác nhận nhận), chỉ đưa chỉ định về lại
+  // status CREATED (huỷ gán, xem PATCH /api/repack-instructions/[id] nhánh reportInsufficientQuantity) +
+  // báo cho đúng Kho mô đã gán (assignedById lúc đó) qua Alert REPACK_QUANTITY_MISMATCH để kiểm tra lại
+  // kệ trước khi gán lại. Giữ lại field này sau khi status đã đổi để còn hiển thị lý do/audit trail cho
+  // Kho mô xem khi gán lại (assignedToId/assignedById/assignedAt đã bị xoá về null lúc đó).
+  quantityIssueReportedAt   DateTime?
+  quantityIssueReportedById String?
+  quantityIssueReportedBy   User?     @relation("RepackQuantityIssueReportedBy", fields: [quantityIssueReportedById], references: [id])
+  quantityIssueNote         String?
 
   // NV cấy mô tự khai kết quả CUỐI CÙNG (1 lần duy nhất khi bấm "Hoàn thành – Bàn giao kết quả", không
   // có bảng ngày như DailyRecord — công việc ngắn 1-2 ngày, chỉ cần 1 con số kết quả sau cùng).

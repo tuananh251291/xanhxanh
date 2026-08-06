@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
+import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
 class InsufficientStockError extends Error {}
@@ -49,6 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 const patchSchema = z.union([
   z.object({ assignedToId: z.string().min(1) }),
   z.object({ confirmReceived: z.literal(true) }),
+  z.object({ reportInsufficientQuantity: z.object({ note: z.string().optional() }) }),
   z.object({ undoConfirmReceived: z.literal(true) }),
   z.object({
     handBack: z.object({
@@ -129,6 +131,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       throw err;
     }
+  }
+
+  // ---- NV cấy mô báo "Số lượng không đủ" thay vì "Nhận bàn giao" — số cây thực tế trên kệ không khớp
+  // inputQuantity của chỉ định. KHÔNG trừ tồn kho (chưa từng xác nhận nhận) — chỉ đưa chỉ định về lại
+  // CREATED (huỷ gán, Kho mô cần kiểm tra lại kệ trước khi gán lại) + báo cho đúng Kho mô đã gán biết.
+  if ("reportInsufficientQuantity" in body) {
+    if (instruction.assignedToId !== session.user.id) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    if (instruction.status !== "ASSIGNED") {
+      return NextResponse.json({ message: "Chỉ định không ở trạng thái chờ nhận bàn giao" }, { status: 400 });
+    }
+    const { note } = body.reportInsufficientQuantity;
+    const updated = await prisma.repackInstruction.update({
+      where: { id },
+      data: {
+        quantityIssueReportedAt: new Date(),
+        quantityIssueReportedById: session.user.id,
+        quantityIssueNote: note,
+        assignedToId: null,
+        assignedById: null,
+        assignedAt: null,
+        status: "CREATED",
+      },
+    });
+    if (instruction.assignedById) {
+      await createAlert({
+        type: "REPACK_QUANTITY_MISMATCH",
+        title: "Chỉ định cấy xử lý báo số lượng không đủ",
+        message: `${session.user.name} báo số lượng thực tế trên kệ ${instruction.sourceShelf.code} không khớp chỉ định ${instruction.code} (cần ${instruction.inputQuantity} ${instruction.inputStageCode})${note ? ` — ghi chú: ${note}` : ""} — cần kiểm tra lại trước khi gán NV khác.`,
+        userId: instruction.assignedById,
+        relatedId: instruction.id,
+        relatedType: "RepackInstruction",
+      });
+    }
+    return NextResponse.json(updated);
   }
 
   // ---- Kho mô/Admin hoàn tác "Nhận bàn giao" — HOÀN LẠI TỒN KHO ----

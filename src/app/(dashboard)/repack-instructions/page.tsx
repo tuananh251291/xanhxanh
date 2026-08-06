@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole, REPACK_STATUS_LABELS } from "@/types";
@@ -47,6 +47,7 @@ export default async function RepackInstructionsPage() {
         sourceShelf: { select: { code: true, warehouseId: true } },
         sourceLot: { select: { code: true } },
         assignedTo: { select: { name: true } },
+        quantityIssueReportedBy: { select: { name: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -81,16 +82,31 @@ export default async function RepackInstructionsPage() {
         <div className="space-y-3">
           <h2 className="text-base font-bold text-foreground">Cần gán nhân viên cấy mô</h2>
           {needsAssignment.map((inst) => (
-            <Card key={inst.id} className="border border-info-light">
-              <CardContent className="py-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-mono font-medium text-info-foreground">{inst.code}</p>
-                  <p className="text-sm text-text-secondary">
-                    {inst.plantType.code} — {inst.sourceLot.code} ({inst.sourceShelf.code}) —{" "}
-                    {inst.inputQuantity.toLocaleString("vi-VN")} cây {inst.inputStageCode} → {inst.outputStageCode}
-                  </p>
+            <Card key={inst.id} className={inst.quantityIssueReportedAt ? "border border-destructive" : "border border-info-light"}>
+              <CardContent className="py-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-mono font-medium text-info-foreground">{inst.code}</p>
+                    <p className="text-sm text-text-secondary">
+                      {inst.plantType.code} — {inst.sourceLot.code} ({inst.sourceShelf.code}) —{" "}
+                      {inst.inputQuantity.toLocaleString("vi-VN")} cây {inst.inputStageCode} → {inst.outputStageCode}
+                    </p>
+                  </div>
+                  <AssignRepackStaffCell instructionId={inst.id} staffList={staffList} />
                 </div>
-                <AssignRepackStaffCell instructionId={inst.id} staffList={staffList} />
+                {inst.quantityIssueReportedAt && (
+                  <div className="bg-danger-light rounded-lg p-3 text-sm text-destructive flex items-start gap-2">
+                    <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">
+                        {inst.quantityIssueReportedBy?.name ?? "NV cấy mô"} báo số lượng thực tế trên kệ {inst.sourceShelf.code} không khớp chỉ định
+                        {" "}({format(inst.quantityIssueReportedAt, "HH:mm dd/MM/yyyy", { locale: vi })})
+                      </p>
+                      {inst.quantityIssueNote && <p className="mt-0.5">Ghi chú: {inst.quantityIssueNote}</p>}
+                      <p className="mt-0.5 text-xs">Vui lòng kiểm tra lại kệ trước khi gán nhân viên khác.</p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

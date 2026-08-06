@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PackageCheck, RefreshCw, TriangleAlert } from "lucide-react";
+import { Loader2, PackageCheck, PackageX, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays } from "date-fns";
 
@@ -37,6 +37,7 @@ export default function RepackInstructionPanel() {
   const [passed, setPassed] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [insufficientNote, setInsufficientNote] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     Promise.all([
@@ -64,6 +65,25 @@ export default function RepackInstructionPanel() {
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã nhận bàn giao — bắt đầu xử lý");
+      load();
+      router.refresh();
+    } finally {
+      setSubmittingId(null);
+    }
+  };
+
+  const reportInsufficient = async (item: RepackItem) => {
+    if (!window.confirm(`Báo số lượng thực tế trên kệ ${item.sourceShelf.code} KHÔNG khớp chỉ định (cần ${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})? Chỉ định sẽ được trả lại cho Kho mô gán lại.`)) return;
+    setSubmittingId(item.id);
+    try {
+      const res = await fetch(`/api/repack-instructions/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportInsufficientQuantity: { note: insufficientNote[item.id]?.trim() || undefined } }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã báo Kho mô — chỉ định chờ gán lại");
       load();
       router.refresh();
     } finally {
@@ -122,14 +142,33 @@ export default function RepackInstructionPanel() {
               </p>
 
               {item.status === "ASSIGNED" ? (
-                <Button
-                  size="sm" className="bg-primary hover:bg-primary-hover"
-                  disabled={submittingId === item.id}
-                  onClick={() => confirmReceived(item)}
-                >
-                  {submittingId === item.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
-                  Nhận bàn giao
-                </Button>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Button
+                    size="sm" className="bg-primary hover:bg-primary-hover"
+                    disabled={submittingId === item.id}
+                    onClick={() => confirmReceived(item)}
+                  >
+                    {submittingId === item.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
+                    Nhận bàn giao
+                  </Button>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Ghi chú (không bắt buộc)</Label>
+                    <Input
+                      className="w-48 h-8"
+                      placeholder="VD: kệ chỉ còn 30 cây"
+                      value={insufficientNote[item.id] ?? ""}
+                      onChange={(e) => setInsufficientNote((p) => ({ ...p, [item.id]: e.target.value }))}
+                    />
+                  </div>
+                  <Button
+                    size="sm" variant="destructive" className="h-8"
+                    disabled={submittingId === item.id}
+                    onClick={() => reportInsufficient(item)}
+                  >
+                    {submittingId === item.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <PackageX className="w-3.5 h-3.5 mr-1.5" />}
+                    Số lượng không đủ
+                  </Button>
+                </div>
               ) : (
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="space-y-1">
