@@ -101,14 +101,15 @@ export type ShelfPlacement = {
  *   MM3 trước, để lô mẫu mẹ mới bàn giao rơi đúng vào nhóm sắp cấy chuyển thay vì luôn dồn về nhóm nhỏ
  *   nhất. Rơi về kệ có rotationOrder nhỏ nhất (hành vi cũ) khi CHƯA cấu hình "Tuần khởi đầu Nhóm tuần mẫu
  *   mẹ" (SUPER_ADMIN chưa cài ở /settings/shelf-groups) hoặc NV đó không có kệ nào thuộc đúng Nhóm đang
- *   tới lượt. Nếu kệ chính đã đầy, KHÔNG coi ngay là dư — hệ thống xếp tiếp sang TẤT CẢ các Nhóm tuần
- *   mẫu mẹ KHÁC cũng của đúng NV đó, đúng mã cây (VD 1 NV có 8 kệ chia 4 Nhóm tuần MM1-MM4, mỗi nhóm 2
- *   kệ), theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ chính, tăng dần theo rotationOrder rồi quay
- *   lại từ đầu nếu hết vòng — VD kệ chính thuộc MM3 thì thứ tự xét là MM3 → MM4 → MM1 → MM2 (mỗi Nhóm chỉ
- *   xét 1 lượt/vòng). Kệ chưa thuộc Nhóm tuần nào (rotationGroupId = null) thì chỉ xếp đúng 1 kệ đó, giữ
- *   hành vi cũ. Chỉ khi hết TẤT CẢ các Nhóm của NV đó (đúng mã cây) mà vẫn còn dư mới thật sự tràn sang 1
- *   kệ Phòng mẫu mẹ chưa gán nhân viên (Kho mẫu mẹ chung) khớp "Cho phép xếp". Hệ thống tự chọn kệ, không
- *   cần KHO_MO chọn tay.
+ *   tới lượt. Nếu kệ chính đã đầy, hệ thống thử tiếp CÁC KỆ KHÁC TRONG CÙNG NHÓM (VD kệ chính C02D03 đầy
+ *   thì thử tiếp C02D04 nếu cũng thuộc MM2) — nhưng KHÔNG tràn sang Nhóm tuần KHÁC của cùng NV nữa (khác
+ *   hành vi cũ). Lý do: mỗi Nhóm tuần đại diện đúng 1 mốc trong chu kỳ cấy chuyển — nếu lô MỚI xếp lẫn
+ *   vào 1 Nhóm CHƯA tới lượt (VD MM3 khi tuần này đang là MM2), lô mới sẽ nằm CHUNG kệ với lô CŨ của MM3
+ *   đã gần đủ thời gian, và tuần sau khi MM3 tới hạn, summarizeMotherWeekGroups báo "đến hạn" theo cả
+ *   NHÓM (không theo từng lô) — kéo luôn lô mới vào diện "sẵn sàng cấy chuyển" dù chưa đủ tuần thật. Hết
+ *   chỗ ở đúng Nhóm đang tới lượt thì coi là DƯ THẬT ngay, tràn thẳng xuống Kho mẫu mẹ chung (khớp "Cho
+ *   phép xếp") — không mượn tạm Nhóm khác. Kệ chưa thuộc Nhóm tuần nào (rotationGroupId = null) thì chỉ
+ *   xếp đúng 1 kệ đó, giữ hành vi cũ. Hệ thống tự chọn kệ, không cần KHO_MO chọn tay.
  */
 export async function planShelfAssignments(
   transferItems: { lotId: string; lot: LotForAssign }[],
@@ -249,50 +250,25 @@ export async function planShelfAssignments(
       const dueSlot = motherEpochMonday && totalSlots > 0 ? getCurrentWeekSlot(totalSlots, new Date(), motherEpochMonday) : null;
       const primaryOwned = (dueSlot !== null ? ownedForPlantType.find((c) => c.rotationOrder === dueSlot) : undefined) ?? ownedForPlantType[0];
       if (primaryOwned) {
-        // Kệ đầu tiên tìm được đầy thì thử tiếp sang các Nhóm tuần mẫu mẹ KHÁC cũng của đúng NV này,
-        // đúng mã cây — theo thứ tự VÒNG TUẦN HOÀN bắt đầu từ Nhóm của kệ tìm thấy đầu tiên, tăng dần
-        // rotationOrder rồi quay lại từ Nhóm nhỏ nhất nếu hết vòng (VD kệ đầu tiên ở Nhóm rotationOrder=2,
-        // có 4 Nhóm order 1-4 -> thứ tự xét Nhóm: 2,3,4,1) — mỗi Nhóm chỉ xét 1 lượt/lượt quay (xem vòng
-        // lặp while bên dưới). Chỉ hết sạch mọi Nhóm của NV đó mới thật sự coi là dư. Kệ chưa gán Nhóm
-        // tuần nào thì chỉ xét đúng 1 kệ đó, giữ hành vi cũ.
-        let orderedOwnedShelves: ShelfCandidate[];
-        if (primaryOwned.rotationGroupId) {
-          const groupedOwnedShelves = candidates.filter(
-            (c) =>
-              c.roomType === "PHONG_MAU_ME" &&
-              c.assignedStaffId === ownerStaffId &&
-              c.plantTypeId === lot.plantTypeId &&
-              c.rotationGroupId !== null
-          );
-          const groupOrderById = new Map<string, number>();
-          for (const c of groupedOwnedShelves) {
-            if (c.rotationGroupId !== null && c.rotationOrder !== null && !groupOrderById.has(c.rotationGroupId)) {
-              groupOrderById.set(c.rotationGroupId, c.rotationOrder);
-            }
-          }
-          const primaryOrder = primaryOwned.rotationOrder ?? 0;
-          // Nhóm có rotationOrder >= Nhóm hiện tại xét trước (theo thứ tự tăng dần); Nhóm có
-          // rotationOrder nhỏ hơn coi như "đã qua 1 vòng", xét sau cùng — tạo hiệu ứng vòng tuần hoàn.
-          const orderedGroupIds = Array.from(groupOrderById.entries())
-            .sort(([, orderA], [, orderB]) => {
-              const rankA = orderA >= primaryOrder ? orderA : orderA + 1_000_000;
-              const rankB = orderB >= primaryOrder ? orderB : orderB + 1_000_000;
-              return rankA - rankB;
-            })
-            .map(([groupId]) => groupId);
-          orderedOwnedShelves = orderedGroupIds.flatMap((groupId) =>
-            groupedOwnedShelves.filter((c) => c.rotationGroupId === groupId).sort((a, b) => a.code.localeCompare(b.code))
-          );
-        } else {
-          orderedOwnedShelves = [primaryOwned];
-        }
+        // Kệ chính đầy thì chỉ thử tiếp CÁC KỆ KHÁC TRONG CÙNG NHÓM (VD C02D03 đầy thử tiếp C02D04 nếu
+        // cùng MM2) — KHÔNG tràn sang Nhóm tuần KHÁC của cùng NV nữa (xem lý do ở docstring hàm). Hết
+        // chỗ ở đúng Nhóm đang tới lượt thì coi là DƯ THẬT ngay (remainingBags > 0 sau vòng lặp dưới),
+        // tràn thẳng xuống Kho mẫu mẹ chung. Kệ chưa gán Nhóm tuần nào thì chỉ xét đúng 1 kệ đó, giữ
+        // hành vi cũ.
+        const orderedOwnedShelves: ShelfCandidate[] = primaryOwned.rotationGroupId
+          ? candidates
+              .filter(
+                (c) =>
+                  c.roomType === "PHONG_MAU_ME" &&
+                  c.assignedStaffId === ownerStaffId &&
+                  c.plantTypeId === lot.plantTypeId &&
+                  c.rotationGroupId === primaryOwned.rotationGroupId
+              )
+              .sort((a, b) => a.code.localeCompare(b.code))
+          : [primaryOwned];
 
-        // Quay vòng THẬT SỰ qua danh sách Nhóm đã sắp — hết 1 lượt mà vẫn còn dư thì quay lại từ đầu
-        // danh sách tiếp tục lượt kế tiếp, không giới hạn cứng "mỗi Nhóm chỉ xét 1 lần". Cần thế vì sức
-        // chứa các Nhóm không cố định — mẫu mẹ của tuần trước tới hạn sẽ được xuất đi (bàn giao/cấy lại),
-        // nên 1 kệ đang đầy lúc đầu vòng có thể vừa kịp trống ra ngay trong lúc đang xếp. Chỉ dừng vòng
-        // lặp khi remainingBags = 0 (xếp xong) hoặc 1 lượt trọn vẹn không xếp thêm được cụm nào (capacity
-        // thật sự đã hết ở mọi Nhóm — dừng để không treo vòng lặp vô hạn thật).
+        // Lặp lại danh sách (cùng Nhóm) nếu 1 lượt chưa xếp hết — vô hại trong 1 lần gọi (capacity không
+        // tự tăng giữa các lượt), chỉ dừng khi xếp xong hoặc 1 lượt trọn vẹn không xếp thêm được cụm nào.
         let madeProgressThisLap = orderedOwnedShelves.length > 0;
         while (remainingBags > 0 && madeProgressThisLap) {
           madeProgressThisLap = false;
