@@ -1,13 +1,23 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Loader2 } from "lucide-react";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
+import { Plus, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
 
@@ -20,9 +30,16 @@ type FinishedLot = {
   shelf: { id: string; code: string; warehouse: { name: string } } | null;
 };
 
+type ComboOption = { value: string; label: string };
+// comboKey = `${plantTypeCode}::${stageCode}` — xác định đúng 1 lô trên kệ đã chọn của dòng đó (1 kệ chỉ
+// có đúng 1 lô ACTIVE/combo, xem placeRepackOutput merge-theo-cặp-này ở src/lib/repack-placement.ts).
+type Row = { key: number; shelfId: string; comboKey: string; quantity: string; outputStageCode: string };
+
 const OUTPUT_STAGE_CODES = Object.keys(FINISHED_SPEC_LABELS) as (keyof typeof FINISHED_SPEC_LABELS)[];
 const stageLabel = (code: string) => FINISHED_SPEC_LABELS[code as keyof typeof FINISHED_SPEC_LABELS] ?? code;
 const bagSizeOf = (code: string) => FINISHED_SPEC_BAG_SIZE[code as keyof typeof FINISHED_SPEC_BAG_SIZE] ?? 1;
+
+const emptyRow = (key: number): Row => ({ key, shelfId: "", comboKey: "", quantity: "", outputStageCode: "" });
 
 export default function CreateRepackInstructionDialog() {
   const router = useRouter();
@@ -30,14 +47,16 @@ export default function CreateRepackInstructionDialog() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [lots, setLots] = useState<FinishedLot[]>([]);
-  const [shelfId, setShelfId] = useState("");
-  const [plantTypeCode, setPlantTypeCode] = useState("");
-  const [inputStageCode, setInputStageCode] = useState("");
-  const [bagsInput, setBagsInput] = useState("");
-  const [outputStageCode, setOutputStageCode] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // Bắt đầu từ 1 vì dòng đầu tiên (key 0) đã gán sẵn trong state khởi tạo — chỉ tăng khi thêm dòng mới
+  // (giống quy ước rowKeyRef ở stock-in-form.tsx), tránh trùng key khi xoá/thêm dòng liên tục.
+  const rowKeyRef = useRef(1);
+  const [rows, setRows] = useState<Row[]>([emptyRow(0)]);
 
   useEffect(() => {
     if (!open) return;
+    setLoading(true);
     fetch("/api/lots?roomType=PHONG_RA_RE&stage=THANH_PHAM&status=ACTIVE")
       .then((r) => r.json())
       .then((data: FinishedLot[]) => setLots(Array.isArray(data) ? data.filter((l) => l.shelf) : []))
@@ -47,59 +66,98 @@ export default function CreateRepackInstructionDialog() {
   const onOpenChange = (next: boolean) => {
     setOpen(next);
     if (next) {
-      setLoading(true);
-      setShelfId(""); setPlantTypeCode(""); setInputStageCode(""); setBagsInput(""); setOutputStageCode("");
+      rowKeyRef.current = 1;
+      setRows([emptyRow(0)]);
+      setNotes("");
     }
   };
 
-  const shelves = useMemo(() => {
-    const map = new Map<string, { id: string; code: string; warehouseName: string }>();
+  const shelfOptions: ComboOption[] = useMemo(() => {
+    const map = new Map<string, ComboOption>();
     for (const l of lots) {
       if (l.shelf && !map.has(l.shelf.id)) {
-        map.set(l.shelf.id, { id: l.shelf.id, code: l.shelf.code, warehouseName: l.shelf.warehouse.name });
+        map.set(l.shelf.id, { value: l.shelf.id, label: `${l.shelf.code} — ${l.shelf.warehouse.name}` });
       }
     }
     return Array.from(map.values());
   }, [lots]);
 
-  const lotsOnShelf = useMemo(() => lots.filter((l) => l.shelf?.id === shelfId), [lots, shelfId]);
+  const lotsOnShelf = (shelfId: string) => lots.filter((l) => l.shelf?.id === shelfId);
 
-  // Chọn theo Loại cây + Quy cách thay vì chọn thẳng 1 lô (mã lô khó nhớ với KY_THUAT) — trên 1 kệ, 1
-  // cặp (mã cây, quy cách) chỉ ứng với ĐÚNG 1 lô đang ACTIVE (xem placeRepackOutput merge-theo-cặp-này ở
-  // src/lib/repack-placement.ts), nên chọn xong 2 bước này là xác định lô nguồn chắc chắn, không mơ hồ.
-  const plantTypesOnShelf = useMemo(() => {
-    const map = new Map<string, { code: string; name: string }>();
-    for (const l of lotsOnShelf) if (!map.has(l.plantType.code)) map.set(l.plantType.code, l.plantType);
-    return Array.from(map.values());
-  }, [lotsOnShelf]);
+  // "Gõ sẽ hiện đề xuất số cây trong kệ" — nhãn combobox tự kèm luôn số cây hiện có, để KY_THUAT thấy
+  // ngay không cần tra thêm cột riêng lúc đang gõ tìm.
+  const comboOptionsForShelf = (shelfId: string): ComboOption[] =>
+    lotsOnShelf(shelfId).map((l) => ({
+      value: `${l.plantType.code}::${l.stageCode}`,
+      label: `${l.plantType.code} — ${stageLabel(l.stageCode)} (${l.quantity.toLocaleString("vi-VN")} cây)`,
+    }));
 
-  const stageCodesForPlantType = useMemo(
-    () => lotsOnShelf.filter((l) => l.plantType.code === plantTypeCode).map((l) => l.stageCode),
-    [lotsOnShelf, plantTypeCode]
-  );
+  const lotForRow = (row: Row): FinishedLot | null => {
+    if (!row.shelfId || !row.comboKey) return null;
+    const [plantTypeCode, stageCode] = row.comboKey.split("::");
+    return lotsOnShelf(row.shelfId).find((l) => l.plantType.code === plantTypeCode && l.stageCode === stageCode) ?? null;
+  };
 
-  const selectedLot = lotsOnShelf.find((l) => l.plantType.code === plantTypeCode && l.stageCode === inputStageCode);
-  const inputBagSize = inputStageCode ? bagSizeOf(inputStageCode) : null;
-  const availableBags = selectedLot && inputBagSize ? Math.floor(selectedLot.quantity / inputBagSize) : 0;
-  const leftoverPlants = selectedLot && inputBagSize ? selectedLot.quantity % inputBagSize : 0;
-  const bags = Number(bagsInput) || 0;
-  const qty = inputBagSize ? bags * inputBagSize : 0;
-  const outputBagSize = outputStageCode ? bagSizeOf(outputStageCode) : null;
+  const updateRow = (key: number, patch: Partial<Row>) => {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const addRow = () => {
+    setRows((prev) => [...prev, emptyRow(rowKeyRef.current)]);
+    rowKeyRef.current += 1;
+  };
+  const removeRow = (key: number) => setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.key !== key)));
 
   const onSubmit = async () => {
-    if (!selectedLot) { toast.error("Chọn loại cây và quy cách nguồn trước"); return; }
-    if (bags <= 0 || bags > availableBags) { toast.error("Số túi không hợp lệ"); return; }
-    if (!outputStageCode) { toast.error("Chọn quy cách đầu ra"); return; }
+    type Payload = { sourceShelfId: string; sourceLotId: string; inputQuantity: number; outputStageCode: string; notes?: string };
+    const payloads: Payload[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const lot = lotForRow(row);
+      if (!lot) { toast.error(`Dòng ${i + 1}: chọn kệ + mã cây/quy cách`); return; }
+      const qty = Number(row.quantity) || 0;
+      const bagSize = bagSizeOf(lot.stageCode);
+      if (qty <= 0) { toast.error(`Dòng ${i + 1}: nhập số lượng lấy ra`); return; }
+      if (qty > lot.quantity) {
+        toast.error(`Dòng ${i + 1}: số lượng lấy ra vượt quá tồn trên kệ (còn ${lot.quantity.toLocaleString("vi-VN")} cây)`);
+        return;
+      }
+      if (qty % bagSize !== 0) {
+        toast.error(`Dòng ${i + 1}: số lượng phải lấy nguyên túi (bội số của ${bagSize} cây/túi ${lot.stageCode})`);
+        return;
+      }
+      if (!row.outputStageCode) { toast.error(`Dòng ${i + 1}: chọn quy cách đầu ra`); return; }
+      payloads.push({
+        sourceShelfId: row.shelfId, sourceLotId: lot.id, inputQuantity: qty,
+        outputStageCode: row.outputStageCode, notes: notes.trim() || undefined,
+      });
+    }
+
     setSubmitting(true);
     try {
-      const res = await fetch("/api/repack-instructions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceShelfId: shelfId, sourceLotId: selectedLot.id, inputQuantity: qty, outputStageCode }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã tạo chỉ định cấy xử lý ${json.code}`);
+      // Model RepackInstruction là bảng phẳng (1 chỉ định = đúng 1 kệ + 1 lô nguồn, xem prisma/schema.prisma)
+      // — nhiều dòng trong form này tạo THÀNH NHIỀU chỉ định riêng, gọi POST tuần tự từng dòng (không có
+      // API batch) — dừng lại và báo rõ dòng nào lỗi nếu giữa chừng thất bại, các dòng trước đó đã tạo vẫn
+      // giữ nguyên (không rollback ngược — mỗi chỉ định độc lập, không cần atomic cả lô).
+      const createdCodes: string[] = [];
+      for (let i = 0; i < payloads.length; i++) {
+        const res = await fetch("/api/repack-instructions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloads[i]),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          toast.error(`Dòng ${i + 1}: ${json.message ?? "Có lỗi xảy ra"}`);
+          if (createdCodes.length > 0) {
+            toast.success(`Đã tạo thành công ${createdCodes.length} chỉ định trước đó: ${createdCodes.join(", ")}`);
+            router.refresh();
+          }
+          return;
+        }
+        createdCodes.push(json.code);
+      }
+      toast.success(`Đã tạo ${createdCodes.length} chỉ định cấy xử lý: ${createdCodes.join(", ")}`);
       setOpen(false);
       router.refresh();
     } finally {
@@ -112,7 +170,7 @@ export default function CreateRepackInstructionDialog() {
       <DialogTrigger render={<Button className="bg-primary hover:bg-primary-hover" />}>
         <Plus className="w-4 h-4 mr-1.5" /> Tạo chỉ định cấy xử lý
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>Tạo chỉ định cấy xử lý</DialogTitle>
         </DialogHeader>
@@ -121,117 +179,123 @@ export default function CreateRepackInstructionDialog() {
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Kệ nguồn (Phòng ra rễ)</Label>
-              <Select
-                items={shelves.map((s) => ({ value: s.id, label: `${s.code} — ${s.warehouseName}` }))}
-                value={shelfId || null}
-                onValueChange={(v) => {
-                  setShelfId(v as string);
-                  setPlantTypeCode(""); setInputStageCode(""); setBagsInput("");
-                }}
-              >
-                <SelectTrigger><SelectValue placeholder="Chọn kệ nguồn" /></SelectTrigger>
-                <SelectContent>
-                  {shelves.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.code} — {s.warehouseName}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="overflow-x-auto">
+              <div className="min-w-[920px] space-y-2">
+                <div className="grid grid-cols-[1fr_1.5fr_8rem_9rem_8rem_8rem_2.5rem] gap-2 text-xs text-text-secondary font-medium px-1">
+                  <span>Kệ đầu vào</span>
+                  <span>Mã cây + quy cách</span>
+                  <span>Số lượng trong kệ</span>
+                  <span>Số lượng lấy ra xử lý</span>
+                  <span>Quy cách đầu ra</span>
+                  <span>Số lượng đầu ra</span>
+                  <span />
+                </div>
+                {rows.map((row) => {
+                  const lot = lotForRow(row);
+                  const qty = Number(row.quantity) || 0;
+                  const rowComboOptions = comboOptionsForShelf(row.shelfId);
+                  const outputOptions = OUTPUT_STAGE_CODES.filter((c) => c !== lot?.stageCode);
+                  return (
+                    <div
+                      key={row.key}
+                      className="grid grid-cols-[1fr_1.5fr_8rem_9rem_8rem_8rem_2.5rem] gap-2 items-center border border-divider rounded-lg p-2"
+                    >
+                      <Combobox
+                        items={shelfOptions}
+                        value={shelfOptions.find((o) => o.value === row.shelfId) ?? null}
+                        isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                        onValueChange={(v) => updateRow(row.key, { shelfId: v ? (v as ComboOption).value : "", comboKey: "", quantity: "" })}
+                      >
+                        <ComboboxInputGroup className="w-full h-9">
+                          <ComboboxInput className="text-xs" placeholder="Gõ mã kệ…" />
+                          <ComboboxTrigger />
+                        </ComboboxInputGroup>
+                        <ComboboxContent>
+                          <ComboboxEmpty>Không tìm thấy kệ</ComboboxEmpty>
+                          <ComboboxList>
+                            {(item: ComboOption) => <ComboboxItem key={item.value} value={item} className="text-xs">{item.label}</ComboboxItem>}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+
+                      <Combobox
+                        items={rowComboOptions}
+                        value={rowComboOptions.find((o) => o.value === row.comboKey) ?? null}
+                        isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                        onValueChange={(v) => updateRow(row.key, { comboKey: v ? (v as ComboOption).value : "", quantity: "" })}
+                        disabled={!row.shelfId}
+                      >
+                        <ComboboxInputGroup className="w-full h-9">
+                          <ComboboxInput className="text-xs" placeholder={row.shelfId ? "Gõ mã cây hoặc quy cách…" : "Chọn kệ trước"} />
+                          <ComboboxTrigger />
+                        </ComboboxInputGroup>
+                        <ComboboxContent>
+                          <ComboboxEmpty>Không có mã cây nào trên kệ này</ComboboxEmpty>
+                          <ComboboxList>
+                            {(item: ComboOption) => <ComboboxItem key={item.value} value={item} className="text-xs">{item.label}</ComboboxItem>}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+
+                      <div className="text-sm text-foreground text-center">
+                        {lot ? `${lot.quantity.toLocaleString("vi-VN")} cây` : "—"}
+                      </div>
+
+                      <Input
+                        type="number" min={1} className="h-9 text-xs"
+                        value={row.quantity}
+                        disabled={!lot}
+                        onChange={(e) => updateRow(row.key, { quantity: e.target.value })}
+                        placeholder={lot ? `Bội số ${bagSizeOf(lot.stageCode)}` : "—"}
+                      />
+
+                      <Select
+                        items={outputOptions.map((c) => ({ value: c, label: FINISHED_SPEC_LABELS[c] }))}
+                        value={row.outputStageCode || null}
+                        onValueChange={(v) => updateRow(row.key, { outputStageCode: v as string })}
+                      >
+                        <SelectTrigger className="h-9 text-xs" disabled={!lot}><SelectValue placeholder="Chọn" /></SelectTrigger>
+                        <SelectContent>
+                          {outputOptions.map((c) => (
+                            <SelectItem key={c} value={c}>{FINISHED_SPEC_LABELS[c]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <div className="text-sm text-primary-strong font-medium text-center">
+                        {qty > 0 ? `${qty.toLocaleString("vi-VN")} cây` : "—"}
+                      </div>
+
+                      <Button
+                        type="button" variant="ghost" size="icon-sm" className="text-destructive hover:bg-danger-light"
+                        disabled={rows.length <= 1}
+                        onClick={() => removeRow(row.key)}
+                        title="Xoá dòng"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {shelfId && (
-              <div className="space-y-1">
-                <Label>Loại cây</Label>
-                <Select
-                  items={plantTypesOnShelf.map((p) => ({ value: p.code, label: `${p.code} — ${p.name}` }))}
-                  value={plantTypeCode || null}
-                  onValueChange={(v) => {
-                    setPlantTypeCode(v as string);
-                    setInputStageCode(""); setBagsInput("");
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Chọn loại cây" /></SelectTrigger>
-                  <SelectContent>
-                    {plantTypesOnShelf.map((p) => (
-                      <SelectItem key={p.code} value={p.code}>{p.code} — {p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {plantTypesOnShelf.length === 0 && <p className="text-xs text-text-muted">Kệ này không còn lô nào</p>}
-              </div>
-            )}
+            <Button type="button" variant="outline" size="sm" onClick={addRow} className="gap-1">
+              <Plus className="w-3.5 h-3.5" /> Thêm dòng
+            </Button>
 
-            {plantTypeCode && (
-              <div className="space-y-1">
-                <Label>Quy cách nguồn</Label>
-                <Select
-                  items={stageCodesForPlantType.map((c) => ({ value: c, label: stageLabel(c) }))}
-                  value={inputStageCode || null}
-                  onValueChange={(v) => {
-                    setInputStageCode(v as string);
-                    setBagsInput("");
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Chọn quy cách nguồn" /></SelectTrigger>
-                  <SelectContent>
-                    {stageCodesForPlantType.map((c) => (
-                      <SelectItem key={c} value={c}>{stageLabel(c)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {selectedLot && inputBagSize && (
-              <>
-                <div className="bg-info-light rounded-lg p-3 text-sm text-info-foreground">
-                  Đang có <b>{availableBags.toLocaleString("vi-VN")} túi</b> {stageLabel(inputStageCode)} trên kệ này
-                  {" "}({selectedLot.quantity.toLocaleString("vi-VN")} cây, {inputBagSize} cây/túi
-                  {leftoverPlants > 0 ? `, dư ${leftoverPlants} cây lẻ chưa đủ 1 túi — không tính được` : ""})
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Số túi lấy ra (tối đa {availableBags.toLocaleString("vi-VN")})</Label>
-                  <Input
-                    type="number" min={1} max={availableBags} step={1}
-                    value={bagsInput} onChange={(e) => setBagsInput(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Quy cách đầu ra</Label>
-                  <Select
-                    items={OUTPUT_STAGE_CODES.filter((c) => c !== inputStageCode).map((c) => ({ value: c, label: FINISHED_SPEC_LABELS[c] }))}
-                    value={outputStageCode || null}
-                    onValueChange={(v) => setOutputStageCode(v as string)}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Chọn quy cách đầu ra" /></SelectTrigger>
-                    <SelectContent>
-                      {OUTPUT_STAGE_CODES.filter((c) => c !== inputStageCode).map((c) => (
-                        <SelectItem key={c} value={c}>{FINISHED_SPEC_LABELS[c]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {bags > 0 && outputStageCode && outputBagSize && (
-                  <div className="bg-primary-light rounded-lg p-3 text-sm text-primary-strong">
-                    Lấy ra <b>{bags.toLocaleString("vi-VN")} túi</b> ({qty.toLocaleString("vi-VN")} cây) — dự kiến ra:{" "}
-                    <b>{qty.toLocaleString("vi-VN")} cây</b> (giữ nguyên số cây, chỉ đổi cách đóng gói — ≈
-                    {Math.ceil(qty / outputBagSize).toLocaleString("vi-VN")} túi {outputStageCode})
-                  </div>
-                )}
-              </>
-            )}
+            <div className="space-y-1">
+              <Label>Ghi chú</Label>
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú thêm (không bắt buộc)…" />
+            </div>
 
             <Button
               className="w-full bg-primary hover:bg-primary-hover"
-              disabled={submitting || !selectedLot || bags <= 0 || !outputStageCode}
+              disabled={submitting}
               onClick={onSubmit}
             >
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-              Tạo chỉ định
+              Tạo {rows.length > 1 ? `${rows.length} chỉ định` : "chỉ định"}
             </Button>
           </div>
         )}
