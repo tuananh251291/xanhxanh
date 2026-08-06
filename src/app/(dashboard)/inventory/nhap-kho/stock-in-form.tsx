@@ -344,7 +344,8 @@ export default function StockInForm({
             </Combobox>
             {shelfStage === "MAU_ME" && (
               <p className="text-xs text-text-secondary">
-                Chỉ đề xuất kệ đang chứa sẵn mã cây này, hoặc kệ mẫu mẹ chung còn trống và chưa gắn NV.
+                Chỉ đề xuất kệ đang chứa sẵn mã cây này, hoặc kệ mẫu mẹ chung chưa gắn NV (khớp đúng
+                &quot;Cho phép xếp&quot; đã cài đặt cho kệ đó nếu có) — không yêu cầu kệ còn trống.
               </p>
             )}
             {shelfStage === "THANH_PHAM" && (

@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
           message: stage === "MAU_ME" ? "Giàn kệ này không thuộc Phòng mẫu mẹ" : "Giàn kệ này không thuộc Phòng ra rễ",
         }, { status: 400 });
       }
-      const eligible = stage === "MAU_ME" ? isEligibleMotherShelfForStockIn(shelf, item.plantTypeId) : shelfMatchesPlantType(stage, shelf, item.plantTypeId, pt.code);
+      const eligible = stage === "MAU_ME" ? isEligibleMotherShelfForStockIn(shelf, item.plantTypeId, pt.code) : shelfMatchesPlantType(stage, shelf, item.plantTypeId, pt.code);
       if (!eligible) {
         return NextResponse.json({ message: `Mã cây ${pt.code} không được phép xếp vào giàn kệ ${shelf.code}` }, { status: 400 });
       }

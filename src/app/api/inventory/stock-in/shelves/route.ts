@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   // Phòng mẫu mẹ dùng bộ lọc riêng theo TỒN THỰC TẾ (xem isEligibleMotherShelfForStockIn) — Phòng ra rễ
   // giữ nguyên shelfMatchesPlantType (không ràng buộc mã cây).
   const eligible = shelves
-    .filter((s) => (stage === "MAU_ME" ? isEligibleMotherShelfForStockIn(s, plantTypeId) : shelfMatchesPlantType(stage, s, plantTypeId, plantType.code)))
+    .filter((s) => (stage === "MAU_ME" ? isEligibleMotherShelfForStockIn(s, plantTypeId, plantType.code) : shelfMatchesPlantType(stage, s, plantTypeId, plantType.code)))
     .map((s) => {
       const used = sumLotQuantity(s.lots);
       const capLeft = s.capacity === null ? null : Math.max(0, s.capacity - used);
