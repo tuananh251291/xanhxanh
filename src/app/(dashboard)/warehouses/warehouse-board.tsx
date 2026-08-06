@@ -20,6 +20,7 @@ type ShelfData = {
   id: string;
   code: string;
   name: string;
+  warehouseId: string;
   rowNumber: number | null;
   colNumber: number | null;
   capacity: number | null;

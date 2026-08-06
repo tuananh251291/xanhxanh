@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Trash2, Loader2, Pencil, Check } from "lucide-react";
+import { QrCode, Trash2, Loader2, Pencil, Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -46,6 +47,7 @@ interface Shelf {
   id: string;
   code: string;
   name: string;
+  warehouseId: string;
   rowNumber: number | null;
   colNumber: number | null;
   capacity: number | null;
@@ -183,6 +185,108 @@ function LotQuantityRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+const STAGE_CODE_OPTIONS_BY_ROOM: Record<"PHONG_MAU_ME" | "PHONG_RA_RE", { value: string; label: string }[]> = {
+  PHONG_MAU_ME: [{ value: "M05", label: "M05" }],
+  PHONG_RA_RE: [
+    { value: "T01", label: "T01 — túi 1 cây" },
+    { value: "T05", label: "T05 — túi 5 cây" },
+    { value: "T10", label: "T10 — túi 10 cây" },
+  ],
+};
+
+// Thêm lô MỚI vào giàn kệ ngay trong dialog "Sửa số lượng lô cây" — dùng cho kệ đang trống (0/sức chứa,
+// không có lô nào để sửa) hoặc muốn thêm 1 mã cây/quy cách khác chưa có trên kệ. Gọi thẳng
+// POST /api/inventory/stock-in (mode ADD) — dùng lại NGUYÊN VẸN logic kiểm tra sức chứa/loại phòng/mã
+// cây được phép xếp đã có sẵn cho trang "Nhập kho thủ công" (src/app/(dashboard)/inventory/nhap-kho),
+// không viết lại từ đầu.
+function AddLotForm({
+  shelfId, warehouseId, roomType, plantTypeOptions, unit, onAdded,
+}: {
+  shelfId: string;
+  warehouseId: string;
+  roomType: "PHONG_MAU_ME" | "PHONG_RA_RE";
+  plantTypeOptions: { value: string; label: string }[];
+  unit: string;
+  onAdded: () => void;
+}) {
+  const stageOptions = STAGE_CODE_OPTIONS_BY_ROOM[roomType];
+  const [plantType, setPlantType] = useState<{ value: string; label: string } | null>(null);
+  const [stageCode, setStageCode] = useState(stageOptions[0].value);
+  const [quantity, setQuantity] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!plantType) { toast.error("Chọn mã cây"); return; }
+    const qty = Number(quantity);
+    if (!qty || qty <= 0) { toast.error("Số lượng phải lớn hơn 0"); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/inventory/stock-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination: "SHELF", shelfId, mode: "ADD", warehouseId,
+          items: [{ plantTypeId: plantType.value, stageCode, quantity: qty }],
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã thêm lô mới vào kệ");
+      setPlantType(null);
+      setQuantity("");
+      onAdded();
+    } finally { setSubmitting(false); }
+  };
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 p-3 bg-primary-light/40 rounded-lg">
+      <div className="space-y-1">
+        <Label className="text-xs">Mã cây</Label>
+        <Combobox
+          items={plantTypeOptions}
+          value={plantType}
+          isItemEqualToValue={(a: { value: string; label: string }, b: { value: string; label: string }) => a.value === b.value}
+          onValueChange={(v) => setPlantType(v)}
+          disabled={submitting}
+        >
+          <ComboboxInputGroup className="w-48 h-8">
+            <ComboboxInput className="text-xs" placeholder="Gõ mã hoặc tên cây…" />
+            <ComboboxTrigger />
+          </ComboboxInputGroup>
+          <ComboboxContent>
+            <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+            <ComboboxList>
+              {(item: { value: string; label: string }) => <ComboboxItem key={item.value} value={item} className="text-xs">{item.label}</ComboboxItem>}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Quy cách</Label>
+        <Select value={stageCode} onValueChange={(v) => setStageCode(v as string)}>
+          <SelectTrigger className="w-28 h-8 text-xs" disabled={submitting}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {stageOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Số lượng ({unit})</Label>
+        <Input
+          type="number" min={1} className="h-8 w-28 text-xs"
+          value={quantity} disabled={submitting}
+          onChange={(e) => setQuantity(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+        />
+      </div>
+      <Button type="button" size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
+        {submitting ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+        Thêm lô
+      </Button>
+    </div>
   );
 }
 
@@ -657,7 +761,7 @@ export default function ShelfTable({
                 <span>{shelf.capacity ?? "Không giới hạn"}</span>
               )}
               <span>{isMauMeRoom ? "cụm" : "cây"}</span>
-              {canMoveRoom && shelf.lots.length > 0 && (
+              {canMoveRoom && (
                 <Button
                   type="button" variant="ghost" size="icon-sm"
                   className="shrink-0 text-text-muted hover:text-primary-strong hover:bg-primary-light"
@@ -883,32 +987,44 @@ export default function ShelfTable({
             <DialogTitle>Sửa số lượng lô cây — {editLotsShelf?.name}</DialogTitle>
           </DialogHeader>
           {editLotsShelf && (
-            editLotsShelf.lots.length === 0 ? (
-              <p className="text-sm text-text-muted py-4 text-center">Kệ này hiện không còn lô nào</p>
-            ) : (
-              <div className="overflow-x-auto border rounded-lg">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-primary-light">
-                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Mã lô</th>
-                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Mã cây</th>
-                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Quy cách</th>
-                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Số lượng</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {editLotsShelf.lots.map((lot) => (
-                      <LotQuantityRow
-                        key={lot.id}
-                        lot={lot}
-                        unit={isMauMeRoom ? "cụm" : "cây"}
-                        onSave={saveLotQuantity}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
+            <div className="space-y-3">
+              {editLotsShelf.lots.length === 0 ? (
+                <p className="text-sm text-text-muted py-4 text-center">Kệ này hiện không còn lô nào</p>
+              ) : (
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-primary-light">
+                        <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Mã lô</th>
+                        <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Mã cây</th>
+                        <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Quy cách</th>
+                        <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Số lượng</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editLotsShelf.lots.map((lot) => (
+                        <LotQuantityRow
+                          key={lot.id}
+                          lot={lot}
+                          unit={isMauMeRoom ? "cụm" : "cây"}
+                          onSave={saveLotQuantity}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {(currentRoomType === "PHONG_MAU_ME" || currentRoomType === "PHONG_RA_RE") && plantTypeOptions.length > 0 && (
+                <AddLotForm
+                  shelfId={editLotsShelf.id}
+                  warehouseId={editLotsShelf.warehouseId}
+                  roomType={currentRoomType}
+                  plantTypeOptions={plantTypeOptions.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))}
+                  unit={isMauMeRoom ? "cụm" : "cây"}
+                  onAdded={() => router.refresh()}
+                />
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>
