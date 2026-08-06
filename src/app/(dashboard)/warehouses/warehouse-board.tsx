@@ -28,7 +28,7 @@ type ShelfData = {
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   allowedCodes: string[];
   rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
-  lots: { quantity: number; stageCode: string; plantType: { code: string; name: string } }[];
+  lots: { id: string; code: string; quantity: number; stageCode: string; plantType: { code: string; name: string } }[];
 };
 type RoomData = {
   id: string;

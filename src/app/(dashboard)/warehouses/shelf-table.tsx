@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Trash2, Loader2 } from "lucide-react";
+import { QrCode, Trash2, Loader2, Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -54,7 +54,7 @@ interface Shelf {
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   allowedCodes: string[];
   rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
-  lots: { quantity: number; stageCode: string; plantType: { code: string; name: string } }[];
+  lots: { id: string; code: string; quantity: number; stageCode: string; plantType: { code: string; name: string } }[];
 }
 
 const POOL_LABELS: Record<string, string> = { QUA_HAN: "Kho quá hạn", DUNG_HAN: "Kho đúng hạn" };
@@ -126,6 +126,66 @@ function AllowedCodesCell({
   );
 }
 
+// 1 dòng lô trong dialog "Sửa số lượng lô cây" — tự quản lý state ô nhập + trạng thái lưu riêng, tránh
+// re-render toàn dialog khi gõ 1 ô.
+function LotQuantityRow({
+  lot, unit, onSave,
+}: {
+  lot: { id: string; code: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
+  unit: string;
+  onSave: (lotId: string, quantity: number) => Promise<void>;
+}) {
+  const [value, setValue] = useState(String(lot.quantity));
+  const [saving, setSaving] = useState(false);
+  const dirty = value.trim() !== String(lot.quantity);
+
+  const save = async () => {
+    const trimmed = value.trim();
+    const parsed = Number(trimmed);
+    if (trimmed === "" || !Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      toast.error("Số lượng phải là số nguyên không âm");
+      setValue(String(lot.quantity));
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(lot.id, parsed);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="border-b last:border-0">
+      <td className="px-3 py-2 text-xs font-mono text-text-secondary whitespace-nowrap">{lot.code}</td>
+      <td className="px-3 py-2 text-xs text-foreground whitespace-nowrap">{lot.plantType.code}</td>
+      <td className="px-3 py-2 text-xs text-foreground whitespace-nowrap">{lot.stageCode}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="number"
+            min={0}
+            className="h-8 w-24 text-xs"
+            value={value}
+            disabled={saving}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+          />
+          <span className="text-xs text-text-muted shrink-0">{unit}</span>
+          <Button
+            type="button" size="icon-sm" className="shrink-0 bg-primary hover:bg-primary-hover"
+            disabled={saving || !dirty}
+            onClick={save}
+            title="Lưu số lượng"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function ShelfTable({
   shelves,
   currentRoomId,
@@ -167,6 +227,9 @@ export default function ShelfTable({
   const [assignPlantTypeValue, setAssignPlantTypeValue] = useState<{ value: string; label: string } | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Chỉ giữ id, tự tra lại đúng shelf mới nhất trong `shelves` (prop) mỗi lần render — tránh dialog hiện
+  // số liệu cũ sau khi router.refresh() cập nhật `shelves` nhưng object đã chụp lúc mở dialog không đổi.
+  const [editLotsShelfId, setEditLotsShelfId] = useState<string | null>(null);
   const router = useRouter();
   const isMauMeRoom = currentRoomType === "PHONG_MAU_ME";
   const otherRooms = moveableRooms.filter((r) => r.id !== currentRoomId);
@@ -211,6 +274,19 @@ export default function ShelfTable({
       toast.success(successMsg);
       router.refresh();
     } finally { setSavingId(null); }
+  };
+
+  const editLotsShelf = shelves.find((s) => s.id === editLotsShelfId) ?? null;
+
+  const saveLotQuantity = async (lotId: string, quantity: number) => {
+    const res = await fetch(`/api/lots/${lotId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity }),
+    });
+    if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+    toast.success("Đã cập nhật số lượng lô");
+    router.refresh();
   };
 
   // Gán/gỡ Nhóm tuần ra rễ cho 1 kệ — dùng đúng API quản lý Nhóm (PATCH /api/shelf-groups/[id]/shelves,
@@ -581,6 +657,16 @@ export default function ShelfTable({
                 <span>{shelf.capacity ?? "Không giới hạn"}</span>
               )}
               <span>{isMauMeRoom ? "cụm" : "cây"}</span>
+              {canMoveRoom && shelf.lots.length > 0 && (
+                <Button
+                  type="button" variant="ghost" size="icon-sm"
+                  className="shrink-0 text-text-muted hover:text-primary-strong hover:bg-primary-light"
+                  onClick={() => setEditLotsShelfId(shelf.id)}
+                  title="Sửa số lượng lô cây"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </div>
             {usage !== null && (
               <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -787,6 +873,42 @@ export default function ShelfTable({
                 In QR Code
               </Button>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editLotsShelf} onOpenChange={(open) => { if (!open) setEditLotsShelfId(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Sửa số lượng lô cây — {editLotsShelf?.name}</DialogTitle>
+          </DialogHeader>
+          {editLotsShelf && (
+            editLotsShelf.lots.length === 0 ? (
+              <p className="text-sm text-text-muted py-4 text-center">Kệ này hiện không còn lô nào</p>
+            ) : (
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Mã lô</th>
+                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Mã cây</th>
+                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Quy cách</th>
+                      <th className="text-left px-3 py-2 text-xs text-primary-strong font-bold">Số lượng</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editLotsShelf.lots.map((lot) => (
+                      <LotQuantityRow
+                        key={lot.id}
+                        lot={lot}
+                        unit={isMauMeRoom ? "cụm" : "cây"}
+                        onSave={saveLotQuantity}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
         </DialogContent>
       </Dialog>

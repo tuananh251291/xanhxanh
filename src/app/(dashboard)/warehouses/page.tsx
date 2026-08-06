@@ -14,7 +14,7 @@ const shelfInclude = {
     rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
     lots: {
       where: { status: "ACTIVE" as const },
-      select: { quantity: true, stageCode: true, plantType: { select: { code: true, name: true } } },
+      select: { id: true, code: true, quantity: true, stageCode: true, plantType: { select: { code: true, name: true } } },
     },
   },
   orderBy: [{ rowNumber: "asc" as const }, { colNumber: "asc" as const }],
