@@ -56,7 +56,10 @@ export async function GET(req: NextRequest) {
       include: {
         plantType: { select: { name: true } },
         assignedStaff: { select: { name: true } },
-        lots: { where: { status: "ACTIVE", stageCode: "M05" }, select: { quantity: true } },
+        lots: {
+          where: { status: "ACTIVE", stageCode: "M05" },
+          select: { quantity: true, plantType: { select: { code: true, name: true } } },
+        },
       },
       orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
       skip: (page - 1) * PAGE_SIZE,
@@ -64,14 +67,28 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  const items = shelves.map((s) => ({
-    id: s.id,
-    code: s.code,
-    name: s.name,
-    plantTypeName: s.plantType?.name ?? null,
-    assignedStaffName: s.assignedStaff?.name ?? null,
-    m05Quantity: s.lots.reduce((sum, l) => sum + l.quantity, 0),
-  }));
+  const items = shelves.map((s) => {
+    // Kệ chung (assigned=false) không gán cố định 1 mã cây (plantType null) nên có thể đang xếp lẫn
+    // NHIỀU mã cây khác nhau cùng lúc — gộp thẳng m05Quantity/plantTypeName như trước sẽ mù mờ không biết
+    // của mã nào. Tách riêng theo từng mã cây thật sự đang có trên kệ (breakdown) để trang gọi API tự
+    // quyết định tách thành nhiều dòng hiển thị (xem MotherShelfTable) — kệ đã chia vẫn chỉ có đúng 1 mã
+    // cây nên breakdown ở đó luôn có tối đa 1 phần tử, không đổi hành vi hiển thị.
+    const byPlantType = new Map<string, { plantTypeCode: string; plantTypeName: string; quantity: number }>();
+    for (const l of s.lots) {
+      const entry = byPlantType.get(l.plantType.code) ?? { plantTypeCode: l.plantType.code, plantTypeName: l.plantType.name, quantity: 0 };
+      entry.quantity += l.quantity;
+      byPlantType.set(l.plantType.code, entry);
+    }
+    return {
+      id: s.id,
+      code: s.code,
+      name: s.name,
+      plantTypeName: s.plantType?.name ?? null,
+      assignedStaffName: s.assignedStaff?.name ?? null,
+      m05Quantity: s.lots.reduce((sum, l) => sum + l.quantity, 0),
+      breakdown: Array.from(byPlantType.values()).sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode)),
+    };
+  });
 
   return NextResponse.json({ items, total, page, pageSize: PAGE_SIZE });
 }

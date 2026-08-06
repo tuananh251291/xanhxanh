@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
+type PlantTypeBreakdown = { plantTypeCode: string; plantTypeName: string; quantity: number };
 type ShelfRow = {
   id: string;
   code: string;
@@ -12,6 +13,7 @@ type ShelfRow = {
   plantTypeName: string | null;
   assignedStaffName: string | null;
   m05Quantity: number;
+  breakdown: PlantTypeBreakdown[];
 };
 
 const PAGE_SIZE = 10;
@@ -93,15 +95,27 @@ export default function MotherShelfTable({
                 </tr>
               </thead>
               <tbody>
-                {items.map((shelf) => (
-                  <tr key={shelf.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                    <td className="px-3 py-2 text-sm font-bold text-foreground whitespace-nowrap">{shelf.code}</td>
-                    <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap">{shelf.name}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.plantTypeName ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.assignedStaffName ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{shelf.m05Quantity.toLocaleString("vi-VN")}</td>
-                  </tr>
-                ))}
+                {items.map((shelf) => {
+                  // Kệ chung có thể đang xếp lẫn NHIỀU mã cây cùng lúc (không gán cố định như kệ đã chia)
+                  // — tách mỗi mã cây thành 1 dòng riêng (rowSpan các cột theo kệ) thay vì gộp mù mờ 1
+                  // dòng/kệ. Kệ trống (chưa có lô nào) rơi về đúng 1 dòng "—" như trước.
+                  const rows = shelf.breakdown.length > 0 ? shelf.breakdown : [null];
+                  return rows.map((b, idx) => (
+                    <tr key={shelf.id + "-" + idx} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                      {idx === 0 && (
+                        <>
+                          <td className="px-3 py-2 text-sm font-bold text-foreground whitespace-nowrap" rowSpan={rows.length}>{shelf.code}</td>
+                          <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap" rowSpan={rows.length}>{shelf.name}</td>
+                        </>
+                      )}
+                      <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{b ? b.plantTypeName : (shelf.plantTypeName ?? "—")}</td>
+                      {idx === 0 && (
+                        <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap" rowSpan={rows.length}>{shelf.assignedStaffName ?? "—"}</td>
+                      )}
+                      <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{(b ? b.quantity : shelf.m05Quantity).toLocaleString("vi-VN")}</td>
+                    </tr>
+                  ));
+                })}
               </tbody>
             </table>
           </div>

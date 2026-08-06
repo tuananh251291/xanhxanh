@@ -54,7 +54,7 @@ interface Shelf {
   sharedMotherPool: "QUA_HAN" | "DUNG_HAN" | null;
   allowedCodes: string[];
   rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
-  lots: { quantity: number; stageCode: string }[];
+  lots: { quantity: number; stageCode: string; plantType: { code: string; name: string } }[];
 }
 
 const POOL_LABELS: Record<string, string> = { QUA_HAN: "Kho quá hạn", DUNG_HAN: "Kho đúng hạn" };
@@ -379,30 +379,63 @@ export default function ShelfTable({
     return targets;
   };
 
-  const renderRow = (shelf: Shelf, isChungSection: boolean) => {
+  // Kệ chung (isChungSection) không gán cố định 1 mã cây nên có thể đang xếp lẫn NHIỀU mã cây cùng lúc —
+  // tách theo mã cây thật sự có trên kệ (breakdown), mỗi mã cây 1 dòng riêng ở cột "Số cụm M05" thay vì
+  // gộp mù mờ 1 dòng/kệ. Kệ đã chia luôn đúng 1 mã cây (theo thiết kế) nên không cần tách — trả về null để
+  // renderRows giữ nguyên 1 dòng/kệ như trước.
+  const plantTypeBreakdown = (shelf: Shelf) => {
+    const map = new Map<string, { plantTypeCode: string; plantTypeName: string; bagsBySpec: Record<string, number> }>();
+    for (const l of shelf.lots) {
+      const entry = map.get(l.plantType.code) ?? { plantTypeCode: l.plantType.code, plantTypeName: l.plantType.name, bagsBySpec: {} };
+      entry.bagsBySpec[l.stageCode] = (entry.bagsBySpec[l.stageCode] ?? 0) + l.quantity;
+      map.set(l.plantType.code, entry);
+    }
+    return Array.from(map.values()).sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode));
+  };
+
+  const renderRows = (shelf: Shelf, isChungSection: boolean) => {
     const used = sumLotQuantity(shelf.lots);
     const usage = shelf.capacity ? Math.round((used / shelf.capacity) * 100) : null;
-    const bagsBySpec = shelf.lots.reduce<Record<string, number>>((acc, l) => {
+    const bagsBySpecAll = shelf.lots.reduce<Record<string, number>>((acc, l) => {
       acc[l.stageCode] = (acc[l.stageCode] ?? 0) + l.quantity;
       return acc;
     }, {});
+    const breakdown = isMauMeRoom && isChungSection ? plantTypeBreakdown(shelf) : [];
+    const groups = breakdown.length > 0 ? breakdown : [null];
+
+    return groups.map((group, idx) => renderRow(shelf, isChungSection, used, usage, bagsBySpecAll, group, idx, groups.length));
+  };
+
+  const renderRow = (
+    shelf: Shelf,
+    isChungSection: boolean,
+    used: number,
+    usage: number | null,
+    bagsBySpecAll: Record<string, number>,
+    group: { plantTypeCode: string; plantTypeName: string; bagsBySpec: Record<string, number> } | null,
+    idx: number,
+    rowCount: number
+  ) => {
+    const bagsBySpec = group ? group.bagsBySpec : bagsBySpecAll;
     return (
-      <tr key={shelf.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-        {canManageStaffAndPlant && (
-          <td className="px-3 py-2 w-8">
+      <tr key={shelf.id + "-" + idx} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+        {idx === 0 && canManageStaffAndPlant && (
+          <td className="px-3 py-2 w-8" rowSpan={rowCount}>
             <Checkbox checked={!!selected[shelf.id]} onCheckedChange={(v) => toggleSelect(shelf.id, v === true)} />
           </td>
         )}
-        <td className="px-3 py-2 whitespace-nowrap">
-          <button
-            className="flex items-center gap-1.5 text-left"
-            onClick={() => setQrShelf(shelf)}
-            title="Xem QR"
-          >
-            <span className="text-sm font-bold text-foreground">{shelf.name}</span>
-            <QrCode className="w-3.5 h-3.5 text-text-muted shrink-0" />
-          </button>
-        </td>
+        {idx === 0 && (
+          <td className="px-3 py-2 whitespace-nowrap" rowSpan={rowCount}>
+            <button
+              className="flex items-center gap-1.5 text-left"
+              onClick={() => setQrShelf(shelf)}
+              title="Xem QR"
+            >
+              <span className="text-sm font-bold text-foreground">{shelf.name}</span>
+              <QrCode className="w-3.5 h-3.5 text-text-muted shrink-0" />
+            </button>
+          </td>
+        )}
         {!isMauMeRoom && (
           <td className="px-3 py-2 min-w-[160px]">
             {canManageStaffAndPlant ? renderRotationSelect(shelf) : (
@@ -484,6 +517,9 @@ export default function ShelfTable({
                 </td>
               </>
             )}
+            {isChungSection && (
+              <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{group ? group.plantTypeName : "—"}</td>
+            )}
             <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
               {Object.keys(bagsBySpec).length === 0
                 ? "—"
@@ -491,9 +527,9 @@ export default function ShelfTable({
                     .map(([spec, qty]) => `${spec}: ${qty} cụm`)
                     .join(" · ")}
             </td>
-            {isChungSection && (
+            {isChungSection && idx === 0 && (
               <>
-                <td className="px-3 py-2 min-w-[140px]">
+                <td className="px-3 py-2 min-w-[140px]" rowSpan={rowCount}>
                   {canManageStaffAndPlant ? (
                     <Select
                       value={shelf.sharedMotherPool ?? "NONE"}
@@ -514,7 +550,7 @@ export default function ShelfTable({
                     <span className="text-xs text-text-secondary">{shelf.sharedMotherPool ? POOL_LABELS[shelf.sharedMotherPool] : "—"}</span>
                   )}
                 </td>
-                <td className="px-3 py-2 min-w-[160px]">
+                <td className="px-3 py-2 min-w-[160px]" rowSpan={rowCount}>
                   {canManageStaffAndPlant ? (
                     <AllowedCodesCell
                       shelfId={shelf.id}
@@ -530,34 +566,36 @@ export default function ShelfTable({
             )}
           </>
         )}
-        <td className="px-3 py-2 min-w-[140px]">
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <span>{used.toLocaleString("vi-VN")} /</span>
-            {canManageStaffAndPlant ? (
-              <CapacityCell
-                shelfId={shelf.id}
-                initialCapacity={shelf.capacity}
-                disabled={savingId === shelf.id}
-                onSave={(id, capacity) => patchShelf(id, { capacity }, "Đã cập nhật sức chứa cho kệ")}
-              />
-            ) : (
-              <span>{shelf.capacity ?? "Không giới hạn"}</span>
-            )}
-            <span>{isMauMeRoom ? "cụm" : "cây"}</span>
-          </div>
-          {usage !== null && (
-            <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  usage > 90 ? "bg-destructive" : usage > 70 ? "bg-warning" : "bg-primary"
-                }`}
-                style={{ width: `${Math.min(usage, 100)}%` }}
-              />
+        {idx === 0 && (
+          <td className="px-3 py-2 min-w-[140px]" rowSpan={rowCount}>
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <span>{used.toLocaleString("vi-VN")} /</span>
+              {canManageStaffAndPlant ? (
+                <CapacityCell
+                  shelfId={shelf.id}
+                  initialCapacity={shelf.capacity}
+                  disabled={savingId === shelf.id}
+                  onSave={(id, capacity) => patchShelf(id, { capacity }, "Đã cập nhật sức chứa cho kệ")}
+                />
+              ) : (
+                <span>{shelf.capacity ?? "Không giới hạn"}</span>
+              )}
+              <span>{isMauMeRoom ? "cụm" : "cây"}</span>
             </div>
-          )}
-        </td>
-        {canMoveRoom && (
-          <td className="px-3 py-2 min-w-[170px]">
+            {usage !== null && (
+              <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    usage > 90 ? "bg-destructive" : usage > 70 ? "bg-warning" : "bg-primary"
+                  }`}
+                  style={{ width: `${Math.min(usage, 100)}%` }}
+                />
+              </div>
+            )}
+          </td>
+        )}
+        {canMoveRoom && idx === 0 && (
+          <td className="px-3 py-2 min-w-[170px]" rowSpan={rowCount}>
             {used > 0 ? (
               <span className="text-xs text-text-muted" title="Chỉ chuyển được sang nhóm khác khi tồn kệ bằng 0">
                 Còn tồn — không thể chuyển
@@ -584,8 +622,8 @@ export default function ShelfTable({
             )}
           </td>
         )}
-        {canManageStaffAndPlant && (
-          <td className="px-3 py-2">
+        {canManageStaffAndPlant && idx === 0 && (
+          <td className="px-3 py-2" rowSpan={rowCount}>
             <div className="flex items-center gap-1">
               {(!isMauMeRoom || !isChungSection) && (
                 <Button
@@ -645,6 +683,9 @@ export default function ShelfTable({
                     <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần mẫu mẹ</th>
                   </>
                 )}
+                {isChungSection && (
+                  <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã cây đang xếp</th>
+                )}
                 <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số cụm M05</th>
                 {isChungSection && (
                   <>
@@ -659,7 +700,7 @@ export default function ShelfTable({
             {canManageStaffAndPlant && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Thao tác</th>}
           </tr>
         </thead>
-        <tbody>{rows.map((s) => renderRow(s, isChungSection))}</tbody>
+        <tbody>{rows.map((s) => renderRows(s, isChungSection))}</tbody>
       </table>
     </div>
   );

@@ -59,7 +59,10 @@ export default async function ShelfListView({
         plantType: { select: { id: true, code: true, name: true } },
         assignedStaff: { select: { id: true, code: true, name: true } },
         rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
-        lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } },
+        lots: {
+          where: { status: "ACTIVE" },
+          select: { quantity: true, stageCode: true, plantType: { select: { code: true, name: true } } },
+        },
       },
       orderBy: [{ block: "asc" }, { rowNumber: "asc" }, { colNumber: "asc" }],
       skip: (page - 1) * PAGE_SIZE,
