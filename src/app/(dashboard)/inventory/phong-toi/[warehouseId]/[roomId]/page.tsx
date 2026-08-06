@@ -2,13 +2,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Moon, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
+import { isAdminRole } from "@/types";
+import PhongToiLotsTable from "./phong-toi-lots-table";
 
 export default async function PhongToiRoomDetailPage({ params }: { params: Promise<{ warehouseId: string; roomId: string }> }) {
   const session = await auth();
@@ -58,34 +57,11 @@ export default async function PhongToiRoomDetailPage({ params }: { params: Promi
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-primary-light">
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã lô sản phẩm</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Chỉ định cấy</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã cây</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên cây</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Quy cách</th>
-                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Số lượng</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">{isPhongNhiem ? "Ngày phát sinh đầu tiên" : "Ngày nhập kho tối"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {room.lots.map((lot) => (
-                    <tr key={lot.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                      <td className="px-4 py-3 font-mono font-medium text-info-foreground">{lot.code}</td>
-                      <td className="px-4 py-3 font-mono text-text-secondary">{lot.instruction?.code ?? "—"}</td>
-                      <td className="px-4 py-3 font-mono text-text-secondary">{lot.plantType.code}</td>
-                      <td className="px-4 py-3 text-foreground">{lot.plantType.name}</td>
-                      <td className="px-4 py-3"><Badge variant="secondary">{lot.stageCode}</Badge></td>
-                      <td className="px-4 py-3 text-right font-medium">{lot.quantity.toLocaleString("vi-VN")}</td>
-                      <td className="px-4 py-3 text-text-secondary">{format(lot.enteredAt, "dd/MM/yyyy", { locale: vi })}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PhongToiLotsTable
+              lots={room.lots.map((lot) => ({ ...lot, enteredAt: lot.enteredAt.toISOString() }))}
+              isPhongNhiem={isPhongNhiem}
+              canEdit={isAdminRole(role)}
+            />
           </CardContent>
         </Card>
       )}
