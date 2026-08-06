@@ -79,13 +79,14 @@ export async function GET() {
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã vị trí: gõ mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "M05 chỉ dùng cho kệ Phòng mẫu mẹ. T01/T05 dùng cho kệ Phòng ra rễ hoặc phòng kho TP." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV cấy mô chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Kệ Phòng mẫu mẹ chỉ nên xuất hiện đúng 1 dòng/file (1 kệ chỉ dedicate 1 mã cây) — Phòng ra rễ/phòng kho TP có thể nhiều dòng (nhiều mã cây khác nhau)." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Riêng kệ Phòng mẫu mẹ: bỏ trống Mã cây (và cột Số lượng M05) = báo kệ này hiện KHÔNG còn gì — hệ thống tự xoá gán mã cây dedicate của kệ (về trạng thái chưa gán) và đưa mọi lô đang có trên kệ về 0. Kệ Phòng ra rễ/phòng kho TP vẫn bắt buộc phải điền Mã cây (1 vị trí có thể có nhiều mã cây cùng lúc, không xác định được nếu bỏ trống)." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Kệ Phòng mẫu mẹ ĐÃ CHIA (đã dedicate 1 NV/mã cây) chỉ nên xuất hiện đúng 1 dòng/file. Kệ mẫu mẹ CHUNG (chưa dedicate) thì được nhiều dòng/mã cây khác nhau, miễn không dòng nào gán Mã NV phụ trách. Phòng ra rễ/phòng kho TP luôn được nhiều dòng (nhiều mã cây khác nhau)." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "1 dòng có thể điền cả 2 cột Số lượng phù hợp với vị trí (VD cả T01 lẫn T05 cho 1 kệ ra rễ) để cập nhật đồng thời 2 lô — miễn tổng không vượt sức chứa (capacity) của kệ." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã lô (nếu điền) chỉ có tác dụng khi TẠO LÔ MỚI (vị trí + mã cây + quy cách đó chưa có lô nào) và dòng chỉ có đúng 1 cột Số lượng khác 0 — nếu vị trí đó đã có lô sẵn (đang cập nhật số lượng) thì cột này bị bỏ qua, lô giữ nguyên mã cũ." });
 
   addGuideSheet(workbook, [
     { column: "Mã vị trí (kệ hoặc phòng kho TP)", required: true, description: "Mã kệ (Phòng mẫu mẹ/Phòng ra rễ) hoặc mã phòng kho thành phẩm — hệ thống tự phân biệt." },
-    { column: "Mã cây", required: true, description: "Mã loại cây, xem sheet Danh mục." },
+    { column: "Mã cây", required: true, description: "Mã loại cây, xem sheet Danh mục. Riêng kệ Phòng mẫu mẹ: bỏ trống (kèm Số lượng M05 cũng để trống) = dọn trống kệ, xoá gán mã cây dedicate + đưa mọi lô trên kệ về 0." },
     { column: "Mã NV cấy mô phụ trách", required: false, description: "Chỉ cần cho lô Mẫu mẹ/Ra rễ (dùng sinh mã lô) — bỏ trống nếu là lô Thành phẩm trong kho TP." },
     { column: "Ngày nhập lô", required: true, description: "Định dạng dd/mm/yyyy." },
     { column: "Mã lô (để trống = tự sinh)", required: false, description: "Chỉ áp dụng khi tạo lô mới (vị trí + mã cây + quy cách chưa từng có lô) — bỏ qua nếu vị trí đó đã có lô, chỉ đang cập nhật số lượng." },
@@ -167,13 +168,22 @@ export async function POST(req: NextRequest) {
     roomId?: string;
     isMauMeShelf: boolean;
     shelfCapacity: number | null;
-    plantType: ResolvedPlantType;
+    // Trạng thái gán NV hiện tại của kệ (đọc từ DB lúc validate) — null = kệ "chung" (chưa dedicate,
+    // có thể chứa nhiều mã cây cùng lúc), khác null = kệ "đã chia" (dedicate 1 mã cây/NV). Dùng để quyết
+    // định có cho phép nhiều dòng cùng 1 kệ (khác mã cây) hay không, xem Giai đoạn 1.5.
+    shelfAssignedStaffId: string | null;
+    // null CHỈ khi clearMauMeShelf = true (dòng "dọn trống kệ" — bỏ trống Mã cây, xem bên dưới).
+    plantType: ResolvedPlantType | null;
     lotStage: "MAU_ME" | "THANH_PHAM";
     staffCode: string | null;
     resolvedStaffId?: string;
     enteredAt: Date;
     expectedMoveAt: Date | null;
     stageEntries: StageEntry[];
+    // Dòng chỉ khai Mã vị trí (kệ Phòng mẫu mẹ) + bỏ trống Mã cây — báo "kệ này hiện không còn gì": xoá
+    // gán mã cây dedicate của kệ + đưa MỌI lô đang ACTIVE trên kệ về 0 (xem Giai đoạn 2). stageEntries
+    // luôn rỗng với dòng này (không khai combo mã cây + quy cách nào).
+    clearMauMeShelf: boolean;
   };
 
   // ---- Giai đoạn 1: validate từng dòng riêng lẻ, không ghi DB ----
@@ -203,7 +213,36 @@ export async function POST(req: NextRequest) {
     const isRaReShelf = !!shelf && shelf.room?.type === "PHONG_RA_RE";
 
     if (!parsed.plantTypeCode) {
-      errors.push({ row: parsed.row, label: parsed.location, message: "Thiếu Mã cây" });
+      if (!isMauMeShelf) {
+        errors.push({ row: parsed.row, label: parsed.location, message: "Thiếu Mã cây" });
+        continue;
+      }
+      // Dòng "dọn trống kệ" — chỉ có ý nghĩa với kệ Phòng mẫu mẹ (1 kệ = 1 mã cây dedicate). Không chấp
+      // nhận kèm Số lượng khác 0 (không xác định được gán cho mã cây nào) hay cột T01/T05 (sai vị trí).
+      if (parsed.quantityT01 || parsed.quantityT05) {
+        errors.push({ row: parsed.row, label: parsed.location, message: `Cột Số lượng ${parsed.quantityT01 ? "T01" : "T05"} không dùng được cho vị trí này` });
+        continue;
+      }
+      const m05 = parsed.quantityM05 ? Number(parsed.quantityM05) : 0;
+      if (parsed.quantityM05 && (!Number.isFinite(m05) || m05 !== 0)) {
+        errors.push({ row: parsed.row, label: parsed.location, message: "Đã bỏ trống Mã cây (dọn trống kệ) nhưng vẫn có Số lượng M05 khác 0 — không xác định được gán cho mã cây nào" });
+        continue;
+      }
+      validRows.push({
+        row: parsed.row,
+        label: parsed.location,
+        shelfId: shelf!.id,
+        isMauMeShelf: true,
+        shelfCapacity: shelf!.capacity ?? null,
+        shelfAssignedStaffId: shelf!.assignedStaffId,
+        plantType: null,
+        lotStage: "MAU_ME",
+        staffCode: null,
+        enteredAt: cellDate(parsed.enteredAtRaw) ?? new Date(),
+        expectedMoveAt: null,
+        stageEntries: [],
+        clearMauMeShelf: true,
+      });
       continue;
     }
     const plantType = await prisma.plantType.findUnique({
@@ -304,6 +343,7 @@ export async function POST(req: NextRequest) {
       roomId: room?.id,
       isMauMeShelf,
       shelfCapacity: shelf?.capacity ?? null,
+      shelfAssignedStaffId: shelf?.assignedStaffId ?? null,
       plantType,
       lotStage: isMauMeShelf ? "MAU_ME" : "THANH_PHAM",
       staffCode,
@@ -311,6 +351,7 @@ export async function POST(req: NextRequest) {
       enteredAt,
       expectedMoveAt,
       stageEntries,
+      clearMauMeShelf: false,
     });
   }
 
@@ -324,6 +365,7 @@ export async function POST(req: NextRequest) {
     isMauMeShelf: boolean;
     capacity: number | null;
     label: string;
+    shelfAssignedStaffId: string | null;
     targets: Map<string, Target>; // key = `${plantTypeId}::${stageCode}`
     mauMeRows: ValidRow[]; // dùng để validate + áp dụng gán mã cây/NV (chỉ có ý nghĩa ở Phòng mẫu mẹ)
   };
@@ -332,26 +374,38 @@ export async function POST(req: NextRequest) {
     const key = vr.shelfId ? `shelf:${vr.shelfId}` : `room:${vr.roomId}`;
     let g = groups.get(key);
     if (!g) {
-      g = { shelfId: vr.shelfId, roomId: vr.roomId, isMauMeShelf: vr.isMauMeShelf, capacity: vr.shelfCapacity, label: vr.label, targets: new Map(), mauMeRows: [] };
+      g = { shelfId: vr.shelfId, roomId: vr.roomId, isMauMeShelf: vr.isMauMeShelf, capacity: vr.shelfCapacity, label: vr.label, shelfAssignedStaffId: vr.shelfAssignedStaffId, targets: new Map(), mauMeRows: [] };
       groups.set(key, g);
     }
     for (const entry of vr.stageEntries) {
-      const comboKey = `${vr.plantType.id}::${entry.stageCode}`;
+      // stageEntries luôn rỗng khi clearMauMeShelf = true (vr.plantType null) — vòng lặp này không bao
+      // giờ chạy với dòng đó, plantType chắc chắn khác null ở đây.
+      const comboKey = `${vr.plantType!.id}::${entry.stageCode}`;
       if (g.targets.has(comboKey)) {
-        errors.push({ row: vr.row, label: vr.label, message: `Trùng dữ liệu quy cách ${entry.stageCode} + mã cây ${vr.plantType.code} tại vị trí này — đã khai ở 1 dòng khác trong file` });
+        errors.push({ row: vr.row, label: vr.label, message: `Trùng dữ liệu quy cách ${entry.stageCode} + mã cây ${vr.plantType!.code} tại vị trí này — đã khai ở 1 dòng khác trong file` });
         continue;
       }
-      g.targets.set(comboKey, { plantTypeId: vr.plantType.id, stageCode: entry.stageCode, quantity: entry.quantity, source: vr, lotCodeOverride: entry.lotCodeOverride });
+      g.targets.set(comboKey, { plantTypeId: vr.plantType!.id, stageCode: entry.stageCode, quantity: entry.quantity, source: vr, lotCodeOverride: entry.lotCodeOverride });
     }
     if (vr.isMauMeShelf) g.mauMeRows.push(vr);
   }
 
-  // Kệ Phòng mẫu mẹ chỉ dedicate được 1 mã cây — nếu xuất hiện >1 dòng/kệ trong file thì không rõ nên
-  // gán mã cây/NV nào cho kệ, báo lỗi thay vì tự chọn đại 1 dòng.
+  // >1 dòng cùng 1 kệ Phòng mẫu mẹ (mỗi dòng 1 mã cây khác nhau) CHỈ hợp lệ nếu đây là kệ "chung" (chưa
+  // dedicate cho 1 NV/mã cây cố định — assignedStaffId null lúc đọc, xem matchesAllowedCodes ở
+  // src/lib/shelf-assignment.ts) và không dòng nào cố gán NV phụ trách riêng (staffCode) — khi đó mỗi
+  // dòng chỉ là 1 lô (mã cây riêng) cùng chung 1 kệ, không đụng gì tới plantTypeId/assignedStaffId của
+  // Shelf. Kệ ĐÃ CHIA (assignedStaffId khác null, dedicate đúng 1 mã cây) thì vẫn chỉ cho phép đúng 1
+  // dòng/file như cũ — 2 mã cây khác nhau cho cùng 1 kệ đã chia là mâu thuẫn.
   for (const g of groups.values()) {
-    if (g.mauMeRows.length > 1) {
+    if (g.mauMeRows.length <= 1) continue;
+    if (g.shelfAssignedStaffId) {
       const rowsList = g.mauMeRows.map((r) => r.row).join(", ");
-      errors.push({ row: g.mauMeRows[0].row, label: g.label, message: `Kệ Phòng mẫu mẹ chỉ nên xuất hiện 1 dòng/file (đang trùng ở các dòng ${rowsList})` });
+      errors.push({ row: g.mauMeRows[0].row, label: g.label, message: `Kệ này đã dedicate cho 1 NV cấy mô (kệ "đã chia") — chỉ nhận đúng 1 mã cây, không thể khai nhiều mã cây khác nhau (đang trùng ở các dòng ${rowsList})` });
+      continue;
+    }
+    const staffRow = g.mauMeRows.find((r) => r.resolvedStaffId);
+    if (staffRow) {
+      errors.push({ row: staffRow.row, label: g.label, message: `Kệ chung (nhiều mã cây khác nhau) không gán NV phụ trách riêng theo dòng — bỏ trống cột "Mã NV cấy mô phụ trách" ở dòng ${staffRow.row}, hoặc tách kệ này thành 1 dòng duy nhất nếu muốn dedicate cho 1 NV` });
     }
   }
 
@@ -399,12 +453,33 @@ export async function POST(req: NextRequest) {
           existingByCombo.set(comboKey, arr);
         }
 
-        // Gán mã cây dedicate + NV phụ trách cho kệ Phòng mẫu mẹ (đã đảm bảo tối đa 1 dòng/kệ ở trên).
+        // Gán mã cây dedicate + NV phụ trách cho kệ Phòng mẫu mẹ — CHỈ khi đúng 1 dòng/kệ (kệ "đã chia"
+        // hoặc đang dedicate lần đầu). Kệ "chung" nhiều mã cây (g.mauMeRows.length > 1, đã validate hợp
+        // lệ ở Giai đoạn 1.5) rơi thẳng xuống vòng lặp targets bên dưới — không đụng plantTypeId/
+        // assignedStaffId của Shelf, mỗi dòng chỉ là 1 lô riêng trên cùng 1 kệ chung.
         if (g.isMauMeShelf && g.mauMeRows.length === 1 && g.shelfId) {
           const vr = g.mauMeRows[0];
           const shelfCurrent = await tx.shelf.findUnique({ where: { id: g.shelfId }, select: { plantTypeId: true, assignedStaffId: true } });
+
+          if (vr.clearMauMeShelf) {
+            // Dòng "dọn trống kệ" (bỏ trống Mã cây) — chỉ xoá gán mã cây dedicate (GIỮ NGUYÊN NV phụ
+            // trách, không đụng assignedStaffId), rồi đưa MỌI lô đang ACTIVE trên kệ về 0 — không chỉ
+            // theo combo trong targets (targets rỗng vì dòng này không khai mã cây/quy cách nào), vì
+            // "trống kệ" nghĩa là trống hết bất kể mã cây cũ trên đó là gì.
+            if (shelfCurrent?.plantTypeId) {
+              await tx.shelf.update({ where: { id: g.shelfId }, data: { plantTypeId: null } });
+            }
+            for (const lot of existingLots) {
+              if (lot.quantity !== 0) {
+                await tx.lot.update({ where: { id: lot.id }, data: { quantity: 0 } });
+                updatedCount += 1;
+              }
+            }
+            continue;
+          }
+
           const attrResult = await resolveShelfAttributeUpdate(tx, g.shelfId, {
-            plantTypeId: shelfCurrent && vr.plantType.id === shelfCurrent.plantTypeId ? undefined : vr.plantType.id,
+            plantTypeId: shelfCurrent && vr.plantType!.id === shelfCurrent.plantTypeId ? undefined : vr.plantType!.id,
             assignedStaffId: vr.resolvedStaffId && vr.resolvedStaffId !== shelfCurrent?.assignedStaffId ? vr.resolvedStaffId : undefined,
           });
           if (attrResult.ok && Object.keys(attrResult.data).length > 0) {
@@ -441,7 +516,7 @@ export async function POST(req: NextRequest) {
           const vr = target.source;
           let code = target.lotCodeOverride;
           if (!code) {
-            const base = lotCodeBase({ plantTypeCode: vr.plantType.code, staffCode: vr.staffCode ?? "NV000", date: vr.enteredAt });
+            const base = lotCodeBase({ plantTypeCode: vr.plantType!.code, staffCode: vr.staffCode ?? "NV000", date: vr.enteredAt });
             let attempt = 0;
             for (;;) {
               attempt += 1;
