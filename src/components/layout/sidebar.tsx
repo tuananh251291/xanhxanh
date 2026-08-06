@@ -72,7 +72,7 @@ function SidebarNav({ navItems, collapsed, onNavigate }: {
 }) {
   const pathname = usePathname();
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="flex-1 min-h-0">
       <nav className="p-2 space-y-1">
         {navItems.map((item) => {
           const Icon = ICON_MAP[item.icon] ?? LayoutDashboard;
