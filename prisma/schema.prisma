@@ -1093,6 +1093,10 @@ model RepackInstruction {
   outputLotId         String?
   outputLot           Lot?    @relation("RepackOutputLot", fields: [outputLotId], references: [id])
 
+  // Đăng ký hoàn thành sớm/làm thêm (ExtraWorkRequest) đã được Kho mô "dùng" để gán NV cho ĐÚNG chỉ định
+  // này — xem ExtraWorkRequest.fulfilledRepackInstructionId, PATCH nhánh assignExtraWorkRequestId.
+  extraWorkRequestsFulfilled ExtraWorkRequest[] @relation("ExtraWorkRequestFulfilledRepackInstruction")
+
   status    RepackInstructionStatus @default(CREATED)
   notes     String?
   updatedAt DateTime                @updatedAt
@@ -1301,13 +1305,18 @@ model ExtraWorkRequest {
   respondedBy   User?                  @relation("ExtraWorkRequestRespondedBy", fields: [respondedById], references: [id])
   respondedAt   DateTime?
 
-  // Đăng ký đã APPROVED được Kho mô "dùng" để gán vào 1 chỉ định cấy dự phòng (xem
-  // PlantingInstruction.isBackup, PATCH /api/instructions/[id] nhánh assignExtraWorkRequestId) — null dù
-  // đã APPROVED nghĩa là còn "khả dụng", chưa NV nào được gán chỉ định thật từ đăng ký này. Ngăn 1 đăng
-  // ký bị dùng gán trùng cho nhiều chỉ định dự phòng khác nhau.
-  fulfilledAt            DateTime?
-  fulfilledInstructionId String?
-  fulfilledInstruction   PlantingInstruction? @relation("ExtraWorkRequestFulfilledInstruction", fields: [fulfilledInstructionId], references: [id])
+  // Đăng ký đã APPROVED được Kho mô "dùng" để gán vào 1 chỉ định cấy dự phòng HOẶC 1 chỉ định cấy xử lý
+  // (xem PlantingInstruction.isBackup, PATCH /api/instructions/[id] nhánh assignExtraWorkRequestId; và
+  // RepackInstruction, PATCH /api/repack-instructions/[id] nhánh cùng tên) — null ở CẢ 2 field dưới dù đã
+  // APPROVED nghĩa là còn "khả dụng" (xem GET /api/extra-work-requests?availableToAssign=true), chưa NV
+  // nào được gán việc thật từ đăng ký này. fulfilledAt dùng CHUNG cho cả 2 loại (chỉ đánh dấu "đã dùng"),
+  // chỉ 1 trong 2 field Id dưới được set tuỳ đã dùng cho loại chỉ định nào — ngăn 1 đăng ký bị dùng gán
+  // trùng cho nhiều việc khác nhau bất kể loại.
+  fulfilledAt                  DateTime?
+  fulfilledInstructionId       String?
+  fulfilledInstruction         PlantingInstruction? @relation("ExtraWorkRequestFulfilledInstruction", fields: [fulfilledInstructionId], references: [id])
+  fulfilledRepackInstructionId String?
+  fulfilledRepackInstruction   RepackInstruction?   @relation("ExtraWorkRequestFulfilledRepackInstruction", fields: [fulfilledRepackInstructionId], references: [id])
 
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt

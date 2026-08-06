@@ -390,7 +390,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // Kho mô bàn giao chỉ định cấy DỰ PHÒNG (isBackup) — thay vì chọn tự do như kệ "chung" thường
   // (isAssignAction bên dưới), phải chọn đúng 1 đăng ký làm thêm/hoàn thành sớm ĐÃ DUYỆT và CHƯA dùng
-  // (xem GET /api/extra-work-requests?availableForBackup=true) — hành động này vừa gán NV + bàn giao
+  // (xem GET /api/extra-work-requests?availableToAssign=true) — hành động này vừa gán NV + bàn giao
   // (giống hệt isAssignAction) VỪA đánh dấu đăng ký đó đã dùng (fulfilledAt) để không bị gán trùng.
   if ("assignExtraWorkRequestId" in parsed.data) {
     if (!(isAdminRole(role) || role === "KHO_MO")) {

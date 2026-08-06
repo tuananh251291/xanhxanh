@@ -49,6 +49,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 const patchSchema = z.union([
   z.object({ assignedToId: z.string().min(1) }),
+  z.object({ assignExtraWorkRequestId: z.string().min(1) }),
   z.object({ confirmReceived: z.literal(true) }),
   z.object({ reportInsufficientQuantity: z.object({ note: z.string().optional() }) }),
   z.object({ undoConfirmReceived: z.literal(true) }),
@@ -104,6 +105,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
+  // ---- Kho mô gán NV từ 1 đăng ký hoàn thành sớm/làm thêm ĐÃ DUYỆT (xem GET /api/extra-work-requests
+  // ?availableToAssign=true) thay vì chọn tự do — dùng khi muốn ưu tiên giao việc cho NV đã báo rảnh
+  // trong tuần. Đánh dấu đăng ký đó "đã dùng" (fulfilledAt/fulfilledRepackInstructionId) để không bị gán
+  // trùng cho việc khác, cùng cơ chế với chỉ định cấy dự phòng (PATCH /api/instructions/[id]) — chỉ khác
+  // ở field đích (fulfilledRepackInstructionId thay vì fulfilledInstructionId).
+  if ("assignExtraWorkRequestId" in body) {
+    if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+    if (instruction.status !== "CREATED") {
+      return NextResponse.json({ message: "Chỉ định đã được gán NV hoặc không còn ở trạng thái chờ gán" }, { status: 400 });
+    }
+    const extraWorkRequest = await prisma.extraWorkRequest.findUnique({
+      where: { id: body.assignExtraWorkRequestId },
+      include: { staff: { select: { id: true, role: true, isActive: true, workplaceWarehouseId: true } } },
+    });
+    if (!extraWorkRequest) return NextResponse.json({ message: "Không tìm thấy đăng ký" }, { status: 404 });
+    if (extraWorkRequest.staff.workplaceWarehouseId !== instruction.sourceShelf.warehouseId) {
+      return NextResponse.json({ message: "Đăng ký không thuộc kho của chỉ định này" }, { status: 403 });
+    }
+    if (role === "KHO_MO" && extraWorkRequest.staff.workplaceWarehouseId !== session.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Đăng ký không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+    if (extraWorkRequest.status !== "APPROVED" || extraWorkRequest.fulfilledAt) {
+      return NextResponse.json({ message: "Đăng ký này chưa được duyệt hoặc đã dùng cho việc khác" }, { status: 400 });
+    }
+    if (!extraWorkRequest.staff.isActive || extraWorkRequest.staff.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Nhân viên cấy mô không hợp lệ" }, { status: 400 });
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.extraWorkRequest.update({
+        where: { id: extraWorkRequest.id },
+        data: { fulfilledAt: new Date(), fulfilledRepackInstructionId: id },
+      });
+      return tx.repackInstruction.update({
+        where: { id },
+        data: { assignedToId: extraWorkRequest.staffId, assignedById: session.user.id, assignedAt: new Date(), status: "ASSIGNED" },
+      });
+    });
+    return NextResponse.json(updated);
+  }
+
   // ---- NV cấy mô tự xác nhận "Nhận bàn giao" — TRỪ TỒN KHO ngay tại đây ----
   if ("confirmReceived" in body) {
     if (instruction.assignedToId !== session.user.id) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -142,17 +186,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ message: "Chỉ định không ở trạng thái chờ nhận bàn giao" }, { status: 400 });
     }
     const { note } = body.reportInsufficientQuantity;
-    const updated = await prisma.repackInstruction.update({
-      where: { id },
-      data: {
-        quantityIssueReportedAt: new Date(),
-        quantityIssueReportedById: session.user.id,
-        quantityIssueNote: note,
-        assignedToId: null,
-        assignedById: null,
-        assignedAt: null,
-        status: "CREATED",
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      // Huỷ gán coi như huỷ luôn việc "dùng" đăng ký hoàn thành sớm/làm thêm (nếu NV được gán từ đó) —
+      // trả lại đăng ký về trạng thái "khả dụng" để Kho mô chọn được NV khác (hoặc gán lại đúng NV cũ) từ
+      // danh sách, cùng nguyên tắc undoHandover của chỉ định cấy dự phòng (PATCH /api/instructions/[id]).
+      await tx.extraWorkRequest.updateMany({
+        where: { fulfilledRepackInstructionId: id },
+        data: { fulfilledAt: null, fulfilledRepackInstructionId: null },
+      });
+      return tx.repackInstruction.update({
+        where: { id },
+        data: {
+          quantityIssueReportedAt: new Date(),
+          quantityIssueReportedById: session.user.id,
+          quantityIssueNote: note,
+          assignedToId: null,
+          assignedById: null,
+          assignedAt: null,
+          status: "CREATED",
+        },
+      });
     });
     if (instruction.assignedById) {
       await createAlert({
@@ -247,7 +300,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.status === "CANCELLED" || instruction.status === "COMPLETED") {
       return NextResponse.json({ message: "Chỉ định đã kết thúc" }, { status: 400 });
     }
-    const updated = await prisma.repackInstruction.update({ where: { id }, data: { status: "CANCELLED" } });
+    const updated = await prisma.$transaction(async (tx) => {
+      // Hủy chỉ định thì đăng ký hoàn thành sớm/làm thêm đã dùng (nếu có) cũng phải trả lại "khả dụng" —
+      // việc đó không còn tồn tại nữa, không được coi là đã "dùng" suất đăng ký của NV.
+      await tx.extraWorkRequest.updateMany({
+        where: { fulfilledRepackInstructionId: id },
+        data: { fulfilledAt: null, fulfilledRepackInstructionId: null },
+      });
+      return tx.repackInstruction.update({ where: { id }, data: { status: "CANCELLED" } });
+    });
     return NextResponse.json(updated);
   }
 

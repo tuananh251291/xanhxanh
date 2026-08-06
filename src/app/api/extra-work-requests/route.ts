@@ -48,14 +48,15 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
-  // Dùng khi Kho mô bàn giao 1 chỉ định cấy dự phòng và cần chọn "nhân viên đã đăng ký" (xem
-  // AssignBackupStaffCell) — chỉ lấy đăng ký ĐÃ DUYỆT và CHƯA được dùng gán cho chỉ định nào.
-  const availableForBackup = searchParams.get("availableForBackup") === "true";
+  // Dùng khi Kho mô bàn giao 1 chỉ định cấy dự phòng (xem AssignBackupStaffCell) hoặc 1 chỉ định cấy xử
+  // lý (xem AssignRepackStaffCell) và cần chọn "nhân viên đã đăng ký" — chỉ lấy đăng ký ĐÃ DUYỆT và CHƯA
+  // được dùng gán cho việc nào (chung 1 cờ fulfilledAt cho cả 2 loại việc, xem schema.prisma).
+  const availableToAssign = searchParams.get("availableToAssign") === "true";
   const role = session.user.role;
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
-  if (availableForBackup) {
+  if (availableToAssign) {
     where.status = "APPROVED";
     where.fulfilledAt = null;
   }

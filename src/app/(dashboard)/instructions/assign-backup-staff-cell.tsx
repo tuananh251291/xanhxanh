@@ -35,7 +35,7 @@ function requestLabel(r: ExtraWorkRequest): string {
 
 // Dùng riêng cho chỉ định cấy DỰ PHÒNG (isBackup) — thay vì chọn tự do mọi NV cấy mô đang hoạt động như
 // AssignStaffCell, chỉ cho chọn trong số NV đang có đăng ký làm thêm/hoàn thành sớm ĐÃ DUYỆT và CHƯA
-// dùng (xem GET /api/extra-work-requests?availableForBackup=true, PATCH nhánh assignExtraWorkRequestId).
+// dùng (xem GET /api/extra-work-requests?availableToAssign=true, PATCH nhánh assignExtraWorkRequestId).
 export default function AssignBackupStaffCell({ instructionId }: { instructionId: string }) {
   const [requests, setRequests] = useState<ExtraWorkRequest[]>([]);
   const [requestId, setRequestId] = useState("");
@@ -46,7 +46,7 @@ export default function AssignBackupStaffCell({ instructionId }: { instructionId
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/extra-work-requests?availableForBackup=true");
+      const res = await fetch("/api/extra-work-requests?availableToAssign=true");
       setRequests(await res.json());
     } finally {
       setLoading(false);

@@ -39,27 +39,21 @@ export default async function RepackInstructionsPage() {
     where.sourceShelf = { warehouseId: session!.user.workplaceWarehouseId };
   }
 
-  const [instructions, staffList] = await Promise.all([
-    prisma.repackInstruction.findMany({
-      where,
-      include: {
-        plantType: { select: { code: true, name: true } },
-        sourceShelf: { select: { code: true, warehouseId: true } },
-        sourceLot: { select: { code: true } },
-        assignedTo: { select: { name: true } },
-        quantityIssueReportedBy: { select: { name: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-    role === "KHO_MO"
-      ? prisma.user.findMany({
-          where: { role: "CAY_MO", isActive: true, workplaceWarehouseId: session!.user.workplaceWarehouseId },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-        })
-      : Promise.resolve([]),
-  ]);
+  // Không còn cần tải sẵn danh sách NV cấy mô — gán qua AssignRepackStaffCell giờ chỉ cho chọn trong số
+  // NV đã đăng ký hoàn thành sớm/làm thêm ĐÃ DUYỆT (tự tải riêng qua GET /api/extra-work-requests
+  // ?availableToAssign=true), không chọn tự do mọi NV như trước.
+  const instructions = await prisma.repackInstruction.findMany({
+    where,
+    include: {
+      plantType: { select: { code: true, name: true } },
+      sourceShelf: { select: { code: true, warehouseId: true } },
+      sourceLot: { select: { code: true } },
+      assignedTo: { select: { name: true } },
+      quantityIssueReportedBy: { select: { name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
 
   const needsAssignment = role === "KHO_MO" ? instructions.filter((i) => i.status === "CREATED") : [];
   const needsReview = role === "KHO_MO" ? instructions.filter((i) => i.status === "PENDING_PLACEMENT") : [];
@@ -92,7 +86,7 @@ export default async function RepackInstructionsPage() {
                       {inst.inputQuantity.toLocaleString("vi-VN")} cây {inst.inputStageCode} → {inst.outputStageCode}
                     </p>
                   </div>
-                  <AssignRepackStaffCell instructionId={inst.id} staffList={staffList} />
+                  <AssignRepackStaffCell instructionId={inst.id} />
                 </div>
                 {inst.quantityIssueReportedAt && (
                   <div className="bg-danger-light rounded-lg p-3 text-sm text-destructive flex items-start gap-2">
