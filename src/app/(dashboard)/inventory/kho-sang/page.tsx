@@ -93,7 +93,8 @@ export default async function KhoSangPage() {
           plantType: { select: { name: true } },
           assignedStaff: { select: { name: true } },
           lots: {
-            where: { status: "ACTIVE" },
+            // quantity > 0 — xem giải thích ở src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
+            where: { status: "ACTIVE", quantity: { gt: 0 } },
             include: { plantType: { select: { code: true, name: true } } },
             orderBy: { enteredAt: "asc" },
           },

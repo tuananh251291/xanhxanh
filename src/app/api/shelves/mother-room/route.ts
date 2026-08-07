@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
         plantType: { select: { code: true, name: true } },
         assignedStaff: { select: { name: true } },
         lots: {
-          where: { status: "ACTIVE", stageCode: "M05" },
+          // quantity > 0 — xem giải thích ở src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
+          where: { status: "ACTIVE", stageCode: "M05", quantity: { gt: 0 } },
           select: { quantity: true, plantType: { select: { code: true, name: true } } },
         },
       },

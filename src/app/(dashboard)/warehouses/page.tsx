@@ -13,7 +13,10 @@ const shelfInclude = {
     assignedStaff: { select: { id: true, code: true, name: true } },
     rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
     lots: {
-      where: { status: "ACTIVE" as const },
+      // quantity > 0 — lô đã về 0 (Admin sửa tay hoặc xuất hết) coi như không còn xếp trên kệ nữa, phải
+      // biến mất khỏi mọi nơi hiển thị (kể cả dialog "Sửa số lượng lô cây") — lô vẫn còn ACTIVE trong DB
+      // nên Nhập kho thủ công merge lại đúng lô cũ nếu sau này nhập lại đúng mã cây/quy cách đó.
+      where: { status: "ACTIVE" as const, quantity: { gt: 0 } },
       select: { id: true, code: true, quantity: true, stageCode: true, plantType: { select: { code: true, name: true } } },
     },
   },

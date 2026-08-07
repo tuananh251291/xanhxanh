@@ -60,7 +60,8 @@ export default async function ShelfListView({
         assignedStaff: { select: { id: true, code: true, name: true } },
         rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
         lots: {
-          where: { status: "ACTIVE" },
+          // quantity > 0 — xem giải thích ở src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
+          where: { status: "ACTIVE", quantity: { gt: 0 } },
           select: { id: true, code: true, quantity: true, stageCode: true, plantType: { select: { code: true, name: true } } },
         },
       },

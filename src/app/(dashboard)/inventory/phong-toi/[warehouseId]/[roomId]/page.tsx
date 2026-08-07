@@ -21,7 +21,10 @@ export default async function PhongToiRoomDetailPage({ params }: { params: Promi
       warehouse: { select: { name: true } },
       assignedStaff: { select: { name: true, code: true } },
       lots: {
-        where: { status: "ACTIVE" },
+        // quantity > 0 — lô Admin sửa về 0 (hoặc đã hết qua nghiệp vụ khác) coi như không còn nằm trong
+        // phòng tối nữa, phải biến mất khỏi danh sách — xem giải thích đầy đủ ở
+        // src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
+        where: { status: "ACTIVE", quantity: { gt: 0 } },
         include: {
           plantType: { select: { code: true, name: true } },
           instruction: { select: { code: true } },
