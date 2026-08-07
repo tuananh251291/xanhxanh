@@ -279,6 +279,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/product-prices", label: "Bảng giá sản phẩm", icon: "DollarSign" },
     { href: "/instructions", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
+    { href: "/instruction-quantity-edit", label: "Sửa SL chỉ định cấy", icon: "PenLine" },
     { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/settings/shelf-groups", label: "Nhóm giàn kệ", icon: "Layers" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
@@ -328,6 +329,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/instructions", label: "Chỉ định cấy chưa bàn giao", icon: "ClipboardList" },
+    { href: "/instruction-quantity-edit", label: "Sửa SL chỉ định cấy", icon: "PenLine" },
     { href: "/repack-instructions", label: "Chỉ định cấy xử lý", icon: "RefreshCw" },
     { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },

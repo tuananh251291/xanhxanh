@@ -65,6 +65,16 @@ const patchSchema = z.union([
       plannedT05Quantity: z.number().int().min(0).default(0),
     }),
   }),
+  // Trang "Sửa SL chỉ định cấy" (gõ mã, sửa riêng số lượng dùng) — dành cho Admin cấp cao (SUPER_ADMIN,
+  // sửa được cả khi đã bàn giao, miễn chỉ định còn đang thực hiện) và Kho mô (chỉ sửa được TRƯỚC khi NV
+  // cấy mô xác nhận nhận mẫu mẹ — sau đó coi như đã chốt, NV có thể đã bắt đầu dùng theo số liệu cũ).
+  // Khác nhánh "edit" ở trên: KHÔNG đổi tỉ lệ/môi trường/tuần — chỉ đổi quantity, giữ nguyên
+  // motherSampleRatio/rootingRatio đã lưu để tính lại expectedMotherOutput/expectedFinishedOutput.
+  z.object({
+    editQuantities: z.object({
+      items: z.array(z.object({ itemId: z.string(), quantity: z.number().int().positive() })).min(1),
+    }),
+  }),
 ]);
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -170,6 +180,113 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { status: "ENDED", endReason: "EARLY_END_BY_STAFF" },
     });
     return NextResponse.json(updated);
+  }
+
+  if ("editQuantities" in parsed.data) {
+    const isSuperAdmin = role === "SUPER_ADMIN";
+    const isKhoMo = role === "KHO_MO";
+    if (!isSuperAdmin && !isKhoMo) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    const instruction = await prisma.plantingInstruction.findUnique({
+      where: { id },
+      include: {
+        items: { include: { lot: { select: { quantity: true } }, shelf: { select: { warehouseId: true } } } },
+      },
+    });
+    if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+
+    if (instruction.status !== "DRAFT" && instruction.status !== "ACTIVE") {
+      return NextResponse.json({ message: "Chỉ định đã kết thúc hoặc đã hủy — không thể sửa số lượng" }, { status: 400 });
+    }
+    // Kho mô chỉ được sửa TRƯỚC khi NV cấy mô xác nhận nhận mẫu mẹ, và chỉ đúng kho mình đang làm việc
+    // (giống check ở nhánh assignExtraWorkRequestId) — Admin cấp cao không bị 2 ràng buộc này.
+    if (isKhoMo) {
+      if (instruction.motherReceivedAt) {
+        return NextResponse.json({ message: "NV cấy mô đã xác nhận nhận mẫu mẹ — không thể sửa số lượng nữa" }, { status: 400 });
+      }
+      const instructionWarehouseId = instruction.items[0]?.shelf?.warehouseId;
+      if (instructionWarehouseId !== session!.user.workplaceWarehouseId) {
+        return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
+      }
+    }
+
+    const { items: editItems } = parsed.data.editQuantities;
+    const currentItemIds = new Set(instruction.items.map((i) => i.id));
+    const editItemIds = new Set(editItems.map((i) => i.itemId));
+    if (currentItemIds.size !== editItemIds.size || [...currentItemIds].some((itemId) => !editItemIds.has(itemId))) {
+      return NextResponse.json({ message: "Không được thêm/bớt dòng quy cách khi sửa số lượng" }, { status: 400 });
+    }
+
+    const itemsById = new Map(instruction.items.map((i) => [i.id, i]));
+    for (const ei of editItems) {
+      const current = itemsById.get(ei.itemId)!;
+      if (current.lot && ei.quantity > current.lot.quantity) {
+        return NextResponse.json(
+          { message: `Dòng ${current.stageCode ?? ""}: số lượng dùng không được vượt quá ${current.lot.quantity.toLocaleString("vi-VN")} cụm hiện có trên lô nguồn` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const itemsWithOutput = editItems.map((ei) => {
+      const current = itemsById.get(ei.itemId)!;
+      return {
+        itemId: ei.itemId,
+        quantity: ei.quantity,
+        expectedMotherOutput: current.motherSampleRatio != null ? Math.floor(ei.quantity * current.motherSampleRatio) : null,
+        expectedFinishedOutput: current.rootingRatio != null ? Math.floor(ei.quantity * current.rootingRatio) : null,
+      };
+    });
+    const inputMotherQuantity = itemsWithOutput.reduce((sum, i) => sum + i.quantity, 0);
+    const expectedMotherOutput = itemsWithOutput.reduce((sum, i) => sum + (i.expectedMotherOutput ?? 0), 0);
+    const expectedFinishedOutput = itemsWithOutput.reduce((sum, i) => sum + (i.expectedFinishedOutput ?? 0), 0);
+
+    // Không cho giảm tổng số lượng dùng xuống dưới số cụm NV cấy mô ĐÃ kiểm tra dùng rồi (motherChecked
+    // cộng dồn qua các DailyRecord của chỉ định này) — tránh trạng thái "đã dùng nhiều hơn số lượng dùng
+    // mới", vốn dùng để tự kết thúc chỉ định (MOTHER_USED_UP, xem POST /api/daily-records).
+    const usedSoFar = await prisma.dailyRecord.aggregate({
+      where: { instructionId: id },
+      _sum: { motherChecked: true },
+    });
+    const totalChecked = usedSoFar._sum.motherChecked ?? 0;
+    if (inputMotherQuantity < totalChecked) {
+      return NextResponse.json(
+        { message: `Không thể giảm số lượng dùng xuống dưới ${totalChecked.toLocaleString("vi-VN")} cụm — NV cấy mô đã kiểm tra dùng số lượng này rồi` },
+        { status: 400 }
+      );
+    }
+
+    // Đơn đặt hàng môi trường đã được NV môi trường xác nhận thì KHÔNG động vào nữa (họ có thể đã bắt
+    // đầu pha chế theo số liệu cũ) — vẫn cho sửa xong chỉ định, chỉ đơn không tự cập nhật theo.
+    let mediumOrderLocked = false;
+    if (instruction.mediumOrderId) {
+      const order = await prisma.mediumOrder.findUnique({ where: { id: instruction.mediumOrderId }, select: { confirmedAt: true } });
+      mediumOrderLocked = !!order?.confirmedAt;
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      for (const i of itemsWithOutput) {
+        await tx.plantingInstructionItem.update({
+          where: { id: i.itemId },
+          data: { quantity: i.quantity, expectedMotherOutput: i.expectedMotherOutput, expectedFinishedOutput: i.expectedFinishedOutput },
+        });
+      }
+      if (instruction.mediumOrderId && !mediumOrderLocked) {
+        await detachInstructionFromMediumOrder(tx, instruction.id, instruction.mediumOrderId);
+      }
+      return tx.plantingInstruction.update({
+        where: { id },
+        data: { inputMotherQuantity, expectedMotherOutput, expectedFinishedOutput },
+        include: { items: true },
+      });
+    });
+
+    if (!mediumOrderLocked) {
+      await syncInstructionMediumOrder(updated, updated.items, updated.plannedT01Quantity ?? 0, updated.plannedT05Quantity ?? 0);
+    }
+
+    return NextResponse.json({ ...updated, mediumOrderLocked });
   }
 
   if ("edit" in parsed.data) {
