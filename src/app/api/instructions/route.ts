@@ -152,6 +152,31 @@ export async function POST(req: NextRequest) {
   // thời điểm" chỉ chặn ở bước NV cấy mô XÁC NHẬN nhận mẫu mẹ (xem confirmMotherReceived trong
   // /api/instructions/[id]/route.ts), không chặn ở bước tạo/gán/bàn giao.
 
+  // Chặn mỗi (shelf, lot) client gửi lên phải là 1 lô ACTIVE THẬT, đúng kệ/quy cách khai báo, và đúng
+  // mã cây (plantTypeId) của CẢ chỉ định — phòng lỗi UI chọn nhầm (VD kệ chung nhiều mã cây cùng lúc,
+  // xem create-instruction-dialog.tsx nhóm theo shelfId+plantTypeId) gửi lên shelfItems của 1 mã cây
+  // khác với plantTypeId đã chọn cho cả chỉ định — từng gây bug thật: chỉ định lưu đúng mã cây A nhưng
+  // items lại trỏ lô mã cây B (do dropdown chọn kệ chung lấy nhầm mã cây đại diện, độc lập với dòng lô
+  // NV thực sự tick chọn).
+  const lotIds = Array.from(new Set(shelfItems.map((item) => item.lotId)));
+  const validLots = await prisma.lot.findMany({
+    where: { id: { in: lotIds } },
+    select: { id: true, shelfId: true, plantTypeId: true, status: true, stageCode: true },
+  });
+  const lotById = new Map(validLots.map((l) => [l.id, l]));
+  for (const item of shelfItems) {
+    const lot = lotById.get(item.lotId);
+    if (!lot || lot.status !== "ACTIVE" || lot.shelfId !== item.shelfId || lot.stageCode !== item.stageCode) {
+      return NextResponse.json({ message: "Lô nguồn không hợp lệ — có thể đã bị thay đổi, thử tải lại trang" }, { status: 400 });
+    }
+    if (lot.plantTypeId !== plantTypeId) {
+      return NextResponse.json(
+        { message: "Có dòng lô không đúng mã cây của chỉ định — kệ chung có thể có nhiều mã cây, kiểm tra lại các dòng đã chọn" },
+        { status: 400 }
+      );
+    }
+  }
+
   const itemsWithOutput = shelfItems.map((item) => ({
     ...item,
     expectedMotherOutput: item.motherSampleRatio != null ? Math.floor(item.quantity * item.motherSampleRatio) : null,

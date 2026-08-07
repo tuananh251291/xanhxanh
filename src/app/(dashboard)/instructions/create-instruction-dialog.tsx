@@ -112,10 +112,17 @@ export default function CreateInstructionDialog({
   const [plannedTouched, setPlannedTouched] = useState(false);
   const router = useRouter();
 
+  // Nhóm theo CẢ shelfId LẪN plantTypeId (không chỉ shelfId) — kệ "chung" trong Phòng mẫu mẹ có thể đang
+  // chứa CÙNG LÚC nhiều mã cây khác nhau (mỗi mã 1-nhiều lô riêng), nếu chỉ nhóm theo shelfId thì tất cả
+  // lô của mọi mã cây trên kệ đó bị gộp chung vào 1 lựa chọn dropdown, và mã cây đại diện hiển thị/gửi
+  // lên server (`plantTypeId` dưới) chỉ là mã cây của LÔ ĐẦU TIÊN gặp trong danh sách (không liên quan gì
+  // tới lô nào NV thực sự chọn) — từng gây bug thật: chỉ định lưu đúng mã cây A nhưng lô nguồn lại là mã
+  // cây B. Mỗi (kệ, mã cây) giờ là 1 dòng riêng trong dropdown, không còn lẫn lộn.
   const shelfGroups = useMemo(() => {
     const map = new Map<
       string,
       {
+        key: string;
         shelfId: string;
         shelfCode: string;
         plantTypeId: string;
@@ -129,10 +136,12 @@ export default function CreateInstructionDialog({
     >();
     for (const lot of motherLots) {
       if (!lot.shelf) continue;
-      const existing = map.get(lot.shelf.id);
+      const key = `${lot.shelf.id}::${lot.plantTypeId}`;
+      const existing = map.get(key);
       if (existing) existing.lots.push(lot);
       else
-        map.set(lot.shelf.id, {
+        map.set(key, {
+          key,
           shelfId: lot.shelf.id,
           shelfCode: lot.shelf.code,
           plantTypeId: lot.plantTypeId,
@@ -146,7 +155,7 @@ export default function CreateInstructionDialog({
     }
     return Array.from(map.values());
   }, [motherLots]);
-  const selectedShelf = shelfGroups.find((s) => s.shelfId === shelfId);
+  const selectedShelf = shelfGroups.find((s) => s.key === shelfId);
 
   const buildRows = (lots: MotherLot[]): Row[] =>
     [...lots]
@@ -246,10 +255,15 @@ export default function CreateInstructionDialog({
       setMediumTypes(mediums);
       setMotherLots(lots);
       if (initialShelfId) {
-        const rowsForShelf = lots.filter((l) => l.shelf?.id === initialShelfId);
-        if (rowsForShelf.length > 0) {
-          setShelfId(initialShelfId);
-          const anchorLot = rowsForShelf[0];
+        const rowsForShelfAllPlantTypes = lots.filter((l) => l.shelf?.id === initialShelfId);
+        if (rowsForShelfAllPlantTypes.length > 0) {
+          // Lối tắt theo 1 kệ (VD từ banner "Kệ đến hạn cấy chuyển") thường nhắm đúng 1 kệ ĐÃ CHIA (1 mã
+          // cây cố định), nhưng vẫn có thể trỏ vào 1 kệ CHUNG đang có nhiều mã cây — lấy mã cây của lô
+          // ĐẦU TIÊN làm mã cây đại diện (như hành vi cũ), rồi LỌC LẠI danh sách dòng chỉ còn đúng mã cây
+          // đó, không lẫn lô của mã cây khác trên cùng kệ (xem comment ở shelfGroups).
+          const anchorLot = rowsForShelfAllPlantTypes[0];
+          const rowsForShelf = rowsForShelfAllPlantTypes.filter((l) => l.plantTypeId === anchorLot.plantTypeId);
+          setShelfId(`${initialShelfId}::${anchorLot.plantTypeId}`);
           loadRowsForShelf(
             {
               shelfId: initialShelfId,
@@ -274,7 +288,7 @@ export default function CreateInstructionDialog({
   // có sẵn gợi ý theo loại cây.
   const onShelfChange = (v: string) => {
     setShelfId(v);
-    const group = shelfGroups.find((s) => s.shelfId === v);
+    const group = shelfGroups.find((s) => s.key === v);
     if (!group) { setRows([]); setGroupInfo(null); return; }
     loadRowsForShelf(
       {
@@ -414,14 +428,14 @@ export default function CreateInstructionDialog({
               <SelectTrigger>
                 <SelectValue>
                   {(v: string | null) => {
-                    const g = shelfGroups.find((x) => x.shelfId === v);
-                    return g ? `Kệ ${g.shelfCode} · ${g.plantTypeName}` : "Chọn kệ (mỗi kệ 1 loại cây)";
+                    const g = shelfGroups.find((x) => x.key === v);
+                    return g ? `Kệ ${g.shelfCode} · ${g.plantTypeName}` : "Chọn kệ + mã cây";
                   }}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {shelfGroups.map((g) => (
-                  <SelectItem key={g.shelfId} value={g.shelfId}>
+                  <SelectItem key={g.key} value={g.key}>
                     Kệ {g.shelfCode} · {g.plantTypeName}
                   </SelectItem>
                 ))}
