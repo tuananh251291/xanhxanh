@@ -6,6 +6,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import ReceivePhongToiBoard from "./receive-phong-toi-board";
 import ReceiveDoLaneBoard from "./receive-do-lane-board";
 import ReceiveSurplusBoard from "./receive-surplus-board";
+import CheckHandoverStatusDialog from "./check-handover-status-dialog";
 
 export default async function ReceivePhongToiPage() {
   const session = await auth();
@@ -31,10 +32,11 @@ export default async function ReceivePhongToiPage() {
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <PackageCheck className="w-6 h-6 text-info-foreground" /> Nhận bàn giao từ kho tối
         </h1>
+        <CheckHandoverStatusDialog />
       </div>
 
       <div className="space-y-3">
