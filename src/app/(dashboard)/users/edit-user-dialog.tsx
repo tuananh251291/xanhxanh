@@ -190,7 +190,7 @@ export default function EditUserDialog({
         <Pencil className="w-3.5 h-3.5" />
         <span className="sr-only">Chỉnh sửa</span>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Sửa tài khoản</DialogTitle>
         </DialogHeader>

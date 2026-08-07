@@ -81,7 +81,7 @@ export default function ConfirmPlanDialog({
       <DialogTrigger render={<Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" />}>
         <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Xác nhận số liệu thật
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle className="font-mono">{code} — {supplierName}</DialogTitle></DialogHeader>
         <div className="space-y-4 mt-2">
           <div className="border border-divider rounded-lg overflow-hidden overflow-x-auto">

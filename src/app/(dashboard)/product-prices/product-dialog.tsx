@@ -55,7 +55,7 @@ export default function ProductDialog({ item }: { item?: Product }) {
           : <><Plus className="w-4 h-4 mr-2" />Thêm sản phẩm</>
         }
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{isEdit ? "Sửa sản phẩm" : "Thêm sản phẩm mới"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4 mt-2">
           <div className="space-y-1">

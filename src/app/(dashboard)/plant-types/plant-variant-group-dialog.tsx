@@ -104,7 +104,7 @@ export default function PlantVariantGroupDialog({
           : <><Plus className="w-4 h-4 mr-2" />Thêm nhóm biến thể</>
         }
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Sửa nhóm biến thể "${group.name}"` : "Thêm nhóm biến thể mới"}</DialogTitle>
         </DialogHeader>

@@ -113,7 +113,7 @@ export default function CreateUserDialog() {
         <UserPlus className="w-4 h-4 mr-2" />
         Thêm người dùng
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Thêm người dùng mới</DialogTitle>
         </DialogHeader>

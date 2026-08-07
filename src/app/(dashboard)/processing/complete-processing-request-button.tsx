@@ -65,7 +65,7 @@ export default function CompleteProcessingRequestButton({
       <DialogTrigger render={<Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" />}>
         <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Hoàn thành
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle className="font-mono">{code} — nhập số liệu thật</DialogTitle></DialogHeader>
         <div className="space-y-4 mt-2">
           <div className="space-y-1.5">

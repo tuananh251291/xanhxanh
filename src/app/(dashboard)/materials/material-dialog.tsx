@@ -54,7 +54,7 @@ export default function MaterialDialog({ item }: { item?: Material }) {
           : <><Plus className="w-4 h-4 mr-2" />Thêm vật tư</>
         }
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{isEdit ? "Sửa vật tư" : "Thêm vật tư mới"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

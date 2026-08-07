@@ -91,7 +91,7 @@ export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId:
       <DialogTrigger render={<Button size="sm" variant="ghost" className="h-7 px-2" title="Sửa nhật ký" />}>
         <Pencil className="w-3.5 h-3.5" />
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Sửa nhật ký cấy</DialogTitle></DialogHeader>
 
         {!detail ? (

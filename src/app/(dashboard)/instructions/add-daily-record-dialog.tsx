@@ -74,7 +74,7 @@ export default function AddDailyRecordDialog({
       <DialogTrigger render={<Button size="sm" variant="outline" className="h-7 px-2 text-text-secondary" />}>
         <Plus className="w-3.5 h-3.5 mr-1" /> Thêm dữ liệu
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Bù dữ liệu cấy — {format(date, "EEEE dd/MM/yyyy", { locale: vi })}</DialogTitle></DialogHeader>
 
         <div className="space-y-4 mt-2">

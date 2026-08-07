@@ -51,7 +51,7 @@ export default function ImportExportShelvesDialog({ roomId, roomCode }: { roomId
       <DialogTrigger render={<Button type="button" size="sm" variant="outline" />}>
         <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" /> Xuất/Nhập Excel
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5" /> Xuất/Nhập Excel giàn kệ — {roomCode}

@@ -77,7 +77,7 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
           : <><Plus className="w-4 h-4 mr-2" />Thêm nhà cung cấp</>
         }
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{isEdit ? "Sửa nhà cung cấp" : "Thêm nhà cung cấp mới"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           {isEdit ? (

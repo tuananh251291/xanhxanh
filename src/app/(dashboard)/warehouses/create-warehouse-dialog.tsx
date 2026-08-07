@@ -58,7 +58,7 @@ export default function CreateWarehouseDialog() {
       <DialogTrigger render={<Button className="bg-primary hover:bg-primary-hover" />}>
         <Plus className="w-4 h-4 mr-2" /> Thêm kho
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Thêm kho mới</DialogTitle>
         </DialogHeader>

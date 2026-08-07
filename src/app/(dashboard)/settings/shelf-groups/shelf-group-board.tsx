@@ -386,7 +386,7 @@ export default function ShelfGroupBoard() {
       )}
 
       <Dialog open={pickerGroupId !== null} onOpenChange={(open) => !open && setPickerGroupId(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Quản lý kệ — {pickerGroup?.name}</DialogTitle>
           </DialogHeader>

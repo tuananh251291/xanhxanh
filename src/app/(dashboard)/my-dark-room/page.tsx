@@ -81,7 +81,7 @@ function InspectionDialog({ group, onDone, disabled }: { group: Lot[]; onDone: (
       >
         <ClipboardCheck className="w-3.5 h-3.5 mr-1" /> Kiểm tra
       </Button>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Phiếu kiểm tra nhiễm — lô {group[0].code}</DialogTitle>
         </DialogHeader>

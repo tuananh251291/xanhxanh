@@ -78,7 +78,7 @@ export default function PlantTypeDialog({
           : <><Plus className="w-4 h-4 mr-2" />Thêm chi tiết loại cây</>
         }
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Sửa chi tiết loại cây ${plant.code}` : "Thêm chi tiết loại cây mới"}</DialogTitle>
         </DialogHeader>

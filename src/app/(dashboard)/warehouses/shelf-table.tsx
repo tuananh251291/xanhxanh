@@ -982,7 +982,7 @@ export default function ShelfTable({
       </Dialog>
 
       <Dialog open={!!editLotsShelf} onOpenChange={(open) => { if (!open) setEditLotsShelfId(null); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sửa số lượng lô cây — {editLotsShelf?.name}</DialogTitle>
           </DialogHeader>

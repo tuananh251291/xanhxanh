@@ -164,7 +164,7 @@ export default function AddShelvesDialog({
       <DialogTrigger render={<Button type="button" size="sm" variant="outline" />}>
         <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm giàn kệ
       </DialogTrigger>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Layers className="w-5 h-5" /> Thêm giàn kệ — {roomCode}</DialogTitle>
         </DialogHeader>

@@ -57,7 +57,7 @@ export default function PlantCategoryDialog({ category }: { category?: Category 
           : <><Plus className="w-4 h-4 mr-2" />Thêm loại cây</>
         }
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Sửa loại cây" : "Thêm loại cây mới"}</DialogTitle>
         </DialogHeader>

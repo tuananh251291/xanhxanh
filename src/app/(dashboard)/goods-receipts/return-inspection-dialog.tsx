@@ -45,7 +45,7 @@ export default function ReturnInspectionDialog({
       <DialogTrigger render={<Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" />}>
         <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Kiểm tra
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Kiểm tra hàng trả lại — {plantTypeLabel}</DialogTitle></DialogHeader>
         <div className="space-y-4 mt-2">
           <div className="space-y-1">
