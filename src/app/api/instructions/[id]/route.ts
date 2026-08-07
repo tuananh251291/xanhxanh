@@ -475,7 +475,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const instruction = await prisma.plantingInstruction.findUnique({
       where: { id },
-      include: { items: { select: { lotId: true } } },
+      include: { items: { select: { lotId: true, shelf: { select: { assignedStaffId: true } } } } },
     });
     if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
     if (!instruction.handedOverAt) {
@@ -484,6 +484,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.motherReceivedAt) {
       return NextResponse.json({ message: "NV cấy mô đã xác nhận nhận mẫu mẹ — không thể hoàn tác bàn giao nữa" }, { status: 400 });
     }
+    // NV được gán qua kệ "đã chia" (kệ tự cố định 1 NV, tự động điền ngay lúc TẠO chỉ định — xem
+    // autoAssignedToId ở POST /api/instructions) thì hoàn tác GIỮ NGUYÊN NV đó, vì đây là cấu hình kệ,
+    // không phải lựa chọn của Kho mô. Ngược lại — kệ "chung" (Kho mô tự chọn NV lúc bàn giao qua
+    // isAssignAction, hoặc chỉ định dự phòng qua assignExtraWorkRequestId) — hoàn tác phải TRẢ VỀ TRỐNG
+    // để Kho mô gán lại cho NV khác nếu cần, không kẹt cứng với đúng NV đã chọn nhầm/không còn phù hợp.
+    const isFromDedicatedShelf =
+      !!instruction.assignedToId &&
+      instruction.items.length > 0 &&
+      instruction.items.every((i) => i.shelf?.assignedStaffId === instruction.assignedToId);
     const updated = await prisma.$transaction(async (tx) => {
       await revertSourceLotsToActive(tx, instruction.items);
       if (instruction.isBackup) {
@@ -497,7 +506,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         data: {
           handedOverAt: null,
           handedOverById: null,
-          assignedToId: instruction.isBackup ? null : undefined,
+          assignedToId: isFromDedicatedShelf ? undefined : null,
         },
         include: { assignedTo: { select: { name: true } } },
       });
