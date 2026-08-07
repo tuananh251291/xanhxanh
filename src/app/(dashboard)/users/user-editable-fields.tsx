@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import type { UserRole } from "@prisma/client";
 import EditUserDialog, { type EditableUser } from "./edit-user-dialog";
 import UnlockAccountCell from "./unlock-account-cell";
+import DeleteUserButton from "./delete-user-button";
 
 type WarehouseOption = { id: string; code: string; name: string };
 
@@ -44,7 +45,8 @@ export default function UserEditableFields({
   warehouseOptions: WarehouseOption[];
   plantingCapacity: number;
   holdDays: number | null;
-  // null = không được sửa tài khoản này (không phải SUPER_ADMIN, hoặc dòng này là SUPER_ADMIN khác).
+  // null = không được sửa tài khoản này (không phải SUPER_ADMIN, hoặc dòng này là SUPER_ADMIN khác) —
+  // cũng dùng chung điều kiện này để hiện nút Xóa (server tự chặn thêm trường hợp tự xóa chính mình).
   editUser: EditableUser | null;
   sanXuatWarehouses: WarehouseOption[];
   thanhPhamWarehouses: WarehouseOption[];
@@ -209,6 +211,7 @@ export default function UserEditableFields({
             {editUser && (
               <EditUserDialog user={editUser} sanXuatWarehouses={sanXuatWarehouses} thanhPhamWarehouses={thanhPhamWarehouses} />
             )}
+            {editUser && <DeleteUserButton id={editUser.id} code={editUser.code} name={editUser.name} />}
             {(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays) && (
               <Button
                 size="icon-sm"

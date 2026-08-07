@@ -220,3 +220,96 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json(user);
 }
+
+// Xóa cứng — chỉ Admin cao nhất, và chỉ khi tài khoản CHƯA có bất kỳ dữ liệu liên quan nào (chỉ định
+// cấy đã tạo/được gán, nhật ký cấy, đơn hàng, phiếu bàn giao, đề xuất...) — User bị tham chiếu ở rất
+// nhiều bảng (~30 quan hệ, xem model User trong schema.prisma), xóa khi đã có lịch sử sẽ phá vỡ dữ liệu
+// liên quan. Tài khoản có lịch sử thì dùng nút "Ngừng hoạt động" (isActive=false, xem nhánh "name" ở
+// PATCH trên) thay vì xóa — chỉ xóa được tài khoản tạo nhầm/đăng ký chưa từng dùng.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cao nhất mới có quyền xóa tài khoản" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  if (id === session.user.id) {
+    return NextResponse.json({ message: "Không thể tự xóa tài khoản đang đăng nhập" }, { status: 400 });
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      role: true,
+      _count: {
+        select: {
+          plantingInstructions: true,
+          assignedInstructions: true,
+          handedOverInstructions: true,
+          contaminationProposalsRequested: true,
+          contaminationProposalsApproved: true,
+          dailyRecords: true,
+          transfersFrom: true,
+          transfersTo: true,
+          orders: true,
+          alerts: true,
+          roomAccess: true,
+          assignedShelves: true,
+          assignedRooms: true,
+          mediumOrdersConfirmed: true,
+          mediumOrderDaysConfirmed: true,
+          checklistItems: true,
+          lotInspections: true,
+          inspectedLots: true,
+          transferInspectionsPerformed: true,
+          materialIntakes: true,
+          processingTickets: true,
+          orderProcessingRequestsCompleted: true,
+          goodsReceipts: true,
+          goodsReceiptsConfirmed: true,
+          goodsReceiptItemsReturned: true,
+          extraWorkRequests: true,
+          extraWorkRequestsResponded: true,
+          productPrices: true,
+          repackCreated: true,
+          repackAssignedTo: true,
+          repackAssignedBy: true,
+          repackInspectedBy: true,
+          repackPlacedBy: true,
+          repackQuantityIssueReportedBy: true,
+        },
+      },
+    },
+  });
+  if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+  if (target.role === "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Không thể xóa tài khoản Admin cao nhất" }, { status: 403 });
+  }
+
+  const relatedCount = Object.values(target._count).reduce((sum, n) => sum + n, 0);
+  if (relatedCount > 0) {
+    return NextResponse.json(
+      {
+        message: `Không thể xóa — tài khoản "${target.code} — ${target.name}" đã có ${relatedCount.toLocaleString("vi-VN")} mục dữ liệu liên quan trong hệ thống (chỉ định cấy, nhật ký, đơn hàng...). Hãy dùng nút "Ngừng hoạt động" thay vì xóa.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch {
+    // Phòng khi có quan hệ nào đó bị bỏ sót khỏi danh sách _count trên (VD schema thêm bảng mới sau
+    // này) — Postgres vẫn chặn đúng bằng ràng buộc khóa ngoại, chỉ cần trả thông báo thân thiện thay vì
+    // lỗi 500 thô.
+    return NextResponse.json(
+      { message: `Không thể xóa — tài khoản "${target.code} — ${target.name}" vẫn còn dữ liệu liên quan trong hệ thống.` },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
+}
