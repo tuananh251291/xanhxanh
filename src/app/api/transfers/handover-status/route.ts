@@ -3,11 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { startOfDay, endOfDay, parse, isValid } from "date-fns";
 
-// Danh sách NV cấy mô (cả 2 luồng) thuộc kho của Kho mô đang đăng nhập CHƯA tạo phiếu bàn giao Phòng
-// tối nào trong 1 ngày cụ thể (bất kể Kho mô đã xác nhận nhận hay chưa) — dùng để Kho mô chủ động nhắc
-// NV, không phụ thuộc việc phiếu đã xử lý xong tới đâu.
-// Query param "date" (yyyy-MM-dd, tùy chọn) — mặc định hôm nay. Không cho chọn ngày tương lai (chưa có
-// ý nghĩa "chưa bàn giao").
+// Danh sách NV cấy mô (cả 2 luồng) thuộc kho của Kho mô đang đăng nhập CÓ lô nhập vào Phòng tối cá nhân
+// đúng ngày được chọn (Lot.darkRoomEnteredAt) nhưng lô đó VẪN CÒN nằm ở phòng tối, CHƯA bàn giao — cùng
+// tiêu chí "còn nằm trong phòng tối chờ bàn giao" mà /api/lots?roomType=PHONG_TOI đang dùng cho trang
+// /my-dark-room (status ACTIVE + chưa có TransferItem nào thuộc phiếu PENDING — phiếu bị từ chối
+// (REJECTED) thì lô coi như quay lại "chưa bàn giao").
+// Query param "date" (yyyy-MM-dd, tùy chọn) — mặc định hôm nay. Không cho chọn ngày tương lai.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "KHO_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -30,22 +31,30 @@ export async function GET(req: NextRequest) {
     orderBy: { code: "asc" },
   });
 
-  const handedOver = await prisma.transfer.findMany({
+  const entriesThatDay = await prisma.lot.findMany({
     where: {
-      fromUserId: { in: staffList.map((s) => s.id) },
-      fromRoom: { type: "PHONG_TOI" },
-      createdAt: { gte: rangeStart, lte: rangeEnd },
+      status: "ACTIVE",
+      room: { type: "PHONG_TOI", assignedStaffId: { in: staffList.map((s) => s.id) } },
+      darkRoomEnteredAt: { gte: rangeStart, lte: rangeEnd },
     },
-    select: { fromUserId: true },
-    distinct: ["fromUserId"],
+    select: { room: { select: { assignedStaffId: true } }, transferItems: { select: { transfer: { select: { status: true } } } } },
   });
-  const handedOverIds = new Set(handedOver.map((t) => t.fromUserId));
 
-  const missingStaff = staffList.filter((s) => !handedOverIds.has(s.id));
+  const staffWithEntries = new Set<string>();
+  const staffStillPending = new Set<string>();
+  for (const lot of entriesThatDay) {
+    const staffId = lot.room?.assignedStaffId;
+    if (!staffId) continue;
+    staffWithEntries.add(staffId);
+    const notYetHandedOver = !lot.transferItems.some((i) => i.transfer.status === "PENDING");
+    if (notYetHandedOver) staffStillPending.add(staffId);
+  }
+
+  const missingStaff = staffList.filter((s) => staffStillPending.has(s.id));
 
   return NextResponse.json({
     date: dateParam ?? rangeStart.toISOString().slice(0, 10),
-    totalStaff: staffList.length,
+    totalWithEntries: staffWithEntries.size,
     missingStaff: missingStaff.map((s) => ({ id: s.id, code: s.code, name: s.name, inspectionLane: s.inspectionLane })),
   });
 }

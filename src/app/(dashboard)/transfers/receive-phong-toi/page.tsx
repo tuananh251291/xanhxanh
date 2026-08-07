@@ -32,7 +32,7 @@ export default async function ReceivePhongToiPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="space-y-3">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <PackageCheck className="w-6 h-6 text-info-foreground" /> Nhận bàn giao từ kho tối
         </h1>

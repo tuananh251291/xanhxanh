@@ -16,7 +16,7 @@ export default function CheckHandoverStatusDialog() {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [loading, setLoading] = useState(false);
-  const [totalStaff, setTotalStaff] = useState(0);
+  const [totalWithEntries, setTotalWithEntries] = useState(0);
   const [missingStaff, setMissingStaff] = useState<MissingStaff[]>([]);
 
   const load = useCallback(async (d: string) => {
@@ -24,7 +24,7 @@ export default function CheckHandoverStatusDialog() {
     try {
       const res = await fetch(`/api/transfers/handover-status?date=${d}`);
       const json = await res.json();
-      setTotalStaff(json.totalStaff ?? 0);
+      setTotalWithEntries(json.totalWithEntries ?? 0);
       setMissingStaff(Array.isArray(json.missingStaff) ? json.missingStaff : []);
     } finally {
       setLoading(false);
@@ -35,7 +35,7 @@ export default function CheckHandoverStatusDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button type="button" variant="outline" />}>
+      <DialogTrigger render={<Button type="button" className="bg-primary hover:bg-primary-hover" />}>
         <ClipboardCheck className="w-4 h-4 mr-2" /> Kiểm tra tình trạng bàn giao
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
@@ -46,7 +46,7 @@ export default function CheckHandoverStatusDialog() {
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div className="space-y-1">
-            <Label className="text-xs">Chọn ngày</Label>
+            <Label className="text-xs">Ngày nhập kho tối</Label>
             <Input
               type="date"
               value={date}
@@ -58,15 +58,19 @@ export default function CheckHandoverStatusDialog() {
 
           {loading ? (
             <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
+          ) : totalWithEntries === 0 ? (
+            <div className="py-10 text-center text-text-muted">
+              <p>Không có lô nào nhập kho tối vào ngày này</p>
+            </div>
           ) : missingStaff.length === 0 ? (
             <div className="py-10 text-center text-text-muted">
               <CheckCircle2 className="w-9 h-9 mx-auto mb-2 text-success-foreground" />
-              <p>Tất cả {totalStaff} nhân viên cấy mô đã bàn giao ngày này</p>
+              <p>Cả {totalWithEntries} nhân viên đã bàn giao đủ lô nhập kho tối ngày này</p>
             </div>
           ) : (
             <div className="space-y-2">
               <p className="text-sm text-text-secondary">
-                <strong className="text-destructive">{missingStaff.length}</strong>/{totalStaff} nhân viên chưa bàn giao:
+                <strong className="text-destructive">{missingStaff.length}</strong>/{totalWithEntries} nhân viên chưa bàn giao lô nhập kho tối ngày này:
               </p>
               <div className="max-h-72 overflow-y-auto border border-divider rounded-lg divide-y divide-divider">
                 {missingStaff.map((s) => (
