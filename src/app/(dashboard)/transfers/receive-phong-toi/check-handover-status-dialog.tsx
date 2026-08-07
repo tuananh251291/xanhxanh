@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck, Loader2, CheckCircle2 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parse } from "date-fns";
+import { vi } from "date-fns/locale";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
 
 type MissingStaff = { id: string; code: string; name: string; inspectionLane: "XANH" | "DO" | null };
@@ -47,13 +48,21 @@ export default function CheckHandoverStatusDialog() {
         <div className="space-y-4 mt-2">
           <div className="space-y-1">
             <Label className="text-xs">Ngày nhập kho tối</Label>
-            <Input
-              type="date"
-              value={date}
-              max={format(new Date(), "yyyy-MM-dd")}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-48"
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                lang="vi"
+                value={date}
+                max={format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-48"
+              />
+              {/* Trình duyệt (Chromium) luôn hiện ô chọn ngày dạng MM/DD/YYYY bất kể lang/locale nào —
+                  hiện thêm ngày dạng dd/MM/yyyy quen thuộc bên cạnh cho rõ. */}
+              <span className="text-sm text-text-secondary">
+                {format(parse(date, "yyyy-MM-dd", new Date()), "dd/MM/yyyy", { locale: vi })}
+              </span>
+            </div>
           </div>
 
           {loading ? (
