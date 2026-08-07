@@ -74,7 +74,10 @@ export async function GET(req: NextRequest) {
     // quyết định tách thành nhiều dòng hiển thị (xem MotherShelfTable) — kệ đã chia vẫn chỉ có đúng 1 mã
     // cây nên breakdown ở đó luôn có tối đa 1 phần tử, không đổi hành vi hiển thị.
     const byPlantType = new Map<string, { plantTypeCode: string; plantTypeName: string; quantity: number }>();
+    // Bỏ qua lô đã về 0 cụm — lô còn "ACTIVE" trong DB nhưng số lượng thật đã hết thì không còn được
+    // coi là "đang xếp trên kệ" nữa, mã cây phải biến mất khỏi breakdown theo đúng số lượng thật.
     for (const l of s.lots) {
+      if (l.quantity === 0) continue;
       const entry = byPlantType.get(l.plantType.code) ?? { plantTypeCode: l.plantType.code, plantTypeName: l.plantType.name, quantity: 0 };
       entry.quantity += l.quantity;
       byPlantType.set(l.plantType.code, entry);

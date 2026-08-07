@@ -565,7 +565,10 @@ export default function ShelfTable({
   // renderRows giữ nguyên 1 dòng/kệ như trước.
   const plantTypeBreakdown = (shelf: Shelf) => {
     const map = new Map<string, { plantTypeCode: string; plantTypeName: string; bagsBySpec: Record<string, number> }>();
+    // Bỏ qua lô đã về 0 cụm — lô còn "ACTIVE" trong DB (chưa dọn hẳn) nhưng số lượng thật đã hết thì
+    // không còn được coi là "đang xếp trên kệ" nữa, mã cây phải biến mất khỏi kệ theo đúng số lượng thật.
     for (const l of shelf.lots) {
+      if (l.quantity === 0) continue;
       const entry = map.get(l.plantType.code) ?? { plantTypeCode: l.plantType.code, plantTypeName: l.plantType.name, bagsBySpec: {} };
       entry.bagsBySpec[l.stageCode] = (entry.bagsBySpec[l.stageCode] ?? 0) + l.quantity;
       map.set(l.plantType.code, entry);
