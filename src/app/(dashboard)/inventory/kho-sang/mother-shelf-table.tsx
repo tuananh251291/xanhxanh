@@ -10,6 +10,7 @@ type ShelfRow = {
   id: string;
   code: string;
   name: string;
+  plantTypeCode: string | null;
   plantTypeName: string | null;
   assignedStaffName: string | null;
   m05Quantity: number;
@@ -108,7 +109,13 @@ export default function MotherShelfTable({
                           <td className="px-3 py-2 text-sm text-text-secondary whitespace-nowrap" rowSpan={rows.length}>{shelf.name}</td>
                         </>
                       )}
-                      <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{b ? b.plantTypeName : (shelf.plantTypeName ?? "—")}</td>
+                      <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
+                        {b
+                          ? `${b.plantTypeCode} — ${b.plantTypeName}`
+                          : shelf.plantTypeName
+                            ? `${shelf.plantTypeCode} — ${shelf.plantTypeName}`
+                            : "—"}
+                      </td>
                       {idx === 0 && (
                         <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap" rowSpan={rows.length}>{shelf.assignedStaffName ?? "—"}</td>
                       )}

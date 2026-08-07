@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     prisma.shelf.findMany({
       where,
       include: {
-        plantType: { select: { name: true } },
+        plantType: { select: { code: true, name: true } },
         assignedStaff: { select: { name: true } },
         lots: {
           where: { status: "ACTIVE", stageCode: "M05" },
@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
       id: s.id,
       code: s.code,
       name: s.name,
+      plantTypeCode: s.plantType?.code ?? null,
       plantTypeName: s.plantType?.name ?? null,
       assignedStaffName: s.assignedStaff?.name ?? null,
       m05Quantity: s.lots.reduce((sum, l) => sum + l.quantity, 0),

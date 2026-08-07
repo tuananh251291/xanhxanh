@@ -657,7 +657,9 @@ export default function ShelfTable({
                       </ComboboxContent>
                     </Combobox>
                   ) : (
-                    <span className="text-xs text-text-secondary">{shelf.plantType?.name ?? "—"}</span>
+                    <span className="text-xs text-text-secondary">
+                      {shelf.plantType ? `${shelf.plantType.code} — ${shelf.plantType.name}` : "—"}
+                    </span>
                   )}
                 </td>
                 <td className="px-3 py-2 min-w-[160px]">
@@ -701,7 +703,9 @@ export default function ShelfTable({
               </>
             )}
             {isChungSection && (
-              <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">{group ? group.plantTypeName : "—"}</td>
+              <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
+                {group ? `${group.plantTypeCode} — ${group.plantTypeName}` : "—"}
+              </td>
             )}
             <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
               {Object.keys(bagsBySpec).length === 0
