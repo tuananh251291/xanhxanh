@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -228,6 +229,7 @@ function ManualPlacementForm({
 }
 
 export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
+  const router = useRouter();
   const [row, setRow] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
   // Đang xử lý lô nào (lotId) — chỉ 1 lô xử lý cùng lúc trên UI này, không khoá các lô khác.
@@ -264,6 +266,14 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
       .then((codes: string[]) => setShelfOptions(codes.map((c) => ({ value: c, label: c }))))
       .finally(() => setLoadingShelfOptions(false));
   }, [manualLotId, shelfOptionsLoaded]);
+
+  // Đã sắp xếp xong hết (không còn lô nào chờ) — tự động quay lại danh sách sau khi NV kịp thấy thông
+  // báo thành công, không bắt phải tự bấm "Quay lại danh sách".
+  useEffect(() => {
+    if (loading || row !== null) return;
+    const timer = setTimeout(() => router.push("/transfers/receive-phong-toi"), 1200);
+    return () => clearTimeout(timer);
+  }, [loading, row, router]);
 
   const showToast = (stage: "THANH_PHAM" | "MAU_ME", placements: Placement[]) => {
     const lines = placements.map((p) =>

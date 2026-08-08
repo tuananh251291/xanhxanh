@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -228,6 +229,7 @@ function ManualPlacementForm({
 }
 
 export default function PlaceBoard({ transferId }: { transferId: string }) {
+  const router = useRouter();
   const [row, setRow] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -266,6 +268,15 @@ export default function PlaceBoard({ transferId }: { transferId: string }) {
       .then((codes: string[]) => setShelfOptions(codes.map((c) => ({ value: c, label: c }))))
       .finally(() => setLoadingShelfOptions(false));
   }, [manualLotId, shelfOptionsLoaded]);
+
+  // Đã sắp xếp xong hết phiếu này (không còn lô nào chờ) — tự động quay lại danh sách sau khi NV kịp
+  // thấy thông báo thành công, không bắt phải tự bấm "Quay lại danh sách".
+  const isDone = !loading && !loadError && !!row && !row.hasPendingRooting && !row.hasPendingMotherStock;
+  useEffect(() => {
+    if (!isDone) return;
+    const timer = setTimeout(() => router.push("/transfers/receive-phong-toi"), 1200);
+    return () => clearTimeout(timer);
+  }, [isDone, router]);
 
   const showToast = (stage: "THANH_PHAM" | "MAU_ME", placements: Placement[]) => {
     const lines = placements.map((p) =>
