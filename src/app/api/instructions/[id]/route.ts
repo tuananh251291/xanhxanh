@@ -152,6 +152,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           { status: 400 }
         );
       }
+      // Ưu tiên xác nhận ĐÚNG THỨ TỰ đã bàn giao — nếu còn chỉ định khác đã bàn giao TRƯỚC chỉ định này
+      // mà NV chưa xác nhận, phải xác nhận chỉ định đó trước. Thiếu check này từng khiến NV xác nhận
+      // nhầm 1 chỉ định tuần sau trong lúc chỉ định tuần này/dự phòng đã bàn giao sớm hơn vẫn đang chờ —
+      // chỉ định đó bị kẹt vĩnh viễn vì "1 NV/1 chỉ định" đã bị chỉ định tuần sau chiếm chỗ.
+      if (instruction.handedOverAt) {
+        const earlierPending = await prisma.plantingInstruction.findFirst({
+          where: {
+            assignedToId: instruction.assignedToId,
+            handedOverAt: { not: null, lt: instruction.handedOverAt },
+            motherReceivedAt: null,
+            status: { in: ["ACTIVE", "DRAFT"] },
+            id: { not: id },
+          },
+          select: { code: true },
+          orderBy: { handedOverAt: "asc" },
+        });
+        if (earlierPending) {
+          return NextResponse.json(
+            { message: `Bạn còn chỉ định ${earlierPending.code} đã bàn giao trước chỉ định này mà chưa xác nhận — phải xác nhận chỉ định đó trước` },
+            { status: 400 }
+          );
+        }
+      }
     }
     const updated = await prisma.plantingInstruction.update({
       where: { id },
