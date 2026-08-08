@@ -245,10 +245,9 @@ export default function PlaceStaffBoard({ staffId }: { staffId: string }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/transfers/receive-phong-toi");
+      const res = await fetch(`/api/transfers/receive-phong-toi/place-staff/${staffId}`);
       const data = await res.json();
-      const rows: Row[] = Array.isArray(data) ? data : [];
-      setRow(rows.find((r) => r.staffId === staffId) ?? null);
+      setRow(res.ok ? (data as Row | null) : null);
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { planShelfAssignments, ShelfAssignError, type ShelfPlacement } from "@/lib/shelf-assignment";
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
-import { sumLotQuantity } from "@/types";
+import { sumLotQuantity, SURPLUS_TRANSFER_TAG } from "@/types";
 
 // Lô kèm đủ field mà planShelfAssignments/commitShelfPlacements cần (khớp LotForAssign trong
 // src/lib/shelf-assignment.ts). Dùng chung cho cả luồng Xanh (gộp theo NV, nhiều phiếu) lẫn Đỏ
@@ -43,6 +43,41 @@ export type PendingItem = {
     room: { assignedStaffId: string | null } | null;
   };
 };
+
+// Danh sách phiếu bàn giao Phòng tối đang chờ (chưa xếp hết) của 1 NV luồng Xanh, gộp mọi Transfer
+// PENDING của họ lại — 1 NV có thể gửi nhiều phiếu khác ngày trước khi Kho mô xử lý. Dùng chung cho cả
+// GET/POST /api/transfers/receive-phong-toi (danh sách + xác nhận xếp) lẫn GET .../place-staff/[staffId]
+// (xem preview kệ gợi ý cho riêng 1 NV, tách khỏi danh sách để không tính toán thừa — xem buildStagePreview).
+export async function findPendingItems(
+  staffId: string
+): Promise<{ items: PendingItem[]; transfers: { id: string; code: string; transferredAt: Date }[] }> {
+  const transfers = await prisma.transfer.findMany({
+    where: {
+      status: "PENDING",
+      fromUserId: staffId,
+      fromRoom: { type: "PHONG_TOI" },
+      // notes là field nullable — Prisma dịch `not` thành SQL `<>`, tự động loại cả các dòng NULL
+      // (đa số phiếu thường không phải surplus nên notes luôn null). Phải liệt kê rõ null lẫn "khác
+      // SURPLUS_TRANSFER_TAG" bằng OR để không vô tình loại hết phiếu bình thường.
+      OR: [{ notes: null }, { notes: { not: SURPLUS_TRANSFER_TAG } }],
+    },
+    select: {
+      id: true,
+      code: true,
+      transferredAt: true,
+      items: {
+        where: { confirmedAt: null },
+        select: { id: true, lotId: true, transferId: true, lot: { select: lotSelect } },
+      },
+    },
+    orderBy: { transferredAt: "asc" },
+  });
+  const withPendingItems = transfers.filter((t) => t.items.length > 0);
+  return {
+    items: withPendingItems.flatMap((t) => t.items),
+    transfers: withPendingItems.map((t) => ({ id: t.id, code: t.code, transferredAt: t.transferredAt })),
+  };
+}
 
 // 1 dòng đặt kệ = 1 phần của lô (có thể tràn sang nhiều kệ, VD phần dư mẫu mẹ đưa sang Kho chung) —
 // xem planShelfAssignments (src/lib/shelf-assignment.ts).

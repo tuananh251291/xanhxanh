@@ -1,44 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { SURPLUS_TRANSFER_TAG } from "@/types";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
-import { lotSelect, buildStagePreview, confirmStage, confirmStageManual, type PendingItem } from "@/lib/receive-phong-toi";
+import { findPendingItems, confirmStage, confirmStageManual } from "@/lib/receive-phong-toi";
 import { z } from "zod";
 
-// Danh sách phiếu bàn giao Phòng tối đang chờ (chưa xếp hết) của 1 NV luồng Xanh, gộp mọi Transfer
-// PENDING của họ lại — 1 NV có thể gửi nhiều phiếu khác ngày trước khi Kho mô xử lý.
-async function findPendingItems(
-  staffId: string
-): Promise<{ items: PendingItem[]; transfers: { id: string; code: string; transferredAt: Date }[] }> {
-  const transfers = await prisma.transfer.findMany({
-    where: {
-      status: "PENDING",
-      fromUserId: staffId,
-      fromRoom: { type: "PHONG_TOI" },
-      // notes là field nullable — Prisma dịch `not` thành SQL `<>`, tự động loại cả các dòng NULL
-      // (đa số phiếu thường không phải surplus nên notes luôn null). Phải liệt kê rõ null lẫn "khác
-      // SURPLUS_TRANSFER_TAG" bằng OR để không vô tình loại hết phiếu bình thường.
-      OR: [{ notes: null }, { notes: { not: SURPLUS_TRANSFER_TAG } }],
-    },
-    select: {
-      id: true,
-      code: true,
-      transferredAt: true,
-      items: {
-        where: { confirmedAt: null },
-        select: { id: true, lotId: true, transferId: true, lot: { select: lotSelect } },
-      },
-    },
-    orderBy: { transferredAt: "asc" },
-  });
-  const withPendingItems = transfers.filter((t) => t.items.length > 0);
-  return {
-    items: withPendingItems.flatMap((t) => t.items),
-    transfers: withPendingItems.map((t) => ({ id: t.id, code: t.code, transferredAt: t.transferredAt })),
-  };
-}
-
+// Danh sách phiếu bàn giao Phòng tối đang chờ theo từng NV luồng Xanh — CHỈ liệt kê (không tính kệ gợi
+// ý ở đây). Trước đây gọi buildStagePreview (planShelfAssignments) cho MỌI lô của MỌI NV ngay khi tải
+// trang này khiến trang rất chậm so với luồng Đỏ (do-lane/route.ts, không tính kệ gợi ý) — trong khi
+// receive-phong-toi-board.tsx (bảng danh sách) không hề dùng tới kết quả preview đó, chỉ trang chi tiết
+// "Sắp xếp vào kho" của TỪNG NV mới cần (xem place-staff/[staffId]/route.ts, tính preview đúng 1 NV lúc
+// KHO_MO thật sự bấm vào, không tính trước cho cả danh sách).
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "KHO_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -56,17 +28,12 @@ export async function GET() {
     const { items: pendingItems, transfers } = await findPendingItems(staff.id);
     if (pendingItems.length === 0) continue;
 
-    const preview = await buildStagePreview(pendingItems, workplaceWarehouseId);
-
     rows.push({
       staffId: staff.id,
       staffCode: staff.code,
       staffName: staff.name,
       transfers,
-      // Danh sách lô gộp chung (không tách ra rễ/mẫu mẹ) — dùng cho bảng tổng hợp; trang chi tiết
-      // "Sắp xếp vào kho" dùng rootingGroups/motherGroups bên dưới (đã tách riêng theo từng lô).
       items: pendingItems.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.lot.quantity, enteredAt: i.lot.enteredAt })),
-      ...preview,
     });
   }
 
