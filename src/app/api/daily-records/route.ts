@@ -257,6 +257,9 @@ export async function POST(req: NextRequest) {
     stage: "MAU_ME",
     stageCode: "M05",
     quantity: motherContaminatedM05,
+    reportedById: staffId,
+    reason: "DAILY_RECORD",
+    sourceLotCode: productLotCode,
   });
 
   // Tỉ lệ nhiễm mẫu mẹ sau ủ sáng — tổng mẫu mẹ nhiễm cộng dồn mọi ngày của chỉ định này so với tổng

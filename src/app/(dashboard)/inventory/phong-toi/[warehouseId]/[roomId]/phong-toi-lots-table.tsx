@@ -9,6 +9,7 @@ import { Pencil, Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import ContaminationEntriesDialog from "./contamination-entries-dialog";
 
 type Lot = {
   id: string;
@@ -99,6 +100,7 @@ export default function PhongToiLotsTable({ lots, isPhongNhiem, canEdit }: { lot
             <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Quy cách</th>
             <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Số lượng</th>
             <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">{isPhongNhiem ? "Ngày phát sinh đầu tiên" : "Ngày nhập kho tối"}</th>
+            {isPhongNhiem && <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">Chi tiết</th>}
           </tr>
         </thead>
         <tbody>
@@ -113,6 +115,11 @@ export default function PhongToiLotsTable({ lots, isPhongNhiem, canEdit }: { lot
                 <QuantityCell lot={lot} canEdit={canEdit} />
               </td>
               <td className="px-4 py-3 text-text-secondary">{format(new Date(lot.enteredAt), "dd/MM/yyyy", { locale: vi })}</td>
+              {isPhongNhiem && (
+                <td className="px-4 py-3 text-center">
+                  <ContaminationEntriesDialog lotId={lot.id} lotCode={lot.code} />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

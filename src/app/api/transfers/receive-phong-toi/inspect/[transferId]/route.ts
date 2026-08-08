@@ -178,6 +178,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
         stage: lot.stage,
         stageCode: lot.stageCode,
         quantity: item.contaminatedQuantity,
+        reportedById: session.user.id,
+        reason: "RED_LANE_INSPECTION",
+        sourceLotId: lot.id,
+        sourceLotCode: lot.code,
       });
     }
   });

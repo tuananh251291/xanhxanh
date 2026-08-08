@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { canManageDailyRecords } from "@/types";
 import { generateProductLotCode } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
+import { logContaminationRoomEntry } from "@/lib/contamination-room";
 import { addWeeks } from "date-fns";
 import { z } from "zod";
 
@@ -217,13 +218,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     if (contamDelta !== 0) {
+      // Nguồn tham chiếu để truy vết (không bắt buộc phải có) — lô M05 của chính bản ghi này nếu còn.
+      const m05LotCode = itemsByStageCode.get("M05")?.lot.code ?? null;
       if (contamDelta > 0) {
         if (contamLotId) {
           await tx.lot.update({ where: { id: contamLotId }, data: { quantity: { increment: contamDelta }, initialQuantity: { increment: contamDelta } } });
         } else {
           const room = await tx.room.findFirst({ where: { warehouseId, type: "PHONG_NHIEM" } });
           if (room) {
-            await tx.lot.create({
+            const created = await tx.lot.create({
               data: {
                 code: contamLotCode,
                 plantTypeId: record.instruction.plantTypeId,
@@ -235,10 +238,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 status: "ACTIVE",
               },
             });
+            contamLotId = created.id;
           }
+        }
+        if (contamLotId) {
+          await logContaminationRoomEntry(tx, {
+            contaminationLotId: contamLotId,
+            quantity: contamDelta,
+            sourceLotCode: m05LotCode,
+            reportedById: session!.user!.id,
+            reason: "DAILY_RECORD_EDIT",
+          });
         }
       } else if (contamLotId) {
         await tx.lot.update({ where: { id: contamLotId }, data: { quantity: { decrement: -contamDelta }, initialQuantity: { decrement: -contamDelta } } });
+        await logContaminationRoomEntry(tx, {
+          contaminationLotId: contamLotId,
+          quantity: contamDelta,
+          sourceLotCode: m05LotCode,
+          reportedById: session!.user!.id,
+          reason: "DAILY_RECORD_EDIT",
+        });
       }
     }
 

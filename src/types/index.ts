@@ -247,6 +247,16 @@ export const CONTAMINATION_PROPOSAL_STATUS_LABELS = {
   REJECTED: "Từ chối",
 } as const;
 
+// Lý do 1 dòng lịch sử cộng/trừ vào lô gộp Phòng nhiễm (xem ContaminationRoomEntry, addToContaminationRoom).
+export const CONTAMINATION_ENTRY_REASON_LABELS = {
+  DARK_ROOM_SELF_CHECK: "NV cấy mô tự kiểm tra nhiễm (phòng tối)",
+  DAILY_RECORD: "Nhập dữ liệu cấy hàng ngày",
+  DAILY_RECORD_EDIT: "Sửa/bù nhật ký cấy",
+  RED_LANE_INSPECTION: "Kho mô kiểm tra luồng Đỏ",
+  EXCEL_IMPORT: "Nhập liệu Excel",
+  PROPOSAL_REJECTED_REFUND: "Hoàn lại (đề xuất bị từ chối)",
+} as const;
+
 // Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt (null/có giá trị).
 export const MEDIUM_ORDER_STATUS_LABELS = {
   UNCONFIRMED: "Chưa xác nhận",
