@@ -9,7 +9,6 @@ import Link from "next/link";
 import { format, addDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
-import InstructionViewButton from "./instruction-view-button";
 import SurplusHandoverButton from "./surplus-handover-button";
 import DoneInstructionsTable from "./done-instructions-table";
 
@@ -99,10 +98,13 @@ export default async function MyInstructionsPage() {
                           {inst.motherReceivedAt && <>Đã nhận mẫu mẹ lúc {format(inst.motherReceivedAt, "HH:mm dd/MM/yyyy", { locale: vi })}</>}
                         </td>
                         <td className="px-4 py-3">
-                          {/* Không xét inst.status ở đây — cùng logic với cayMoStatusBadge() phía trên, chỉ dựa vào
-                              handedOverAt/motherReceivedAt để tránh trường hợp chỉ định vẫn còn status DRAFT
-                              (chưa được kích hoạt) nhưng đã bàn giao thật, khiến nút bị ẩn oan. */}
-                          <InstructionViewButton instructionId={inst.id} needsConfirm={!!inst.handedOverAt && !inst.motherReceivedAt} />
+                          {/* Bấm "Xem" chỉ để xem phiếu chỉ định — KHÔNG còn tự động xác nhận nhận mẫu mẹ
+                              ngay khi bấm nữa (tránh xác nhận vội trước khi đọc kỹ). Việc xác nhận chuyển
+                              hẳn sang trang chi tiết, bắt buộc tích "Tôi xác nhận..." trước mới bấm được
+                              nút "Nhận bàn giao" — xem /instructions/[id]/page.tsx. */}
+                          <Link href={`/instructions/${inst.id}`}>
+                            <Button size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
+                          </Link>
                         </td>
                       </tr>
                     ))}

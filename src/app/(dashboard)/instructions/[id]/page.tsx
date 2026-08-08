@@ -14,6 +14,7 @@ import { PrintButton } from "@/components/shared/print-button";
 import { isPageAllowed } from "@/lib/permissions";
 import EditDailyRecordDialog from "../edit-daily-record-dialog";
 import AddDailyRecordDialog from "../add-daily-record-dialog";
+import ConfirmMotherReceivedPanel from "./confirm-mother-received-panel";
 import "./print-instruction.css";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
@@ -103,6 +104,12 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   // Admin/Admin cấp cao (mọi kho) hoặc KHO_MO (chỉ đúng kho mình làm việc) được sửa/bù nhật ký cấy hộ NV.
   const instructionWarehouseId = inst.items[0]?.shelf?.warehouseId ?? null;
   const canManage = canManageDailyRecords(role, session?.user?.workplaceWarehouseId, instructionWarehouseId);
+
+  // NV cấy mô được giao chỉ định này, đã bàn giao nhưng CHƯA xác nhận nhận mẫu mẹ — hiện khung tích chọn
+  // + nút "Nhận bàn giao" (xem confirm-mother-received-panel.tsx). Cùng điều kiện "needsConfirm" trước
+  // đây dùng ở /my-instructions, chỉ chuyển hẳn việc xác nhận sang trang này thay vì tự động xác nhận
+  // ngay lúc bấm "Xem".
+  const needsConfirmMotherReceived = role === "CAY_MO" && inst.assignedToId === session?.user?.id && !!inst.handedOverAt && !inst.motherReceivedAt;
 
   // Bù dữ liệu ngày NV cấy mô bỏ sót — CHỈ áp dụng cho tuần chỉ định = tuần hiện tại (khớp đúng ràng
   // buộc server ở POST /api/daily-records nhánh canActOnBehalf), và chỉ những ngày đã qua (không bù cho
@@ -278,6 +285,12 @@ export default async function InstructionDetailPage({ params }: { params: Promis
             </div>
             <p className="pi-confirm">*Tôi xác nhận đã nhận đủ số lượng và hiểu rõ chỉ định cấy.</p>
           </section>
+
+          {needsConfirmMotherReceived && (
+            <section className="pi-section print:hidden">
+              <ConfirmMotherReceivedPanel instructionId={inst.id} />
+            </section>
+          )}
         </div>
       </div>
 
