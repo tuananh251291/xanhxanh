@@ -18,17 +18,26 @@ const CONFIG_META: Record<string, { label: string; description: string; unit: st
     description: "% tối đa giữa tổng mẫu mẹ nhiễm cộng dồn và tổng mẫu mẹ được cấp cho chỉ định — vượt ngưỡng này sẽ báo cho Kho mô ngay khi nhân viên cấy mô lưu nhật ký hàng ngày",
     unit: "%",
   },
-  mother_ratio_target_pct: {
-    label: "Tỉ lệ nhân MM cần đạt",
-    description: "% tối thiểu giữa tỉ lệ nhân mẫu mẹ thực tế (số cụm mẫu mẹ thành phẩm / số mẫu mẹ đã sử dụng, cộng dồn cả chỉ định) so với tỉ lệ mục tiêu của chỉ định — cùng với 'Tỉ lệ ra thành phẩm cần đạt' đều thấp hơn mức này mới cảnh báo cấy lệch chỉ định cho nhân viên kỹ thuật",
-    unit: "%",
-  },
-  finished_ratio_target_pct: {
-    label: "Tỉ lệ ra thành phẩm cần đạt",
-    description: "% tối thiểu giữa tỉ lệ ra thành phẩm thực tế (số cây ra rễ thành phẩm / số mẫu mẹ đã sử dụng, cộng dồn cả chỉ định) so với tỉ lệ mục tiêu của chỉ định — cùng với 'Tỉ lệ nhân MM cần đạt' đều thấp hơn mức này mới cảnh báo cấy lệch chỉ định cho nhân viên kỹ thuật",
-    unit: "%",
-  },
 };
+
+// Ngưỡng an toàn dạng KHOẢNG (từ - đến), khác các tham số đơn ở CONFIG_META phía trên — % tỉ lệ thực tế
+// so với tỉ lệ mục tiêu của chỉ định NẰM NGOÀI khoảng này (thấp hơn từ HOẶC cao hơn đến) mới cảnh báo cấy
+// lệch chỉ định (cho cả NV cấy mô đang nhập liệu — xem daily-record/page.tsx — lẫn NV kỹ thuật đã tạo chỉ
+// định — xem OUTPUT_DEVIATION alert ở api/daily-records/route.ts). Trước đây chỉ có 1 ngưỡng tối thiểu.
+const RANGE_CONFIG_META: { minKey: string; maxKey: string; label: string; description: string }[] = [
+  {
+    minKey: "mother_ratio_min_pct",
+    maxKey: "mother_ratio_max_pct",
+    label: "Ngưỡng an toàn hệ số nhân mẫu mẹ đạt",
+    description: "% tỉ lệ nhân MM thực tế (số cụm mẫu mẹ thành phẩm / số mẫu mẹ đã sử dụng, cộng dồn cả chỉ định) so với tỉ lệ mục tiêu của chỉ định — nằm ngoài khoảng này mới cảnh báo cấy lệch chỉ định",
+  },
+  {
+    minKey: "finished_ratio_min_pct",
+    maxKey: "finished_ratio_max_pct",
+    label: "Ngưỡng an toàn hệ số ra cây thành phẩm",
+    description: "% tỉ lệ ra thành phẩm thực tế (số cây ra rễ thành phẩm / số mẫu mẹ đã sử dụng, cộng dồn cả chỉ định) so với tỉ lệ mục tiêu của chỉ định — nằm ngoài khoảng này mới cảnh báo cấy lệch chỉ định",
+  },
+];
 
 export default function SettingsPage() {
   const [configs, setConfigs] = useState<Record<string, string>>({});
@@ -89,6 +98,32 @@ export default function SettingsPage() {
                   className="w-28"
                 />
                 <span className="text-sm text-text-secondary">{meta.unit}</span>
+              </div>
+            </div>
+          ))}
+
+          {RANGE_CONFIG_META.map((meta) => (
+            <div key={meta.minKey} className="space-y-2">
+              <Label className="text-sm font-medium">{meta.label}</Label>
+              <p className="text-xs text-text-secondary">{meta.description}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-text-secondary">Từ</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={configs[meta.minKey] ?? ""}
+                  onChange={(e) => setConfigs((prev) => ({ ...prev, [meta.minKey]: e.target.value }))}
+                  className="w-24"
+                />
+                <span className="text-sm text-text-secondary">% đến</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={configs[meta.maxKey] ?? ""}
+                  onChange={(e) => setConfigs((prev) => ({ ...prev, [meta.maxKey]: e.target.value }))}
+                  className="w-24"
+                />
+                <span className="text-sm text-text-secondary">%</span>
               </div>
             </div>
           ))}

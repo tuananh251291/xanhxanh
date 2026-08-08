@@ -75,8 +75,10 @@ export default function DailyRecordPage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [motherRatioTargetPct, setMotherRatioTargetPct] = useState(80);
-  const [finishedRatioTargetPct, setFinishedRatioTargetPct] = useState(80);
+  const [motherRatioMinPct, setMotherRatioMinPct] = useState(80);
+  const [motherRatioMaxPct, setMotherRatioMaxPct] = useState(120);
+  const [finishedRatioMinPct, setFinishedRatioMinPct] = useState(80);
+  const [finishedRatioMaxPct, setFinishedRatioMaxPct] = useState(120);
   // "Phát sinh cây cần phân loại" — theo TỪNG NGÀY (reset mỗi khi đổi chỉ định/sau khi lưu), không dính
   // liền chỉ định. Key theo plantTypeId.
   const [showVariantSplit, setShowVariantSplit] = useState(false);
@@ -96,10 +98,14 @@ export default function DailyRecordPage() {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data: { key: string; value: string }[]) => {
-        const mother = data.find((c) => c.key === "mother_ratio_target_pct");
-        if (mother) setMotherRatioTargetPct(parseFloat(mother.value) || 80);
-        const finished = data.find((c) => c.key === "finished_ratio_target_pct");
-        if (finished) setFinishedRatioTargetPct(parseFloat(finished.value) || 80);
+        const motherMin = data.find((c) => c.key === "mother_ratio_min_pct");
+        if (motherMin) setMotherRatioMinPct(parseFloat(motherMin.value) || 80);
+        const motherMax = data.find((c) => c.key === "mother_ratio_max_pct");
+        if (motherMax) setMotherRatioMaxPct(parseFloat(motherMax.value) || 120);
+        const finishedMin = data.find((c) => c.key === "finished_ratio_min_pct");
+        if (finishedMin) setFinishedRatioMinPct(parseFloat(finishedMin.value) || 80);
+        const finishedMax = data.find((c) => c.key === "finished_ratio_max_pct");
+        if (finishedMax) setFinishedRatioMaxPct(parseFloat(finishedMax.value) || 120);
       });
   }, []);
 
@@ -196,12 +202,12 @@ export default function DailyRecordPage() {
   const actualFinishedRatio = hasMotherUsedData ? projectedFinished / projectedMotherUsed : 0;
   const motherRatioPct = targetMotherRatio > 0 ? (actualMotherRatio / targetMotherRatio) * 100 : null;
   const finishedRatioPct = targetFinishedRatio > 0 ? (actualFinishedRatio / targetFinishedRatio) * 100 : null;
-  const motherRatioLow = motherRatioPct !== null && motherRatioPct < motherRatioTargetPct;
-  const finishedRatioLow = finishedRatioPct !== null && finishedRatioPct < finishedRatioTargetPct;
+  const motherRatioOutOfRange = motherRatioPct !== null && (motherRatioPct < motherRatioMinPct || motherRatioPct > motherRatioMaxPct);
+  const finishedRatioOutOfRange = finishedRatioPct !== null && (finishedRatioPct < finishedRatioMinPct || finishedRatioPct > finishedRatioMaxPct);
   // Chỉ cần 1 trong 2 tỉ lệ CÓ mục tiêu và thấp hơn ngưỡng là cảnh báo — tỉ lệ nào không có mục tiêu (bên
   // kia để trống lúc tạo) thì bỏ qua, không cần tỉ lệ còn lại (nếu có) cũng phải thấp mới báo (khớp thuật
   // toán server ở /api/daily-records).
-  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && (motherRatioLow || finishedRatioLow);
+  const isDeviating = !!selectedInst && projectedMotherUsed > 0 && (motherRatioOutOfRange || finishedRatioOutOfRange);
 
   // Tổng MM đã kiểm tra lũy kế (các ngày đã lưu + số đang nhập hôm nay) không được vượt quá số mẫu mẹ
   // được cấp cho chỉ định (inputMotherQuantity) — chặn nút Lưu nếu vượt, khớp validate ở API.
@@ -407,13 +413,66 @@ export default function DailyRecordPage() {
           </CardHeader>
           <CardContent>
             {!todayRecord && (
-              <div className="mb-3 text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
-                  <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+              <>
+                {/* Đặt lên đầu bảng — dễ nhận diện hơn để NV cấy mô để ý tích chọn TRƯỚC khi nhập số liệu
+                    ở bảng bên dưới, thay vì phải cuộn xuống cuối mới thấy (vị trí cũ). */}
+                {hasVariantGroup && (
+                  <div className="mb-3 border rounded-lg p-3 space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox checked={showVariantSplit} onCheckedChange={(c) => setShowVariantSplit(!!c)} />
+                      <span className="text-sm font-medium text-foreground">Phát sinh cây cần phân loại</span>
+                    </label>
+                    {showVariantSplit && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-primary-light text-primary-strong">
+                              <th className="px-2 py-1.5 text-left font-bold">Mã cây</th>
+                              <th className="px-2 py-1.5 text-right font-bold">M05 (cụm)</th>
+                              <th className="px-2 py-1.5 text-right font-bold">T05 (cây)</th>
+                              <th className="px-2 py-1.5 text-right font-bold">T01 (cây)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {variantMembers.map((m) => (
+                              <tr key={m.id} className="border-b">
+                                <td className="px-2 py-1.5 font-mono">{m.code}</td>
+                                <td className="px-1 py-1">
+                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.m05 ?? ""} onChange={setVariantField(m.id, "m05")} />
+                                </td>
+                                <td className="px-1 py-1">
+                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.t05 ?? ""} onChange={setVariantField(m.id, "t05")} />
+                                </td>
+                                <td className="px-1 py-1">
+                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.t01 ?? ""} onChange={setVariantField(m.id, "t01")} />
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className={`font-semibold ${variantMismatch ? "text-destructive" : ""}`}>
+                              <td className="px-2 py-1.5">Tổng đã phân loại / cột gốc</td>
+                              <td className="px-1 py-1 text-right">{m05VariantSum} / {m05Total}</td>
+                              <td className="px-1 py-1 text-right">{t05VariantSum} / {t05Total}</td>
+                              <td className="px-1 py-1 text-right">{t01VariantSum} / {t01Total}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        {variantMismatch && (
+                          <p className="text-xs text-destructive mt-2">
+                            Tổng số lượng phân loại phải khớp đúng số đã nhập ở cột M05/T05/T01 phía trên mới lưu được.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="mb-3 text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
+                    <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
             {loading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-text-muted" /></div>
@@ -470,9 +529,9 @@ export default function DailyRecordPage() {
                       <td className="px-3 py-2 text-right">{fmt(totals.motherContaminatedM05)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherUsed)}</td>
                       <td className="px-3 py-2 text-right">{fmt(totals.motherChecked)}</td>
-                      <td className={`px-3 py-2 text-right ${motherRatioLow ? "text-destructive" : ""}`}>{fmt(totals.m05)}</td>
-                      <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
-                      <td className={`px-3 py-2 text-right ${finishedRatioLow ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
+                      <td className={`px-3 py-2 text-right ${motherRatioOutOfRange ? "text-destructive" : ""}`}>{fmt(totals.m05)}</td>
+                      <td className={`px-3 py-2 text-right ${finishedRatioOutOfRange ? "text-destructive" : ""}`}>{fmt(totals.t05)}</td>
+                      <td className={`px-3 py-2 text-right ${finishedRatioOutOfRange ? "text-destructive" : ""}`}>{fmt(totals.t01)}</td>
                     </tr>
                     <tr className="border-b text-text-secondary">
                       <td className="px-3 py-2">Số lượng cần đạt theo Chỉ định tương ứng với số MM đã sử dụng</td>
@@ -491,16 +550,16 @@ export default function DailyRecordPage() {
 
             {selectedInst && (
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className={`rounded-lg p-3 ${motherRatioLow ? "bg-danger-light" : "bg-background"}`}>
+                <div className={`rounded-lg p-3 ${motherRatioOutOfRange ? "bg-danger-light" : "bg-background"}`}>
                   <p className="text-xs text-text-secondary">Hệ số nhân MM (cụm MM thành phẩm / MM sử dụng)</p>
-                  <p className={`text-lg font-bold ${motherRatioLow ? "text-destructive" : "text-foreground"}`}>
+                  <p className={`text-lg font-bold ${motherRatioOutOfRange ? "text-destructive" : "text-foreground"}`}>
                     {hasMotherUsedData ? formatRatio(actualMotherRatio) : "—"}
                     <span className="text-xs font-normal text-text-secondary ml-1">(chỉ định giao: {formatRatio(targetMotherRatio)})</span>
                   </p>
                 </div>
-                <div className={`rounded-lg p-3 ${finishedRatioLow ? "bg-danger-light" : "bg-background"}`}>
+                <div className={`rounded-lg p-3 ${finishedRatioOutOfRange ? "bg-danger-light" : "bg-background"}`}>
                   <p className="text-xs text-text-secondary">Hệ số ra thành phẩm (cây ra rễ / MM sử dụng)</p>
-                  <p className={`text-lg font-bold ${finishedRatioLow ? "text-destructive" : "text-foreground"}`}>
+                  <p className={`text-lg font-bold ${finishedRatioOutOfRange ? "text-destructive" : "text-foreground"}`}>
                     {hasMotherUsedData ? formatRatio(actualFinishedRatio) : "—"}
                     <span className="text-xs font-normal text-text-secondary ml-1">(chỉ định giao: {formatRatio(targetFinishedRatio)})</span>
                   </p>
@@ -511,9 +570,9 @@ export default function DailyRecordPage() {
             {isDeviating && (
               <div className="mt-3 flex items-center gap-2 text-sm font-bold text-destructive bg-danger-light rounded p-3">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
-                Bạn đang cấy lệch so với chỉ định cấy — {motherRatioLow && finishedRatioLow
+                Bạn đang cấy lệch so với chỉ định cấy — {motherRatioOutOfRange && finishedRatioOutOfRange
                   ? `Hệ số nhân MM đang đạt ${Math.round(motherRatioPct ?? 0)}%, Hệ số ra thành phẩm đang đạt ${Math.round(finishedRatioPct ?? 0)}% so với chỉ định`
-                  : motherRatioLow
+                  : motherRatioOutOfRange
                   ? `Hệ số nhân MM đang đạt ${Math.round(motherRatioPct ?? 0)}% so với chỉ định`
                   : `Hệ số ra thành phẩm đang đạt ${Math.round(finishedRatioPct ?? 0)}% so với chỉ định`}
               </div>
@@ -525,55 +584,6 @@ export default function DailyRecordPage() {
               </div>
             ) : (
               <>
-                {hasVariantGroup && (
-                  <div className="mt-4 border rounded-lg p-3 space-y-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox checked={showVariantSplit} onCheckedChange={(c) => setShowVariantSplit(!!c)} />
-                      <span className="text-sm font-medium text-foreground">Phát sinh cây cần phân loại</span>
-                    </label>
-                    {showVariantSplit && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-primary-light text-primary-strong">
-                              <th className="px-2 py-1.5 text-left font-bold">Mã cây</th>
-                              <th className="px-2 py-1.5 text-right font-bold">M05 (cụm)</th>
-                              <th className="px-2 py-1.5 text-right font-bold">T05 (cây)</th>
-                              <th className="px-2 py-1.5 text-right font-bold">T01 (cây)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {variantMembers.map((m) => (
-                              <tr key={m.id} className="border-b">
-                                <td className="px-2 py-1.5 font-mono">{m.code}</td>
-                                <td className="px-1 py-1">
-                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.m05 ?? ""} onChange={setVariantField(m.id, "m05")} />
-                                </td>
-                                <td className="px-1 py-1">
-                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.t05 ?? ""} onChange={setVariantField(m.id, "t05")} />
-                                </td>
-                                <td className="px-1 py-1">
-                                  <Input type="number" min={0} placeholder="_" className={NUMBER_INPUT_CLASS} value={variantQty[m.id]?.t01 ?? ""} onChange={setVariantField(m.id, "t01")} />
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className={`font-semibold ${variantMismatch ? "text-destructive" : ""}`}>
-                              <td className="px-2 py-1.5">Tổng đã phân loại / cột gốc</td>
-                              <td className="px-1 py-1 text-right">{m05VariantSum} / {m05Total}</td>
-                              <td className="px-1 py-1 text-right">{t05VariantSum} / {t05Total}</td>
-                              <td className="px-1 py-1 text-right">{t01VariantSum} / {t01Total}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                        {variantMismatch && (
-                          <p className="text-xs text-destructive mt-2">
-                            Tổng số lượng phân loại phải khớp đúng số đã nhập ở cột M05/T05/T01 phía trên mới lưu được.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
                 {motherCheckedExceeded && (
                   <div className="mt-4 flex items-center gap-2 text-sm font-medium text-destructive bg-danger-light rounded p-3">
                     <TriangleAlert className="w-4 h-4 shrink-0" />

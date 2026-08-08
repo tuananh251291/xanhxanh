@@ -320,14 +320,17 @@ export async function POST(req: NextRequest) {
   });
   const totalMotherUsed = motherUsedAgg._sum.motherUsed ?? 0;
 
-  // Nghi ngờ cấy sai chỉ định khi CHỈ CẦN 1 TRONG 2 tỉ lệ thực tế (lũy kế cả chỉ định) thấp hơn ngưỡng %
-  // Admin cấp cao cấu hình (mục Cài đặt: "Tỉ lệ nhân MM cần đạt" / "Tỉ lệ ra thành phẩm cần đạt") so với
-  // tỉ lệ mục tiêu của chính chỉ định này (suy từ motherSampleRatio/rootingRatio KY_THUAT nhập lúc tạo
-  // chỉ định):
+  // Nghi ngờ cấy sai chỉ định khi CHỈ CẦN 1 TRONG 2 tỉ lệ thực tế (lũy kế cả chỉ định) NẰM NGOÀI khoảng
+  // an toàn % Admin cấp cao cấu hình (mục Cài đặt: "Ngưỡng an toàn hệ số nhân mẫu mẹ đạt" / "Ngưỡng an
+  // toàn hệ số ra cây thành phẩm" — thấp hơn ngưỡng dưới HOẶC cao hơn ngưỡng trên đều báo, không chỉ thấp
+  // hơn 1 chiều như trước) so với tỉ lệ mục tiêu của chính chỉ định này (suy từ motherSampleRatio/
+  // rootingRatio KY_THUAT nhập lúc tạo chỉ định):
   // - Tỉ lệ nhân MM = số cụm mẫu mẹ thành phẩm (M05) / số mẫu mẹ đã sử dụng.
   // - Tỉ lệ ra thành phẩm = số cây ra rễ thành phẩm (T05+T01) / số mẫu mẹ đã sử dụng.
-  const motherRatioTargetPct = parseFloat(await getSystemConfig("mother_ratio_target_pct", "80")) || 80;
-  const finishedRatioTargetPct = parseFloat(await getSystemConfig("finished_ratio_target_pct", "80")) || 80;
+  const motherRatioMinPct = parseFloat(await getSystemConfig("mother_ratio_min_pct", "80")) || 80;
+  const motherRatioMaxPct = parseFloat(await getSystemConfig("mother_ratio_max_pct", "120")) || 120;
+  const finishedRatioMinPct = parseFloat(await getSystemConfig("finished_ratio_min_pct", "80")) || 80;
+  const finishedRatioMaxPct = parseFloat(await getSystemConfig("finished_ratio_max_pct", "120")) || 120;
 
   // expectedMotherOutput đã tính thẳng theo cụm — không cần quy đổi thêm.
   const targetMotherOutputClusters = instruction.items
@@ -354,12 +357,13 @@ export async function POST(req: NextRequest) {
 
   // Chỉ định có thể chỉ được KY_THUAT nhập 1 trong 2 tỉ lệ (VD để trống "Tỉ lệ ra TP" vì chưa xác định) —
   // tỉ lệ nào KHÔNG có mục tiêu (Pct null) thì bỏ qua, không tính vào điều kiện báo. Chỉ cần 1 tỉ lệ CÓ
-  // mục tiêu và thấp hơn ngưỡng là báo ngay, không cần tỉ lệ còn lại (nếu có) cũng phải thấp.
-  const motherLow = motherRatioPct !== null && motherRatioPct < motherRatioTargetPct;
-  const finishedLow = finishedRatioPct !== null && finishedRatioPct < finishedRatioTargetPct;
+  // mục tiêu và NẰM NGOÀI khoảng an toàn (thấp hơn ngưỡng dưới HOẶC cao hơn ngưỡng trên) là báo ngay,
+  // không cần tỉ lệ còn lại (nếu có) cũng phải lệch.
+  const motherOutOfRange = motherRatioPct !== null && (motherRatioPct < motherRatioMinPct || motherRatioPct > motherRatioMaxPct);
+  const finishedOutOfRange = finishedRatioPct !== null && (finishedRatioPct < finishedRatioMinPct || finishedRatioPct > finishedRatioMaxPct);
 
   let alert = false;
-  if (totalMotherUsed > 0 && (motherLow || finishedLow)) {
+  if (totalMotherUsed > 0 && (motherOutOfRange || finishedOutOfRange)) {
     alert = true;
     // Chặn spam: mỗi chỉ định (1 chỉ định = đúng 1 tuần) chỉ TẠO TỐI ĐA 1 alert loại này trong suốt vòng
     // đời của nó — không lọc theo status (khác MOTHER_CONTAMINATION_HIGH ở trên, vốn cho phép báo lại sau

@@ -362,39 +362,10 @@ export default function DailyRecordSimpleForm() {
       ) : selectedInst ? (
         <Card>
           <CardContent className="pt-4 space-y-1">
-            <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2 mb-2">
-              <Info className="w-4 h-4 shrink-0 mt-0.5" />
-              <div>
-                <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
-                <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
-              </div>
-            </div>
-            <div className="divide-y divide-divider">
-              {FIELD_ROWS.map((row) => (
-                <div key={row.key} className="flex items-center justify-between py-2.5">
-                  <span className="text-sm text-foreground">{row.label}</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    disabled={!row.editable}
-                    placeholder={row.editable ? "_" : undefined}
-                    className={NUMBER_INPUT_CLASS}
-                    value={form[row.key]}
-                    onChange={row.editable ? setField(row.key) : undefined}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <p className="text-xs text-text-secondary pt-2">
-              MM đã sử dụng: {fmt(cumulativeMotherUsed)} / {fmt(selectedInst.inputMotherQuantity)} MM được giao
-            </p>
-            <p className="text-xs text-text-secondary">
-              MM đã kiểm tra tuần này: {fmt(cumulativeMotherChecked)} / {fmt(selectedInst.inputMotherQuantity)}
-            </p>
-
+            {/* Đặt lên đầu bảng — dễ nhận diện hơn để NV cấy mô để ý tích chọn TRƯỚC khi nhập số liệu ở
+                bảng bên dưới, thay vì phải cuộn xuống cuối mới thấy (vị trí cũ). */}
             {hasVariantGroup && (
-              <div className="border rounded-lg p-3 space-y-3">
+              <div className="border rounded-lg p-3 space-y-3 mb-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox checked={showVariantSplit} onCheckedChange={(c) => setShowVariantSplit(!!c)} />
                   <span className="text-sm font-medium text-foreground">Phát sinh cây cần phân loại</span>
@@ -428,6 +399,36 @@ export default function DailyRecordSimpleForm() {
                 )}
               </div>
             )}
+            <div className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2 mb-2">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <p>1. MM đã kiểm tra = MM nhiễm + MM sử dụng</p>
+                <p>2. Số điền là cây hoặc cụm, không phải số túi</p>
+              </div>
+            </div>
+            <div className="divide-y divide-divider">
+              {FIELD_ROWS.map((row) => (
+                <div key={row.key} className="flex items-center justify-between py-2.5">
+                  <span className="text-sm text-foreground">{row.label}</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    disabled={!row.editable}
+                    placeholder={row.editable ? "_" : undefined}
+                    className={NUMBER_INPUT_CLASS}
+                    value={form[row.key]}
+                    onChange={row.editable ? setField(row.key) : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-text-secondary pt-2">
+              MM đã sử dụng: {fmt(cumulativeMotherUsed)} / {fmt(selectedInst.inputMotherQuantity)} MM được giao
+            </p>
+            <p className="text-xs text-text-secondary">
+              MM đã kiểm tra tuần này: {fmt(cumulativeMotherChecked)} / {fmt(selectedInst.inputMotherQuantity)}
+            </p>
 
             {motherCheckedExceeded && (
               <div className="flex items-center gap-2 text-sm font-medium text-destructive bg-danger-light rounded-lg p-3">
