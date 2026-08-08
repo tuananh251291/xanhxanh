@@ -164,6 +164,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           { status: 400 }
         );
       }
+      // Không cho xác nhận chỉ định mới nếu còn mẫu mẹ dư của 1 chỉ định TRƯỚC (kết thúc do hết thời
+      // gian/tự kết thúc sớm — 2 lý do duy nhất còn có thể dư, xem END_REASON_LABELS ở my-instructions)
+      // chưa bàn giao cho Kho mô (surplusHandedOverAt còn null) — hay gặp nhất đúng sáng Thứ 2 đầu tuần,
+      // khi chỉ định tuần trước vừa kết thúc Chủ nhật mà NV quên bàn giao MM dư trước khi nhận việc mới.
+      const endedWithSurplusCandidates = await prisma.plantingInstruction.findMany({
+        where: {
+          assignedToId: instruction.assignedToId,
+          status: "ENDED",
+          endReason: { in: ["TIME_UP", "EARLY_END_BY_STAFF"] },
+          surplusHandedOverAt: null,
+          id: { not: id },
+        },
+        select: { code: true, inputMotherQuantity: true, dailyRecords: { select: { motherChecked: true } } },
+      });
+      const pendingSurplus = endedWithSurplusCandidates.find(
+        (e) => e.inputMotherQuantity - e.dailyRecords.reduce((sum, r) => sum + r.motherChecked, 0) > 0
+      );
+      if (pendingSurplus) {
+        return NextResponse.json(
+          { message: `Bạn còn mẫu mẹ dư của chỉ định ${pendingSurplus.code} chưa bàn giao cho Kho mô — phải bàn giao MM dư trước khi nhận chỉ định mới` },
+          { status: 400 }
+        );
+      }
       // Ưu tiên xác nhận ĐÚNG THỨ TỰ đã bàn giao — nếu còn chỉ định khác đã bàn giao TRƯỚC chỉ định này
       // mà NV chưa xác nhận, phải xác nhận chỉ định đó trước. Thiếu check này từng khiến NV xác nhận
       // nhầm 1 chỉ định tuần sau trong lúc chỉ định tuần này/dự phòng đã bàn giao sớm hơn vẫn đang chờ —
