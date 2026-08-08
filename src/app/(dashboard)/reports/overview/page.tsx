@@ -9,6 +9,8 @@ import RatioTrendSection from "./ratio-trend-section";
 import StaffRankingSection from "./staff-ranking-section";
 import ContaminationBreakdownSection from "./contamination-breakdown-section";
 import InstructionProgressSection from "./instruction-progress-section";
+import SurplusMotherReturnedSection from "./surplus-mother-returned-section";
+import DarkRoomContaminationByInstructionSection from "./dark-room-contamination-by-instruction-section";
 
 const HISTORY_WEEKS = 10;
 
@@ -126,6 +128,8 @@ export default async function ReportsOverviewPage() {
       <StaffRankingSection />
       <ContaminationBreakdownSection />
       <InstructionProgressSection />
+      <DarkRoomContaminationByInstructionSection />
+      <SurplusMotherReturnedSection />
     </div>
   );
 }
