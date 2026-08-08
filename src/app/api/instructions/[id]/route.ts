@@ -133,6 +133,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.status !== "ACTIVE" && instruction.status !== "DRAFT") {
       return NextResponse.json({ message: "Chỉ định đã kết thúc hoặc đã hủy — không thể xác nhận nhận mẫu mẹ" }, { status: 400 });
     }
+    // Chỉ định cho tuần nào thì chỉ được xác nhận nhận mẫu mẹ TỪ ĐÚNG THỨ 2 của tuần đó trở đi — KHO_MO
+    // có thể bàn giao trước (VD chỉ định dự phòng tạo/bàn giao giữa tuần cho tuần sau), nhưng NV không
+    // được xác nhận sớm hơn ngày bắt đầu thực hiện thật. weekStart lưu UTC-midnight của đúng Thứ 2 đó
+    // (xem toStoredWeekStart/week-rotation.ts) nên so trực tiếp với "now" là đủ, không cần quy đổi giờ.
+    if (instruction.weekStart && new Date() < instruction.weekStart) {
+      return NextResponse.json(
+        {
+          message: `Chỉ định cho tuần bắt đầu ${instruction.weekStart.toLocaleDateString("vi-VN")} — chưa tới ngày bắt đầu thực hiện, chưa thể xác nhận nhận mẫu mẹ`,
+        },
+        { status: 400 }
+      );
+    }
     // NV cấy mô chỉ được thực hiện 1 chỉ định tại 1 thời điểm — KHO_MO có thể bàn giao trước chỉ định
     // mới bất cứ lúc nào, nhưng NV cấy mô chỉ được XÁC NHẬN (bắt đầu) sau khi chỉ định đang thực hiện
     // hiện tại (đã xác nhận nhận mẫu mẹ nhưng chưa kết thúc) thực sự kết thúc.
