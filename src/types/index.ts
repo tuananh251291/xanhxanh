@@ -349,6 +349,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
+    { href: "/inventory/kho-sang", label: "Phòng ra rễ (mọi cơ sở)", icon: "Sun" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },

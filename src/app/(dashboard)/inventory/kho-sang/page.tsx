@@ -29,11 +29,19 @@ export default async function KhoSangPage() {
   // Nhân viên kỹ thuật chỉ xem được số liệu Phòng mẫu mẹ, không xem được toàn bộ Kho sáng
   // (ẩn Phòng ra rễ — thuộc phạm vi theo dõi của KHO_MO).
   const onlyMotherRoom = role === "KY_THUAT";
-  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật không
-  // bị giới hạn, làm việc được ở mọi kho.
-  const workplaceWarehouseId = role !== "KY_THUAT" ? session?.user?.workplaceWarehouseId : null;
+  // NV Kho thành phẩm được xem Phòng ra rễ (chỉ xem, không sửa gì ở trang này — trang chỉ đọc) của TẤT
+  // CẢ cơ sở sản xuất để chủ động theo dõi hàng sắp về, không xem Phòng mẫu mẹ (không thuộc phạm vi).
+  const onlyRootingRoom = role === "KHO_THANH_PHAM";
+  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật và NV
+  // Kho thành phẩm không bị giới hạn theo 1 kho sản xuất (KHO_THANH_PHAM vốn chỉ gán 1 kho THÀNH PHẨM,
+  // không phải kho sản xuất, nên phải xem hết mọi kho sản xuất mới có ý nghĩa).
+  const workplaceWarehouseId = role !== "KY_THUAT" && role !== "KHO_THANH_PHAM" ? session?.user?.workplaceWarehouseId : null;
 
-  const roomTypeFilter: RoomType | { in: RoomType[] } = onlyMotherRoom ? "PHONG_MAU_ME" : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] };
+  const roomTypeFilter: RoomType | { in: RoomType[] } = onlyMotherRoom
+    ? "PHONG_MAU_ME"
+    : onlyRootingRoom
+      ? "PHONG_RA_RE"
+      : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] };
 
   // Chỉ tải danh sách phòng (nhẹ) — KHÔNG kèm shelves/lots nữa, vì có phòng tới 600+ kệ khiến trang tải
   // ~9 giây. Phòng mẫu mẹ giờ tự tải kệ theo trang qua GET /api/shelves/mother-room (xem MotherShelfTable).
@@ -121,12 +129,15 @@ export default async function KhoSangPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Sun className="w-6 h-6 text-warning-foreground" /> {onlyMotherRoom ? "Phòng mẫu mẹ" : "Phòng sáng"}
+          <Sun className="w-6 h-6 text-warning-foreground" />
+          {onlyMotherRoom ? "Phòng mẫu mẹ" : onlyRootingRoom ? "Phòng ra rễ — tất cả cơ sở sản xuất" : "Phòng sáng"}
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {onlyMotherRoom
             ? `Tổng: ${totalLotCount} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm`
-            : `Tổng: ${totalLotCount} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")} cây`}
+            : onlyRootingRoom
+              ? `Tổng: ${totalLotCount} lô · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")} cây`
+              : `Tổng: ${totalLotCount} lô · Mẫu mẹ: ${totalMother.toLocaleString("vi-VN")} cụm · Thành phẩm: ${totalFinished.toLocaleString("vi-VN")} cây`}
         </p>
       </div>
 
