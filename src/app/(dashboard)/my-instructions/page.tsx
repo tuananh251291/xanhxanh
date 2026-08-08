@@ -11,6 +11,7 @@ import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
 import SurplusHandoverButton from "./surplus-handover-button";
 import DoneInstructionsTable from "./done-instructions-table";
+import ViewInstructionButton from "./view-instruction-button";
 
 const END_REASON_LABELS: Record<string, string> = {
   TIME_UP: "Hết thời gian (qua Chủ nhật)",
@@ -54,6 +55,21 @@ export default async function MyInstructionsPage() {
   const active = instructions.filter((i) => i.status === "ACTIVE" || i.status === "DRAFT");
   const ended = instructions.filter((i) => i.status === "ENDED");
   const done = instructions.filter((i) => i.status === "COMPLETED" || i.status === "CANCELLED");
+
+  // Chỉ định đã bàn giao/chưa xác nhận — cùng thứ tự ưu tiên với server (PATCH /api/instructions/[id]
+  // nhánh confirmMotherReceived): Tuần thực hiện SỚM HƠN phải xác nhận trước, cùng tuần (hoặc thiếu
+  // weekStart) mới xét tới lúc Kho mô bàn giao thật (handedOverAt). NV không được "chọn xem" (huống chi
+  // xác nhận) chỉ định tuần sau khi còn chỉ định tuần trước đang chờ.
+  const needingConfirm = active.filter((i) => i.handedOverAt && !i.motherReceivedAt);
+  const isBlockedByEarlierInstruction = (inst: (typeof needingConfirm)[number]) =>
+    needingConfirm.some((other) => {
+      if (other.id === inst.id) return false;
+      if (inst.weekStart && other.weekStart) {
+        const diff = other.weekStart.getTime() - inst.weekStart.getTime();
+        if (diff !== 0) return diff < 0;
+      }
+      return other.handedOverAt!.getTime() < inst.handedOverAt!.getTime();
+    });
 
   return (
     <div className="space-y-6">
@@ -101,10 +117,12 @@ export default async function MyInstructionsPage() {
                           {/* Bấm "Xem" chỉ để xem phiếu chỉ định — KHÔNG còn tự động xác nhận nhận mẫu mẹ
                               ngay khi bấm nữa (tránh xác nhận vội trước khi đọc kỹ). Việc xác nhận chuyển
                               hẳn sang trang chi tiết, bắt buộc tích "Tôi xác nhận..." trước mới bấm được
-                              nút "Nhận bàn giao" — xem /instructions/[id]/page.tsx. */}
-                          <Link href={`/instructions/${inst.id}`}>
-                            <Button size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
-                          </Link>
+                              nút "Nhận bàn giao" — xem /instructions/[id]/page.tsx. Chặn bấm "Xem" luôn
+                              nếu còn chỉ định tuần trước cần xác nhận trước (xem needingConfirm ở trên). */}
+                          <ViewInstructionButton
+                            instructionId={inst.id}
+                            blocked={!!inst.handedOverAt && !inst.motherReceivedAt && isBlockedByEarlierInstruction(inst)}
+                          />
                         </td>
                       </tr>
                     ))}

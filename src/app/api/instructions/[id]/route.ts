@@ -187,25 +187,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           { status: 400 }
         );
       }
-      // Ưu tiên xác nhận ĐÚNG THỨ TỰ đã bàn giao — nếu còn chỉ định khác đã bàn giao TRƯỚC chỉ định này
-      // mà NV chưa xác nhận, phải xác nhận chỉ định đó trước. Thiếu check này từng khiến NV xác nhận
-      // nhầm 1 chỉ định tuần sau trong lúc chỉ định tuần này/dự phòng đã bàn giao sớm hơn vẫn đang chờ —
-      // chỉ định đó bị kẹt vĩnh viễn vì "1 NV/1 chỉ định" đã bị chỉ định tuần sau chiếm chỗ.
+      // Ưu tiên xác nhận theo ĐÚNG TUẦN THỰC HIỆN trước — còn chỉ định khác của cùng NV đã bàn giao,
+      // chưa xác nhận, mà Tuần thực hiện SỚM HƠN chỉ định này (VD chỉ định tuần này còn đang chờ trong
+      // khi NV lại chọn xác nhận nhầm chỉ định dự phòng tuần sau) thì phải xác nhận chỉ định tuần sớm
+      // hơn đó trước — không được "nhảy cóc" sang tuần sau. Cùng Tuần thực hiện (hoặc 1 trong 2 thiếu
+      // weekStart) mới xét tiếp theo đúng thời điểm Kho mô bàn giao thật (handedOverAt) — giữ hành vi cũ
+      // cho trường hợp này, tránh 1 chỉ định bị kẹt vĩnh viễn vì "1 NV/1 chỉ định" bị chỉ định khác cùng
+      // tuần/không có tuần chiếm chỗ.
       if (instruction.handedOverAt) {
-        const earlierPending = await prisma.plantingInstruction.findFirst({
+        const otherPending = await prisma.plantingInstruction.findMany({
           where: {
             assignedToId: instruction.assignedToId,
-            handedOverAt: { not: null, lt: instruction.handedOverAt },
+            handedOverAt: { not: null },
             motherReceivedAt: null,
             status: { in: ["ACTIVE", "DRAFT"] },
             id: { not: id },
           },
-          select: { code: true },
-          orderBy: { handedOverAt: "asc" },
+          select: { code: true, weekStart: true, handedOverAt: true },
         });
+        const isEarlier = (other: (typeof otherPending)[number]) => {
+          if (instruction.weekStart && other.weekStart) {
+            const diff = other.weekStart.getTime() - instruction.weekStart.getTime();
+            if (diff !== 0) return diff < 0;
+          }
+          return other.handedOverAt!.getTime() < instruction.handedOverAt!.getTime();
+        };
+        const earlierPending = otherPending.find(isEarlier);
         if (earlierPending) {
           return NextResponse.json(
-            { message: `Bạn còn chỉ định ${earlierPending.code} đã bàn giao trước chỉ định này mà chưa xác nhận — phải xác nhận chỉ định đó trước` },
+            { message: `Bạn còn chỉ định ${earlierPending.code} cần thực hiện trước — phải xác nhận chỉ định đó trước` },
             { status: 400 }
           );
         }
