@@ -42,13 +42,20 @@ export default async function ShelfListView({
   const canManageStaffAndPlant = session?.user?.role === "SUPER_ADMIN";
   const canMoveRoom = session?.user?.role === "SUPER_ADMIN" || session?.user?.role === "ADMIN";
 
+  // Gộp qua AND: [...] thay vì spread trực tiếp — extraWhere của trang "đã chia" cũng có khóa OR
+  // (điều kiện phân loại), spread thẳng ...extraWhere rồi ...{OR:[...]} (điều kiện tìm kiếm) sẽ khiến
+  // OR sau GHI ĐÈ mất OR trước (cùng khóa) — kết quả tìm kiếm sẽ mất hẳn điều kiện phân loại, hiện lẫn
+  // cả kệ "chung" khi search khớp mã/tên kệ. AND: [...] tránh hoàn toàn việc trùng khóa dù extraWhere
+  // của trang khác (VD "chung") không có OR.
   const shelfWhere: Prisma.ShelfWhereInput = {
     roomId: room.id,
     isActive: true,
-    ...extraWhere,
-    ...(search
-      ? { OR: [{ code: { contains: search, mode: "insensitive" } }, { name: { contains: search, mode: "insensitive" } }, { block: { contains: search, mode: "insensitive" } }] }
-      : {}),
+    AND: [
+      extraWhere ?? {},
+      search
+        ? { OR: [{ code: { contains: search, mode: "insensitive" } }, { name: { contains: search, mode: "insensitive" } }, { block: { contains: search, mode: "insensitive" } }] }
+        : {},
+    ],
   };
 
   const [filteredTotal, shelves, caymoStaff, moveableRooms, rotationGroupOptions, plantTypeOptions] = await Promise.all([
