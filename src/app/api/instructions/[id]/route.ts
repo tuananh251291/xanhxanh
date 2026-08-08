@@ -218,14 +218,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ message: "Không được thêm/bớt dòng quy cách khi sửa số lượng" }, { status: 400 });
     }
 
+    // Chặn vượt tồn lô nguồn CHỈ áp dụng cho Kho mô — họ luôn sửa TRƯỚC bàn giao (chặn ở check
+    // motherReceivedAt/ACTIVE phía trên còn chặt hơn), lúc đó Lot.quantity vẫn là tồn thật đang nằm trên
+    // kệ nên không thể dùng nhiều hơn số đó. Admin cấp cao được sửa cả SAU bàn giao — lúc đó lô nguồn đã
+    // chuyển PLANTED và Lot.quantity chỉ còn là ảnh chụp tồn tại THỜI ĐIỂM bàn giao, không hề bị trừ theo
+    // "Số lượng dùng" đã ghi (không có cơ chế nào đồng bộ ngược 2 số này) — sửa vượt số đó không ảnh
+    // hưởng gì tới lô nguồn hay bất kỳ tính toán nào khác, chỉ đơn thuần là sửa số liệu ghi nhận.
     const itemsById = new Map(instruction.items.map((i) => [i.id, i]));
-    for (const ei of editItems) {
-      const current = itemsById.get(ei.itemId)!;
-      if (current.lot && ei.quantity > current.lot.quantity) {
-        return NextResponse.json(
-          { message: `Dòng ${current.stageCode ?? ""}: số lượng dùng không được vượt quá ${current.lot.quantity.toLocaleString("vi-VN")} cụm hiện có trên lô nguồn` },
-          { status: 400 }
-        );
+    if (!isSuperAdmin) {
+      for (const ei of editItems) {
+        const current = itemsById.get(ei.itemId)!;
+        if (current.lot && ei.quantity > current.lot.quantity) {
+          return NextResponse.json(
+            { message: `Dòng ${current.stageCode ?? ""}: số lượng dùng không được vượt quá ${current.lot.quantity.toLocaleString("vi-VN")} cụm hiện có trên lô nguồn` },
+            { status: 400 }
+          );
+        }
       }
     }
 

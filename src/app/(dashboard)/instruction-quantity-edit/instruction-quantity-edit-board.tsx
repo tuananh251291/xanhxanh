@@ -233,7 +233,11 @@ export default function InstructionQuantityEditBoard({ role }: { role: UserRole 
                           onChange={(e) => setValues((v) => ({ ...v, [item.id]: e.target.value }))}
                         />
                         {item.lot && (
-                          <p className="text-xs text-text-muted mt-1">tối đa {item.lot.quantity.toLocaleString("vi-VN")} cụm</p>
+                          <p className="text-xs text-text-muted mt-1">
+                            {role === "SUPER_ADMIN"
+                              ? `lô nguồn có ${item.lot.quantity.toLocaleString("vi-VN")} cụm (được sửa vượt số này)`
+                              : `tối đa ${item.lot.quantity.toLocaleString("vi-VN")} cụm`}
+                          </p>
                         )}
                       </td>
                     </tr>
