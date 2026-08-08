@@ -5,6 +5,7 @@ import { generateTransferCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
+import { format } from "date-fns";
 import { z } from "zod";
 
 class DuplicateTransferError extends Error {}
@@ -131,7 +132,7 @@ export async function POST(req: NextRequest) {
   if (isFromDarkRoom) {
     const lots = await prisma.lot.findMany({
       where: { id: { in: items.map((i) => i.lotId) } },
-      select: { id: true, inspectedAt: true, stage: true },
+      select: { id: true, inspectedAt: true, stage: true, enteredAt: true },
     });
     if (lots.some((lot) => !lot.inspectedAt)) {
       return NextResponse.json({ message: "Cần kiểm tra nhiễm trước khi bàn giao" }, { status: 400 });
@@ -146,6 +147,31 @@ export async function POST(req: NextRequest) {
       if (item.unqualifiedQuantity > item.quantity) {
         return NextResponse.json({ message: "Số lượng không đạt không được vượt quá số lượng bàn giao" }, { status: 400 });
       }
+    }
+
+    // Bắt buộc bàn giao lô nhập kho tối LÂU HƠN trước (FIFO) — còn lô nào khác trong CÙNG phòng tối cá
+    // nhân, còn ACTIVE, còn số lượng (bỏ qua lô đã về 0 — hết sạch thì không còn gì để "bàn giao trước"),
+    // KHÔNG nằm trong phiếu đang tạo, mà nhập kho tối SỚM HƠN lô sớm nhất trong phiếu này — thì chặn,
+    // buộc NV xử lý (kiểm tra nhiễm/bàn giao) lô cũ đó trước. So theo enteredAt — tại thời điểm này lô
+    // còn nằm nguyên trong phòng tối, chưa qua commitShelfPlacements nên enteredAt vẫn là ngày nhập gốc,
+    // giống hệt cách client hiển thị (xem product-handover-board.tsx).
+    const earliestEnteredAt = lots.reduce((min, l) => (l.enteredAt < min ? l.enteredAt : min), lots[0].enteredAt);
+    const olderLot = await prisma.lot.findFirst({
+      where: {
+        roomId: fromRoomId,
+        status: "ACTIVE",
+        quantity: { gt: 0 },
+        id: { notIn: items.map((i) => i.lotId) },
+        enteredAt: { lt: earliestEnteredAt },
+      },
+      orderBy: { enteredAt: "asc" },
+      select: { enteredAt: true },
+    });
+    if (olderLot) {
+      return NextResponse.json(
+        { message: `Bạn cần bàn giao lô ngày ${format(olderLot.enteredAt, "dd/MM/yyyy")} trước — các lô nhập kho tối lâu hơn phải bàn giao trước` },
+        { status: 400 }
+      );
     }
   }
 

@@ -27,7 +27,7 @@ type Lot = {
 
 const MIN_DAYS_SINCE_PLANTED = 7;
 
-function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: () => void }) {
+function ProductLotTable({ group, onHandedOver, blockedByDate }: { group: Lot[]; onHandedOver: () => void; blockedByDate: string | null }) {
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // "Không đạt" NV cấy mô tự khai (VD cây thành phẩm quá nhỏ) — theo lotId, chỉ áp dụng lô thành phẩm.
@@ -115,7 +115,13 @@ function ProductLotTable({ group, onHandedOver }: { group: Lot[]; onHandedOver: 
           </table>
         </div>
 
-        {allInspected ? (
+        {blockedByDate ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-divider">
+            <span className="text-sm text-warning-foreground">
+              Bạn cần bàn giao lô ngày {format(new Date(blockedByDate), "dd/MM/yyyy")} trước — các lô nhập kho tối lâu hơn phải bàn giao trước
+            </span>
+          </div>
+        ) : allInspected ? (
           <div className="space-y-2 pt-3 border-t border-divider">
             <p className="text-xs text-text-secondary">
               Cây thành phẩm quá nhỏ chưa đạt chuẩn thì ghi số lượng vào ô &quot;Không đạt&quot; — vẫn bàn giao đủ số lượng thực tế, chỉ khác số được ghi nhận tính công.
@@ -177,9 +183,21 @@ export default function ProductHandoverBoard() {
     return acc;
   }, {});
 
-  const groups = Object.values(byCode).filter(
-    (group) => differenceInCalendarDays(new Date(), new Date(group[0].enteredAt)) >= MIN_DAYS_SINCE_PLANTED
-  );
+  const groups = Object.values(byCode)
+    .filter((group) => differenceInCalendarDays(new Date(), new Date(group[0].enteredAt)) >= MIN_DAYS_SINCE_PLANTED)
+    .sort((a, b) => a[0].enteredAt.localeCompare(b[0].enteredAt));
+
+  // Bắt buộc bàn giao lô nhập kho tối LÂU HƠN trước — lấy ngày sớm nhất trong TOÀN BỘ lô còn ACTIVE ở
+  // phòng tối (không chỉ các lô đã đủ ngày hiện ở "groups" bên dưới, vì lô càng nhập sớm càng dễ đã đủ
+  // ngày rồi — dùng "lots" cho khớp đúng ràng buộc phía server ở POST /api/transfers). Bỏ qua lô đã về 0
+  // (còn ACTIVE trong DB nhưng hết sạch — không còn gì để "bàn giao trước" cả, xem lỗi tương tự đã sửa ở
+  // breakdown kệ chung).
+  const earliestActiveDate = lots
+    .filter((l) => l.quantity > 0)
+    .reduce<string | null>((min, l) => {
+      const d = l.enteredAt.slice(0, 10);
+      return min === null || d < min ? d : min;
+    }, null);
 
   return (
     <div className="space-y-6">
@@ -203,9 +221,18 @@ export default function ProductHandoverBoard() {
         </CardContent></Card>
       ) : (
         <div className="space-y-4">
-          {groups.map((group) => (
-            <ProductLotTable key={`${group[0].code}__${group[0].enteredAt.slice(0, 10)}`} group={group} onHandedOver={load} />
-          ))}
+          {groups.map((group) => {
+            const groupDate = group[0].enteredAt.slice(0, 10);
+            const blockedByDate = earliestActiveDate && groupDate > earliestActiveDate ? earliestActiveDate : null;
+            return (
+              <ProductLotTable
+                key={`${group[0].code}__${groupDate}`}
+                group={group}
+                onHandedOver={load}
+                blockedByDate={blockedByDate}
+              />
+            );
+          })}
         </div>
       )}
     </div>
