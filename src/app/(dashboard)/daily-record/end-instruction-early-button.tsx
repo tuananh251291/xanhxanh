@@ -18,7 +18,14 @@ export default function EndInstructionEarlyButton({
   const [loading, setLoading] = useState(false);
 
   const endEarly = async () => {
-    if (!window.confirm(`Bạn có chắc chắn muốn kết thúc sớm chỉ định ${instructionCode} không?`)) return;
+    if (
+      !window.confirm(
+        `Bạn có chắc là muốn Kết thúc chỉ định cấy ${instructionCode} không?\n\n` +
+          `Kết thúc chỉ định chỉ bấm khi bạn chưa cấy hết số lượng của chỉ định cấy và bạn sẽ nghỉ hết tuần này.\n\n` +
+          `Hãy kiểm tra kĩ.`
+      )
+    )
+      return;
     setLoading(true);
     try {
       const res = await fetch(`/api/instructions/${instructionId}`, {
