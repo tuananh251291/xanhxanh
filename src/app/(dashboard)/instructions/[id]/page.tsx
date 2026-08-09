@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { format, addDays, startOfWeek, isSameDay } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, STAGE_LABELS, MEDIUM_ORDER_STATUS_LABELS, canManageDailyRecords } from "@/types";
+import { instructionDisplayStatus, STAGE_LABELS, MEDIUM_ORDER_STATUS_LABELS, canManageDailyRecords } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { PrintButton } from "@/components/shared/print-button";
 import { isPageAllowed } from "@/lib/permissions";
@@ -66,6 +66,8 @@ export default async function InstructionDetailPage({ params }: { params: Promis
 
   // Permission: CAY_MO can only see their own
   if (role === "CAY_MO" && inst.assignedToId !== session!.user.id) redirect("/my-instructions");
+
+  const displayStatus = instructionDisplayStatus(inst.status, inst.handedOverAt);
 
   // Dữ liệu riêng cho "Phiếu chỉ định sản xuất"
   const weekEnd = inst.weekStart ? addDays(inst.weekStart, 6) : null;
@@ -246,8 +248,8 @@ export default async function InstructionDetailPage({ params }: { params: Promis
               </tbody>
             </table>
             <p className="pi-notes-text">
-              <strong>Tỉ lệ nhân MM:</strong> {targetMotherRatio === null ? "—" : fmtRatio(targetMotherRatio)}
-              &nbsp;&nbsp; <strong>Tỉ lệ ra TP:</strong> {targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}
+              <strong>Tỉ lệ nhân MM:</strong> <span className="pi-ratio-value">{targetMotherRatio === null ? "—" : fmtRatio(targetMotherRatio)}</span>
+              &nbsp;&nbsp; <strong>Tỉ lệ ra TP:</strong> <span className="pi-ratio-value">{targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}</span>
             </p>
             <p className="pi-notes-text">
               <strong>Môi trường nhân MM:</strong> {motherMediumInfo?.code ?? "—"}
@@ -304,8 +306,8 @@ export default async function InstructionDetailPage({ params }: { params: Promis
           <h1 className="text-2xl font-bold text-foreground font-mono">{inst.code}</h1>
           <p className="text-text-secondary text-sm">Chỉ định cấy</p>
         </div>
-        <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
-          {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
+        <Badge className={displayStatus.notStarted ? STATUS_COLORS.DRAFT : STATUS_COLORS[inst.status as InstructionStatus]}>
+          {displayStatus.label}
         </Badge>
         {/* Đơn đặt hàng môi trường — nội bộ giữa KY_THUAT/KHO_MO/MOI_TRUONG/Admin, NV cấy mô không có
             quyền xem trang /medium-orders/[id] nên cũng không hiện badge dẫn tới đó cho họ. */}

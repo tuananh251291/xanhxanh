@@ -182,6 +182,19 @@ export const INSTRUCTION_STATUS_LABELS = {
   ENDED: "Kết thúc",
 } as const;
 
+// Nhãn hiển thị chỉ định cấy cho các trang KHÔNG PHẢI Kho mô (Kho mô đã có badge "Chưa bàn giao"/"Đã bàn
+// giao / chưa xác nhận" riêng, chi tiết hơn — xem instructions/page.tsx). Status DB "ACTIVE" luôn mang
+// nghĩa "Đang thực hiện" nhưng 1 chỉ định mới tạo/chưa được Kho mô bàn giao (handedOverAt còn null) thì
+// chưa ai thực sự bắt tay vào cấy — hiện "Chưa thực hiện" (dùng chung màu với DRAFT) thay vì gây hiểu
+// nhầm đã có người đang làm.
+export function instructionDisplayStatus(
+  status: keyof typeof INSTRUCTION_STATUS_LABELS,
+  handedOverAt: unknown
+): { label: string; notStarted: boolean } {
+  if (status === "ACTIVE" && !handedOverAt) return { label: "Chưa thực hiện", notStarted: true };
+  return { label: INSTRUCTION_STATUS_LABELS[status], notStarted: false };
+}
+
 export const REPACK_STATUS_LABELS = {
   CREATED: "Chờ gán NV",
   ASSIGNED: "Chờ NV nhận bàn giao",

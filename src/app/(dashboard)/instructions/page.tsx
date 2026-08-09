@@ -10,7 +10,7 @@ import { ClipboardList, Printer, Search, ChevronLeft, ChevronRight } from "lucid
 import Link from "next/link";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, isAdminRole } from "@/types";
+import { instructionDisplayStatus, isAdminRole } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import AssignStaffCell from "./assign-staff-cell";
@@ -268,9 +268,14 @@ export default async function InstructionsPage({
                                 <Badge className="bg-warning-light text-warning-foreground">Đã bàn giao / chưa xác nhận</Badge>
                               )
                             ) : (
-                              <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
-                                {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
-                              </Badge>
+                              (() => {
+                                const { label, notStarted } = instructionDisplayStatus(inst.status as InstructionStatus, inst.handedOverAt);
+                                return (
+                                  <Badge className={notStarted ? STATUS_COLORS.DRAFT : STATUS_COLORS[inst.status as InstructionStatus]}>
+                                    {label}
+                                  </Badge>
+                                );
+                              })()
                             )}
                           </td>
                           <td className="px-4 py-3 text-sm text-text-secondary">

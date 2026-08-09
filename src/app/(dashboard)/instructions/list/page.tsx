@@ -10,7 +10,7 @@ import { ClipboardList, Printer, Search, ChevronLeft, ChevronRight, ArrowLeft } 
 import Link from "next/link";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
-import { INSTRUCTION_STATUS_LABELS, isAdminRole } from "@/types";
+import { instructionDisplayStatus, isAdminRole } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import EditInstructionDialog from "../edit-instruction-dialog";
@@ -163,9 +163,14 @@ export default async function InstructionsListPage({
                         {inst.assignedTo ? inst.assignedTo.name : <Badge variant="secondary">Chưa gán</Badge>}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge className={STATUS_COLORS[inst.status as InstructionStatus]}>
-                          {INSTRUCTION_STATUS_LABELS[inst.status as InstructionStatus]}
-                        </Badge>
+                        {(() => {
+                          const { label, notStarted } = instructionDisplayStatus(inst.status as InstructionStatus, inst.handedOverAt);
+                          return (
+                            <Badge className={notStarted ? STATUS_COLORS.DRAFT : STATUS_COLORS[inst.status as InstructionStatus]}>
+                              {label}
+                            </Badge>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-sm text-text-secondary">
                         {format(inst.createdAt, "dd/MM/yyyy", { locale: vi })}

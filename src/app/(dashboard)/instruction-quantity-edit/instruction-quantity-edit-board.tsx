@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Loader2, PenLine, Save } from "lucide-react";
 import { toast } from "sonner";
 import type { UserRole } from "@prisma/client";
-import { INSTRUCTION_STATUS_LABELS } from "@/types";
+import { instructionDisplayStatus } from "@/types";
 
 type Match = {
   id: string;
@@ -200,7 +200,10 @@ export default function InstructionQuantityEditBoard({ role }: { role: UserRole 
                 {selected.assignedTo && <span className="font-normal text-text-secondary text-sm"> · NV {selected.assignedTo.name}</span>}
               </CardTitle>
             </div>
-            <Badge variant={STATUS_BADGE[selected.status]}>{INSTRUCTION_STATUS_LABELS[selected.status]}</Badge>
+            {(() => {
+              const { label, notStarted } = instructionDisplayStatus(selected.status, selected.handedOverAt);
+              return <Badge variant={notStarted ? "outline" : STATUS_BADGE[selected.status]}>{label}</Badge>;
+            })()}
           </CardHeader>
           <CardContent className="space-y-4">
             {lockReason && (
