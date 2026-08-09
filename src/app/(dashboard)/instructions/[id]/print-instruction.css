@@ -138,6 +138,10 @@
   margin: 0 0 6px;
   white-space: pre-line;
 }
+.pi-ratio-value {
+  font-weight: 700;
+  color: #d03b3b;
+}
 .pi-table {
   width: 100%;
   border-collapse: collapse;
