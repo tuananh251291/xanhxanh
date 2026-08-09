@@ -74,6 +74,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
     maMauMe: item.lot?.code ?? "—",
     slSach: item.quantity,
   }));
+  const totalDeliveredQuantity = printRows.reduce((s, r) => s + r.slSach, 0);
   const m05Total = inst.items.filter((i) => i.stageCode === "M05").reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
 
   // Tỉ lệ nhân MM/ra TP thực tế (cộng dồn mọi ngày nhật ký) so với mục tiêu (suy từ tỉ lệ KY_THUAT nhập
@@ -215,6 +216,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                 </div>
               )}
             </div>
+            <p className="pi-total-delivered">Tổng số lượng cụm được giao: {totalDeliveredQuantity.toLocaleString("vi-VN")}</p>
           </section>
 
           {/* Section 3 — Chỉ định cấy */}

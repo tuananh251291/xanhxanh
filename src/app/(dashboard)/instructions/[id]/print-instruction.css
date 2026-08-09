@@ -115,6 +115,12 @@
   font-size: 13pt;
   word-break: break-word;
 }
+.pi-total-delivered {
+  margin: 6px 0 0;
+  font-size: 12pt;
+  font-weight: 700;
+  color: #d03b3b;
+}
 .pi-card-cell .pi-value.mono {
   font-family: "Courier New", monospace;
   letter-spacing: 0.02em;
