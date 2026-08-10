@@ -32,6 +32,7 @@ type Order = {
   surplusRecordedAt: string | null;
   items: OrderItem[];
   days: OrderDay[];
+  actualProductionByStage: Record<string, number>;
 };
 
 type QuantityField = "m05" | "t01" | "t05";
@@ -129,7 +130,7 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
         body: JSON.stringify({ action: "recordSurplus", itemId, surplusQuantity }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã lưu số túi dư");
+      toast.success("Đã lưu số dư thực tế");
       load();
     } finally {
       setSavingSurplusItemId(null);
@@ -145,7 +146,7 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
         body: JSON.stringify({ action: "finishSurplusEntry" }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã hoàn thành nhập môi trường dư");
+      toast.success("Đã hoàn thành kiểm tra môi trường dư");
       load();
     } finally {
       setFinishingSurplus(false);
@@ -166,6 +167,8 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
     (acc, d) => ({ m05: acc.m05 + d.m05, t01: acc.t01 + d.t01, t05: acc.t05 + d.t05 }),
     { m05: 0, t01: 0, t05: 0 }
   );
+  // Tổng đã bàn giao trong tuần (Bảng pha theo ngày) theo đúng quy cách — dùng tính "số dư lý thuyết".
+  const handedOverByStage: Record<string, number> = { M05: totals.m05, T01: totals.t01, T05: totals.t05 };
 
   return (
     <div className="space-y-6">
@@ -186,17 +189,22 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
             {isKhoMo && !canRecordSurplus && (
               <p className="text-xs text-text-muted mt-1">
                 {order.surplusRecordedAt
-                  ? "Đã hoàn thành nhập môi trường dư tuần này."
+                  ? "Đã hoàn thành kiểm tra môi trường dư tuần này."
                   : isMediumSurplusEntryDay()
-                    ? "Đơn chưa được NV môi trường xác nhận hoặc đã kết thúc — chưa nhập được môi trường dư."
-                    : "Chỉ nhập được môi trường dư vào Thứ 2 hoặc Thứ 3."}
+                    ? "Đơn chưa được NV môi trường xác nhận hoặc đã kết thúc — chưa kiểm tra được môi trường dư."
+                    : "Chỉ kiểm tra được môi trường dư vào Thứ 2 hoặc Thứ 3."}
+              </p>
+            )}
+            {isKhoMo && canRecordSurplus && (
+              <p className="text-xs text-text-muted mt-1">
+                Đối chiếu &quot;Dư lý thuyết&quot; (đã bàn giao − đã sử dụng) với số đếm thực tế, rồi điền vào ô &quot;Số dư thực tế&quot;.
               </p>
             )}
           </div>
           {canRecordSurplus && (
             <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover shrink-0" disabled={finishingSurplus} onClick={finishSurplusEntry}>
               {finishingSurplus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
-              {!finishingSurplus && "Hoàn thành nhập môi trường dư"}
+              {!finishingSurplus && "Hoàn thành kiểm tra môi trường dư"}
             </Button>
           )}
         </CardHeader>
@@ -209,13 +217,19 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                   <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Mã môi trường</th>
                   <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">SL cần (cây/cụm)</th>
                   <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Số túi cần</th>
-                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Túi dư tuần trước</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Đã bàn giao (túi)</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Đã sử dụng (túi)</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Dư lý thuyết (túi)</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Số dư thực tế</th>
                 </tr>
               </thead>
               <tbody>
                 {order.items.map((item) => {
                   const grossBags = quantityToBags(item.stageCode, item.quantity);
                   const netBags = netBagsNeeded(item.stageCode, item.quantity, item.surplusQuantity);
+                  const handedOverBags = quantityToBags(item.stageCode, handedOverByStage[item.stageCode] ?? 0);
+                  const usedBags = quantityToBags(item.stageCode, order.actualProductionByStage[item.stageCode] ?? 0);
+                  const theoreticalBags = handedOverBags - usedBags;
                   return (
                     <tr key={item.id} className="border-b last:border-0 even:bg-primary-light">
                       <td className="px-4 py-2"><Badge variant="outline">{item.stageCode}</Badge></td>
@@ -229,6 +243,9 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                           </span>
                         )}
                       </td>
+                      <td className="px-4 py-2 text-left">{handedOverBags.toLocaleString("vi-VN")}</td>
+                      <td className="px-4 py-2 text-left">{usedBags.toLocaleString("vi-VN")}</td>
+                      <td className="px-4 py-2 text-left font-medium text-info-foreground">{theoreticalBags.toLocaleString("vi-VN")}</td>
                       <td className="px-4 py-2">
                         {canRecordSurplus ? (
                           <div className="flex items-center gap-2">

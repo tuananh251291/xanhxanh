@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isMediumOrderInProgress, isMediumSurplusEntryDay } from "@/lib/medium-orders";
+import { isMediumOrderInProgress, isMediumSurplusEntryDay, getExecutionWeek } from "@/lib/medium-orders";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const order = await prisma.mediumOrder.findUnique({
     where: { id },
     include: {
-      instructions: { select: { code: true, plantType: { select: { name: true } } } },
+      instructions: { select: { id: true, code: true, plantType: { select: { name: true } } } },
       items: { include: { mediumType: { select: { code: true, name: true } } } },
       days: { orderBy: { date: "asc" } },
     },
@@ -23,19 +23,41 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (session.user.role === "MOI_TRUONG" && !order.sentAt) {
     return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 });
   }
-  return NextResponse.json(order);
+
+  // Số cấy THỰC TẾ trong tuần thực hiện (không phải số dự kiến ở MediumOrderItem.quantity) — tổng
+  // DailyRecordItem.quantityCreated của các chỉ định thuộc đơn này, theo đúng quy cách (qua Lot.stageCode,
+  // DailyRecordItem không lưu thẳng stageCode). Dùng để KHO_MO đối chiếu "số dư lý thuyết" = đã bàn giao
+  // (Bảng pha theo ngày) - đã sử dụng (số này) khi Kiểm tra môi trường dư — xem quantityToBags ở
+  // src/lib/medium-orders.ts cho bước quy đổi ra túi (làm ở client).
+  const executionWeek = getExecutionWeek(order.weekStart);
+  const dailyItems = await prisma.dailyRecordItem.findMany({
+    where: {
+      dailyRecord: {
+        instructionId: { in: order.instructions.map((i) => i.id) },
+        recordDate: { gte: executionWeek.start, lte: executionWeek.end },
+      },
+    },
+    select: { quantityCreated: true, lot: { select: { stageCode: true } } },
+  });
+  const actualProductionByStage: Record<string, number> = {};
+  for (const item of dailyItems) {
+    actualProductionByStage[item.lot.stageCode] = (actualProductionByStage[item.lot.stageCode] ?? 0) + item.quantityCreated;
+  }
+
+  return NextResponse.json({ ...order, actualProductionByStage });
 }
 
 const confirmSchema = z.object({ action: z.literal("confirm") });
-// Kho mô nhập số túi môi trường dư còn lại từ tuần trước (đếm thực tế trên kệ) — trừ vào đúng dòng
-// (stageCode + mediumType) của đơn đang thực hiện, chỉ cho phép đúng Thứ 2/Thứ 3 (chặn cứng theo yêu
-// cầu nghiệp vụ, xem isMediumSurplusEntryDay), và chỉ khi CHƯA bấm "Hoàn thành" (surplusRecordedAt null).
+// Kho mô nhập số túi môi trường dư THỰC TẾ đếm được — đối chiếu với "số dư lý thuyết" (đã bàn giao - đã
+// sử dụng, tính ở client) rồi trừ số thực tế này vào đúng dòng (stageCode + mediumType) của đơn đang
+// thực hiện, chỉ cho phép đúng Thứ 2/Thứ 3 (chặn cứng theo yêu cầu nghiệp vụ, xem isMediumSurplusEntryDay),
+// và chỉ khi CHƯA bấm "Hoàn thành" (surplusRecordedAt null).
 const recordSurplusSchema = z.object({
   action: z.literal("recordSurplus"),
   itemId: z.string().min(1),
   surplusQuantity: z.number().int().min(0),
 });
-// Kho mô bấm "Hoàn thành nhập môi trường dư" sau khi đã nhập xong các dòng cần — đánh dấu
+// Kho mô bấm "Hoàn thành kiểm tra môi trường dư" sau khi đã đối chiếu xong các dòng cần — đánh dấu
 // surplusRecordedAt, khoá không sửa surplusQuantity được nữa và làm việc này biến mất khỏi danh sách
 // công việc cần làm (xem getKhoMoDailyStats).
 const finishSurplusEntrySchema = z.object({ action: z.literal("finishSurplusEntry") });
@@ -53,10 +75,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (parsed.data.action === "recordSurplus" || parsed.data.action === "finishSurplusEntry") {
     if (session.user.role !== "KHO_MO") {
-      return NextResponse.json({ message: "Chỉ Kho mô mới nhập được môi trường dư" }, { status: 403 });
+      return NextResponse.json({ message: "Chỉ Kho mô mới kiểm tra được môi trường dư" }, { status: 403 });
     }
     if (!isMediumSurplusEntryDay()) {
-      return NextResponse.json({ message: "Chỉ nhập được môi trường dư vào Thứ 2 hoặc Thứ 3" }, { status: 400 });
+      return NextResponse.json({ message: "Chỉ kiểm tra được môi trường dư vào Thứ 2 hoặc Thứ 3" }, { status: 400 });
     }
     const order = await prisma.mediumOrder.findUnique({
       where: { id },
@@ -64,12 +86,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     if (!order) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
     // "Đơn hiện tại NV môi trường đang làm" = đã xác nhận nhưng chưa kết thúc (isMediumOrderInProgress) —
-    // đơn chưa xác nhận thì chưa có gì để trừ dư, đơn đã kết thúc thì đã qua tuần đó rồi.
+    // đơn chưa xác nhận thì chưa có gì để kiểm tra dư, đơn đã kết thúc thì đã qua tuần đó rồi.
     if (!isMediumOrderInProgress(order)) {
-      return NextResponse.json({ message: "Chỉ nhập được môi trường dư cho đơn đang thực hiện" }, { status: 400 });
+      return NextResponse.json({ message: "Chỉ kiểm tra được môi trường dư cho đơn đang thực hiện" }, { status: 400 });
     }
     if (order.surplusRecordedAt) {
-      return NextResponse.json({ message: "Đã hoàn thành nhập môi trường dư tuần này" }, { status: 400 });
+      return NextResponse.json({ message: "Đã hoàn thành kiểm tra môi trường dư tuần này" }, { status: 400 });
     }
 
     if (parsed.data.action === "finishSurplusEntry") {
