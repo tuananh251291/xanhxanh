@@ -12,6 +12,7 @@ import type { RoomType } from "@prisma/client";
 import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
 import MotherShelfTable from "./mother-shelf-table";
+import RootingPlantSearch from "./rooting-plant-search";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-text-muted";
@@ -21,10 +22,17 @@ function expiryClass(expectedMoveAt: Date | null): string {
   return "text-text-muted";
 }
 
-export default async function KhoSangPage() {
+export default async function KhoSangPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plantTypeId?: string }>;
+}) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/kho-sang"))) redirect("/dashboard");
+
+  const sp = await searchParams;
+  const rootingPlantTypeId = sp.plantTypeId?.trim() || null;
 
   // Nhân viên kỹ thuật chỉ xem được số liệu Phòng mẫu mẹ, không xem được toàn bộ Kho sáng
   // (ẩn Phòng ra rễ — thuộc phạm vi theo dõi của KHO_MO).
@@ -90,19 +98,32 @@ export default async function KhoSangPage() {
     }
     return Object.values(byType);
   })();
+  const rootingPlantTypeOptions = plantTypeNames
+    .map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   // Phòng ra rễ (chỉ KHO_MO xem, KY_THUAT không có) vẫn hiển thị dạng thẻ theo kệ như cũ, ít kệ hơn nhiều
   // so với Phòng mẫu mẹ nên chưa cần phân trang — tải riêng, không dính vào query rooms ở trên nữa.
   const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE").map((r) => r.id);
+  // Tìm theo mã cây (RootingPlantSearch, ?plantTypeId=) — lọc NGAY ở query: chỉ tải kệ có ít nhất 1 lô
+  // đúng mã cây đó (bớt hẳn kệ khác trong danh sách thay vì hiện "Trống" gây rối), và trong 1 kệ có
+  // nhiều mã cây khác nhau (Phòng ra rễ không có plantTypeId cố định như Phòng mẫu mẹ) chỉ hiện đúng lô
+  // khớp mã cây đang tìm, không lẫn lô mã cây khác trên cùng kệ.
   const raReShelves = raReRoomIds.length
     ? await prisma.shelf.findMany({
-        where: { roomId: { in: raReRoomIds }, isActive: true },
+        where: {
+          roomId: { in: raReRoomIds },
+          isActive: true,
+          ...(rootingPlantTypeId
+            ? { lots: { some: { status: "ACTIVE", quantity: { gt: 0 }, plantTypeId: rootingPlantTypeId } } }
+            : {}),
+        },
         include: {
           plantType: { select: { name: true } },
           assignedStaff: { select: { name: true } },
           lots: {
             // quantity > 0 — xem giải thích ở src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
-            where: { status: "ACTIVE", quantity: { gt: 0 } },
+            where: { status: "ACTIVE", quantity: { gt: 0 }, ...(rootingPlantTypeId ? { plantTypeId: rootingPlantTypeId } : {}) },
             include: { plantType: { select: { code: true, name: true } } },
             orderBy: { enteredAt: "asc" },
           },
@@ -143,6 +164,9 @@ export default async function KhoSangPage() {
 
       {/* Summary by plant type */}
       <SummaryByType entries={summaryByTypeEntries} />
+
+      {/* Tìm nhanh 1 mã cây trong Phòng ra rễ — không có ý nghĩa gì ở chế độ chỉ xem Phòng mẫu mẹ. */}
+      {!onlyMotherRoom && <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />}
 
       {/* Per phòng sáng and shelf */}
       {rooms.map((room) => (
