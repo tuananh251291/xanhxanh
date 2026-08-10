@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardCheck, Loader2, CheckCircle2 } from "lucide-react";
+import { ClipboardCheck, Loader2, CheckCircle2, Calendar as CalendarIcon } from "lucide-react";
 import { format, parse } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
@@ -16,6 +16,7 @@ type MissingStaff = { id: string; code: string; name: string; inspectionLane: "X
 export default function CheckHandoverStatusDialog() {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [totalWithEntries, setTotalWithEntries] = useState(0);
   const [missingStaff, setMissingStaff] = useState<MissingStaff[]>([]);
@@ -48,21 +49,32 @@ export default function CheckHandoverStatusDialog() {
         <div className="space-y-4 mt-2">
           <div className="space-y-1">
             <Label className="text-xs">Ngày nhập kho tối</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                lang="vi"
-                value={date}
-                max={format(new Date(), "yyyy-MM-dd")}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-48"
-              />
-              {/* Trình duyệt (Chromium) luôn hiện ô chọn ngày dạng MM/DD/YYYY bất kể lang/locale nào —
-                  hiện thêm ngày dạng dd/MM/yyyy quen thuộc bên cạnh cho rõ. */}
-              <span className="text-sm text-text-secondary">
-                {format(parse(date, "yyyy-MM-dd", new Date()), "dd/MM/yyyy", { locale: vi })}
-              </span>
-            </div>
+            {/* Trình duyệt (Chromium) luôn hiện ô <input type="date"> dạng MM/DD/YYYY bất kể lang/locale
+                nào, gõ tay rất dễ nhầm ngày/tháng — ẩn hẳn ô gõ tay, chỉ cho chọn qua lịch bật lên bằng
+                showPicker() (khớp đúng ngày người dùng bấm chọn), hiển thị lại đúng dd/MM/yyyy quen thuộc
+                trên nút bấm. */}
+            <button
+              type="button"
+              onClick={() => {
+                const input = dateInputRef.current;
+                if (!input) return;
+                if (typeof input.showPicker === "function") input.showPicker();
+                else input.click();
+              }}
+              className="w-48 h-9 md:h-8 px-2.5 flex items-center justify-between gap-2 rounded-lg border border-input bg-transparent text-sm hover:bg-primary-light transition-colors"
+            >
+              <span className="text-foreground">{format(parse(date, "yyyy-MM-dd", new Date()), "dd/MM/yyyy", { locale: vi })}</span>
+              <CalendarIcon className="w-4 h-4 text-text-muted shrink-0" />
+            </button>
+            <Input
+              ref={dateInputRef}
+              type="date"
+              value={date}
+              max={format(new Date(), "yyyy-MM-dd")}
+              onChange={(e) => setDate(e.target.value)}
+              tabIndex={-1}
+              className="sr-only"
+            />
           </div>
 
           {loading ? (
