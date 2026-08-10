@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,22 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, PackageCheck, PackageX, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays } from "date-fns";
+
+type PendingAction = { item: RepackItem; type: "receive" | "insufficient" | "handback" };
+const PENDING_ACTION_TEXT: Record<PendingAction["type"], { title: string; body: (item: RepackItem) => string }> = {
+  receive: {
+    title: "Xác nhận nhận bàn giao?",
+    body: (item) => `Xác nhận đã nhận bàn giao lô để xử lý (${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})?`,
+  },
+  insufficient: {
+    title: "Báo số lượng không đủ?",
+    body: (item) => `Báo số lượng thực tế trên kệ ${item.sourceShelf.code} KHÔNG khớp chỉ định (cần ${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})? Chỉ định sẽ được trả lại cho Kho mô gán lại.`,
+  },
+  handback: {
+    title: "Xác nhận hoàn thành?",
+    body: () => "Xác nhận hoàn thành và bàn giao kết quả — không sửa lại được sau khi gửi?",
+  },
+};
 
 type RepackItem = {
   id: string;
@@ -38,6 +55,7 @@ export default function RepackInstructionPanel() {
   const [failed, setFailed] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [insufficientNote, setInsufficientNote] = useState<Record<string, string>>({});
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   const load = useCallback(() => {
     Promise.all([
@@ -54,7 +72,6 @@ export default function RepackInstructionPanel() {
   useEffect(() => { load(); }, [load]);
 
   const confirmReceived = async (item: RepackItem) => {
-    if (!window.confirm(`Xác nhận đã nhận bàn giao lô để xử lý (${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})?`)) return;
     setSubmittingId(item.id);
     try {
       const res = await fetch(`/api/repack-instructions/${item.id}`, {
@@ -73,7 +90,6 @@ export default function RepackInstructionPanel() {
   };
 
   const reportInsufficient = async (item: RepackItem) => {
-    if (!window.confirm(`Báo số lượng thực tế trên kệ ${item.sourceShelf.code} KHÔNG khớp chỉ định (cần ${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})? Chỉ định sẽ được trả lại cho Kho mô gán lại.`)) return;
     setSubmittingId(item.id);
     try {
       const res = await fetch(`/api/repack-instructions/${item.id}`, {
@@ -91,12 +107,17 @@ export default function RepackInstructionPanel() {
     }
   };
 
-  const handBack = async (item: RepackItem) => {
+  const requestHandBack = (item: RepackItem) => {
     const p = Number(passed[item.id]) || 0;
     const f = Number(failed[item.id]) || 0;
     if (p + f <= 0) { toast.error("Nhập số lượng đạt/không đạt"); return; }
     if (p + f > item.expectedOutputQuantity) { toast.error("Tổng số đạt + không đạt vượt quá số lượng dự kiến"); return; }
-    if (!window.confirm("Xác nhận hoàn thành và bàn giao kết quả — không sửa lại được sau khi gửi?")) return;
+    setPendingAction({ item, type: "handback" });
+  };
+
+  const handBack = async (item: RepackItem) => {
+    const p = Number(passed[item.id]) || 0;
+    const f = Number(failed[item.id]) || 0;
     setSubmittingId(item.id);
     try {
       const res = await fetch(`/api/repack-instructions/${item.id}`, {
@@ -146,7 +167,7 @@ export default function RepackInstructionPanel() {
                   <Button
                     size="sm" className="bg-primary hover:bg-primary-hover"
                     disabled={submittingId === item.id}
-                    onClick={() => confirmReceived(item)}
+                    onClick={() => setPendingAction({ item, type: "receive" })}
                   >
                     {submittingId === item.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
                     Nhận bàn giao
@@ -163,7 +184,7 @@ export default function RepackInstructionPanel() {
                   <Button
                     size="sm" variant="destructive" className="h-8"
                     disabled={submittingId === item.id}
-                    onClick={() => reportInsufficient(item)}
+                    onClick={() => setPendingAction({ item, type: "insufficient" })}
                   >
                     {submittingId === item.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <PackageX className="w-3.5 h-3.5 mr-1.5" />}
                     Số lượng không đủ
@@ -182,7 +203,7 @@ export default function RepackInstructionPanel() {
                   <Button
                     size="sm" className="h-8 bg-primary hover:bg-primary-hover"
                     disabled={submittingId === item.id}
-                    onClick={() => handBack(item)}
+                    onClick={() => requestHandBack(item)}
                   >
                     {submittingId === item.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
                     Hoàn thành – Bàn giao kết quả
@@ -193,6 +214,34 @@ export default function RepackInstructionPanel() {
           );
         })}
       </CardContent>
+
+      <Dialog open={!!pendingAction} onOpenChange={(v) => { if (!v) setPendingAction(null); }}>
+        <DialogContent className="sm:max-w-md">
+          {pendingAction && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{PENDING_ACTION_TEXT[pendingAction.type].title}</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-text-secondary">{PENDING_ACTION_TEXT[pendingAction.type].body(pendingAction.item)}</p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPendingAction(null)}>Huỷ</Button>
+                <Button
+                  className="bg-primary hover:bg-primary-hover"
+                  onClick={() => {
+                    const { item, type } = pendingAction;
+                    setPendingAction(null);
+                    if (type === "receive") confirmReceived(item);
+                    else if (type === "insufficient") reportInsufficient(item);
+                    else handBack(item);
+                  }}
+                >
+                  Xác nhận
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

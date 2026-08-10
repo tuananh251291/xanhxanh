@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Loader2, PackageCheck } from "lucide-react";
@@ -26,6 +27,7 @@ const isFinishedStage = (stageCode: string) => stageCode.startsWith("T");
 
 function HandoverGroupCard({ group, onHandedOver }: { group: Lot[]; onHandedOver: () => void }) {
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   // "Không đạt" NV tự khai (VD cây thành phẩm quá nhỏ) — theo lotId, chỉ áp dụng lô thành phẩm.
   const [unqualified, setUnqualified] = useState<Record<string, string>>({});
   const daysSince = differenceInCalendarDays(new Date(), new Date(group[0].enteredAt));
@@ -39,8 +41,7 @@ function HandoverGroupCard({ group, onHandedOver }: { group: Lot[]; onHandedOver
       toast.error("Số không đạt không được vượt quá số lượng bàn giao");
       return;
     }
-    const ok = window.confirm(`Xác nhận bàn giao lô ${group[0].code} sang kho sáng?`);
-    if (!ok) return;
+    setConfirmOpen(false);
     setSubmitting(true);
     try {
       const res = await fetch("/api/transfers", {
@@ -106,11 +107,24 @@ function HandoverGroupCard({ group, onHandedOver }: { group: Lot[]; onHandedOver
           <p className="text-xs text-destructive font-medium">Số không đạt không được vượt quá số lượng bàn giao.</p>
         )}
 
-        <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting || unqualifiedExceeded} onClick={submit}>
+        <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting || unqualifiedExceeded} onClick={() => setConfirmOpen(true)}>
           {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
           Bàn giao sang kho sáng
         </Button>
       </CardContent>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Xác nhận bàn giao?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">Xác nhận bàn giao lô {group[0].code} sang kho sáng?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Huỷ</Button>
+            <Button className="bg-primary hover:bg-primary-hover" onClick={submit}>Xác nhận</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

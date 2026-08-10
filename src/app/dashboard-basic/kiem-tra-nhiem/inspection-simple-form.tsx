@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Moon, Loader2, ClipboardCheck } from "lucide-react";
@@ -22,6 +23,7 @@ type Lot = {
 function InspectionGroupCard({ group, onDone }: { group: Lot[]; onDone: () => void }) {
   const [contaminated, setContaminated] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Dùng lot.quantity (tồn HIỆN TẠI) chứ không phải lot.initialQuantity (số lúc lô mới tạo, đứng yên
   // vĩnh viễn dù sau đó Nhập kho thủ công cộng thêm nhiều lần) — xem chú thích tương tự ở my-dark-room.
@@ -31,15 +33,18 @@ function InspectionGroupCard({ group, onDone }: { group: Lot[]; onDone: () => vo
     return { lot, value, passed };
   });
 
-  const submit = async () => {
+  const requestSubmit = () => {
     for (const r of rows) {
       if (r.value > r.lot.quantity) {
         toast.error(`Số nhiễm của ${r.lot.stageCode} vượt quá tổng số`);
         return;
       }
     }
-    const ok = window.confirm(`Xác nhận đã kiểm tra xong lô ${group[0].code}?`);
-    if (!ok) return;
+    setConfirmOpen(true);
+  };
+
+  const submit = async () => {
+    setConfirmOpen(false);
     setSubmitting(true);
     try {
       const res = await fetch("/api/lot-inspections", {
@@ -93,11 +98,24 @@ function InspectionGroupCard({ group, onDone }: { group: Lot[]; onDone: () => vo
           ))}
         </div>
 
-        <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
+        <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting} onClick={requestSubmit}>
           {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ClipboardCheck className="w-4 h-4 mr-2" />}
           Kiểm tra xong
         </Button>
       </CardContent>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Xác nhận kiểm tra xong?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">Xác nhận đã kiểm tra xong lô {group[0].code}?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Huỷ</Button>
+            <Button className="bg-primary hover:bg-primary-hover" onClick={submit}>Xác nhận</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

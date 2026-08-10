@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { format, addDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PackageCheck, Loader2, Sprout } from "lucide-react";
 
@@ -21,12 +22,10 @@ type PendingInstruction = {
 export default function MotherReceiveList({ instructions }: { instructions: PendingInstruction[] }) {
   const router = useRouter();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [pendingInst, setPendingInst] = useState<PendingInstruction | null>(null);
 
   const confirm = async (inst: PendingInstruction) => {
-    const ok = window.confirm(
-      `Xác nhận đã nhận ${inst.inputMotherQuantity.toLocaleString("vi-VN")} mẫu mẹ cho chỉ định ${inst.code}?`
-    );
-    if (!ok) return;
+    setPendingInst(null);
     setConfirmingId(inst.id);
     try {
       const res = await fetch(`/api/instructions/${inst.id}`, {
@@ -94,7 +93,7 @@ export default function MotherReceiveList({ instructions }: { instructions: Pend
             <Button
               className="w-full bg-primary hover:bg-primary-hover"
               disabled={confirmingId === inst.id}
-              onClick={() => confirm(inst)}
+              onClick={() => setPendingInst(inst)}
             >
               {confirmingId === inst.id && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Xác nhận bàn giao
@@ -102,6 +101,25 @@ export default function MotherReceiveList({ instructions }: { instructions: Pend
           </CardContent>
         </Card>
       ))}
+
+      <Dialog open={!!pendingInst} onOpenChange={(v) => { if (!v) setPendingInst(null); }}>
+        <DialogContent className="sm:max-w-md">
+          {pendingInst && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Xác nhận nhận mẫu mẹ?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-text-secondary">
+                Xác nhận đã nhận {pendingInst.inputMotherQuantity.toLocaleString("vi-VN")} mẫu mẹ cho chỉ định {pendingInst.code}?
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPendingInst(null)}>Huỷ</Button>
+                <Button className="bg-primary hover:bg-primary-hover" onClick={() => confirm(pendingInst)}>Xác nhận</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
