@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PackageCheck, Loader2, Check, X } from "lucide-react";
+import { PackageCheck, Loader2, ArrowRight, X } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -18,8 +19,6 @@ type Row = {
   items: { lotCode: string; stageCode: string; quantity: number }[];
   totalQuantity: number;
 };
-
-type Placement = { lotCode: string; shelfCode: string; quantity: number; pool: "OWNED" | "SHARED" | "RA_RE" };
 
 export default function ReceiveSurplusBoard() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -38,25 +37,6 @@ export default function ReceiveSurplusBoard() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  const confirm = async (transferId: string) => {
-    setProcessing(transferId);
-    try {
-      const res = await fetch(`/api/transfers/${transferId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "confirm" }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      const placements: Placement[] = json.placements ?? [];
-      const lines = placements.map((p) => `${p.lotCode} → ${p.shelfCode} (${p.quantity.toLocaleString("vi-VN")})`);
-      toast.success("Đã xếp MM dư vào Kho quá hạn", { description: lines.join(" · ") });
-      loadData();
-    } finally {
-      setProcessing(null);
-    }
-  };
 
   const reject = async (transferId: string) => {
     setProcessing(transferId);
@@ -128,15 +108,11 @@ export default function ReceiveSurplusBoard() {
                       >
                         <X className="w-3.5 h-3.5 mr-1.5" /> Từ chối
                       </Button>
-                      <Button
-                        size="sm"
-                        className="h-8 bg-primary hover:bg-primary-hover"
-                        disabled={processing === row.transferId}
-                        onClick={() => confirm(row.transferId)}
-                      >
-                        {processing === row.transferId ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
-                        Xác nhận
-                      </Button>
+                      <Link href={`/transfers/receive-phong-toi/place/${row.transferId}`}>
+                        <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={processing === row.transferId}>
+                          <ArrowRight className="w-3.5 h-3.5 mr-1.5" /> Sắp xếp về kho
+                        </Button>
+                      </Link>
                     </div>
                   </td>
                 </tr>

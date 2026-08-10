@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { planShelfAssignments, ShelfAssignError, type ShelfPlacement } from "@/lib/shelf-assignment";
+import { planShelfAssignments, planSurplusPlacement, ShelfAssignError, type ShelfPlacement } from "@/lib/shelf-assignment";
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
 import { sumLotQuantity, SURPLUS_TRANSFER_TAG } from "@/types";
 
@@ -109,14 +109,18 @@ export type StagePreview = {
 // Chạy thuật toán RIÊNG cho TỪNG lô (không gộp chung 1 lần gọi planShelfAssignments như trước) — để xem
 // trước ĐÚNG kết quả sẽ xảy ra nếu xác nhận CHỈ lô này ngay bây giờ (độc lập với các lô khác còn đang chờ
 // trong cùng đợt, vì chúng chưa thật sự chiếm chỗ kệ nào cho tới khi được xác nhận riêng). Chạy song
-// song (Promise.all) vì mỗi lô chỉ đọc dữ liệu (preview), không ghi gì cả.
-async function buildLotGroups(items: PendingItem[], workplaceWarehouseId: string): Promise<LotGroup[]> {
+// song (Promise.all) vì mỗi lô chỉ đọc dữ liệu (preview), không ghi gì cả. isSurplus = true (phiếu bàn
+// giao MM dư, xem SURPLUS_TRANSFER_TAG) dùng planSurplusPlacement (luôn về Kho quá hạn) thay vì
+// planShelfAssignments (kệ đã chia của NV + Kho mẫu mẹ chung thường).
+async function buildLotGroups(items: PendingItem[], workplaceWarehouseId: string, isSurplus: boolean): Promise<LotGroup[]> {
   return Promise.all(
     items.map(async (item): Promise<LotGroup> => {
       let placements: ShelfPlacement[] = [];
       let error: string | null = null;
       try {
-        placements = await planShelfAssignments([{ lotId: item.lotId, lot: item.lot }], workplaceWarehouseId);
+        placements = isSurplus
+          ? await planSurplusPlacement([{ lotId: item.lotId, lot: item.lot }], workplaceWarehouseId)
+          : await planShelfAssignments([{ lotId: item.lotId, lot: item.lot }], workplaceWarehouseId);
       } catch (e) {
         error = e instanceof ShelfAssignError ? e.message : "Lỗi không xác định";
       }
@@ -137,14 +141,15 @@ async function buildLotGroups(items: PendingItem[], workplaceWarehouseId: string
 }
 
 // Xem trước (không ghi DB) kết quả xếp kệ cho 1 tập TransferItem đang chờ — dùng cho cả trang liệt
-// kê luồng Xanh (gộp nhiều phiếu của 1 NV) lẫn trang "Sắp xếp về kho" của luồng Đỏ (1 phiếu).
-export async function buildStagePreview(pendingItems: PendingItem[], workplaceWarehouseId: string): Promise<StagePreview> {
+// kê luồng Xanh (gộp nhiều phiếu của 1 NV) lẫn trang "Sắp xếp về kho" của luồng Đỏ (1 phiếu) lẫn phiếu
+// MM dư (isSurplus — luôn chỉ có mother items, không có rooting).
+export async function buildStagePreview(pendingItems: PendingItem[], workplaceWarehouseId: string, isSurplus = false): Promise<StagePreview> {
   const rootingItems = pendingItems.filter((i) => i.lot.stage === "THANH_PHAM");
   const motherItems = pendingItems.filter((i) => i.lot.stage === "MAU_ME");
 
   const [rootingGroups, motherGroups] = await Promise.all([
-    buildLotGroups(rootingItems, workplaceWarehouseId),
-    buildLotGroups(motherItems, workplaceWarehouseId),
+    buildLotGroups(rootingItems, workplaceWarehouseId, false),
+    buildLotGroups(motherItems, workplaceWarehouseId, isSurplus),
   ]);
 
   return {
@@ -173,13 +178,18 @@ async function applyPlacements(pendingItemsForStage: PendingItem[], placements: 
 }
 
 // Xếp kệ thật (ghi DB) cho 1 nhóm item cùng stage (THANH_PHAM hoặc MAU_ME) — theo đúng nguyên tắc tự
-// động (planShelfAssignments) — có thể đến từ nhiều phiếu bàn giao khác nhau (luồng Xanh, gộp theo NV)
-// hoặc chỉ 1 phiếu (luồng Đỏ).
-export async function confirmStage(pendingItemsForStage: PendingItem[], workplaceWarehouseId: string): Promise<ShelfPlacement[]> {
-  const placements = await planShelfAssignments(
-    pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot })),
-    workplaceWarehouseId
-  );
+// động (planShelfAssignments, hoặc planSurplusPlacement nếu isSurplus) — có thể đến từ nhiều phiếu bàn
+// giao khác nhau (luồng Xanh, gộp theo NV) hoặc chỉ 1 phiếu (luồng Đỏ/MM dư).
+export async function confirmStage(pendingItemsForStage: PendingItem[], workplaceWarehouseId: string, isSurplus = false): Promise<ShelfPlacement[]> {
+  const placements = isSurplus
+    ? await planSurplusPlacement(
+        pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot })),
+        workplaceWarehouseId
+      )
+    : await planShelfAssignments(
+        pendingItemsForStage.map((i) => ({ lotId: i.lotId, lot: i.lot })),
+        workplaceWarehouseId
+      );
   await applyPlacements(pendingItemsForStage, placements);
   return placements;
 }
