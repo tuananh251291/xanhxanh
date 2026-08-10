@@ -182,6 +182,11 @@ enum AlertType {
   // NV kho thành phẩm vừa hoàn thành 1 việc được Quản lý kho thành phẩm gán đích danh (Nhận bàn giao
   // thành phẩm/Nhập hàng/Sắp đơn hàng) — báo cho đúng người đã gán (userId), không phải mọi Quản lý.
   ASSIGNED_TASK_COMPLETED
+  // Kho mô đích xác nhận "Bàn giao mẫu mẹ" liên kho sản xuất (xem MOTHER_WAREHOUSE_TRANSFER_TAG) với số
+  // lượng thực tế nhận THẤP HƠN số đã gửi — báo cho đúng NV kho mô đã gửi (userId) + toàn bộ Admin/Admin
+  // cấp cao (targetRole, bắn riêng 2 alert ADMIN/SUPER_ADMIN) biết phần chênh lệch, không hoàn lại tồn
+  // kho nguồn (xem confirmMotherStockReceipt, src/lib/mother-warehouse-transfer.ts).
+  MOTHER_WAREHOUSE_TRANSFER_SHORTFALL
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.

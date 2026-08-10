@@ -153,6 +153,11 @@ export function sumLotQuantity(lots: { quantity: number }[]): number {
 // toán bàn giao hàng ngày thông thường (planShelfAssignments), và để UI nhận biết hiển thị đúng mô tả.
 export const SURPLUS_TRANSFER_TAG = "SURPLUS_MOTHER_HANDOVER";
 
+// Đánh dấu Transfer bàn giao mẫu mẹ LIÊN KHO sản xuất (KHO_MO chọn giàn nguồn + kho sản xuất khác làm
+// đích, xem src/lib/mother-warehouse-transfer.ts) — khác SURPLUS_TRANSFER_TAG (đó là MM dư tự động khi
+// chỉ định kết thúc, luôn cùng 1 kho, không cho KHO_MO tự chọn đích).
+export const MOTHER_WAREHOUSE_TRANSFER_TAG = "MOTHER_WAREHOUSE_TRANSFER";
+
 // Số chỉ định cấy dự phòng tối thiểu KY_THUAT phải tạo mỗi tuần cho tuần sau, trước Thứ 5 tuần này —
 // xem /instructions/backup, getKyThuatStats (dashboard/page.tsx).
 export const MIN_BACKUP_INSTRUCTION_COUNT = 5;
@@ -251,6 +256,7 @@ export const ALERT_TYPE_LABELS = {
   ORDER_PROCESSING_SHORTFALL: "Xử lý cây thiếu hụt so với đơn hàng",
   EXTRA_WORK_REQUEST: "Đăng ký cấy thêm",
   ASSIGNED_TASK_COMPLETED: "Đã hoàn thành việc được giao",
+  MOTHER_WAREHOUSE_TRANSFER_SHORTFALL: "Nhận thiếu mẫu mẹ bàn giao liên kho",
 } as const;
 
 export const EXTRA_WORK_REQUEST_TYPE_LABELS = {
@@ -380,6 +386,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/mother-shelf-assign", label: "Gán mã cây & NV mẫu mẹ", icon: "Users" },
     { href: "/mother-stock-reshelf", label: "Sắp xếp kho mẫu mẹ", icon: "ArrowLeftRight" },
+    { href: "/mother-warehouse-transfer", label: "Bàn giao mẫu mẹ", icon: "Truck" },
     { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
