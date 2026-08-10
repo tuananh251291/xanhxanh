@@ -32,7 +32,7 @@ const patchSchema = z.discriminatedUnion("action", [confirmSchema, cancelSchema]
 // action=cancel: hủy hẳn kế hoạch (hàng không về) — cũng chặn nếu đã có đơn giữ chỗ dựa vào lô kế hoạch.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (session?.user?.role !== "KHO_THANH_PHAM") {
+  if (session?.user?.role !== "KHO_THANH_PHAM" && session?.user?.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
 

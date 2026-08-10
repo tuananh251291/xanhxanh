@@ -141,7 +141,7 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
 // /api/order-processing-requests/[id], không trừ lại ở đây). Chặn xuất kho nếu còn Yêu cầu xử lý
 // PENDING (còn túi chưa mở) — Kho TP phải hoàn thành xử lý trước.
 async function shipOrder(orderId: string, user: { id: string; role: string | null }) {
-  if (user.role !== "KHO_THANH_PHAM") {
+  if (user.role !== "KHO_THANH_PHAM" && user.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
 

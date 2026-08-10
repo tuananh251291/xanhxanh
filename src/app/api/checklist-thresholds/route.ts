@@ -5,7 +5,7 @@ import { isAdminRole } from "@/types";
 import { z } from "zod";
 
 const ROLES = [
-  "SUPER_ADMIN", "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI",
+  "SUPER_ADMIN", "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI",
 ] as const;
 
 const updateSchema = z.array(z.object({

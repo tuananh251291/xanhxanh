@@ -17,10 +17,10 @@ import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
 import UserEditableFields from "./user-editable-fields";
 
-// KHO_THANH_PHAM gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác —
-// xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM"] as const;
-const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM"] as const;
+// NV/Quản lý kho thành phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao
+// tác — xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
+const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
 const PAGE_SIZE = 7;
 
 export default async function UsersPage({

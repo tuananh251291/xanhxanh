@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sun } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import { STAGE_LABELS, sumLotQuantity } from "@/types";
+import { STAGE_LABELS, sumLotQuantity, isKhoThanhPhamRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import type { RoomType } from "@prisma/client";
 import CollapsibleRoom from "./collapsible-room";
@@ -39,11 +39,11 @@ export default async function KhoSangPage({
   const onlyMotherRoom = role === "KY_THUAT";
   // NV Kho thành phẩm được xem Phòng ra rễ (chỉ xem, không sửa gì ở trang này — trang chỉ đọc) của TẤT
   // CẢ cơ sở sản xuất để chủ động theo dõi hàng sắp về, không xem Phòng mẫu mẹ (không thuộc phạm vi).
-  const onlyRootingRoom = role === "KHO_THANH_PHAM";
-  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật và NV
-  // Kho thành phẩm không bị giới hạn theo 1 kho sản xuất (KHO_THANH_PHAM vốn chỉ gán 1 kho THÀNH PHẨM,
-  // không phải kho sản xuất, nên phải xem hết mọi kho sản xuất mới có ý nghĩa).
-  const workplaceWarehouseId = role !== "KY_THUAT" && role !== "KHO_THANH_PHAM" ? session?.user?.workplaceWarehouseId : null;
+  const onlyRootingRoom = isKhoThanhPhamRole(role);
+  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật và NV/Quản
+  // lý Kho thành phẩm không bị giới hạn theo 1 kho sản xuất (isKhoThanhPhamRole vốn chỉ gán 1 kho THÀNH
+  // PHẨM, không phải kho sản xuất, nên phải xem hết mọi kho sản xuất mới có ý nghĩa).
+  const workplaceWarehouseId = role !== "KY_THUAT" && !isKhoThanhPhamRole(role) ? session?.user?.workplaceWarehouseId : null;
 
   const roomTypeFilter: RoomType | { in: RoomType[] } = onlyMotherRoom
     ? "PHONG_MAU_ME"

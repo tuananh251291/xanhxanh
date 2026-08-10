@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getQualifiedLots } from "@/lib/order-availability";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
+import { isKhoThanhPhamRole } from "@/types";
 
 // Chỉ dùng để hiện "Tồn đạt tiêu chuẩn: X" ngay trên form trước khi bấm "Tạo phiếu xử lý" — KHÔNG chặn
 // submit ở đây, POST /api/processing-tickets tự đọc lại tồn tươi trong transaction mới là nơi chặn thật.
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "KHO_THANH_PHAM") {
+  if (!isKhoThanhPhamRole(session?.user?.role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 

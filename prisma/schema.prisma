@@ -17,6 +17,10 @@ enum UserRole {
   CAY_MO
   KHO_MO
   KHO_THANH_PHAM
+  // Cùng quyền/tính năng với KHO_THANH_PHAM hiện tại (xem isKhoThanhPhamRole, src/types/index.ts) — tách
+  // riêng role để sau này bổ sung tính năng quản lý riêng (duyệt/điều phối cấp trên) mà không ảnh hưởng
+  // NV kho thành phẩm thường.
+  QUAN_LY_KHO_THANH_PHAM
   SALE
   MOI_TRUONG
   DIEU_PHOI

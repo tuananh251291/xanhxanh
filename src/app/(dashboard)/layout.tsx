@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import Sidebar from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import AuthSessionProvider from "@/components/providers/session-provider";
-import { ROLE_NAV, isAdminRole } from "@/types";
+import { ROLE_NAV, isAdminRole, alertTargetRolesFor } from "@/types";
 import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
 import { ensureMotherReadyAlerts } from "@/lib/mother-ready";
@@ -31,7 +31,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const alertCount = await prisma.alert.count({
     where: {
       status: "UNREAD",
-      OR: [{ userId: session.user.id }, { targetRole: role }],
+      OR: [{ userId: session.user.id }, { targetRole: { in: alertTargetRolesFor(role) } }],
     },
   });
 

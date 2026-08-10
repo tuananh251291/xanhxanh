@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { alertTargetRolesFor } from "@/types";
 import { z } from "zod";
 
 export async function GET(req: NextRequest) {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const unresolved = searchParams.get("unresolved");
 
   const where: Record<string, unknown> = {
-    OR: [{ userId: session.user.id }, { targetRole: session.user.role }],
+    OR: [{ userId: session.user.id }, { targetRole: { in: alertTargetRolesFor(session.user.role) } }],
   };
   if (status) where.status = status;
   if (type) where.type = type;
@@ -48,7 +49,7 @@ export async function PATCH(req: NextRequest) {
 
   const alert = await prisma.alert.findUnique({ where: { id } });
   if (!alert) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
-  if (alert.userId !== session.user.id && alert.targetRole !== session.user.role) {
+  if (alert.userId !== session.user.id && !(alert.targetRole && alertTargetRolesFor(session.user.role).includes(alert.targetRole))) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 

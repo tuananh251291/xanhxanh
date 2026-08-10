@@ -8,7 +8,7 @@ import {
   PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
   FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, type LucideIcon,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -379,7 +379,7 @@ export default async function DashboardPage() {
     return <KhoMoTaskDashboard weeklyStats={weeklyStats} dailyStats={dailyStats} userName={session?.user?.name ?? ""} />;
   }
 
-  if (role === "KHO_THANH_PHAM") {
+  if (isKhoThanhPhamRole(role)) {
     const [stats, dailyStats, weeklyStats] = await Promise.all([
       getKhoMoStats(),
       getKhoThanhPhamDailyStats(),

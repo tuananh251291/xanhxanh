@@ -25,7 +25,7 @@ export async function createAlert(data: {
   title: string;
   message: string;
   userId?: string;
-  targetRole?: "SUPER_ADMIN" | "ADMIN" | "KY_THUAT" | "CAY_MO" | "KHO_MO" | "KHO_THANH_PHAM" | "SALE" | "MOI_TRUONG" | "DIEU_PHOI";
+  targetRole?: "SUPER_ADMIN" | "ADMIN" | "KY_THUAT" | "CAY_MO" | "KHO_MO" | "KHO_THANH_PHAM" | "QUAN_LY_KHO_THANH_PHAM" | "SALE" | "MOI_TRUONG" | "DIEU_PHOI";
   relatedId?: string;
   relatedType?: string;
 }) {

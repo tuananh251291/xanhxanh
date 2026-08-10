@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PackageOpen, Loader2, Plus, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
+import { isKhoThanhPhamRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 
 type Lot = {
@@ -22,7 +23,7 @@ type Room = { id: string; code: string; name: string; type: string; warehouse: {
 type User = { id: string; name: string; role: string };
 
 export default function TransferSendForm({ role }: { role: UserRole }) {
-  const isKhoThanhPham = role === "KHO_THANH_PHAM";
+  const isKhoThanhPham = isKhoThanhPhamRole(role);
 
   const [lots, setLots] = useState<Lot[]>([]);
   const [destRooms, setDestRooms] = useState<Room[]>([]);

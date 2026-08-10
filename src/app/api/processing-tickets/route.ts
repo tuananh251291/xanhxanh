@@ -30,7 +30,7 @@ const createSchema = z
 // duyệt). Đọc lại tồn đạt tiêu chuẩn NGAY TRONG transaction (không tin số đã xem trước đó trên form).
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "KHO_THANH_PHAM") {
+  if (session?.user?.role !== "KHO_THANH_PHAM" && session?.user?.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
 

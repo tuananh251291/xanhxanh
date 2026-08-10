@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
-import { SURPLUS_TRANSFER_TAG } from "@/types";
+import { SURPLUS_TRANSFER_TAG, isKhoThanhPhamRole } from "@/types";
 import { format } from "date-fns";
 import { z } from "zod";
 
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   // giờ xử lý hết ở các API riêng dưới /api/transfers/receive-phong-toi/* (xem trang
   // /transfers/receive-phong-toi). Trả rỗng để tránh lộ dữ liệu nếu vẫn còn nơi nào gọi nhầm.
   if (role === "KHO_MO") return NextResponse.json([]);
-  if (role === "KHO_THANH_PHAM") {
+  if (isKhoThanhPhamRole(role)) {
     where.OR = [
       { fromUserId: session.user.id },
       { toUserId: session.user.id },

@@ -2,19 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"] as const;
+const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"] as const;
 
 // Chỉ NV kho mô/cấy mô/môi trường mới bị ràng buộc làm việc với đúng 1 kho sản xuất — NV kỹ thuật
 // làm việc được ở mọi kho nên không gán field này. NV bán hàng (SALE) cũng dùng field này nhưng ràng
-// buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên dưới. NV kho
-// thành phẩm (KHO_THANH_PHAM) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ —
+// buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên dưới. NV/Quản lý
+// kho thành phẩm (isKhoThanhPhamRole) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ —
 // KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm như trước (xem
 // getFinishedQualifiedRooms ở src/lib/processing.ts).
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
 
 const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
@@ -56,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { workplaceWarehouseId } = parsed.data;
     // NV bán hàng và NV kho thành phẩm làm việc với 1 Kho THÀNH PHẨM — các vai trò còn lại vẫn là Kho
     // sản xuất như trước.
-    const requiredType = target.role === "SALE" || target.role === "KHO_THANH_PHAM" ? "THANH_PHAM" : "SAN_XUAT";
+    const requiredType = target.role === "SALE" || isKhoThanhPhamRole(target.role) ? "THANH_PHAM" : "SAN_XUAT";
     if (workplaceWarehouseId) {
       const warehouse = await prisma.warehouse.findUnique({ where: { id: workplaceWarehouseId }, select: { type: true } });
       if (!warehouse || warehouse.type !== requiredType) {

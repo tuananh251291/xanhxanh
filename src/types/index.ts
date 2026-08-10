@@ -9,6 +9,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   CAY_MO: "NV Cấy mô",
   KHO_MO: "NV Kho",
   KHO_THANH_PHAM: "NV Kho thành phẩm",
+  QUAN_LY_KHO_THANH_PHAM: "Quản lý kho thành phẩm",
   SALE: "Nhân viên bán hàng",
   MOI_TRUONG: "NV Môi trường",
   DIEU_PHOI: "NV Điều phối",
@@ -21,6 +22,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   CAY_MO: "bg-green-100 text-green-800",
   KHO_MO: "bg-blue-100 text-blue-800",
   KHO_THANH_PHAM: "bg-yellow-100 text-yellow-800",
+  QUAN_LY_KHO_THANH_PHAM: "bg-amber-100 text-amber-800",
   SALE: "bg-pink-100 text-pink-800",
   MOI_TRUONG: "bg-cyan-100 text-cyan-800",
   DIEU_PHOI: "bg-orange-100 text-orange-800",
@@ -40,6 +42,24 @@ export const INSPECTION_LANE_COLORS = {
 // ADMIN và SUPER_ADMIN đều có full quyền trang/tính năng — chỉ khác ở quyền duyệt tài khoản mới (chỉ SUPER_ADMIN).
 export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+// QUAN_LY_KHO_THANH_PHAM (Quản lý kho thành phẩm) hiện có ĐÚNG quyền/tính năng như KHO_THANH_PHAM (NV
+// kho thành phẩm thường) — tách riêng role từ đầu để sau này bổ sung tính năng quản lý riêng (duyệt/điều
+// phối cấp trên NV kho thành phẩm) mà không phải sửa lại mọi nơi đang check role. Dùng hàm này ở MỌI chỗ
+// hiện đang check `role === "KHO_THANH_PHAM"` thay vì so sánh trực tiếp.
+export function isKhoThanhPhamRole(role: UserRole | null | undefined): boolean {
+  return role === "KHO_THANH_PHAM" || role === "QUAN_LY_KHO_THANH_PHAM";
+}
+
+// Alert.targetRole so khớp CHÍNH XÁC 1 giá trị (xem prisma/schema.prisma) — mọi nơi tạo cảnh báo nhắm
+// "KHO_THANH_PHAM" (VD đơn hàng cần đóng gói) đều phải tới được CẢ Quản lý kho thành phẩm, không chỉ NV
+// thường. Dùng hàm này ở nơi TRUY VẤN cảnh báo (không phải nơi tạo — tạo vẫn giữ đúng "KHO_THANH_PHAM"
+// làm giá trị lưu, tránh sửa lại mọi lệnh gọi createAlert) để mở rộng thành danh sách role cần khớp.
+export function alertTargetRolesFor(role: UserRole | null | undefined): UserRole[] {
+  if (!role) return [];
+  if (isKhoThanhPhamRole(role)) return ["KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"];
+  return [role];
 }
 
 // Ai được sửa/bù nhật ký cấy hộ NV cấy mô (xem PATCH/POST /api/daily-records, /instructions/[id]) —
@@ -367,6 +387,20 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_THANH_PHAM: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
+    { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
+    { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
+    { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
+    { href: "/inventory/kho-sang", label: "Phòng ra rễ (mọi cơ sở)", icon: "Sun" },
+    { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
+    { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
+    { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  // Hiện giống HỆT menu KHO_THANH_PHAM — role riêng để sau này thêm mục quản lý mà không ảnh hưởng NV
+  // kho thành phẩm thường (xem isKhoThanhPhamRole).
+  QUAN_LY_KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
