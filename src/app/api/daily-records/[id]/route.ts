@@ -168,6 +168,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const itemsByStageCode = new Map(record.items.map((i) => [i.lot.stageCode as EditableStageCode, i]));
   const newQuantities: Record<EditableStageCode, number> = { M05: m05, T05: t05, T01: t01 };
 
+  // Có thực sự đổi số liệu không (bấm Lưu nhưng không sửa gì thì không tính là "nhập sai") — dùng để
+  // quyết định có ghi DailyRecordEdit hay không (đếm "số lần nhập sai dữ liệu trong tuần" của NV, xem
+  // getCayMoStats ở dashboard/page.tsx và /data-corrections).
+  const changed =
+    motherUsed !== record.motherUsed ||
+    motherChecked !== record.motherChecked ||
+    motherContaminatedM05 !== record.motherContaminatedM05 ||
+    (Object.keys(newQuantities) as EditableStageCode[]).some(
+      (code) => newQuantities[code] !== (itemsByStageCode.get(code)?.lot.quantity ?? 0)
+    );
+
   // Cần sẵn Phòng tối cá nhân của NV này TRƯỚC nếu có dòng quy cách mới cần tạo lô (đọc ngoài transaction,
   // giống nguyên bản POST — hàm này tự idempotent, không có gì để rollback nếu phần sau lỗi).
   const needsNewLot = (Object.keys(newQuantities) as EditableStageCode[]).some(
@@ -266,6 +277,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { motherUsed, motherChecked, motherContaminatedM05, notes },
     });
+
+    if (changed) {
+      await tx.dailyRecordEdit.create({
+        data: { dailyRecordId: id, staffId: record.staffId, editedById: session!.user!.id },
+      });
+    }
   });
 
   return NextResponse.json({ success: true });

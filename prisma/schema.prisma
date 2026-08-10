@@ -269,6 +269,8 @@ model User {
   contaminationProposalsApproved  ContaminationProposal[] @relation("ContaminationProposalApprovedBy")
   contaminationRoomEntries        ContaminationRoomEntry[]
   dailyRecords         DailyRecord[]
+  dailyRecordEditsAsStaff  DailyRecordEdit[] @relation("DailyRecordEditStaff")
+  dailyRecordEditsAsEditor DailyRecordEdit[] @relation("DailyRecordEditEditedBy")
   transfersFrom        Transfer[]            @relation("TransferFrom")
   transfersTo          Transfer[]            @relation("TransferTo")
   orders               Order[]
@@ -1247,8 +1249,28 @@ model DailyRecord {
   createdAt     DateTime            @default(now())
 
   items DailyRecordItem[]
+  edits DailyRecordEdit[]
 
   @@map("daily_records")
+}
+
+// Ghi lại MỖI LẦN Admin/Kho mô sửa nhật ký cấy của 1 NV cấy mô (PATCH /api/daily-records/[id]) mà số
+// liệu THỰC SỰ đổi (không log nếu bấm Lưu nhưng không đổi gì) — dùng để đếm "số lần nhập sai dữ liệu
+// trong tuần" của từng NV, hiện cảnh báo nhắc nhở trên Tổng quan của NV đó (xem getCayMoStats,
+// dashboard/page.tsx) và bảng theo dõi cho Admin/Kho mô (xem /data-corrections).
+model DailyRecordEdit {
+  id            String      @id @default(cuid())
+  dailyRecordId String
+  dailyRecord   DailyRecord @relation(fields: [dailyRecordId], references: [id])
+  // Đúng NV cấy mô sở hữu nhật ký bị sửa (= dailyRecord.staffId tại thời điểm sửa) — lưu thẳng ra đây để
+  // đếm theo tuần không phải join qua DailyRecord mỗi lần truy vấn.
+  staffId       String
+  staff         User        @relation("DailyRecordEditStaff", fields: [staffId], references: [id])
+  editedById    String
+  editedBy      User        @relation("DailyRecordEditEditedBy", fields: [editedById], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@map("daily_record_edits")
 }
 
 model DailyRecordItem {

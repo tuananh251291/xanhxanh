@@ -63,8 +63,10 @@ async function getSaleStats(userId: string, workplaceWarehouseId: string | null)
 async function getCayMoStats(userId: string) {
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults] = await Promise.all([
+  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount] = await Promise.all([
     // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
     // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
     prisma.plantingInstruction.findFirst({
@@ -98,6 +100,11 @@ async function getCayMoStats(userId: string) {
     prisma.alert.count({
       where: { userId, type: "INSPECTION_RESULT_READY", status: "UNREAD" },
     }),
+    // Số lần Admin/Kho mô đã sửa lại nhật ký cấy của chính NV này trong tuần (chỉ tính lần THỰC SỰ đổi
+    // số liệu — xem changed ở PATCH /api/daily-records/[id]) — dùng để nhắc nhở NV để ý nhập liệu.
+    prisma.dailyRecordEdit.count({
+      where: { staffId: userId, createdAt: { gte: weekStart, lte: weekEnd } },
+    }),
   ]);
 
   const now = new Date();
@@ -109,6 +116,7 @@ async function getCayMoStats(userId: string) {
     contaminationChecked: !hasOverdueDarkRoomLot,
     handoverDone: !!handoverToday,
     unreadInspectionResults,
+    weeklyCorrectionCount,
   };
 }
 
@@ -284,7 +292,7 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null) {
   const receiveDone = transfersToday.filter((t) => t.status === "CONFIRMED").length;
   const receivePercent = receiveTotal === 0 ? 100 : Math.round((receiveDone / receiveTotal) * 100);
 
-  // Nhập môi trường dư: chỉ hiện việc này đúng Thứ 2/Thứ 3 (xem isMediumSurplusEntryDay), và chỉ khi có
+  // Kiểm tra môi trường dư: chỉ hiện việc này đúng Thứ 2/Thứ 3 (xem isMediumSurplusEntryDay), và chỉ khi có
   // đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) của đúng kho này còn CHƯA bấm "Hoàn thành"
   // (surplusRecordedAt null) — biến mất khỏi cả 2 ngày ngay khi đã hoàn thành, không đợi hết Thứ 3.
   let mediumSurplusOrderId: string | null = null;
@@ -551,6 +559,20 @@ function CayMoDashboard({
             </CardContent>
           </Card>
         </Link>
+      )}
+
+      {stats.weeklyCorrectionCount > 0 && (
+        <Card className="border border-destructive bg-danger-light">
+          <CardContent className="py-4 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-destructive">
+                Bạn đã nhập sai dữ liệu {stats.weeklyCorrectionCount} lần trong tuần này
+              </p>
+              <p className="text-xs text-destructive/80">Hãy lưu ý khi nhập liệu — Admin/Kho mô đã phải sửa lại nhật ký cấy của bạn</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <ProductivityLeaderboard />
@@ -820,8 +842,8 @@ function KhoMoTaskDashboard({
             <WeeklyTaskRow
               href={`/medium-orders/${dailyStats.mediumSurplusOrderId}`}
               icon={FlaskConical}
-              title="2. Nhập môi trường dư"
-              deadline="Nhập số túi môi trường dư còn lại từ tuần trước (chỉ Thứ 2, Thứ 3)"
+              title="2. Kiểm tra môi trường dư"
+              deadline="Đối chiếu số dư lý thuyết với số đếm thực tế (chỉ Thứ 2, Thứ 3)"
               percent={0}
               countLabel="Chưa nhập"
             />
