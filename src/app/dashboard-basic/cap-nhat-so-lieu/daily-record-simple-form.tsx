@@ -87,6 +87,9 @@ export default function DailyRecordSimpleForm() {
   // tự kết thúc được, không có cơ chế quét nền).
   const [showSundayPrompt, setShowSundayPrompt] = useState(false);
   const [confirmingSunday, setConfirmingSunday] = useState(false);
+  // Dừng lại xác nhận trước khi lưu — đã lưu là KHÔNG sửa lại được nữa (chỉ Admin/Kho mô mới sửa được
+  // sau này, xem daily-record-edit) nên bắt buộc nhắc rõ trước khi ghi.
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
 
   const today = useMemo(() => new Date(), []);
   const currentWeekStart = useMemo(() => startOfWeek(today, { weekStartsOn: 1 }), [today]);
@@ -226,13 +229,14 @@ export default function DailyRecordSimpleForm() {
     });
   };
 
-  const onSubmit = async () => {
+  const onSubmit = () => {
     if (!selectedId) return;
-    // Đã lưu là KHÔNG sửa lại được nữa (chỉ Admin mới sửa được sau này) — bắt buộc dừng lại xác nhận
-    // trước khi ghi, đặc biệt nhắc rõ đơn vị vì hay nhầm cụm/túi.
-    if (!window.confirm("Hãy kiểm tra lại số liệu trước khi cập nhật — dữ liệu đã lưu sẽ KHÔNG tự sửa lại được.\n\nLưu ý: các ô số lượng đang nhập là SỐ CỤM, không phải số túi.")) {
-      return;
-    }
+    setShowConfirmSubmit(true);
+  };
+
+  const doSubmit = async () => {
+    if (!selectedId) return;
+    setShowConfirmSubmit(false);
     setSubmitting(true);
     try {
       const variantPayload = (stage: "m05" | "t05" | "t01") =>
@@ -482,6 +486,29 @@ export default function DailyRecordSimpleForm() {
               onClick={() => answerSundayPrompt(true)}
             >
               Có
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showConfirmSubmit} onOpenChange={setShowConfirmSubmit}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-warning-foreground">
+              <TriangleAlert className="w-5 h-5 shrink-0" /> Xác nhận trước khi lưu
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg bg-warning-light p-3 text-sm font-medium text-warning-foreground">
+            Hãy kiểm tra lại số liệu chính xác trước khi nhập — dữ liệu đã lưu sẽ KHÔNG tự sửa lại được.
+            <br />
+            Lưu ý: các ô số lượng đang nhập là SỐ CỤM, không phải số túi.
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowConfirmSubmit(false)}>
+              Kiểm tra lại
+            </Button>
+            <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" onClick={doSubmit}>
+              Xác nhận lưu
             </Button>
           </div>
         </DialogContent>
