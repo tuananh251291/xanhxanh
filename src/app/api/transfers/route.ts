@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
       toRoom: { select: { name: true, type: true, shelves: { where: { isActive: true } } } },
       fromUser: { select: { code: true, name: true } },
       toUser: { select: { name: true } },
+      assignedTo: { select: { id: true, code: true, name: true } },
       items: {
         include: {
           lot: {

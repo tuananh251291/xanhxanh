@@ -3,10 +3,40 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateOrderProcessingRequestCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
-import { FINISHED_SPEC_BAG_SIZE } from "@/types";
+import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 
-const patchSchema = z.object({ action: z.enum(["confirm", "ship", "cancel"]) });
+const patchSchema = z.object({
+  action: z.enum(["confirm", "ship", "cancel", "assign"]),
+  // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất
+  // đơn này. null = bỏ gán.
+  assignedToId: z.string().nullable().optional(),
+});
+
+// Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đơn này — chỉ có ý nghĩa với đơn
+// đã CONFIRMED (đang chờ xuất, xem trang "Sắp đơn hàng").
+async function assignOrder(orderId: string, user: { id: string; role: string | null }, assignedToId: string | null | undefined) {
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN" && user.role !== "QUAN_LY_KHO_THANH_PHAM") {
+    return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được việc này" }, { status: 403 });
+  }
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+  if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
+  if (order.status !== "CONFIRMED") {
+    return NextResponse.json({ message: "Chỉ gán được cho đơn đã xác nhận, đang chờ xuất" }, { status: 400 });
+  }
+  if (assignedToId) {
+    const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
+    if (!staff || !isKhoThanhPhamRole(staff.role)) {
+      return NextResponse.json({ message: "Chỉ gán được cho NV kho thành phẩm" }, { status: 400 });
+    }
+  }
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? user.id : null },
+    select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+  });
+  return NextResponse.json(updated);
+}
 
 // "Xác nhận đơn hàng" — Sale bấm khi khách đã đồng ý mua, chuyển HELD -> CONFIRMED, một chiều. Đây là
 // lúc DUY NHẤT phát sinh "Yêu cầu xử lý cây" (nếu 1 dòng cần trừ tồn thật không tròn quy cách túi) và
@@ -193,6 +223,17 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
       await tx.order.update({ where: { id: order.id }, data: { status: "SHIPPED", shippedAt: new Date() } });
     });
 
+    if (order.assignedToId && order.assignedById) {
+      await createAlert({
+        type: "ASSIGNED_TASK_COMPLETED",
+        title: "NV đã hoàn thành việc được giao",
+        message: `Đã xuất kho xong đơn hàng ${order.code}`,
+        userId: order.assignedById,
+        relatedId: order.id,
+        relatedType: "Order",
+      });
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";
@@ -212,6 +253,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     if (parsed.data.action === "confirm") return await confirmOrder(id, session.user);
     if (parsed.data.action === "cancel") return await cancelOrder(id, session.user);
+    if (parsed.data.action === "assign") return await assignOrder(id, session.user, parsed.data.assignedToId);
     return await shipOrder(id, session.user);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";

@@ -250,6 +250,7 @@ export const ALERT_TYPE_LABELS = {
   GOODS_RECEIPT_RETURN_DUE: "Phiếu nhập hàng cần kiểm tra trả hàng",
   ORDER_PROCESSING_SHORTFALL: "Xử lý cây thiếu hụt so với đơn hàng",
   EXTRA_WORK_REQUEST: "Đăng ký cấy thêm",
+  ASSIGNED_TASK_COMPLETED: "Đã hoàn thành việc được giao",
 } as const;
 
 export const EXTRA_WORK_REQUEST_TYPE_LABELS = {

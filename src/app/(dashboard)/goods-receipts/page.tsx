@@ -11,6 +11,7 @@ import { vi } from "date-fns/locale";
 import GoodsReceiptForm from "./goods-receipt-form";
 import ReturnInspectionDialog from "./return-inspection-dialog";
 import ConfirmPlanDialog from "./confirm-plan-dialog";
+import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 
 export default async function GoodsReceiptsPage() {
   const session = await auth();
@@ -20,8 +21,9 @@ export default async function GoodsReceiptsPage() {
   // NV kho thành phẩm chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) —
   // khác các nơi khác dùng getFinishedQualifiedRooms (VD Xử lý cây) vốn KHÔNG giới hạn theo kho.
   const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
+  const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
 
-  const [allRooms, plantTypes, suppliers, recentReceipts, pendingInspections, pendingPlans] = await Promise.all([
+  const [allRooms, plantTypes, suppliers, recentReceipts, pendingInspections, pendingPlans, staffUsers] = await Promise.all([
     getFinishedQualifiedRooms(),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
@@ -59,7 +61,13 @@ export default async function GoodsReceiptsPage() {
             plantType: { select: { code: true, name: true } },
           },
         },
+        assignedTo: { select: { id: true, code: true, name: true } },
       },
+    }),
+    prisma.user.findMany({
+      where: { role: "KHO_THANH_PHAM" },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -95,17 +103,25 @@ export default async function GoodsReceiptsPage() {
                       )}
                     </p>
                   </div>
-                  <ConfirmPlanDialog
-                    receiptId={plan.id}
-                    code={plan.code}
-                    supplierName={`${plan.supplier.name} (${plan.supplier.code})`}
-                    items={plan.items.map((i) => ({
-                      itemId: i.id,
-                      plantTypeLabel: `${i.plantType.name} (${i.plantType.code})`,
-                      stageCode: i.stageCode,
-                      estimatedQuantity: i.quantityDelivered,
-                    }))}
-                  />
+                  <div className="flex items-center gap-2">
+                    <KhoTpAssignCell
+                      endpoint={`/api/goods-receipts/${plan.id}`}
+                      assignedTo={plan.assignedTo}
+                      staffOptions={staffUsers}
+                      canAssign={canAssign}
+                    />
+                    <ConfirmPlanDialog
+                      receiptId={plan.id}
+                      code={plan.code}
+                      supplierName={`${plan.supplier.name} (${plan.supplier.code})`}
+                      items={plan.items.map((i) => ({
+                        itemId: i.id,
+                        plantTypeLabel: `${i.plantType.name} (${i.plantType.code})`,
+                        stageCode: i.stageCode,
+                        estimatedQuantity: i.quantityDelivered,
+                      }))}
+                    />
+                  </div>
                 </div>
               );
             })}

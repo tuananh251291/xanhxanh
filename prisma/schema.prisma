@@ -179,6 +179,9 @@ enum AlertType {
   // không khớp inputQuantity của chỉ định. Báo cho đúng Kho mô đã gán chỉ định đó (userId) biết để kiểm
   // tra lại kệ trước khi gán lại — xem RepackInstruction.quantityIssueReportedAt.
   REPACK_QUANTITY_MISMATCH
+  // NV kho thành phẩm vừa hoàn thành 1 việc được Quản lý kho thành phẩm gán đích danh (Nhận bàn giao
+  // thành phẩm/Nhập hàng/Sắp đơn hàng) — báo cho đúng người đã gán (userId), không phải mọi Quản lý.
+  ASSIGNED_TASK_COMPLETED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -289,6 +292,12 @@ model User {
   repackInspectedBy         RepackInstruction[] @relation("RepackInspectedBy")
   repackPlacedBy            RepackInstruction[] @relation("RepackPlacedBy")
   repackQuantityIssueReportedBy RepackInstruction[] @relation("RepackQuantityIssueReportedBy")
+  transfersAssignedTo       Transfer[]        @relation("TransferAssignedTo")
+  transfersAssignedBy       Transfer[]        @relation("TransferAssignedBy")
+  goodsReceiptsAssignedTo   GoodsReceipt[]    @relation("GoodsReceiptAssignedTo")
+  goodsReceiptsAssignedBy   GoodsReceipt[]    @relation("GoodsReceiptAssignedBy")
+  ordersAssignedTo          Order[]           @relation("OrderAssignedTo")
+  ordersAssignedBy          Order[]           @relation("OrderAssignedBy")
 
   @@map("users")
 }
@@ -606,6 +615,15 @@ model GoodsReceipt {
   confirmedAt   DateTime?
   confirmedById String?
   confirmedBy   User?    @relation("GoodsReceiptConfirmedBy", fields: [confirmedById], references: [id])
+
+  // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách xác nhận phiếu này khi hàng thật
+  // về (chủ yếu có ý nghĩa với phiếu còn PLANNED — kế hoạch nhập kho) — không giới hạn ai được XEM/xác
+  // nhận, chỉ mang tính phân công/theo dõi + báo cho đúng người đã gán khi NV được gán bấm xác nhận xong
+  // (xem PATCH /api/goods-receipts/[id]).
+  assignedToId String?
+  assignedTo   User?   @relation("GoodsReceiptAssignedTo", fields: [assignedToId], references: [id])
+  assignedById String?
+  assignedBy   User?   @relation("GoodsReceiptAssignedBy", fields: [assignedById], references: [id])
 
   items GoodsReceiptItem[]
 
@@ -1438,6 +1456,15 @@ model Transfer {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách xử lý phiếu này (chỉ áp dụng cho
+  // phiếu "Nhận bàn giao thành phẩm" — Phòng ra rễ → Kho thành phẩm) — không giới hạn ai được XEM/xác
+  // nhận phiếu (NV kho thành phẩm khác vẫn thấy và xác nhận được như cũ), chỉ mang tính phân công/theo
+  // dõi + báo cho đúng người đã gán khi NV được gán bấm xác nhận xong (xem PATCH /api/transfers/[id]).
+  assignedToId String?
+  assignedTo   User?   @relation("TransferAssignedTo", fields: [assignedToId], references: [id])
+  assignedById String?
+  assignedBy   User?   @relation("TransferAssignedBy", fields: [assignedById], references: [id])
+
   items      TransferItem[]
   inspection TransferInspection?
 
@@ -1526,6 +1553,15 @@ model Order {
   notes           String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+
+  // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất đơn này (chỉ có ý
+  // nghĩa với đơn đã CONFIRMED, chờ xuất — xem trang "Sắp đơn hàng") — không giới hạn ai được XEM/xuất
+  // đơn, chỉ mang tính phân công/theo dõi + báo cho đúng người đã gán khi NV được gán bấm xuất kho xong
+  // (xem PATCH /api/orders/[id] action=ship).
+  assignedToId String?
+  assignedTo   User?   @relation("OrderAssignedTo", fields: [assignedToId], references: [id])
+  assignedById String?
+  assignedBy   User?   @relation("OrderAssignedBy", fields: [assignedById], references: [id])
 
   items OrderItem[]
   processingRequests OrderProcessingRequest[]

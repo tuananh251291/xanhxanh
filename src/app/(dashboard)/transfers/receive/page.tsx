@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { SURPLUS_TRANSFER_TAG, sumLotQuantity } from "@/types";
+import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 
 type Shelf = {
   id: string;
@@ -40,10 +42,14 @@ type Transfer = {
   toRoom: { shelves: Shelf[] } | null;
   transferredAt: string;
   items: TransferItem[];
+  assignedTo: { id: string; code: string; name: string } | null;
 };
 
 export default function TransferReceivePage() {
+  const { data: session } = useSession();
+  const canAssign = session?.user?.role === "QUAN_LY_KHO_THANH_PHAM" || session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN";
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [staffOptions, setStaffOptions] = useState<{ id: string; code: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [shelfMap, setShelfMap] = useState<Record<string, string>>({});
@@ -62,6 +68,17 @@ export default function TransferReceivePage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Danh sách NV kho thành phẩm để Quản lý chọn giao việc — chỉ tải khi thật sự có quyền gán, không tải
+  // thừa cho NV kho thành phẩm thường.
+  useEffect(() => {
+    if (!canAssign) return;
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data: { id: string; code: string; name: string; role: string }[]) => {
+        setStaffOptions((Array.isArray(data) ? data : []).filter((u) => u.role === "KHO_THANH_PHAM").map((u) => ({ id: u.id, code: u.code, name: u.name })));
+      });
+  }, [canAssign]);
 
   const confirm = async (
     transferId: string,
@@ -145,6 +162,7 @@ export default function TransferReceivePage() {
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã NV</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên nhân viên</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Nguồn</th>
+                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Giao cho</th>
                     <th className="text-center px-4 py-3 text-primary-strong font-bold text-base">Hành động</th>
                   </tr>
                 </thead>
@@ -217,6 +235,14 @@ export default function TransferReceivePage() {
                           <td className="px-4 py-3 text-text-secondary">
                             {t.fromWarehouse?.name}{t.fromRoom ? ` — ${t.fromRoom.name}` : ""}
                           </td>
+                          <td className="px-4 py-3">
+                            <KhoTpAssignCell
+                              endpoint={`/api/transfers/${t.id}`}
+                              assignedTo={t.assignedTo}
+                              staffOptions={staffOptions}
+                              canAssign={canAssign}
+                            />
+                          </td>
                           <td className="px-4 py-3 text-center">
                             <Button
                               variant={isExpanded ? "ghost" : "default"}
@@ -234,7 +260,7 @@ export default function TransferReceivePage() {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={5} className="bg-muted/30 px-4 py-4">
+                            <td colSpan={6} className="bg-muted/30 px-4 py-4">
                               <div className="space-y-3">
                                 {isExternalFinishedHandoff ? (
                                   <>

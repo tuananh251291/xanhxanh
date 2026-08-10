@@ -8,25 +8,36 @@ import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
 import ShipOrderButton from "./ship-order-button";
+import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 
 export default async function OrdersPackPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/pack"))) redirect("/dashboard");
 
-  const orders = await prisma.order.findMany({
-    where: { status: "CONFIRMED" },
-    orderBy: { confirmedAt: "asc" },
-    include: {
-      sale: { select: { name: true } },
-      items: {
-        include: {
-          lot: { select: { stageCode: true } },
-          processingRequest: { select: { status: true, deductQuantity: true, surplusQuantity: true } },
+  const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
+
+  const [orders, staffUsers] = await Promise.all([
+    prisma.order.findMany({
+      where: { status: "CONFIRMED" },
+      orderBy: { confirmedAt: "asc" },
+      include: {
+        sale: { select: { name: true } },
+        items: {
+          include: {
+            lot: { select: { stageCode: true } },
+            processingRequest: { select: { status: true, deductQuantity: true, surplusQuantity: true } },
+          },
         },
+        assignedTo: { select: { id: true, code: true, name: true } },
       },
-    },
-  });
+    }),
+    prisma.user.findMany({
+      where: { role: "KHO_THANH_PHAM" },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -66,6 +77,12 @@ export default async function OrdersPackPage() {
                           Còn {pendingCount} yêu cầu xử lý cây chưa hoàn thành
                         </span>
                       )}
+                      <KhoTpAssignCell
+                        endpoint={`/api/orders/${order.id}`}
+                        assignedTo={order.assignedTo}
+                        staffOptions={staffUsers}
+                        canAssign={canAssign}
+                      />
                       <ShipOrderButton orderId={order.id} disabled={pendingCount > 0} />
                     </div>
                   </div>

@@ -1,20 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { SURPLUS_TRANSFER_TAG, sumLotQuantity } from "@/types";
+import { SURPLUS_TRANSFER_TAG, sumLotQuantity, isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { planShelfAssignments, planSurplusPlacement, ShelfAssignError } from "@/lib/shelf-assignment";
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
 import { generateLotCode } from "@/lib/codes";
+import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
 const confirmSchema = z.object({
-  action: z.enum(["confirm", "reject"]),
+  action: z.enum(["confirm", "reject", "assign"]),
   shelfAssignments: z.array(z.object({ lotId: z.string(), shelfId: z.string() })).optional(),
   // Nhận thành phẩm từ Phòng ra rễ — chia số lượng theo TỪNG loại cây + quy cách (T01/T05) vào Phòng
   // theo dõi/Phòng hàn túi (không được gộp nhiều loại cây lại rồi chia theo tổng quy cách).
   finishedSplit: z.array(z.object({ roomId: z.string(), plantTypeId: z.string(), stageCode: z.string(), quantity: z.number().int().positive() })).optional(),
   notes: z.string().optional(),
+  // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách phiếu bàn giao
+  // thành phẩm này. null = bỏ gán.
+  assignedToId: z.string().nullable().optional(),
 });
+
+// Báo cho đúng Quản lý kho thành phẩm đã gán việc — CHỈ gọi khi phiếu thật sự đã được gán (assignedToId
+// + assignedById đều có), không phải mọi phiếu (đa số NV kho thành phẩm tự xử lý không qua gán việc).
+async function notifyAssignmentCompleted(
+  assignedToId: string | null,
+  assignedById: string | null,
+  relatedId: string,
+  relatedType: string,
+  message: string
+) {
+  if (!assignedToId || !assignedById) return;
+  await createAlert({
+    type: "ASSIGNED_TASK_COMPLETED",
+    title: "NV đã hoàn thành việc được giao",
+    message,
+    userId: assignedById,
+    relatedId,
+    relatedType,
+  });
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -46,6 +70,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
   if (transfer.status !== "PENDING") return NextResponse.json({ message: "Phiếu đã xử lý" }, { status: 400 });
+
+  if (parsed.data.action === "assign") {
+    if (!isAdminRole(session.user.role) && session.user.role !== "QUAN_LY_KHO_THANH_PHAM") {
+      return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được việc này" }, { status: 403 });
+    }
+    if (transfer.toWarehouse?.type !== "THANH_PHAM") {
+      return NextResponse.json({ message: "Chỉ gán được cho phiếu bàn giao thành phẩm" }, { status: 400 });
+    }
+    const { assignedToId } = parsed.data;
+    if (assignedToId) {
+      const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
+      if (!staff || !isKhoThanhPhamRole(staff.role)) {
+        return NextResponse.json({ message: "Chỉ gán được cho NV kho thành phẩm" }, { status: 400 });
+      }
+    }
+    const updated = await prisma.transfer.update({
+      where: { id },
+      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null },
+      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+    });
+    return NextResponse.json(updated);
+  }
 
   const { action, shelfAssignments, finishedSplit } = parsed.data;
 
@@ -200,6 +246,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
       });
 
+      await notifyAssignmentCompleted(
+        transfer.assignedToId,
+        transfer.assignedById,
+        transfer.id,
+        "Transfer",
+        `Đã xác nhận nhận bàn giao thành phẩm ${transfer.code}`
+      );
       return NextResponse.json({ success: true });
     }
 
@@ -216,6 +269,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
     });
 
+    await notifyAssignmentCompleted(
+      transfer.assignedToId,
+      transfer.assignedById,
+      transfer.id,
+      "Transfer",
+      `Đã xác nhận nhận bàn giao thành phẩm ${transfer.code}`
+    );
     return NextResponse.json({ success: true });
   }
 

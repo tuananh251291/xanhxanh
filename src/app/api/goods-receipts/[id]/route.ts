@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { upsertLot } from "@/lib/goods-receipt";
 import { createAlert } from "@/lib/inventory";
+import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { addDays } from "date-fns";
 import { z } from "zod";
 
@@ -19,7 +20,10 @@ const confirmSchema = z.object({
     .min(1),
 });
 const cancelSchema = z.object({ action: z.literal("cancel") });
-const patchSchema = z.discriminatedUnion("action", [confirmSchema, cancelSchema]);
+// Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách xác nhận kế hoạch nhập kho này khi
+// hàng thật về — chỉ có ý nghĩa với phiếu còn PLANNED.
+const assignSchema = z.object({ action: z.literal("assign"), assignedToId: z.string().nullable() });
+const patchSchema = z.discriminatedUnion("action", [confirmSchema, cancelSchema, assignSchema]);
 
 // Quản lý 1 "Kế hoạch nhập kho" (GoodsReceipt.status = PLANNED) — chỉ áp dụng được khi phiếu còn PLANNED.
 //
@@ -54,6 +58,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (receipt.status !== "PLANNED") {
     return NextResponse.json({ message: "Phiếu này không còn ở trạng thái Kế hoạch" }, { status: 400 });
+  }
+
+  if (parsed.data.action === "assign") {
+    if (!isAdminRole(session.user.role) && session.user.role !== "QUAN_LY_KHO_THANH_PHAM") {
+      return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được việc này" }, { status: 403 });
+    }
+    const { assignedToId } = parsed.data;
+    if (assignedToId) {
+      const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
+      if (!staff || !isKhoThanhPhamRole(staff.role)) {
+        return NextResponse.json({ message: "Chỉ gán được cho NV kho thành phẩm" }, { status: 400 });
+      }
+    }
+    const updated = await prisma.goodsReceipt.update({
+      where: { id },
+      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null },
+      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+    });
+    return NextResponse.json(updated);
   }
 
   // Số lượng đang bị các đơn HELD/CONFIRMED giữ chỗ trên lô "ảo" của 1 dòng — dùng chung cho cả 2 action
@@ -155,6 +178,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { status: "CONFIRMED", confirmedAt: new Date(), confirmedById: session.user.id },
     });
   });
+
+  if (receipt.assignedToId && receipt.assignedById) {
+    await createAlert({
+      type: "ASSIGNED_TASK_COMPLETED",
+      title: "NV đã hoàn thành việc được giao",
+      message: `Đã xác nhận xong phiếu nhập hàng ${receipt.code}`,
+      userId: receipt.assignedById,
+      relatedId: receipt.id,
+      relatedType: "GoodsReceipt",
+    });
+  }
 
   const supplier = await prisma.supplier.findUnique({ where: { id: receipt.supplierId }, select: { allowsReturn: true, returnWindowDays: true } });
   if (supplier?.allowsReturn && supplier.returnWindowDays) {
