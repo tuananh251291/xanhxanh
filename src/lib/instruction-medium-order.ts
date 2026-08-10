@@ -1,7 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateMediumOrderCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
 import { buildInstructionMediumNeeds, aggregateMediumOrderItems, getOrderWeekRange } from "@/lib/medium-orders";
 
 type ItemForNeeds = {
@@ -66,9 +65,6 @@ export async function syncInstructionMediumOrder(
     include: { instructions: { include: { items: true } } },
   });
 
-  let order: { id: string; code: string };
-  let isNewOrder = false;
-
   if (existingOrder) {
     await prisma.plantingInstruction.update({ where: { id: instruction.id }, data: { mediumOrderId: existingOrder.id } });
     const allNeeds = [
@@ -78,13 +74,13 @@ export async function syncInstructionMediumOrder(
       instructionNeeds,
     ];
     await prisma.mediumOrderItem.deleteMany({ where: { orderId: existingOrder.id } });
-    order = await prisma.mediumOrder.update({
+    await prisma.mediumOrder.update({
       where: { id: existingOrder.id },
       data: { items: { create: aggregateMediumOrderItems(allNeeds) } },
     });
   } else {
     const orderCode = await generateMediumOrderCode();
-    order = await prisma.mediumOrder.create({
+    await prisma.mediumOrder.create({
       data: {
         code: orderCode,
         weekStart: orderWeekStart,
@@ -94,17 +90,9 @@ export async function syncInstructionMediumOrder(
         days: { create: days.map((date) => ({ date })) },
       },
     });
-    isNewOrder = true;
   }
 
-  await createAlert({
-    type: "MEDIUM_ORDER_CREATED",
-    title: isNewOrder ? "Có đơn đặt hàng môi trường mới" : "Đơn đặt hàng môi trường đã được cập nhật",
-    message: isNewOrder
-      ? `Chỉ định ${instruction.code} cần pha môi trường — xem đơn ${order.code}`
-      : `Chỉ định ${instruction.code} vừa được gộp vào đơn ${order.code} — số lượng cần đã cập nhật`,
-    targetRole: "MOI_TRUONG",
-    relatedId: order.id,
-    relatedType: "MediumOrder",
-  });
+  // Không báo NV môi trường ở đây — đơn chỉ thật sự "gửi" (hiện + có thông báo) lúc 00:00 Thứ 7, xem
+  // ensureMediumOrdersSent ở src/lib/medium-order-lifecycle.ts (chạy mỗi lần tải trang, giống mọi việc
+  // "tự động" khác trong app này).
 }

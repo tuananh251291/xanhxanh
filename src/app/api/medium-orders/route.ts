@@ -14,8 +14,13 @@ export async function GET(_req: NextRequest) {
   // NV môi trường chỉ làm việc 1 kho sản xuất (nếu đã được gán) — 1 đơn có thể gộp chỉ định từ nhiều
   // kho nếu cùng tuần, nên chỉ cần có ít nhất 1 chỉ định thuộc đúng kho là hiện (best-effort — đơn vẫn
   // có thể lẫn chỉ định của kho khác nếu KY_THUAT gộp tuần đó cho cả 2 kho).
-  if (role === "MOI_TRUONG" && session.user.workplaceWarehouseId) {
-    where.instructions = { some: { items: { some: { shelf: { warehouseId: session.user.workplaceWarehouseId } } } } };
+  // Đơn chỉ thật sự "gửi" cho NV môi trường từ 00:00 Thứ 7 (xem ensureMediumOrdersSent) — trước đó dù đã
+  // tạo/gộp chỉ định xong vẫn KHÔNG hiện trong danh sách của NV môi trường.
+  if (role === "MOI_TRUONG") {
+    where.sentAt = { not: null };
+    if (session.user.workplaceWarehouseId) {
+      where.instructions = { some: { items: { some: { shelf: { warehouseId: session.user.workplaceWarehouseId } } } } };
+    }
   }
   // Kho mô chỉ nhận đơn đã được NV môi trường xác nhận (chưa xác nhận thì chưa có gì để nhận) — cùng
   // quy ước warehouse best-effort như trên.

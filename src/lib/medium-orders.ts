@@ -101,3 +101,31 @@ export function isMediumOrderInProgress(order: { confirmedAt: Date | string | nu
 export function isMediumOrderReceived(days: MediumOrderDayLike[]): boolean {
   return days.length > 0 && days.every((d) => d.confirmedAt != null);
 }
+
+// Thời điểm đơn thật sự hiện/báo cho NV môi trường — đúng 00:00 Thứ 7 (weekStart luôn là Thứ 6, xem
+// getOrderWeekRange), tức weekStart + 1 ngày. Dùng ở cả nơi tính (ensureMediumOrdersSent) lẫn nơi hiển
+// thị (VD cho KY_THUAT xem trước "sẽ gửi lúc nào" nếu cần).
+export function getMediumOrderSendAt(weekStart: Date): Date {
+  return addDays(weekStart, 1);
+}
+
+// Quy đổi số lượng cây/cụm cần sang số TÚI cần hiển thị cho NV môi trường — chốt nghiệp vụ (đã xác nhận
+// với chủ dự án): M05/T05 cứ 5 cây/cụm thì cần 1 túi (làm tròn LÊN vì không thể mua nửa túi), T01 giữ
+// nguyên 1 cây = 1 túi.
+const BAGS_PER_UNIT: Record<string, number> = { M05: 5, T05: 5, T01: 1 };
+export function quantityToBags(stageCode: string, quantity: number): number {
+  const divisor = BAGS_PER_UNIT[stageCode] ?? 1;
+  return Math.ceil(quantity / divisor);
+}
+
+// Số túi CÒN CẦN sau khi trừ số túi dư Kho mô đã nhập (surplusQuantity, lưu sẵn theo đơn vị túi — xem
+// MediumOrderItem.surplusQuantity) — không âm.
+export function netBagsNeeded(stageCode: string, quantity: number, surplusQuantity: number): number {
+  return Math.max(0, quantityToBags(stageCode, quantity) - surplusQuantity);
+}
+
+// Kho mô chỉ được nhập số lượng môi trường dư đúng Thứ 2 (chặn cứng theo yêu cầu nghiệp vụ — Thứ 2 là
+// ngày đầu tuần thực hiện, ngay sau khi NV môi trường bàn giao xong tuần trước). getDay(): 0=CN, 1=T2.
+export function isMediumSurplusEntryDay(date: Date = new Date()): boolean {
+  return date.getDay() === 1;
+}

@@ -11,8 +11,9 @@ import { toast } from "sonner";
 import { format, isSameDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { MEDIUM_ORDER_DAY_STATUS_LABELS, type UserRole } from "@/types";
+import { isMediumOrderInProgress, isMediumSurplusEntryDay, quantityToBags, netBagsNeeded } from "@/lib/medium-orders";
 
-type OrderItem = { id: string; stageCode: string; quantity: number; mediumType: { code: string; name: string } };
+type OrderItem = { id: string; stageCode: string; quantity: number; surplusQuantity: number; mediumType: { code: string; name: string } };
 type OrderDay = {
   id: string;
   date: string;
@@ -49,6 +50,8 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, Record<QuantityField, string>>>({});
   const [savingDayId, setSavingDayId] = useState<string | null>(null);
+  const [surplusDrafts, setSurplusDrafts] = useState<Record<string, string>>({});
+  const [savingSurplusItemId, setSavingSurplusItemId] = useState<string | null>(null);
 
   const isMoiTruong = role === "MOI_TRUONG";
   const isKhoMo = role === "KHO_MO";
@@ -61,6 +64,7 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       const data: Order = await res.json();
       setOrder(data);
       setDrafts(Object.fromEntries(data.days.map((d) => [d.id, { m05: String(d.m05), t01: String(d.t01), t05: String(d.t05) }])));
+      setSurplusDrafts(Object.fromEntries(data.items.map((i) => [i.id, String(i.surplusQuantity)])));
     } finally {
       setLoading(false);
     }
@@ -114,8 +118,29 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
     }
   };
 
+  const saveSurplus = async (itemId: string) => {
+    setSavingSurplusItemId(itemId);
+    try {
+      const surplusQuantity = Number(surplusDrafts[itemId]) || 0;
+      const res = await fetch(`/api/medium-orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recordSurplus", itemId, surplusQuantity }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã lưu số túi dư");
+      load();
+    } finally {
+      setSavingSurplusItemId(null);
+    }
+  };
+
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   if (!order) return <p className="text-sm text-text-muted text-center py-12">Không tìm thấy đơn</p>;
+
+  // Kho mô chỉ nhập được môi trường dư cho đúng đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) và
+  // đúng Thứ 2 — khớp check server-side ở PATCH /api/medium-orders/[id] action=recordSurplus.
+  const canRecordSurplus = isKhoMo && isMediumSurplusEntryDay() && isMediumOrderInProgress(order);
 
   const totals = order.days.reduce(
     (acc, d) => ({ m05: acc.m05 + d.m05, t01: acc.t01 + d.t01, t05: acc.t05 + d.t05 }),
@@ -136,7 +161,16 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base font-bold text-primary-strong">Quy cách cần pha</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base font-bold text-primary-strong">Quy cách cần pha</CardTitle>
+          {isKhoMo && !canRecordSurplus && (
+            <p className="text-xs text-text-muted">
+              {isMediumSurplusEntryDay()
+                ? "Đơn chưa được NV môi trường xác nhận hoặc đã kết thúc — chưa nhập được môi trường dư."
+                : "Chỉ nhập được môi trường dư vào đúng Thứ 2."}
+            </p>
+          )}
+        </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -144,17 +178,52 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                 <tr className="bg-primary-light">
                   <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Quy cách</th>
                   <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Mã môi trường</th>
-                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">SL cần</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">SL cần (cây/cụm)</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Số túi cần</th>
+                  <th className="text-left px-4 py-2 text-primary-strong font-bold text-base">Túi dư tuần trước</th>
                 </tr>
               </thead>
               <tbody>
-                {order.items.map((item) => (
-                  <tr key={item.id} className="border-b last:border-0 even:bg-primary-light">
-                    <td className="px-4 py-2"><Badge variant="outline">{item.stageCode}</Badge></td>
-                    <td className="px-4 py-2 font-mono text-secondary-foreground">{item.mediumType.code}</td>
-                    <td className="px-4 py-2 text-left font-medium">{item.quantity.toLocaleString("vi-VN")}</td>
-                  </tr>
-                ))}
+                {order.items.map((item) => {
+                  const grossBags = quantityToBags(item.stageCode, item.quantity);
+                  const netBags = netBagsNeeded(item.stageCode, item.quantity, item.surplusQuantity);
+                  return (
+                    <tr key={item.id} className="border-b last:border-0 even:bg-primary-light">
+                      <td className="px-4 py-2"><Badge variant="outline">{item.stageCode}</Badge></td>
+                      <td className="px-4 py-2 font-mono text-secondary-foreground">{item.mediumType.code}</td>
+                      <td className="px-4 py-2 text-left font-medium">{item.quantity.toLocaleString("vi-VN")}</td>
+                      <td className="px-4 py-2 text-left font-medium text-primary-strong">
+                        {netBags.toLocaleString("vi-VN")} túi
+                        {item.surplusQuantity > 0 && (
+                          <span className="block text-xs text-text-muted font-normal">
+                            ({grossBags.toLocaleString("vi-VN")} − {item.surplusQuantity.toLocaleString("vi-VN")} dư)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
+                        {canRecordSurplus ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number" min={0}
+                              className="w-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={surplusDrafts[item.id] ?? "0"}
+                              onChange={(e) => setSurplusDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                            />
+                            <Button
+                              size="sm" variant="outline" className="h-8"
+                              disabled={savingSurplusItemId === item.id}
+                              onClick={() => saveSurplus(item.id)}
+                            >
+                              {savingSurplusItemId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Lưu"}
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-text-secondary">{item.surplusQuantity.toLocaleString("vi-VN")} túi</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

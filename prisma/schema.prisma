@@ -1162,6 +1162,13 @@ model MediumOrder {
 
   createdAt DateTime @default(now())
 
+  // Thời điểm đơn thật sự HIỆN/báo cho NV môi trường — null nghĩa là chưa tới lúc gửi. Đơn vẫn được
+  // tạo/gộp thêm chỉ định NGAY khi KY_THUAT ra chỉ định trong tuần (như cũ), nhưng NV môi trường chỉ
+  // thấy + nhận thông báo kể từ đúng 00:00 Thứ 7 (weekStart + 1 ngày, vì weekStart luôn là Thứ 6 —
+  // xem ensureMediumOrdersSent ở src/lib/medium-order-lifecycle.ts, chạy kiểu "kiểm tra ngầm mỗi lần
+  // tải trang" giống mọi việc "tự động" khác trong app này, không có cron thật).
+  sentAt DateTime?
+
   items MediumOrderItem[]
   days  MediumOrderDay[]
 
@@ -1178,6 +1185,13 @@ model MediumOrderItem {
   mediumTypeId String
   mediumType   MediumType  @relation(fields: [mediumTypeId], references: [id])
   quantity     Int
+
+  // Số TÚI môi trường dư còn lại từ tuần trước (Kho mô đếm thực tế trên kệ, nhập tay đúng Thứ 2) —
+  // trừ thẳng vào số túi cần hiển thị cho NV môi trường của ĐÚNG đơn đang thực hiện này (không quy đổi
+  // ngược ra cây/cụm, xem quantityToBags ở src/lib/medium-orders.ts). An toàn để lưu trực tiếp trên dòng
+  // vì chỉ nhập được khi đơn đã confirmedAt (đang thực hiện) — lúc đó items không còn bị xoá/tạo lại mỗi
+  // khi có chỉ định mới (syncInstructionMediumOrder chỉ gộp vào đơn còn confirmedAt = null).
+  surplusQuantity Int @default(0)
 
   @@map("medium_order_items")
 }

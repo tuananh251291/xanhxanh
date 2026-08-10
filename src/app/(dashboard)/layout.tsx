@@ -11,6 +11,7 @@ import { ensureMotherReadyAlerts } from "@/lib/mother-ready";
 import { ensureRootingReadyAlerts } from "@/lib/rooting-ready";
 import { ensureInstructionsEnded, ensureBackupInstructionsCleaned } from "@/lib/instruction-lifecycle";
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
+import { ensureMediumOrdersSent } from "@/lib/medium-order-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -25,6 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   await ensureInstructionsEnded();
   await ensureBackupInstructionsCleaned();
   await ensureExpiredOrdersCancelled();
+  await ensureMediumOrdersSent();
   if (role === "KY_THUAT") await ensureMotherReadyAlerts();
   if (role === "KHO_MO") await ensureRootingReadyAlerts();
 
