@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { startOfMonth, endOfMonth, parse, isValid } from "date-fns";
+import { addMonths, parse, isValid } from "date-fns";
 
 // Danh sách phiếu bàn giao (Phòng tối → Kho sáng) của chính NV cấy mô đang đăng nhập, kèm đối chiếu
 // "số lượng bàn giao" (TransferItem.quantity, qua lô) với "số lượng ghi nhận":
@@ -14,17 +14,23 @@ import { startOfMonth, endOfMonth, parse, isValid } from "date-fns";
 //   creditedQuantity tính theo TỪNG stageCode gộp cả phiếu (có thể gộp nhiều lô khác loại cây cùng
 //   stageCode), nên gom theo stageCode chứ không tách theo từng lô.
 //
-// Query param "month" (YYYY-MM, tùy chọn) — lọc theo đúng tháng chọn (dựa theo Transfer.createdAt, thời
-// điểm NV bấm bàn giao). Không truyền = tháng hiện tại (mặc định), tránh tải toàn bộ lịch sử mỗi lần mở.
+// Query param "month" (YYYY-MM, tùy chọn) — lọc theo 1 KỲ (không phải tháng lịch), tính theo
+// Transfer.createdAt (thời điểm NV bấm bàn giao): từ ngày 7 của tháng chọn tới TRƯỚC ngày 7 tháng sau
+// (khớp kỳ tính lương của công ty). VD chọn "2026-08" → kỳ 07/08 - 06/09. Không truyền = kỳ hiện tại
+// (mặc định), tránh tải toàn bộ lịch sử mỗi lần mở.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "CAY_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
+  const PERIOD_START_DAY = 7;
   const monthParam = req.nextUrl.searchParams.get("month");
   const parsedMonth = monthParam ? parse(monthParam, "yyyy-MM", new Date()) : new Date();
   const monthDate = isValid(parsedMonth) ? parsedMonth : new Date();
-  const rangeStart = startOfMonth(monthDate);
-  const rangeEnd = endOfMonth(monthDate);
+  // Nếu hôm nay/ngày tham chiếu chưa tới mùng 7, kỳ hiện tại thật ra bắt đầu từ mùng 7 THÁNG TRƯỚC —
+  // chỉ áp dụng khi không truyền "month" tường minh (mặc định theo ngày hôm nay).
+  const anchorMonth = !monthParam && monthDate.getDate() < PERIOD_START_DAY ? addMonths(monthDate, -1) : monthDate;
+  const rangeStart = new Date(anchorMonth.getFullYear(), anchorMonth.getMonth(), PERIOD_START_DAY, 0, 0, 0, 0);
+  const rangeEnd = addMonths(rangeStart, 1);
 
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -35,7 +41,7 @@ export async function GET(req: NextRequest) {
     where: {
       fromUserId: session.user.id,
       fromRoom: { type: "PHONG_TOI" },
-      createdAt: { gte: rangeStart, lte: rangeEnd },
+      createdAt: { gte: rangeStart, lt: rangeEnd },
     },
     include: {
       items: {
@@ -112,6 +118,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     lane: me?.inspectionLane ?? null,
     month: `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, "0")}`,
+    rangeStart,
+    rangeEnd,
     totalsByStage: Object.fromEntries(totalsByStage),
     transfers: result,
   });

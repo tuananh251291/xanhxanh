@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, History, Loader2 } from "lucide-react";
-import { format } from "date-fns";
+import { format, addDays, subMonths } from "date-fns";
 
 type LotLine = { lotCode: string; plantTypeCode: string; plantTypeName: string; quantity: number; enteredAt: string };
 type Group = {
@@ -18,6 +18,8 @@ type Group = {
 type TransferRow = { id: string; code: string; status: string; createdAt: string; inspected: boolean; groups: Group[] };
 type HandoversResponse = {
   lane: string | null;
+  rangeStart: string;
+  rangeEnd: string;
   totalsByStage: Record<string, { handedOver: number; recorded: number }>;
   transfers: TransferRow[];
 };
@@ -29,9 +31,17 @@ const unitOf = (stageCode: string) => (stageCode === "M05" ? "cụm" : "cây");
 // Mục "Các lô đã bàn giao" ở đầu trang Bàn giao sản phẩm — thu gọn mặc định (chỉ NV cần tra cứu lại mới
 // bấm mở, tránh chiếm chỗ màn hình chính là danh sách lô SẴN SÀNG bàn giao bên dưới). Tải dữ liệu LƯỜI
 // (lazy) — chỉ gọi API lần đầu mở ra hoặc đổi tháng, không tải song song lúc vào trang.
+// Kỳ chấm công bắt đầu ngày 7 — nếu hôm nay chưa tới mùng 7, kỳ hiện tại thật ra bắt đầu từ mùng 7 THÁNG
+// TRƯỚC (khớp logic anchorMonth ở GET /api/transfers/my-handovers).
+const PERIOD_START_DAY = 7;
+const defaultPeriodMonth = () => {
+  const now = new Date();
+  return format(now.getDate() < PERIOD_START_DAY ? subMonths(now, 1) : now, "yyyy-MM");
+};
+
 export default function HandoverHistory() {
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [month, setMonth] = useState(defaultPeriodMonth);
   const [data, setData] = useState<HandoversResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -84,10 +94,15 @@ export default function HandoverHistory() {
 
       {open && (
         <CardContent className="space-y-4 border-t border-divider pt-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-text-secondary">Tháng</label>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-sm text-text-secondary">Kỳ (từ ngày 7)</label>
             <Input type="month" value={month} onChange={(e) => changeMonth(e.target.value)} className="w-40" />
             {loading && <Loader2 className="w-4 h-4 animate-spin text-text-muted" />}
+            {!loading && data && (
+              <span className="text-xs text-text-muted">
+                {format(new Date(data.rangeStart), "dd/MM/yyyy")} – {format(addDays(new Date(data.rangeEnd), -1), "dd/MM/yyyy")}
+              </span>
+            )}
           </div>
 
           {!loading && data && (
@@ -109,7 +124,7 @@ export default function HandoverHistory() {
               )}
 
               {rows.length === 0 ? (
-                <p className="text-sm text-text-muted text-center py-6">Chưa có lô nào bàn giao trong tháng này</p>
+                <p className="text-sm text-text-muted text-center py-6">Chưa có lô nào bàn giao trong kỳ này</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
