@@ -295,6 +295,7 @@ export const CONTAMINATION_ENTRY_REASON_LABELS = {
   RED_LANE_INSPECTION: "Kho mô kiểm tra luồng Đỏ",
   EXCEL_IMPORT: "Nhập liệu Excel",
   PROPOSAL_REJECTED_REFUND: "Hoàn lại (đề xuất bị từ chối)",
+  DARK_ROOM_SELF_CHECK_UNDONE: "Hoàn lại (Kho mô hoàn tác bàn giao)",
 } as const;
 
 // Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt (null/có giá trị).
