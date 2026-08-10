@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { format, isSameDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { MEDIUM_ORDER_DAY_STATUS_LABELS, type UserRole } from "@/types";
-import { isMediumOrderInProgress, isMediumSurplusEntryDay, quantityToBags, netBagsNeeded } from "@/lib/medium-orders";
+import { isMediumOrderInProgress, isMediumSurplusEntryDay, quantityToBags, netBagsNeeded, getExecutionWeek } from "@/lib/medium-orders";
 
 type OrderItem = { id: string; stageCode: string; quantity: number; surplusQuantity: number; mediumType: { code: string; name: string } };
 type OrderDay = {
@@ -30,7 +30,6 @@ type Order = {
   weekEnd: string;
   confirmedAt: string | null;
   surplusRecordedAt: string | null;
-  instructions: { code: string; plantType: { name: string } }[];
   items: OrderItem[];
   days: OrderDay[];
 };
@@ -156,6 +155,8 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   if (!order) return <p className="text-sm text-text-muted text-center py-12">Không tìm thấy đơn</p>;
 
+  const executionWeek = getExecutionWeek(new Date(order.weekStart));
+
   // Kho mô chỉ nhập được môi trường dư cho đúng đơn "đang thực hiện" (đã xác nhận, chưa kết thúc), vào
   // Thứ 2 hoặc Thứ 3, và chỉ khi CHƯA bấm "Hoàn thành" — khớp check server-side ở PATCH
   // /api/medium-orders/[id] (action=recordSurplus/finishSurplusEntry).
@@ -173,8 +174,7 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground font-mono">{order.code}</h1>
           <p className="text-text-secondary text-sm">
-            {order.instructions.length} chỉ định ·{" "}
-            {format(new Date(order.weekStart), "dd/MM", { locale: vi })} – {format(new Date(order.weekEnd), "dd/MM/yyyy", { locale: vi })}
+            Tuần thực hiện: {format(executionWeek.start, "dd/MM", { locale: vi })} – {format(executionWeek.end, "dd/MM/yyyy", { locale: vi })}
           </p>
         </div>
       </div>

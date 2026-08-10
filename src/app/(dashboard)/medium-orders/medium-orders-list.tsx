@@ -10,7 +10,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { MEDIUM_ORDER_STATUS_LABELS } from "@/types";
-import { isMediumOrderInProgress, type MediumOrderDayLike } from "@/lib/medium-orders";
+import { isMediumOrderInProgress, getExecutionWeek, type MediumOrderDayLike } from "@/lib/medium-orders";
 
 type MediumOrder = {
   id: string;
@@ -20,7 +20,6 @@ type MediumOrder = {
   confirmedAt: string | null;
   confirmedById: string | null;
   days: MediumOrderDayLike[];
-  instructions: { code: string; plantType: { name: string } }[];
 };
 
 export default function MediumOrdersList({ canConfirm, currentUserId }: { canConfirm: boolean; currentUserId: string | null }) {
@@ -87,25 +86,19 @@ export default function MediumOrdersList({ canConfirm, currentUserId }: { canCon
                 <thead>
                   <tr className="bg-primary-light">
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã đơn</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Chỉ định</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Loại cây</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tuần pha</th>
+                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tuần thực hiện</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Trạng thái</th>
                     <th className="px-4 py-3 font-bold text-base"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => (
+                  {orders.map((o) => {
+                    const { start, end } = getExecutionWeek(new Date(o.weekStart));
+                    return (
                     <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                       <td className="px-4 py-3 font-mono font-medium text-secondary-foreground">{o.code}</td>
-                      <td className="px-4 py-3 font-mono text-info-foreground">
-                        {o.instructions.map((i) => i.code).join(", ")}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">
-                        {Array.from(new Set(o.instructions.map((i) => i.plantType.name))).join(", ")}
-                      </td>
                       <td className="px-4 py-3 text-text-secondary">
-                        {format(new Date(o.weekStart), "dd/MM", { locale: vi })} – {format(new Date(o.weekEnd), "dd/MM/yyyy", { locale: vi })}
+                        {format(start, "dd/MM", { locale: vi })} – {format(end, "dd/MM/yyyy", { locale: vi })}
                       </td>
                       <td className="px-4 py-3">
                         <Badge className={o.confirmedAt ? "bg-info-light text-info-foreground" : "bg-warning-light text-warning-foreground"}>
@@ -139,7 +132,8 @@ export default function MediumOrdersList({ canConfirm, currentUserId }: { canCon
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -76,6 +76,18 @@ export function getOrderWeekRange(instructionWeekStart: Date): { weekStart: Date
   return { weekStart, weekEnd, days };
 }
 
+// Tuần THỰC HIỆN (Thứ 2 - Chủ nhật) mà đơn phục vụ, suy ngược từ MediumOrder.weekStart (Thứ 6 tuần
+// TẠO, +3 ngày = Thứ 2 tuần thực hiện — xem getOrderWeekRange). Dùng để hiển thị tóm tắt "đơn của tuần
+// nào" cho người dùng — khác weekStart/weekEnd lưu trong DB (Thứ 6 - Thứ 6, chỉ để sinh đủ 8 dòng
+// MediumOrderDay pha từ thứ 6 tuần trước), tránh nhầm vì span 2 tuần dương lịch khác nhau. Đơn gửi cho
+// NV môi trường từ đúng Thứ 7 (getMediumOrderSendAt) của tuần TẠO, Kho mô bắt đầu nhận bàn giao từ Thứ 2
+// tuần thực hiện này.
+export function getExecutionWeek(orderWeekStart: Date): { start: Date; end: Date } {
+  const start = addDays(startOfDay(orderWeekStart), 3);
+  const end = addDays(start, 6);
+  return { start, end };
+}
+
 export type MediumOrderDayLike = {
   handedOverAt: Date | string | null;
   confirmedAt: Date | string | null;

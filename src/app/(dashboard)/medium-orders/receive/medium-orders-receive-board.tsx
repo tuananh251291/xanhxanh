@@ -7,7 +7,7 @@ import { FlaskConical, Loader2, Search } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { isMediumOrderReceived, type MediumOrderDayLike } from "@/lib/medium-orders";
+import { isMediumOrderReceived, getExecutionWeek, type MediumOrderDayLike } from "@/lib/medium-orders";
 
 type MediumOrder = {
   id: string;
@@ -15,7 +15,6 @@ type MediumOrder = {
   weekStart: string;
   weekEnd: string;
   days: MediumOrderDayLike[];
-  instructions: { code: string; plantType: { name: string } }[];
 };
 
 function OrderTable({ title, orders, emptyLabel }: { title: string; orders: MediumOrder[]; emptyLabel: string }) {
@@ -36,9 +35,7 @@ function OrderTable({ title, orders, emptyLabel }: { title: string; orders: Medi
               <thead>
                 <tr className="bg-primary-light">
                   <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã đơn</th>
-                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Chỉ định</th>
-                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Loại cây</th>
-                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tuần pha</th>
+                  <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tuần thực hiện</th>
                   <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tiến độ</th>
                   <th className="px-4 py-3 font-bold text-base"></th>
                 </tr>
@@ -46,17 +43,12 @@ function OrderTable({ title, orders, emptyLabel }: { title: string; orders: Medi
               <tbody>
                 {orders.map((o) => {
                   const confirmedDays = o.days.filter((d) => d.confirmedAt).length;
+                  const { start, end } = getExecutionWeek(new Date(o.weekStart));
                   return (
                     <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                       <td className="px-4 py-3 font-mono font-medium text-secondary-foreground">{o.code}</td>
-                      <td className="px-4 py-3 font-mono text-info-foreground">
-                        {o.instructions.map((i) => i.code).join(", ")}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">
-                        {Array.from(new Set(o.instructions.map((i) => i.plantType.name))).join(", ")}
-                      </td>
                       <td className="px-4 py-3 text-text-secondary">
-                        {format(new Date(o.weekStart), "dd/MM", { locale: vi })} – {format(new Date(o.weekEnd), "dd/MM/yyyy", { locale: vi })}
+                        {format(start, "dd/MM", { locale: vi })} – {format(end, "dd/MM/yyyy", { locale: vi })}
                       </td>
                       <td className="px-4 py-3 text-text-secondary">{confirmedDays}/{o.days.length} ngày đã nhận</td>
                       <td className="px-4 py-3">
