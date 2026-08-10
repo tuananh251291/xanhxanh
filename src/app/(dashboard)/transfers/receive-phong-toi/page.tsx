@@ -7,6 +7,7 @@ import ReceivePhongToiBoard from "./receive-phong-toi-board";
 import ReceiveDoLaneBoard from "./receive-do-lane-board";
 import ReceiveSurplusBoard from "./receive-surplus-board";
 import CheckHandoverStatusDialog from "./check-handover-status-dialog";
+import CheckSurplusStatusDialog from "./check-surplus-status-dialog";
 
 export default async function ReceivePhongToiPage() {
   const session = await auth();
@@ -36,7 +37,10 @@ export default async function ReceivePhongToiPage() {
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <PackageCheck className="w-6 h-6 text-info-foreground" /> Nhận bàn giao từ kho tối
         </h1>
-        <CheckHandoverStatusDialog />
+        <div className="flex flex-wrap gap-2">
+          <CheckHandoverStatusDialog />
+          <CheckSurplusStatusDialog />
+        </div>
       </div>
 
       <div className="space-y-3">
