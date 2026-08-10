@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck, Loader2, CheckCircle2, Calendar as CalendarIcon } from "lucide-react";
-import { format, parse } from "date-fns";
+import { format, parse, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
 
@@ -34,6 +34,12 @@ export default function CheckHandoverStatusDialog() {
   }, []);
 
   useEffect(() => { if (open) load(date); }, [open, date, load]);
+
+  // Trong lúc gõ tay từng chữ số vào ô ngày ẩn (sr-only), trình duyệt trả về value="" cho tới khi đủ cả
+  // 3 phần ngày/tháng/năm hợp lệ — parse("", ...) ra Invalid Date, format() sẽ NÉM LỖI (RangeError) làm
+  // sập cả dialog nếu không chặn ở đây. Giữ nguyên chữ hiển thị lần cuối hợp lệ cho tới khi gõ xong.
+  const parsedDate = date ? parse(date, "yyyy-MM-dd", new Date()) : null;
+  const dateLabel = parsedDate && isValid(parsedDate) ? format(parsedDate, "dd/MM/yyyy", { locale: vi }) : "Chọn ngày";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -63,7 +69,7 @@ export default function CheckHandoverStatusDialog() {
               }}
               className="w-48 h-9 md:h-8 px-2.5 flex items-center justify-between gap-2 rounded-lg border border-input bg-transparent text-sm hover:bg-primary-light transition-colors"
             >
-              <span className="text-foreground">{format(parse(date, "yyyy-MM-dd", new Date()), "dd/MM/yyyy", { locale: vi })}</span>
+              <span className="text-foreground">{dateLabel}</span>
               <CalendarIcon className="w-4 h-4 text-text-muted shrink-0" />
             </button>
             <Input
@@ -71,7 +77,9 @@ export default function CheckHandoverStatusDialog() {
               type="date"
               value={date}
               max={format(new Date(), "yyyy-MM-dd")}
-              onChange={(e) => setDate(e.target.value)}
+              // Chỉ cập nhật state khi đã gõ/chọn xong đủ 1 ngày HỢP LỆ — bỏ qua các bước gõ dở dang
+              // (value="" khi chưa đủ ngày/tháng/năm), tránh set state kiểu dữ liệu rác.
+              onChange={(e) => { if (e.target.value) setDate(e.target.value); }}
               tabIndex={-1}
               className="sr-only"
             />
