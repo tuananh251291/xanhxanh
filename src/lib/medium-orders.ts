@@ -124,8 +124,9 @@ export function netBagsNeeded(stageCode: string, quantity: number, surplusQuanti
   return Math.max(0, quantityToBags(stageCode, quantity) - surplusQuantity);
 }
 
-// Kho mô chỉ được nhập số lượng môi trường dư đúng Thứ 2 (chặn cứng theo yêu cầu nghiệp vụ — Thứ 2 là
-// ngày đầu tuần thực hiện, ngay sau khi NV môi trường bàn giao xong tuần trước). getDay(): 0=CN, 1=T2.
+// Kho mô chỉ được nhập số lượng môi trường dư vào Thứ 2 hoặc Thứ 3 (chặn cứng theo yêu cầu nghiệp vụ —
+// đầu tuần thực hiện, ngay sau khi NV môi trường bàn giao xong tuần trước). getDay(): 0=CN, 1=T2, 2=T3.
 export function isMediumSurplusEntryDay(date: Date = new Date()): boolean {
-  return date.getDay() === 1;
+  const day = date.getDay();
+  return day === 1 || day === 2;
 }

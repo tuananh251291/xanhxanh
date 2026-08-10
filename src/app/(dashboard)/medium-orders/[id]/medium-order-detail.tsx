@@ -29,6 +29,7 @@ type Order = {
   weekStart: string;
   weekEnd: string;
   confirmedAt: string | null;
+  surplusRecordedAt: string | null;
   instructions: { code: string; plantType: { name: string } }[];
   items: OrderItem[];
   days: OrderDay[];
@@ -52,6 +53,7 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
   const [savingDayId, setSavingDayId] = useState<string | null>(null);
   const [surplusDrafts, setSurplusDrafts] = useState<Record<string, string>>({});
   const [savingSurplusItemId, setSavingSurplusItemId] = useState<string | null>(null);
+  const [finishingSurplus, setFinishingSurplus] = useState(false);
 
   const isMoiTruong = role === "MOI_TRUONG";
   const isKhoMo = role === "KHO_MO";
@@ -135,12 +137,29 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
     }
   };
 
+  const finishSurplusEntry = async () => {
+    setFinishingSurplus(true);
+    try {
+      const res = await fetch(`/api/medium-orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finishSurplusEntry" }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã hoàn thành nhập môi trường dư");
+      load();
+    } finally {
+      setFinishingSurplus(false);
+    }
+  };
+
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   if (!order) return <p className="text-sm text-text-muted text-center py-12">Không tìm thấy đơn</p>;
 
-  // Kho mô chỉ nhập được môi trường dư cho đúng đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) và
-  // đúng Thứ 2 — khớp check server-side ở PATCH /api/medium-orders/[id] action=recordSurplus.
-  const canRecordSurplus = isKhoMo && isMediumSurplusEntryDay() && isMediumOrderInProgress(order);
+  // Kho mô chỉ nhập được môi trường dư cho đúng đơn "đang thực hiện" (đã xác nhận, chưa kết thúc), vào
+  // Thứ 2 hoặc Thứ 3, và chỉ khi CHƯA bấm "Hoàn thành" — khớp check server-side ở PATCH
+  // /api/medium-orders/[id] (action=recordSurplus/finishSurplusEntry).
+  const canRecordSurplus = isKhoMo && isMediumSurplusEntryDay() && isMediumOrderInProgress(order) && !order.surplusRecordedAt;
 
   const totals = order.days.reduce(
     (acc, d) => ({ m05: acc.m05 + d.m05, t01: acc.t01 + d.t01, t05: acc.t05 + d.t05 }),
@@ -161,14 +180,24 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-bold text-primary-strong">Quy cách cần pha</CardTitle>
-          {isKhoMo && !canRecordSurplus && (
-            <p className="text-xs text-text-muted">
-              {isMediumSurplusEntryDay()
-                ? "Đơn chưa được NV môi trường xác nhận hoặc đã kết thúc — chưa nhập được môi trường dư."
-                : "Chỉ nhập được môi trường dư vào đúng Thứ 2."}
-            </p>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base font-bold text-primary-strong">Quy cách cần pha</CardTitle>
+            {isKhoMo && !canRecordSurplus && (
+              <p className="text-xs text-text-muted mt-1">
+                {order.surplusRecordedAt
+                  ? "Đã hoàn thành nhập môi trường dư tuần này."
+                  : isMediumSurplusEntryDay()
+                    ? "Đơn chưa được NV môi trường xác nhận hoặc đã kết thúc — chưa nhập được môi trường dư."
+                    : "Chỉ nhập được môi trường dư vào Thứ 2 hoặc Thứ 3."}
+              </p>
+            )}
+          </div>
+          {canRecordSurplus && (
+            <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover shrink-0" disabled={finishingSurplus} onClick={finishSurplusEntry}>
+              {finishingSurplus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
+              {!finishingSurplus && "Hoàn thành nhập môi trường dư"}
+            </Button>
           )}
         </CardHeader>
         <CardContent className="p-0">

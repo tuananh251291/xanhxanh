@@ -1169,6 +1169,12 @@ model MediumOrder {
   // tải trang" giống mọi việc "tự động" khác trong app này, không có cron thật).
   sentAt DateTime?
 
+  // Kho mô bấm "Hoàn thành nhập môi trường dư" (đúng Thứ 2 hoặc Thứ 3, xem isMediumSurplusEntryDay) —
+  // null = còn cần nhập, có giá trị = xong, KHÔNG sửa surplusQuantity từng dòng được nữa. Dùng để việc
+  // "Nhập môi trường dư" biến mất khỏi danh sách công việc Kho mô ngay khi xong (VD xong Thứ 2 thì Thứ 3
+  // không hiện lại nữa), xem getKhoMoDailyStats ở src/app/(dashboard)/dashboard/page.tsx.
+  surplusRecordedAt DateTime?
+
   items MediumOrderItem[]
   days  MediumOrderDay[]
 

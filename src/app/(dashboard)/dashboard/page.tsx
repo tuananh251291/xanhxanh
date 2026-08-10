@@ -14,7 +14,7 @@ import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addD
 import { vi } from "date-fns/locale";
 import TodayChecklist from "@/components/shared/today-checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
-import { isMediumOrderInProgress } from "@/lib/medium-orders";
+import { isMediumOrderInProgress, isMediumSurplusEntryDay } from "@/lib/medium-orders";
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
@@ -284,7 +284,23 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null) {
   const receiveDone = transfersToday.filter((t) => t.status === "CONFIRMED").length;
   const receivePercent = receiveTotal === 0 ? 100 : Math.round((receiveDone / receiveTotal) * 100);
 
-  return { receiveDone, receiveTotal, receivePercent };
+  // Nhập môi trường dư: chỉ hiện việc này đúng Thứ 2/Thứ 3 (xem isMediumSurplusEntryDay), và chỉ khi có
+  // đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) của đúng kho này còn CHƯA bấm "Hoàn thành"
+  // (surplusRecordedAt null) — biến mất khỏi cả 2 ngày ngay khi đã hoàn thành, không đợi hết Thứ 3.
+  let mediumSurplusOrderId: string | null = null;
+  if (isMediumSurplusEntryDay()) {
+    const candidateOrders = await prisma.mediumOrder.findMany({
+      where: {
+        confirmedAt: { not: null },
+        surplusRecordedAt: null,
+        ...(workplaceWarehouseId ? { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } : {}),
+      },
+      include: { days: { select: { handedOverAt: true, confirmedAt: true } } },
+    });
+    mediumSurplusOrderId = candidateOrders.find((o) => isMediumOrderInProgress(o))?.id ?? null;
+  }
+
+  return { receiveDone, receiveTotal, receivePercent, mediumSurplusOrderId };
 }
 
 // Đơn "đang xử lý" của NV môi trường = đơn do chính họ xác nhận, chưa kết thúc (xem
@@ -800,6 +816,16 @@ function KhoMoTaskDashboard({
             percent={dailyStats.receivePercent}
             countLabel={`${dailyStats.receiveDone}/${dailyStats.receiveTotal} phiếu`}
           />
+          {dailyStats.mediumSurplusOrderId && (
+            <WeeklyTaskRow
+              href={`/medium-orders/${dailyStats.mediumSurplusOrderId}`}
+              icon={FlaskConical}
+              title="2. Nhập môi trường dư"
+              deadline="Nhập số túi môi trường dư còn lại từ tuần trước (chỉ Thứ 2, Thứ 3)"
+              percent={0}
+              countLabel="Chưa nhập"
+            />
+          )}
         </CardContent>
       </Card>
 

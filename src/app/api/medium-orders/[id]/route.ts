@@ -28,14 +28,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 const confirmSchema = z.object({ action: z.literal("confirm") });
 // Kho mô nhập số túi môi trường dư còn lại từ tuần trước (đếm thực tế trên kệ) — trừ vào đúng dòng
-// (stageCode + mediumType) của đơn đang thực hiện, chỉ cho phép đúng Thứ 2 (chặn cứng theo yêu cầu
-// nghiệp vụ, xem isMediumSurplusEntryDay).
+// (stageCode + mediumType) của đơn đang thực hiện, chỉ cho phép đúng Thứ 2/Thứ 3 (chặn cứng theo yêu
+// cầu nghiệp vụ, xem isMediumSurplusEntryDay), và chỉ khi CHƯA bấm "Hoàn thành" (surplusRecordedAt null).
 const recordSurplusSchema = z.object({
   action: z.literal("recordSurplus"),
   itemId: z.string().min(1),
   surplusQuantity: z.number().int().min(0),
 });
-const patchSchema = z.discriminatedUnion("action", [confirmSchema, recordSurplusSchema]);
+// Kho mô bấm "Hoàn thành nhập môi trường dư" sau khi đã nhập xong các dòng cần — đánh dấu
+// surplusRecordedAt, khoá không sửa surplusQuantity được nữa và làm việc này biến mất khỏi danh sách
+// công việc cần làm (xem getKhoMoDailyStats).
+const finishSurplusEntrySchema = z.object({ action: z.literal("finishSurplusEntry") });
+const patchSchema = z.discriminatedUnion("action", [confirmSchema, recordSurplusSchema, finishSurplusEntrySchema]);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -47,13 +51,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
 
-  if (parsed.data.action === "recordSurplus") {
-    const { itemId, surplusQuantity } = parsed.data;
+  if (parsed.data.action === "recordSurplus" || parsed.data.action === "finishSurplusEntry") {
     if (session.user.role !== "KHO_MO") {
       return NextResponse.json({ message: "Chỉ Kho mô mới nhập được môi trường dư" }, { status: 403 });
     }
     if (!isMediumSurplusEntryDay()) {
-      return NextResponse.json({ message: "Chỉ nhập được môi trường dư vào đúng Thứ 2" }, { status: 400 });
+      return NextResponse.json({ message: "Chỉ nhập được môi trường dư vào Thứ 2 hoặc Thứ 3" }, { status: 400 });
     }
     const order = await prisma.mediumOrder.findUnique({
       where: { id },
@@ -65,6 +68,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!isMediumOrderInProgress(order)) {
       return NextResponse.json({ message: "Chỉ nhập được môi trường dư cho đơn đang thực hiện" }, { status: 400 });
     }
+    if (order.surplusRecordedAt) {
+      return NextResponse.json({ message: "Đã hoàn thành nhập môi trường dư tuần này" }, { status: 400 });
+    }
+
+    if (parsed.data.action === "finishSurplusEntry") {
+      const updated = await prisma.mediumOrder.update({ where: { id }, data: { surplusRecordedAt: new Date() } });
+      return NextResponse.json(updated);
+    }
+
+    const { itemId, surplusQuantity } = parsed.data;
     const item = order.items.find((i) => i.id === itemId);
     if (!item) return NextResponse.json({ message: "Không tìm thấy dòng này trong đơn" }, { status: 404 });
 
