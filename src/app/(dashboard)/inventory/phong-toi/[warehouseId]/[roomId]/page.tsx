@@ -8,6 +8,7 @@ import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole } from "@/types";
 import PhongToiLotsTable from "./phong-toi-lots-table";
+import ContaminationEntriesTable from "./contamination-entries-table";
 
 export default async function PhongToiRoomDetailPage({ params }: { params: Promise<{ warehouseId: string; roomId: string }> }) {
   const session = await auth();
@@ -36,6 +37,20 @@ export default async function PhongToiRoomDetailPage({ params }: { params: Promi
   if (!room || room.warehouseId !== warehouseId || (room.type !== "PHONG_TOI" && room.type !== "PHONG_NHIEM")) notFound();
   const isPhongNhiem = room.type === "PHONG_NHIEM";
 
+  // Phòng nhiễm: liệt kê TỪNG LẦN báo nhiễm (ContaminationRoomEntry), mới nhất lên đầu — thay vì gộp
+  // theo (mã cây, quy cách) như trước, vì Lot.enteredAt của dòng gộp chỉ ghi ngày TẠO lần đầu, không cập
+  // nhật lại khi có nhiễm mới cộng thêm, khiến hoạt động hôm nay dễ bị chìm xuống cuối danh sách.
+  // ContaminationRoomEntry không có quan hệ Prisma trực tiếp tới Lot (chỉ lưu contaminationLotId dạng
+  // chuỗi) nên phải tự map qua room.lots đã truy vấn ở trên.
+  const lotById = new Map(room.lots.map((l) => [l.id, l]));
+  const entries = isPhongNhiem && room.lots.length > 0
+    ? await prisma.contaminationRoomEntry.findMany({
+        where: { contaminationLotId: { in: room.lots.map((l) => l.id) } },
+        include: { reportedBy: { select: { code: true, name: true } } },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -52,17 +67,44 @@ export default async function PhongToiRoomDetailPage({ params }: { params: Promi
         </div>
       </div>
 
-      {room.lots.length === 0 ? (
+      {isPhongNhiem ? (
+        entries.length === 0 ? (
+          <Card><CardContent className="py-16 text-center text-text-muted">
+            <Moon className="w-10 h-10 mx-auto mb-3 text-text-muted" />
+            <p>Chưa có lần báo nhiễm nào</p>
+          </CardContent></Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <ContaminationEntriesTable
+                entries={entries.map((e) => {
+                  const lot = lotById.get(e.contaminationLotId)!;
+                  return {
+                    id: e.id,
+                    createdAt: e.createdAt.toISOString(),
+                    quantity: e.quantity,
+                    reason: e.reason,
+                    sourceLotCode: e.sourceLotCode,
+                    reportedBy: e.reportedBy,
+                    plantTypeCode: lot.plantType.code,
+                    plantTypeName: lot.plantType.name,
+                    stageCode: lot.stageCode,
+                  };
+                })}
+              />
+            </CardContent>
+          </Card>
+        )
+      ) : room.lots.length === 0 ? (
         <Card><CardContent className="py-16 text-center text-text-muted">
           <Moon className="w-10 h-10 mx-auto mb-3 text-text-muted" />
-          <p>{isPhongNhiem ? "Không có lô nào trong phòng nhiễm" : "Không có lô nào trong phòng tối của nhân viên này"}</p>
+          <p>Không có lô nào trong phòng tối của nhân viên này</p>
         </CardContent></Card>
       ) : (
         <Card>
           <CardContent className="p-0">
             <PhongToiLotsTable
               lots={room.lots.map((lot) => ({ ...lot, enteredAt: lot.enteredAt.toISOString() }))}
-              isPhongNhiem={isPhongNhiem}
               canEdit={isAdminRole(role)}
             />
           </CardContent>
