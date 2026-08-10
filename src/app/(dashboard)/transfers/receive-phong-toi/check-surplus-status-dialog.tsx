@@ -34,7 +34,7 @@ export default function CheckSurplusStatusDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button type="button" variant="outline" />}>
+      <DialogTrigger render={<Button type="button" className="bg-primary hover:bg-primary-hover" />}>
         <PackageSearch className="w-4 h-4 mr-2" /> Kiểm tra tình trạng MM dư
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
