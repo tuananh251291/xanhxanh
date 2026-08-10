@@ -381,10 +381,30 @@ export async function planSurplusPlacement(
       remainingBags -= placeBags;
     }
 
+    // Phần lẻ còn lại KHÔNG đủ 1 túi (VD 636 cụm = 127 túi + 1 cụm lẻ) — làm tròn xuống ở vòng trên luôn
+    // ra 0 cho phần này ở MỌI kệ, nên trước đây cứ còn dư dù chỉ 1 cụm là toàn bộ lô bị chặn báo lỗi, dù
+    // kệ đích vẫn còn thừa chỗ. Số lẻ này có THẬT (không tách vật lý được nữa vì đã hết nguyên túi để
+    // chia), nên cho phép gộp thẳng vào kệ ĐÃ xếp phần chính của đúng lô này (không làm tròn) — chỉ tìm
+    // kệ khác trong pool nếu kệ đó vừa hết chỗ đúng khít bởi phần chính.
     if (remainingBags > 0) {
-      throw new ShelfAssignError(
-        `Không đủ chỗ ở Kho quá hạn (Kho mẫu mẹ chung) cho lô MM dư ${lot.code} — SUPER_ADMIN cần gắn thêm kệ chung vào Kho quá hạn`
-      );
+      const capLeftFor = (s: (typeof pool)[number]) => (s.capacity ?? Infinity) - (usedById.get(s.id) ?? 0);
+      const lastPlacement = [...placements].reverse().find((p) => p.lotId === lotId);
+      let targetShelf = lastPlacement ? pool.find((s) => s.id === lastPlacement.shelfId) : undefined;
+      if (!targetShelf || capLeftFor(targetShelf) < remainingBags) {
+        targetShelf = pool.find((s) => capLeftFor(s) >= remainingBags);
+      }
+      if (!targetShelf) {
+        throw new ShelfAssignError(
+          `Không đủ chỗ ở Kho quá hạn (Kho mẫu mẹ chung) cho lô MM dư ${lot.code} — SUPER_ADMIN cần gắn thêm kệ chung vào Kho quá hạn`
+        );
+      }
+      if (lastPlacement && lastPlacement.shelfId === targetShelf.id) {
+        lastPlacement.quantity += remainingBags;
+      } else {
+        placements.push({ lotId, lot, shelfId: targetShelf.id, shelfCode: targetShelf.code, quantity: remainingBags, pool: "SHARED", rotationOrder: targetShelf.rotationGroup?.rotationOrder ?? null });
+      }
+      usedById.set(targetShelf.id, (usedById.get(targetShelf.id) ?? 0) + remainingBags);
+      remainingBags = 0;
     }
   }
 
