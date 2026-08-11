@@ -120,50 +120,32 @@ export async function computeAverageRatios(
   return { avgRatioMM: avg(ratiosMM), avgRatioTP: avg(ratiosTP) };
 }
 
-// Tồn M05 hiện có (ACTIVE, đã xếp lên giàn Phòng mẫu mẹ) của đúng mã cây + phạm vi đang lọc — dùng làm
-// "vốn" nhân với hệ số trung bình ở Bước B. STAFF: chỉ giàn đã chia (Shelf.assignedStaffId) cho đúng NV
-// đó. WAREHOUSE: mọi giàn (đã chia + chung) thuộc đúng kho. ALL: cộng dồn mọi kho sản xuất.
-export async function getCurrentMotherStock(plantTypeId: string, scope: CapacityScope): Promise<number> {
-  const result = await prisma.lot.aggregate({
-    where: {
-      status: "ACTIVE",
-      stage: "MAU_ME",
-      stageCode: "M05",
-      plantTypeId,
-      shelfId: { not: null },
-      shelf: {
-        room: { type: "PHONG_MAU_ME" },
-        ...(scope.kind === "STAFF" ? { assignedStaffId: scope.staffId } : {}),
-        ...(scope.kind === "WAREHOUSE" ? { warehouseId: scope.warehouseId } : {}),
-      },
-    },
-    _sum: { quantity: true },
-  });
-  return result._sum.quantity ?? 0;
-}
-
 export type CapacityForecast = { motherForecast: number; finishedForecast: number };
 
-// Bước B — hệ số trung bình (Bước A) + tồn mẫu mẹ hiện có, dùng làm gốc cho dự báo nhiều kỳ (xem
-// forecastSeries) — tách riêng khỏi vòng lặp từng kỳ vì cả 2 giá trị này không đổi giữa các kỳ tương lai.
+// Bước B — hệ số trung bình (Bước A) + "vốn" mẫu mẹ ban đầu cho dự báo cộng dồn nhiều kỳ. Vốn ban đầu
+// LẤY CHÍNH sản lượng mẫu mẹ THỰC TẾ đã tạo ra trong kỳ hiện tại (currentBucket, tính cả dự phòng —
+// giống hệt đường xanh, xem computeActualSeries) chứ KHÔNG dùng tồn kho M05 trên giàn: tồn kho là 1 con
+// số tuyệt đối tại 1 thời điểm, lệch hoàn toàn quy mô với sản lượng theo kỳ (tuần/tháng) nên nhân vào sẽ
+// tạo bước nhảy phi lý ở kỳ dự báo đầu tiên thay vì nối liền mượt với điểm cuối đường xanh.
 export async function getForecastBasis(
   plantTypeId: string,
   prevBuckets: WeekBucket[],
+  currentBucket: WeekBucket,
   scope: CapacityScope
-): Promise<{ avgRatioMM: number; avgRatioTP: number; currentStock: number }> {
-  const [{ avgRatioMM, avgRatioTP }, currentStock] = await Promise.all([
+): Promise<{ avgRatioMM: number; avgRatioTP: number; baseMother: number }> {
+  const [{ avgRatioMM, avgRatioTP }, [currentActual]] = await Promise.all([
     computeAverageRatios(plantTypeId, prevBuckets, scope),
-    getCurrentMotherStock(plantTypeId, scope),
+    computeActualSeries(plantTypeId, [currentBucket], scope),
   ]);
-  return { avgRatioMM, avgRatioTP, currentStock };
+  return { avgRatioMM, avgRatioTP, baseMother: currentActual?.motherOutput ?? 0 };
 }
 
-// Dự báo kỳ tương lai thứ `stepsAhead` (1 = kỳ kế tiếp, 2 = kỳ sau nữa...) — CỘNG DỒN: mẫu mẹ dự kiến
-// của 1 kỳ trở thành "vốn" mẫu mẹ cho kỳ sau, nhân tiếp với hệ số nhân MM (mẫu mẹ sinh ra lại được đem
-// cấy tiếp) — motherForecast = currentStock × avgRatioMM^stepsAhead. Ra rễ TP luôn tính từ ĐÚNG mẫu mẹ
-// dự kiến của kỳ đó (không cộng dồn riêng) — finishedForecast = motherForecast × avgRatioTP.
-export function forecastAtStep(basis: { avgRatioMM: number; avgRatioTP: number; currentStock: number }, stepsAhead: number): CapacityForecast {
-  const motherForecast = basis.currentStock * Math.pow(basis.avgRatioMM, stepsAhead);
+// Dự báo kỳ tương lai thứ `stepsAhead` (1 = kỳ kế tiếp, 2 = kỳ sau nữa...) — CỘNG DỒN từ baseMother: mẫu
+// mẹ dự kiến của 1 kỳ trở thành "vốn" mẫu mẹ cho kỳ sau, nhân tiếp với hệ số nhân MM (mẫu mẹ sinh ra lại
+// được đem cấy tiếp) — motherForecast = baseMother × avgRatioMM^stepsAhead. Ra rễ TP luôn tính từ ĐÚNG
+// mẫu mẹ dự kiến của kỳ đó (không cộng dồn riêng) — finishedForecast = motherForecast × avgRatioTP.
+export function forecastAtStep(basis: { avgRatioMM: number; avgRatioTP: number; baseMother: number }, stepsAhead: number): CapacityForecast {
+  const motherForecast = basis.baseMother * Math.pow(basis.avgRatioMM, stepsAhead);
   const finishedForecast = motherForecast * basis.avgRatioTP;
   return { motherForecast, finishedForecast };
 }

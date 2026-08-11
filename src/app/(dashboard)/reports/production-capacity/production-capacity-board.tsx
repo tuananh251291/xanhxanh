@@ -105,9 +105,9 @@ export default function ProductionCapacityBoard() {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <p className="text-sm text-text-secondary max-w-md">
             Đường xanh: sản lượng thực tế tới kỳ hiện tại. Đường đỏ: dự kiến, nối liền từ đường xanh và
-            kéo dài tới hết &quot;Đến&quot; đã chọn (chọn &quot;Đến&quot; ở tương lai để xem xa hơn) — tính
-            từ tồn mẫu mẹ hiện có × hệ số nhân MM/ra rễ trung bình 3 kỳ gần nhất (chỉ định thường, không
-            tính dự phòng), CỘNG DỒN qua từng kỳ (mẫu mẹ dự kiến của 1 kỳ thành vốn cho kỳ sau).
+            kéo dài tới hết &quot;Đến&quot; đã chọn (chọn &quot;Đến&quot; ở tương lai để xem xa hơn) — bắt
+            đầu từ chính sản lượng mẫu mẹ thực tế kỳ hiện tại, CỘNG DỒN qua từng kỳ (nhân với hệ số nhân
+            MM/ra rễ trung bình 3 kỳ gần nhất, chỉ định thường không tính dự phòng).
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
