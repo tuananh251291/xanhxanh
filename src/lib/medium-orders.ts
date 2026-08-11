@@ -1,4 +1,20 @@
-import { addDays, startOfDay } from "date-fns";
+import { addDays } from "date-fns";
+
+// Việt Nam luôn lệch UTC đúng 7 tiếng (không có giờ mùa hè) — quy đổi 1 mốc giờ bất kỳ về "nửa đêm giờ
+// VN" của đúng ngày đó, biểu diễn dưới dạng mốc UTC (CÙNG quy ước new Date("yyyy-MM-dd") mà
+// PlantingInstruction.weekStart đã lưu — xem toStoredWeekStart ở src/lib/week-rotation.ts). KHÔNG dùng
+// startOfDay()/getDay() (timezone của tiến trình Node) để suy ra ngày lịch/thứ trong tuần — từng gây lệch
+// tới 7 tiếng khi so sánh ngày client gửi lên (dựng theo giờ trình duyệt, thường là giờ VN) với dữ liệu
+// đã lưu, xem cùng bug đã sửa ở POST /api/daily-records.
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+export function toVnCalendarDate(d: Date): Date {
+  const vnShifted = new Date(d.getTime() + VN_OFFSET_MS);
+  return new Date(Date.UTC(vnShifted.getUTCFullYear(), vnShifted.getUTCMonth(), vnShifted.getUTCDate()));
+}
+
+export function isSameVnCalendarDay(a: Date, b: Date): boolean {
+  return toVnCalendarDate(a).getTime() === toVnCalendarDate(b).getTime();
+}
 
 type InstructionItemForOrder = {
   stageCode: string | null;
@@ -70,7 +86,7 @@ export function aggregateMediumOrderItems(perInstructionNeeds: MediumOrderItemIn
 // trong tuần này (miễn cùng nhắm tới 1 tuần thực hiện) gộp đúng vào 1 đơn: weekStart = Thứ 6 của tuần
 // TẠO (3 ngày trước tuần thực hiện), weekEnd = Thứ 6 của tuần thực hiện (weekStart + 7 ngày).
 export function getOrderWeekRange(instructionWeekStart: Date): { weekStart: Date; weekEnd: Date; days: Date[] } {
-  const weekStart = addDays(startOfDay(instructionWeekStart), -3);
+  const weekStart = addDays(toVnCalendarDate(instructionWeekStart), -3);
   const weekEnd = addDays(weekStart, 7);
   const days = Array.from({ length: 8 }, (_, i) => addDays(weekStart, i));
   return { weekStart, weekEnd, days };
@@ -83,7 +99,7 @@ export function getOrderWeekRange(instructionWeekStart: Date): { weekStart: Date
 // NV môi trường từ đúng Thứ 7 (getMediumOrderSendAt) của tuần TẠO, Kho mô bắt đầu nhận bàn giao từ Thứ 2
 // tuần thực hiện này.
 export function getExecutionWeek(orderWeekStart: Date): { start: Date; end: Date } {
-  const start = addDays(startOfDay(orderWeekStart), 3);
+  const start = addDays(toVnCalendarDate(orderWeekStart), 3);
   const end = addDays(start, 6);
   return { start, end };
 }
@@ -137,8 +153,10 @@ export function netBagsNeeded(stageCode: string, quantity: number, surplusQuanti
 }
 
 // Kho mô chỉ được nhập số lượng môi trường dư vào Thứ 2 hoặc Thứ 3 (chặn cứng theo yêu cầu nghiệp vụ —
-// đầu tuần thực hiện, ngay sau khi NV môi trường bàn giao xong tuần trước). getDay(): 0=CN, 1=T2, 2=T3.
+// đầu tuần thực hiện, ngay sau khi NV môi trường bàn giao xong tuần trước). Tính thứ trong tuần theo
+// đúng lịch VN (toVnCalendarDate), không dùng getDay() trực tiếp (timezone tiến trình Node) — 0=CN,
+// 1=T2, 2=T3 (getUTCDay() trên mốc đã quy đổi).
 export function isMediumSurplusEntryDay(date: Date = new Date()): boolean {
-  const day = date.getDay();
+  const day = toVnCalendarDate(date).getUTCDay();
   return day === 1 || day === 2;
 }

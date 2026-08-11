@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
-import { isSameDay } from "date-fns";
+import { isSameVnCalendarDay } from "@/lib/medium-orders";
+import { isAdminRole } from "@/types";
 import { z } from "zod";
 
 const patchSchema = z.union([
   z.object({ m05: z.number().int().min(0), t01: z.number().int().min(0), t05: z.number().int().min(0) }),
   z.object({ action: z.literal("handover") }),
   z.object({ action: z.literal("confirm") }),
+  z.object({ action: z.literal("undoHandover") }),
 ]);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; dayId: string }> }) {
@@ -36,6 +38,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
+  // Hoàn lại 1 ngày đã bàn giao (VD bấm nhầm/bàn giao sớm quên nhập số) — mở khoá sửa lại số liệu. Chỉ
+  // hoàn lại được khi Kho mô CHƯA xác nhận (confirmedAt null) — coi như chưa có gì "chốt" thật sự. Không
+  // có tác động tồn kho/vật lý nào cần hoàn ngược (khác Transfer Phòng tối) — MediumOrderDay chỉ ghi
+  // nhận số liệu, chỉ cần xoá handedOverAt là NV môi trường sửa lại được (nếu vẫn đúng ngày hôm nay —
+  // xem chặn "chỉ nhập đúng hôm nay" bên dưới, không nới ở đây).
+  if ("action" in parsed.data && parsed.data.action === "undoHandover") {
+    if (!day.handedOverAt) {
+      return NextResponse.json({ message: "Ngày này chưa bàn giao — không có gì để hoàn lại" }, { status: 400 });
+    }
+    if (day.confirmedAt) {
+      return NextResponse.json({ message: "Kho mô đã xác nhận nhận — không thể hoàn lại" }, { status: 400 });
+    }
+    const order = await prisma.mediumOrder.findUnique({ where: { id }, select: { confirmedById: true } });
+    const isOwner = session?.user?.role === "MOI_TRUONG" && order?.confirmedById === session.user.id;
+    const isKhoMo = session?.user?.role === "KHO_MO";
+    if (!isOwner && !isKhoMo && !isAdminRole(session?.user?.role)) {
+      return NextResponse.json({ message: "Không có quyền hoàn lại" }, { status: 403 });
+    }
+    const updated = await prisma.mediumOrderDay.update({ where: { id: dayId }, data: { handedOverAt: null } });
+    return NextResponse.json(updated);
+  }
+
   if (session?.user?.role !== "MOI_TRUONG") {
     return NextResponse.json({ message: "Chỉ NV môi trường mới thao tác được" }, { status: 403 });
   }
@@ -43,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Ngày này đã bàn giao, không thể sửa" }, { status: 400 });
   }
   // Chỉ được nhập số liệu/bàn giao đúng ngày thực tế — tránh nhập bù trước hoặc sửa lại ngày đã qua.
-  if (!isSameDay(day.date, new Date())) {
+  if (!isSameVnCalendarDay(day.date, new Date())) {
     return NextResponse.json({ message: "Chỉ được nhập liệu đúng với ngày hôm nay" }, { status: 400 });
   }
 

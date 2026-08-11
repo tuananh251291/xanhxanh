@@ -6,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Loader2, Send, Check } from "lucide-react";
+import { ArrowLeft, Loader2, Send, Check, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { format, isSameDay } from "date-fns";
+import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { MEDIUM_ORDER_DAY_STATUS_LABELS, type UserRole } from "@/types";
-import { isMediumOrderInProgress, isMediumSurplusEntryDay, quantityToBags, netBagsNeeded, getExecutionWeek } from "@/lib/medium-orders";
+import { MEDIUM_ORDER_DAY_STATUS_LABELS, isAdminRole, type UserRole } from "@/types";
+import { isMediumOrderInProgress, isMediumSurplusEntryDay, quantityToBags, netBagsNeeded, getExecutionWeek, isSameVnCalendarDay } from "@/lib/medium-orders";
 
 type OrderItem = { id: string; stageCode: string; quantity: number; surplusQuantity: number; mediumType: { code: string; name: string } };
 type OrderDay = {
@@ -98,6 +98,22 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       if (!handoverRes.ok) { toast.error((await handoverRes.json()).message ?? "Có lỗi xảy ra"); return; }
 
       toast.success("Đã bàn giao — chờ Kho mô xác nhận");
+      load();
+    } finally {
+      setSavingDayId(null);
+    }
+  };
+
+  const undoHandover = async (day: OrderDay) => {
+    setSavingDayId(day.id);
+    try {
+      const res = await fetch(`/api/medium-orders/${orderId}/days/${day.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "undoHandover" }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã hoàn lại — có thể nhập/sửa lại số liệu");
       load();
     } finally {
       setSavingDayId(null);
@@ -277,7 +293,13 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base font-bold text-primary-strong">Bảng pha theo ngày</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base font-bold text-primary-strong">Bảng pha theo ngày</CardTitle>
+          <p className="text-xs text-text-muted">
+            Bắt đầu pha từ Thứ 6 tuần trước (ngay khi đơn được gửi) tới hết Thứ 6 của tuần thực hiện —
+            8 ngày, không chỉ gói gọn trong &quot;Tuần thực hiện&quot; ở trên.
+          </p>
+        </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -294,8 +316,12 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
               <tbody>
                 {order.days.map((day) => {
                   const status = dayStatus(day);
-                  const isToday = isSameDay(new Date(day.date), new Date());
+                  const isToday = isSameVnCalendarDay(new Date(day.date), new Date());
                   const editable = isMoiTruong && !day.handedOverAt && isToday;
+                  // Hoàn lại (mở khoá sửa lại) — chỉ khi đã bàn giao nhưng Kho mô CHƯA xác nhận nhận.
+                  // NV môi trường chỉ tự hoàn lại được đúng ngày hôm nay (hoàn ngày khác cũng không sửa
+                  // lại được vì editable còn đòi hỏi isToday) — Kho mô/Admin hoàn lại được mọi ngày.
+                  const canUndo = !!day.handedOverAt && !day.confirmedAt && ((isMoiTruong && isToday) || isKhoMo || isAdminRole(role));
                   const draft = drafts[day.id];
                   return (
                     <tr key={day.id} className="border-b last:border-0 even:bg-primary-light">
@@ -324,9 +350,15 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                           </Button>
                         )}
                         {isKhoMo && day.handedOverAt && !day.confirmedAt && (
-                          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={savingDayId === day.id} onClick={() => confirmDay(day)}>
+                          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover mr-1.5" disabled={savingDayId === day.id} onClick={() => confirmDay(day)}>
                             {savingDayId === day.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
                             {savingDayId !== day.id && "Xác nhận"}
+                          </Button>
+                        )}
+                        {canUndo && (
+                          <Button size="sm" variant="outline" className="h-8" disabled={savingDayId === day.id} onClick={() => undoHandover(day)}>
+                            {savingDayId === day.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5 mr-1.5" />}
+                            {savingDayId !== day.id && "Hoàn lại"}
                           </Button>
                         )}
                       </td>

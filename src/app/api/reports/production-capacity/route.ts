@@ -3,18 +3,20 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
 import { computeActualSeries, forecastNextPeriod, type CapacityScope } from "@/lib/production-capacity";
-import { addWeeks, addMonths, format, isValid } from "date-fns";
+import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 
 const DEFAULT_HISTORY_BUCKETS = 10;
 
-// Trang "Năng suất sản xuất" (Admin) — đường xanh = sản lượng thực tế, mặc định 10 kỳ gần nhất, hoặc
-// đúng quãng NV tự nhập (from/to, làm tròn chẵn tuần/chẵn tháng — xem getWeekBucketsInRange/
-// getMonthBucketsInRange). Đường đỏ = dự báo ĐÚNG 1 kỳ kế tiếp TÍNH TỪ HÔM NAY (không đổi theo quãng
-// xem lịch sử — xem forecastNextPeriod, src/lib/production-capacity.ts). Query params: unit=week|month,
-// plantTypeId (bắt buộc), spec=mother|finished|total, scope=all|warehouse|staff, scopeId (bắt buộc nếu
-// scope khác all), from/to (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, thiếu 1 trong 2 thì
-// bỏ qua, dùng mặc định 10 kỳ gần nhất).
+// Trang "Năng suất sản xuất" (Admin). Trục ngang gồm mọi kỳ từ "from" tới "to" NV tự nhập (làm tròn
+// chẵn tuần/chẵn tháng — getWeekBucketsInRange/getMonthBucketsInRange), hoặc mặc định 10 kỳ gần nhất +
+// 1 kỳ kế tiếp nếu không nhập gì. Đường xanh (Thực tế) phủ mọi kỳ <= kỳ hiện tại THẬT (hôm nay, không
+// phụ thuộc quãng đang xem). Đường đỏ (Dự kiến) phủ mọi kỳ tương lai (> hôm nay) trong quãng đã chọn —
+// dùng CHUNG 1 giá trị dự báo (tồn mẫu mẹ hiện có × hệ số trung bình 3 kỳ trước, không đổi theo từng kỳ
+// tương lai) cho tới hết "to". Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2
+// đường nối liền, không đứt đoạn. Query params: unit=week|month, plantTypeId (bắt buộc),
+// spec=mother|finished|total, scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to
+// (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -39,25 +41,29 @@ export async function GET(req: NextRequest) {
     scope = { kind: "STAFF", staffId: scopeId };
   }
 
-  // Đường xanh (lịch sử hiển thị) — dùng quãng NV tự nhập nếu có đủ from/to hợp lệ, không thì mặc định
-  // 10 kỳ gần nhất tính tới hôm nay.
-  let historyBuckets: WeekBucket[];
+  // Toàn bộ kỳ hiển thị trên trục ngang — có thể vượt quá hôm nay nếu NV chọn "Đến" trong tương lai.
+  let buckets: WeekBucket[];
   if (fromParam && toParam) {
     const from = new Date(fromParam);
     const to = new Date(toParam);
     if (!isValid(from) || !isValid(to)) return NextResponse.json({ message: "Quãng thời gian không hợp lệ" }, { status: 400 });
     const [start, end] = from <= to ? [from, to] : [to, from];
-    historyBuckets = unit === "month" ? getMonthBucketsInRange(start, end) : getWeekBucketsInRange(start, end);
+    buckets = unit === "month" ? getMonthBucketsInRange(start, end) : getWeekBucketsInRange(start, end);
   } else {
-    historyBuckets = unit === "month" ? getMonthBuckets(DEFAULT_HISTORY_BUCKETS) : getWeekBuckets(DEFAULT_HISTORY_BUCKETS);
+    const history = unit === "month" ? getMonthBuckets(DEFAULT_HISTORY_BUCKETS) : getWeekBuckets(DEFAULT_HISTORY_BUCKETS);
+    const last = history[history.length - 1];
+    const nextStart = unit === "month" ? addMonths(last.start, 1) : addWeeks(last.start, 1);
+    const nextEnd = unit === "month" ? endOfMonth(nextStart) : endOfWeek(nextStart, { weekStartsOn: 1 });
+    const nextLabel = format(nextStart, unit === "month" ? "MM/yyyy" : "dd/MM", { locale: vi });
+    buckets = [...history, { start: nextStart, end: nextEnd, label: nextLabel }];
   }
 
-  // Dự báo — LUÔN tính từ kỳ hiện tại thực (hôm nay), không phụ thuộc quãng lịch sử đang xem, nên lấy
-  // riêng 4 kỳ gần nhất (3 kỳ trước + kỳ hiện tại) thay vì dựa vào historyBuckets.
-  const forecastAnchorBuckets = unit === "month" ? getMonthBuckets(4) : getWeekBuckets(4);
-  const currentBucket = forecastAnchorBuckets[forecastAnchorBuckets.length - 1];
-  const prevBuckets = forecastAnchorBuckets.slice(0, 3);
+  // Kỳ hiện tại THẬT (hôm nay) — mốc phân định Thực tế (<=) / Dự kiến (>), không phụ thuộc quãng đang
+  // xem, nên tính riêng — cùng 3 kỳ liền trước để tính hệ số dự báo (xem forecastNextPeriod).
+  const [todayBucket] = unit === "month" ? getMonthBuckets(1) : getWeekBuckets(1);
+  const prevBuckets = (unit === "month" ? getMonthBuckets(4) : getWeekBuckets(4)).slice(0, 3);
 
+  const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const [actualPoints, forecast] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
     forecastNextPeriod(plantTypeId, prevBuckets, scope),
@@ -68,18 +74,22 @@ export async function GET(req: NextRequest) {
     if (spec === "finished") return p.finishedOutput;
     return p.motherOutput + p.finishedOutput;
   };
-  const forecastValue =
-    spec === "mother" ? forecast.motherForecast : spec === "finished" ? forecast.finishedForecast : forecast.motherForecast + forecast.finishedForecast;
+  const forecastValue = Math.round(
+    spec === "mother" ? forecast.motherForecast : spec === "finished" ? forecast.finishedForecast : forecast.motherForecast + forecast.finishedForecast
+  );
 
-  const nextLabel =
-    unit === "month"
-      ? format(addMonths(currentBucket.start, 1), "MM/yyyy", { locale: vi })
-      : format(addWeeks(currentBucket.start, 1), "dd/MM", { locale: vi });
-
-  const data: Record<string, string | number>[] = [
-    ...historyBuckets.map((b, i) => ({ period: b.label, "Thực tế": Math.round(valueFor(actualPoints[i])) })),
-    { period: nextLabel, "Dự kiến": Math.round(forecastValue) },
-  ];
+  const data: Record<string, string | number>[] = buckets.map((b) => {
+    const row: Record<string, string | number> = { period: b.label };
+    if (b.start <= todayBucket.start) {
+      const idx = historyBuckets.findIndex((h) => h.start.getTime() === b.start.getTime());
+      const actualValue = idx !== -1 ? Math.round(valueFor(actualPoints[idx])) : 0;
+      row["Thực tế"] = actualValue;
+      if (b.start.getTime() === todayBucket.start.getTime()) row["Dự kiến"] = actualValue;
+    } else {
+      row["Dự kiến"] = forecastValue;
+    }
+    return row;
+  });
 
   return NextResponse.json({ data });
 }
