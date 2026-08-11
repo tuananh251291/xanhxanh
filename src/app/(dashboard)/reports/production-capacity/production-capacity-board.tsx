@@ -104,10 +104,12 @@ export default function ProductionCapacityBoard() {
       <CardHeader>
         <div className="flex items-start justify-between flex-wrap gap-3">
           <p className="text-sm text-text-secondary max-w-md">
-            Đường xanh: sản lượng thực tế tới kỳ hiện tại. Đường đỏ: dự kiến, nối liền từ đường xanh và
-            kéo dài tới hết &quot;Đến&quot; đã chọn (chọn &quot;Đến&quot; ở tương lai để xem xa hơn) — bắt
-            đầu từ chính sản lượng mẫu mẹ thực tế kỳ hiện tại, CỘNG DỒN qua từng kỳ (nhân với hệ số nhân
-            MM/ra rễ trung bình 3 kỳ gần nhất, chỉ định thường không tính dự phòng).
+            Đường xanh: sản lượng thực tế tới kỳ hiện tại. Đường đỏ: NĂNG LỰC dự kiến (không phải ngoại
+            suy xu hướng quá khứ) — điểm đầu (kỳ hiện tại) nối liền đường xanh để không đứt đoạn trên
+            biểu đồ, từ kỳ kế tiếp trở đi tính từ tồn mẫu mẹ M05 đủ tuổi cấy chuyển (đến hạn xoay vòng hôm
+            nay), CỘNG DỒN qua từng kỳ tới hết &quot;Đến&quot; đã chọn (nhân với hệ số nhân MM/ra rễ trung
+            bình 3 kỳ gần nhất, chỉ định thường không tính dự phòng) — có thể lệch mạnh so với sản lượng
+            thực tế vì là 2 khái niệm khác nhau (năng lực tối đa nếu tận dụng hết tồn đủ tuổi).
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">

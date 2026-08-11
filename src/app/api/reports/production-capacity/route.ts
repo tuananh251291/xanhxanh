@@ -12,13 +12,15 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // chẵn tuần/chẵn tháng — getWeekBucketsInRange/getMonthBucketsInRange), hoặc mặc định 10 kỳ gần nhất +
 // 1 kỳ kế tiếp nếu không nhập gì. Đường xanh (Thực tế) phủ mọi kỳ <= kỳ hiện tại THẬT (hôm nay, không
 // phụ thuộc quãng đang xem). Đường đỏ (Dự kiến) phủ mọi kỳ tương lai (> hôm nay) trong quãng đã chọn —
-// CỘNG DỒN theo từng kỳ, bắt đầu từ CHÍNH sản lượng mẫu mẹ thực tế kỳ hiện tại (nối liền đường xanh, xem
-// getForecastBasis) — mẫu mẹ dự kiến của 1 kỳ trở thành vốn mẫu mẹ cho kỳ sau (nhân luỹ thừa hệ số trung
-// bình theo số kỳ cách kỳ hiện tại — xem forecastAtStep), không phải 1 mức phẳng lặp lại. Kỳ hiện tại có
-// CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền, không đứt đoạn. Query params:
-// unit=week|month, plantTypeId (bắt buộc), spec=mother|finished|total, scope=all|warehouse|staff,
-// scopeId (bắt buộc nếu scope khác all), from/to (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự
-// nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
+// CỘNG DỒN theo từng kỳ, bắt đầu từ tồn M05 "đủ tuổi" (thuộc Nhóm tuần mẫu mẹ đang đến hạn cấy chuyển
+// hôm nay, xem getForecastBasis/getDueMotherStock) — mẫu mẹ dự kiến của 1 kỳ trở thành vốn mẫu mẹ cho kỳ
+// sau (nhân luỹ thừa hệ số trung bình theo số kỳ cách kỳ hiện tại — xem forecastAtStep), không phải 1
+// mức phẳng lặp lại. Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền
+// trên biểu đồ, không đứt đoạn — vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối
+// đa có thể đạt nếu tận dụng hết tồn đủ tuổi, không phải ngoại suy xu hướng quá khứ) nên số có thể lệch
+// hẳn nhau ngay tại điểm nối. Query params: unit=week|month, plantTypeId (bắt buộc),
+// spec=mother|finished|total, scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to
+// (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -68,7 +70,7 @@ export async function GET(req: NextRequest) {
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const [actualPoints, forecastBasis] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
-    getForecastBasis(plantTypeId, prevBuckets, todayBucket, scope),
+    getForecastBasis(plantTypeId, prevBuckets, scope),
   ]);
 
   const valueFor = (p: { motherOutput: number; finishedOutput: number }) => {
