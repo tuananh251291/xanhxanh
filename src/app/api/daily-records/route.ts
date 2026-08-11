@@ -8,7 +8,17 @@ import { addToContaminationRoom } from "@/lib/contamination-room";
 import { z } from "zod";
 import { addDays, addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 import { canManageDailyRecords, isAdminRole } from "@/types";
-import { toStoredWeekStart } from "@/lib/week-rotation";
+
+// Việt Nam luôn lệch UTC đúng 7 tiếng (không có giờ mùa hè) — quy đổi 1 mốc giờ bất kỳ về "nửa đêm giờ
+// VN" của đúng ngày đó, biểu diễn dưới dạng mốc UTC (CÙNG quy ước new Date("yyyy-MM-dd") mà
+// PlantingInstruction.weekStart đã lưu — xem toStoredWeekStart ở src/lib/week-rotation.ts). KHÔNG dùng
+// timezone của tiến trình Node để suy ra ngày lịch (server chạy trên Vercel mặc định UTC, không phải
+// Asia/Saigon) — nếu dùng sẽ lệch ngày quanh nửa đêm giờ VN mỗi khi so sánh ngày client gửi lên (dựng
+// theo giờ trình duyệt, thường là giờ VN) với dữ liệu đã lưu.
+function toVnCalendarDate(d: Date): Date {
+  const vnShifted = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return new Date(Date.UTC(vnShifted.getUTCFullYear(), vnShifted.getUTCMonth(), vnShifted.getUTCDate()));
+}
 
 // "Phát sinh cây cần phân loại" — chỉ NV cấy mô tích chọn khi mã cây của chỉ định thuộc 1 nhóm biến thể
 // (PlantType.variantGroupId) có >1 thành viên (xem /plant-types). Truyền kèm breakdown số lượng theo
@@ -90,34 +100,36 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-  // So sánh theo NGÀY LỊCH (qua toStoredWeekStart, cùng cách instruction.weekStart được lưu — xem
-  // src/lib/week-rotation.ts) chứ không so trực tiếp 2 mốc giờ khác kiểu: client dựng ngày qua
-  // startOfWeek() (nửa đêm giờ ĐỊA PHƯƠNG trình duyệt) rồi gửi lên bằng .toISOString(), lệch tới 7 tiếng
-  // so với instruction.weekStart lưu kiểu new Date("yyyy-MM-dd") (luôn là nửa đêm UTC) — nếu so thẳng có
-  // thể khiến ngay cả đúng Thứ 2 đầu tuần chỉ định cũng bị báo "trước tuần chỉ định" sai lệch.
   if (!instruction.weekStart) {
     return NextResponse.json({ message: "Chỉ định chưa có tuần thực hiện" }, { status: 400 });
   }
   const isAdmin = isAdminRole(role);
   // Admin cấp cao/Admin được sửa dữ liệu của bất kỳ chỉ định nào (kể cả tuần đã qua từ lâu) — chỉ NV
   // kho mô mới bị giới hạn đúng tuần hiện tại (nghiệp vụ "bù dữ liệu" nhanh trong tuần, không phải sửa
-  // sử liệu lịch sử).
+  // sử liệu lịch sử). So theo NGÀY LỊCH VN (toVnCalendarDate) — weekStart/weekEnd tính bằng
+  // startOfWeek/endOfWeek (timezone tiến trình Node) chỉ lệch vài giờ so với ranh giới ngày thật ở VN,
+  // không đủ để đổi tuần, nên vẫn dùng được trực tiếp ở đây (khác đoạn so ngày cụ thể bên dưới — sai
+  // lệch NGÀY LỊCH mới thật sự nguy hiểm).
   if (!isAdmin && (instruction.weekStart < weekStart || instruction.weekStart > weekEnd)) {
     return NextResponse.json({ message: "Chỉ định này không thuộc tuần thực tế" }, { status: 400 });
   }
 
   // Ngày ghi nhận thật sự của bản ghi — NV cấy mô luôn là "hôm nay". Admin/KHO_MO bù dữ liệu được chọn 1
   // ngày Thứ 2 - Chủ nhật của tuần chỉ định, không sau hôm nay (KHO_MO thêm ràng buộc: đúng tuần hiện
-  // tại, xem chặn ở trên — Admin không bị giới hạn tuần hiện tại nên có thể bù cho chỉ định đã qua).
+  // tại, xem chặn ở trên — Admin không bị giới hạn tuần hiện tại nên có thể bù cho chỉ định đã qua). So
+  // sánh qua toVnCalendarDate (NGÀY LỊCH VN, không phụ thuộc timezone server) — client dựng ngày theo giờ
+  // trình duyệt (thường là giờ VN) rồi gửi lên bằng .toISOString(), so trực tiếp với instruction.weekStart
+  // (lưu kiểu new Date("yyyy-MM-dd") = luôn nửa đêm UTC) có thể lệch cả 7 tiếng nếu quy đổi sai — từng
+  // khiến đúng Thứ 2 đầu tuần chỉ định cũng bị báo sai "trước tuần chỉ định"/"trong tương lai".
   let targetDate = today;
   if (canActOnBehalf && parsed.data.date) {
     const requestedRaw = new Date(parsed.data.date);
     if (Number.isNaN(requestedRaw.getTime())) {
       return NextResponse.json({ message: "Ngày không hợp lệ" }, { status: 400 });
     }
-    const requested = toStoredWeekStart(requestedRaw);
-    const todayNormalized = toStoredWeekStart(today);
-    if (requested > todayNormalized) {
+    const requested = toVnCalendarDate(requestedRaw);
+    const todayVn = toVnCalendarDate(today);
+    if (requested > todayVn) {
       return NextResponse.json({ message: "Ngày không hợp lệ — không được chọn ngày trong tương lai" }, { status: 400 });
     }
     if (requested < instruction.weekStart || requested > addDays(instruction.weekStart, 6)) {
