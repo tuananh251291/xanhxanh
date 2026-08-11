@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Combobox,
@@ -14,7 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Loader2, TrendingUp } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import ReportLineChart from "../charts/report-line-chart";
 
 type PlantType = { id: string; code: string; name: string };
@@ -36,6 +38,11 @@ export default function ProductionCapacityBoard() {
   const [spec, setSpec] = useState<Spec>("total");
   const [scopeKind, setScopeKind] = useState<ScopeKind>("all");
   const [scopeOption, setScopeOption] = useState<ComboOption | null>(null);
+  // Quãng thời gian tự nhập (tuỳ chọn) — để trống cả 2 thì API tự dùng mặc định 10 kỳ gần nhất. Server
+  // tự làm tròn chẵn tuần/chẵn tháng theo đúng đơn vị đang chọn (xem getWeekBucketsInRange/
+  // getMonthBucketsInRange, src/lib/report-utils.ts) — ở đây chỉ cần nhập ngày bất kỳ trong kỳ.
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const [data, setData] = useState<Record<string, string | number>[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,13 +67,14 @@ export default function ProductionCapacityBoard() {
     try {
       const params = new URLSearchParams({ unit, plantTypeId: plantTypeOption.value, spec, scope: scopeKind });
       if (scopeKind !== "all" && scopeOption) params.set("scopeId", scopeOption.value);
+      if (fromDate && toDate) { params.set("from", fromDate); params.set("to", toDate); }
       const res = await fetch(`/api/reports/production-capacity?${params}`);
       const json = await res.json();
       setData(Array.isArray(json.data) ? json.data : []);
     } finally {
       setLoading(false);
     }
-  }, [unit, plantTypeOption, spec, scopeKind, scopeOption]);
+  }, [unit, plantTypeOption, spec, scopeKind, scopeOption, fromDate, toDate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -74,13 +82,12 @@ export default function ProductionCapacityBoard() {
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Năng suất sản xuất</CardTitle>
-            <p className="text-sm text-text-secondary mt-1">
-              Đường xanh: sản lượng thực tế các kỳ gần đây. Đường đỏ: dự kiến kỳ kế tiếp, tính từ tồn mẫu
-              mẹ hiện có × hệ số nhân MM/ra rễ trung bình 3 kỳ gần nhất (chỉ định thường, không tính dự phòng).
-            </p>
-          </div>
+          <p className="text-sm text-text-secondary max-w-md">
+            Đường xanh: sản lượng thực tế — mặc định 10 kỳ gần nhất, hoặc đúng quãng tự nhập ở &quot;Từ
+            ngày&quot;/&quot;Đến ngày&quot; (tự làm tròn chẵn tuần/chẵn tháng). Đường đỏ: dự kiến kỳ kế
+            tiếp tính từ hôm nay, không đổi theo quãng đang xem — tính từ tồn mẫu mẹ hiện có × hệ số nhân
+            MM/ra rễ trung bình 3 kỳ gần nhất (chỉ định thường, không tính dự phòng).
+          </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Đơn vị thời gian</Label>
@@ -91,6 +98,26 @@ export default function ProductionCapacityBoard() {
                   <SelectItem value="month">Tháng</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Từ ngày (chẵn {unit === "week" ? "tuần" : "tháng"})</Label>
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-40" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Đến ngày (chẵn {unit === "week" ? "tuần" : "tháng"})</Label>
+              <div className="flex items-center gap-1">
+                <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-40" />
+                {(fromDate || toDate) && (
+                  <Button
+                    type="button" variant="ghost" size="icon-sm"
+                    title="Xoá quãng — dùng mặc định 10 kỳ gần nhất"
+                    onClick={() => { setFromDate(""); setToDate(""); }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="space-y-1">
