@@ -15,7 +15,10 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // CỘNG DỒN theo từng kỳ, bắt đầu từ tồn M05 "đủ tuổi" (thuộc Nhóm tuần mẫu mẹ đang đến hạn cấy chuyển
 // hôm nay, xem getForecastBasis/getDueMotherStock) — mẫu mẹ dự kiến của 1 kỳ trở thành vốn mẫu mẹ cho kỳ
 // sau (nhân luỹ thừa hệ số trung bình theo số kỳ cách kỳ hiện tại — xem forecastAtStep), không phải 1
-// mức phẳng lặp lại. Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền
+// mức phẳng lặp lại. Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU thật tính tới "now"
+// (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng, và không bao giờ dùng dữ liệu tương
+// lai — nên hệ thống mới có vài tuần dữ liệu vẫn ra được số ngay, không phải đợi đủ 3 THÁNG mới tính
+// được. Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền
 // trên biểu đồ, không đứt đoạn — vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối
 // đa có thể đạt nếu tận dụng hết tồn đủ tuổi, không phải ngoại suy xu hướng quá khứ) nên số có thể lệch
 // hẳn nhau ngay tại điểm nối. Query params: unit=week|month, plantTypeId (bắt buộc),
@@ -63,14 +66,15 @@ export async function GET(req: NextRequest) {
   }
 
   // Kỳ hiện tại THẬT (hôm nay) — mốc phân định Thực tế (<=) / Dự kiến (>), không phụ thuộc quãng đang
-  // xem, nên tính riêng — cùng 3 kỳ liền trước để tính hệ số dự báo (xem getForecastBasis).
+  // xem, nên tính riêng. Hệ số dự báo (getForecastBasis) tự tìm 3 tuần gần nhất có dữ liệu tính tới
+  // đúng thời điểm "now" này — không phụ thuộc đơn vị Tuần/Tháng đang chọn.
+  const now = new Date();
   const [todayBucket] = unit === "month" ? getMonthBuckets(1) : getWeekBuckets(1);
-  const prevBuckets = (unit === "month" ? getMonthBuckets(4) : getWeekBuckets(4)).slice(0, 3);
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const [actualPoints, forecastBasis] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
-    getForecastBasis(plantTypeId, prevBuckets, scope),
+    getForecastBasis(plantTypeId, now, scope),
   ]);
 
   const valueFor = (p: { motherOutput: number; finishedOutput: number }) => {

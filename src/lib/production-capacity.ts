@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { WeekBucket } from "@/lib/report-utils";
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
+import { startOfWeek } from "date-fns";
 
 // Phạm vi lọc năng suất — ALL = toàn hệ thống, WAREHOUSE = 1 kho sản xuất, STAFF = 1 NV cấy mô. Dùng
 // chung cho cả tính hệ số (Bước A) lẫn tồn mẫu mẹ hiện có (Bước B) — xem "Công thức đã chốt" trong plan.
@@ -87,31 +88,41 @@ export async function computeActualSeries(plantTypeId: string, buckets: WeekBuck
   return points;
 }
 
-// Bước A — hệ số nhân MM / hệ số ra rễ TP trung bình của 3 kỳ liền trước prevBuckets (đã loại chỉ định
-// dự phòng, gộp thẳng theo từng (nhân sự, kỳ) rồi trung bình cộng — không trung bình theo NV trước).
+// Bước A — hệ số nhân MM / hệ số ra rễ TP trung bình của 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU (không nhất thiết
+// liền kề, không bao giờ tính tuần ở tương lai — đã loại chỉ định dự phòng), LUÔN gộp theo lưới TUẦN
+// thật bất kể đơn vị biểu đồ đang xem Tuần hay Tháng. KHÁC bản trước (gộp cứng theo 3 kỳ dương lịch liền
+// trước "kỳ hiện tại" của đúng đơn vị đang chọn): với đơn vị Tháng, đòi hỏi đủ 3 THÁNG dữ liệu thật nên hệ
+// thống còn ít lịch sử (VD mới chạy vài tuần) sẽ ra hệ số=0 suốt nhiều tháng đầu dù đã có dữ liệu thật gần
+// đây — nay chỉ cần có dữ liệu ở BẤT KỲ tuần nào trong quá khứ (kể cả chỉ 1-2 tuần) là tính được ngay,
+// lấy tối đa 3 tuần gần nhất, ít hơn 3 vẫn dùng được. Gộp thẳng theo từng (nhân sự, tuần) rồi trung bình
+// cộng — không trung bình theo NV trước.
 export async function computeAverageRatios(
   plantTypeId: string,
-  prevBuckets: WeekBucket[],
+  now: Date,
   scope: CapacityScope
 ): Promise<{ avgRatioMM: number; avgRatioTP: number }> {
-  if (prevBuckets.length === 0) return { avgRatioMM: 0, avgRatioTP: 0 };
   const scopedStaffIds = await resolveScopedStaffIds(scope);
-  const rows = await fetchDailyRecords(plantTypeId, prevBuckets[0].start, prevBuckets[prevBuckets.length - 1].end, scopedStaffIds, false);
+  const rows = await fetchDailyRecords(plantTypeId, new Date(0), now, scopedStaffIds, false);
 
-  // Gộp theo (staffId, bucketIndex) — mỗi tổ hợp là 1 giá trị trong phép trung bình cuối.
-  const byStaffBucket = new Map<string, OutputRow[]>();
+  const weekStartOf = (d: Date) => startOfWeek(d, { weekStartsOn: 1 }).getTime();
+  const recentWeekStarts = [...new Set(rows.map((r) => weekStartOf(r.recordDate)))].sort((a, b) => b - a).slice(0, 3);
+  const recentWeekSet = new Set(recentWeekStarts);
+
+  // Gộp theo (staffId, đầu tuần) — mỗi tổ hợp là 1 giá trị trong phép trung bình cuối, chỉ giữ lại các
+  // dòng thuộc 3 tuần gần nhất đã chọn ở trên.
+  const byStaffWeek = new Map<string, OutputRow[]>();
   for (const r of rows) {
-    const idx = prevBuckets.findIndex((b) => r.recordDate >= b.start && r.recordDate <= b.end);
-    if (idx === -1) continue;
-    const key = `${r.staffId}|${idx}`;
-    const list = byStaffBucket.get(key) ?? [];
+    const weekStart = weekStartOf(r.recordDate);
+    if (!recentWeekSet.has(weekStart)) continue;
+    const key = `${r.staffId}|${weekStart}`;
+    const list = byStaffWeek.get(key) ?? [];
     list.push(r);
-    byStaffBucket.set(key, list);
+    byStaffWeek.set(key, list);
   }
 
   const ratiosMM: number[] = [];
   const ratiosTP: number[] = [];
-  for (const groupRows of byStaffBucket.values()) {
+  for (const groupRows of byStaffWeek.values()) {
     const { motherOutput, finishedOutput, motherUsed } = sumByStage(groupRows);
     if (motherUsed <= 0) continue;
     ratiosMM.push(motherOutput / motherUsed);
@@ -162,12 +173,12 @@ export type CapacityForecast = { motherForecast: number; finishedForecast: numbe
 // các kỳ tương lai (mô phỏng đơn giản: 1 vốn ban đầu, nhân luỹ thừa hệ số liên tục qua từng kỳ).
 export async function getForecastBasis(
   plantTypeId: string,
-  prevBuckets: WeekBucket[],
+  now: Date,
   scope: CapacityScope
 ): Promise<{ avgRatioMM: number; avgRatioTP: number; baseMother: number }> {
   const [{ avgRatioMM, avgRatioTP }, baseMother] = await Promise.all([
-    computeAverageRatios(plantTypeId, prevBuckets, scope),
-    getDueMotherStock(plantTypeId, scope),
+    computeAverageRatios(plantTypeId, now, scope),
+    getDueMotherStock(plantTypeId, scope, now),
   ]);
   return { avgRatioMM, avgRatioTP, baseMother };
 }
