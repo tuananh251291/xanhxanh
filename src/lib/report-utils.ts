@@ -1,4 +1,4 @@
-import { startOfWeek, endOfWeek, subWeeks, differenceInCalendarDays, format } from "date-fns";
+import { startOfWeek, endOfWeek, subWeeks, startOfMonth, endOfMonth, subMonths, differenceInCalendarDays, format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 export interface WeekBucket {
@@ -19,6 +19,17 @@ export function getWeekBuckets(weeksBack: number): WeekBucket[] {
 
 export function bucketIndexForDate(buckets: WeekBucket[], date: Date): number {
   return buckets.findIndex((b) => date >= b.start && date <= b.end);
+}
+
+// Tạo danh sách "tháng" từ monthsBack tháng trước tới tháng hiện tại, cũ → mới — cùng dạng WeekBucket
+// (start/end/label) để dùng chung được với bucketIndexForDate.
+export function getMonthBuckets(monthsBack: number): WeekBucket[] {
+  const now = new Date();
+  return Array.from({ length: monthsBack }, (_, i) => {
+    const start = startOfMonth(subMonths(now, monthsBack - 1 - i));
+    const end = endOfMonth(start);
+    return { start, end, label: format(start, "MM/yyyy", { locale: vi }) };
+  });
 }
 
 export function isNearExpiry(expectedMoveAt: Date | null): boolean {

@@ -8,6 +8,7 @@ import ContaminationReport from "./contamination-report";
 import PlanVsActualReport from "./plan-vs-actual-report";
 import InventoryLifecycleReport from "./inventory-lifecycle-report";
 import ChecklistReport from "./checklist-report";
+import ProductionCapacityBoard from "./production-capacity/production-capacity-board";
 
 export default async function ReportsPage() {
   const session = await auth();
@@ -30,6 +31,7 @@ export default async function ReportsPage() {
             <TabsTrigger value="plan" className="whitespace-nowrap">Kế hoạch vs thực tế</TabsTrigger>
             <TabsTrigger value="inventory" className="whitespace-nowrap">Tồn kho & vòng đời</TabsTrigger>
             <TabsTrigger value="checklist" className="whitespace-nowrap">Checklist</TabsTrigger>
+            <TabsTrigger value="capacity" className="whitespace-nowrap">Năng suất sản xuất</TabsTrigger>
           </TabsList>
         </div>
 
@@ -47,6 +49,9 @@ export default async function ReportsPage() {
         </TabsContent>
         <TabsContent value="checklist" className="mt-4">
           <ChecklistReport />
+        </TabsContent>
+        <TabsContent value="capacity" className="mt-4">
+          <ProductionCapacityBoard />
         </TabsContent>
       </Tabs>
     </div>
