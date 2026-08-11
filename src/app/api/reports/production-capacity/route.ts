@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
-import { computeActualSeries, forecastNextPeriod, type CapacityScope } from "@/lib/production-capacity";
-import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
+import { computeActualSeries, getForecastBasis, forecastAtStep, type CapacityScope } from "@/lib/production-capacity";
+import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid, differenceInCalendarMonths, differenceInCalendarWeeks } from "date-fns";
 import { vi } from "date-fns/locale";
 
 const DEFAULT_HISTORY_BUCKETS = 10;
@@ -12,11 +12,12 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // chẵn tuần/chẵn tháng — getWeekBucketsInRange/getMonthBucketsInRange), hoặc mặc định 10 kỳ gần nhất +
 // 1 kỳ kế tiếp nếu không nhập gì. Đường xanh (Thực tế) phủ mọi kỳ <= kỳ hiện tại THẬT (hôm nay, không
 // phụ thuộc quãng đang xem). Đường đỏ (Dự kiến) phủ mọi kỳ tương lai (> hôm nay) trong quãng đã chọn —
-// dùng CHUNG 1 giá trị dự báo (tồn mẫu mẹ hiện có × hệ số trung bình 3 kỳ trước, không đổi theo từng kỳ
-// tương lai) cho tới hết "to". Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2
-// đường nối liền, không đứt đoạn. Query params: unit=week|month, plantTypeId (bắt buộc),
-// spec=mother|finished|total, scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to
-// (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
+// CỘNG DỒN theo từng kỳ: mẫu mẹ dự kiến của 1 kỳ trở thành vốn mẫu mẹ cho kỳ sau (nhân luỹ thừa hệ số
+// trung bình theo số kỳ cách kỳ hiện tại — xem forecastAtStep), không phải 1 mức phẳng lặp lại. Kỳ hiện
+// tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền, không đứt đoạn. Query
+// params: unit=week|month, plantTypeId (bắt buộc), spec=mother|finished|total,
+// scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ chọn, yyyy-MM-dd — có
+// cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -59,14 +60,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Kỳ hiện tại THẬT (hôm nay) — mốc phân định Thực tế (<=) / Dự kiến (>), không phụ thuộc quãng đang
-  // xem, nên tính riêng — cùng 3 kỳ liền trước để tính hệ số dự báo (xem forecastNextPeriod).
+  // xem, nên tính riêng — cùng 3 kỳ liền trước để tính hệ số dự báo (xem getForecastBasis).
   const [todayBucket] = unit === "month" ? getMonthBuckets(1) : getWeekBuckets(1);
   const prevBuckets = (unit === "month" ? getMonthBuckets(4) : getWeekBuckets(4)).slice(0, 3);
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
-  const [actualPoints, forecast] = await Promise.all([
+  const [actualPoints, forecastBasis] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
-    forecastNextPeriod(plantTypeId, prevBuckets, scope),
+    getForecastBasis(plantTypeId, prevBuckets, scope),
   ]);
 
   const valueFor = (p: { motherOutput: number; finishedOutput: number }) => {
@@ -74,9 +75,6 @@ export async function GET(req: NextRequest) {
     if (spec === "finished") return p.finishedOutput;
     return p.motherOutput + p.finishedOutput;
   };
-  const forecastValue = Math.round(
-    spec === "mother" ? forecast.motherForecast : spec === "finished" ? forecast.finishedForecast : forecast.motherForecast + forecast.finishedForecast
-  );
 
   const data: Record<string, string | number>[] = buckets.map((b) => {
     const row: Record<string, string | number> = { period: b.label };
@@ -86,7 +84,9 @@ export async function GET(req: NextRequest) {
       row["Thực tế"] = actualValue;
       if (b.start.getTime() === todayBucket.start.getTime()) row["Dự kiến"] = actualValue;
     } else {
-      row["Dự kiến"] = forecastValue;
+      const stepsAhead = (unit === "month" ? differenceInCalendarMonths(b.start, todayBucket.start) : differenceInCalendarWeeks(b.start, todayBucket.start, { weekStartsOn: 1 }));
+      const forecast = forecastAtStep(forecastBasis, stepsAhead);
+      row["Dự kiến"] = Math.round(valueFor({ motherOutput: forecast.motherForecast, finishedOutput: forecast.finishedForecast }));
     }
     return row;
   });

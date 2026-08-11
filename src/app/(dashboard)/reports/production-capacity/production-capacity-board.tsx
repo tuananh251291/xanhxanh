@@ -107,7 +107,7 @@ export default function ProductionCapacityBoard() {
             Đường xanh: sản lượng thực tế tới kỳ hiện tại. Đường đỏ: dự kiến, nối liền từ đường xanh và
             kéo dài tới hết &quot;Đến&quot; đã chọn (chọn &quot;Đến&quot; ở tương lai để xem xa hơn) — tính
             từ tồn mẫu mẹ hiện có × hệ số nhân MM/ra rễ trung bình 3 kỳ gần nhất (chỉ định thường, không
-            tính dự phòng), giữ nguyên 1 mức cho mọi kỳ tương lai.
+            tính dự phòng), CỘNG DỒN qua từng kỳ (mẫu mẹ dự kiến của 1 kỳ thành vốn cho kỳ sau).
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
