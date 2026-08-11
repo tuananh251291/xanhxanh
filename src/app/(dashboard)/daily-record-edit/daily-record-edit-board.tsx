@@ -87,7 +87,6 @@ export default function DailyRecordEditBoard() {
   const weekStart = selected?.weekStart ? startOfWeek(new Date(selected.weekStart), { weekStartsOn: 1 }) : null;
   const days = weekStart ? Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)) : [];
   const today = new Date();
-  const isCurrentWeek = !!weekStart && isSameDay(weekStart, startOfWeek(today, { weekStartsOn: 1 }));
 
   const recordForDay = (day: Date) => records.find((r) => isSameDay(new Date(r.recordDate), day));
   const rowValues = (rec: DailyRecord) => {
@@ -203,10 +202,11 @@ export default function DailyRecordEditBoard() {
                       const rec = recordForDay(day);
                       const values = rec ? rowValues(rec) : null;
                       const isToday = isSameDay(day, today);
-                      // Chỉ được BÙ MỚI (chưa có bản ghi) khi ngày thuộc tuần hiện tại, không sau hôm nay,
-                      // và chỉ định đã có NV được gán — khớp đúng ràng buộc server ở POST /api/daily-records
-                      // (nhánh Admin/KHO_MO bù hộ), tránh bấm được nút rồi mới báo lỗi.
-                      const canAdd = !rec && isCurrentWeek && day <= today && !!selected.assignedTo;
+                      // Chỉ được BÙ MỚI (chưa có bản ghi) khi ngày không sau hôm nay và chỉ định đã có NV
+                      // được gán — khớp đúng ràng buộc server ở POST /api/daily-records (nhánh Admin,
+                      // KHÔNG giới hạn đúng tuần hiện tại — trang này chỉ Admin mới vào được, xem page.tsx),
+                      // tránh bấm được nút rồi mới báo lỗi.
+                      const canAdd = !rec && day <= today && !!selected.assignedTo;
                       return (
                         <tr key={day.toISOString()} className={`border-b ${isToday ? "bg-primary-light" : idx % 2 === 0 ? "bg-primary-light/60" : "bg-white"}`}>
                           <td className="px-3 py-2 font-medium whitespace-nowrap">

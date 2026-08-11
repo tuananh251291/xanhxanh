@@ -8,6 +8,7 @@ import { addToContaminationRoom } from "@/lib/contamination-room";
 import { z } from "zod";
 import { addDays, addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 import { canManageDailyRecords, isAdminRole } from "@/types";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 
 // "Phát sinh cây cần phân loại" — chỉ NV cấy mô tích chọn khi mã cây của chỉ định thuộc 1 nhóm biến thể
 // (PlantType.variantGroupId) có >1 thành viên (xem /plant-types). Truyền kèm breakdown số lượng theo
@@ -89,18 +90,38 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-  if (!instruction.weekStart || instruction.weekStart < weekStart || instruction.weekStart > weekEnd) {
+  // So sánh theo NGÀY LỊCH (qua toStoredWeekStart, cùng cách instruction.weekStart được lưu — xem
+  // src/lib/week-rotation.ts) chứ không so trực tiếp 2 mốc giờ khác kiểu: client dựng ngày qua
+  // startOfWeek() (nửa đêm giờ ĐỊA PHƯƠNG trình duyệt) rồi gửi lên bằng .toISOString(), lệch tới 7 tiếng
+  // so với instruction.weekStart lưu kiểu new Date("yyyy-MM-dd") (luôn là nửa đêm UTC) — nếu so thẳng có
+  // thể khiến ngay cả đúng Thứ 2 đầu tuần chỉ định cũng bị báo "trước tuần chỉ định" sai lệch.
+  if (!instruction.weekStart) {
+    return NextResponse.json({ message: "Chỉ định chưa có tuần thực hiện" }, { status: 400 });
+  }
+  const isAdmin = isAdminRole(role);
+  // Admin cấp cao/Admin được sửa dữ liệu của bất kỳ chỉ định nào (kể cả tuần đã qua từ lâu) — chỉ NV
+  // kho mô mới bị giới hạn đúng tuần hiện tại (nghiệp vụ "bù dữ liệu" nhanh trong tuần, không phải sửa
+  // sử liệu lịch sử).
+  if (!isAdmin && (instruction.weekStart < weekStart || instruction.weekStart > weekEnd)) {
     return NextResponse.json({ message: "Chỉ định này không thuộc tuần thực tế" }, { status: 400 });
   }
 
-  // Ngày ghi nhận thật sự của bản ghi — NV cấy mô luôn là "hôm nay". Admin/KHO_MO bù dữ liệu được chọn
-  // đúng 1 ngày Thứ 2 - Chủ nhật của TUẦN HIỆN TẠI (đã đảm bảo instruction.weekStart == tuần hiện tại ở
-  // trên), không cho chọn ngày trong tương lai hay ngoài tuần chỉ định.
+  // Ngày ghi nhận thật sự của bản ghi — NV cấy mô luôn là "hôm nay". Admin/KHO_MO bù dữ liệu được chọn 1
+  // ngày Thứ 2 - Chủ nhật của tuần chỉ định, không sau hôm nay (KHO_MO thêm ràng buộc: đúng tuần hiện
+  // tại, xem chặn ở trên — Admin không bị giới hạn tuần hiện tại nên có thể bù cho chỉ định đã qua).
   let targetDate = today;
   if (canActOnBehalf && parsed.data.date) {
-    const requested = new Date(parsed.data.date);
-    if (Number.isNaN(requested.getTime()) || requested < instruction.weekStart || requested > addDays(instruction.weekStart, 6) || requested > today) {
-      return NextResponse.json({ message: "Ngày không hợp lệ — chỉ chọn được trong tuần chỉ định và không sau hôm nay" }, { status: 400 });
+    const requestedRaw = new Date(parsed.data.date);
+    if (Number.isNaN(requestedRaw.getTime())) {
+      return NextResponse.json({ message: "Ngày không hợp lệ" }, { status: 400 });
+    }
+    const requested = toStoredWeekStart(requestedRaw);
+    const todayNormalized = toStoredWeekStart(today);
+    if (requested > todayNormalized) {
+      return NextResponse.json({ message: "Ngày không hợp lệ — không được chọn ngày trong tương lai" }, { status: 400 });
+    }
+    if (requested < instruction.weekStart || requested > addDays(instruction.weekStart, 6)) {
+      return NextResponse.json({ message: "Ngày không hợp lệ — chỉ chọn được trong tuần chỉ định" }, { status: 400 });
     }
     targetDate = requested;
   }

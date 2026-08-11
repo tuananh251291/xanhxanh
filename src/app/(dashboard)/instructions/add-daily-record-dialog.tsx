@@ -11,10 +11,11 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
-// Bù dữ liệu cấy cho 1 ngày NV cấy mô bỏ sót chưa nhập — CHỈ Admin/Admin cấp cao, chỉ áp dụng cho ngày
-// thuộc tuần chỉ định đang là tuần hiện tại và không sau hôm nay (server validate lại, xem POST
-// /api/daily-records nhánh isAdmin). Bản ghi tạo ra đứng tên đúng NV đã được gán (staffId = assignedToId),
-// không đứng tên Admin.
+// Bù dữ liệu cấy cho 1 ngày NV cấy mô bỏ sót chưa nhập — dùng ở cả /instructions/[id] (Admin/Admin cấp
+// cao/KHO_MO cùng kho) lẫn /daily-record-edit (chỉ Admin). Ngày chọn phải thuộc tuần chỉ định và không
+// sau hôm nay (server validate lại, xem POST /api/daily-records) — riêng KHO_MO còn bị giới hạn thêm
+// đúng tuần hiện tại, Admin sửa được cả chỉ định đã qua nhiều tuần. Bản ghi tạo ra đứng tên đúng NV đã
+// được gán (staffId = assignedToId), không đứng tên người thao tác.
 export default function AddDailyRecordDialog({
   instructionId,
   date,
