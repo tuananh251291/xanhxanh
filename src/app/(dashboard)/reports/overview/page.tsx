@@ -4,13 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent } from "@/components/ui/card";
 import { isPageAllowed } from "@/lib/permissions";
 import { getWeekBuckets } from "@/lib/report-utils";
-import { TrendingUp, Sprout, Flower2, ShieldAlert, AlertTriangle } from "lucide-react";
+import { TrendingUp, Sprout, Flower2, ShieldAlert, AlertTriangle, Trophy, ClipboardList, Moon, Package } from "lucide-react";
 import RatioTrendSection from "./ratio-trend-section";
 import StaffRankingSection from "./staff-ranking-section";
 import ContaminationBreakdownSection from "./contamination-breakdown-section";
 import InstructionProgressSection from "./instruction-progress-section";
 import SurplusMotherReturnedSection from "./surplus-mother-returned-section";
 import DarkRoomContaminationByInstructionSection from "./dark-room-contamination-by-instruction-section";
+import CollapsibleSection from "./collapsible-section";
 
 const HISTORY_WEEKS = 10;
 
@@ -124,12 +125,24 @@ export default async function ReportsOverviewPage() {
         />
       </div>
 
-      <RatioTrendSection />
-      <StaffRankingSection />
-      <ContaminationBreakdownSection />
-      <InstructionProgressSection />
-      <DarkRoomContaminationByInstructionSection />
-      <SurplusMotherReturnedSection />
+      <CollapsibleSection title="Xu hướng hệ số nhân MM / ra thành phẩm" icon={TrendingUp}>
+        <RatioTrendSection />
+      </CollapsibleSection>
+      <CollapsibleSection title="Xếp hạng NV cấy mô theo tỉ lệ" icon={Trophy}>
+        <StaffRankingSection />
+      </CollapsibleSection>
+      <CollapsibleSection title="Tỉ lệ nhiễm" icon={ShieldAlert}>
+        <ContaminationBreakdownSection />
+      </CollapsibleSection>
+      <CollapsibleSection title="Tiến độ chỉ định cấy" icon={ClipboardList}>
+        <InstructionProgressSection />
+      </CollapsibleSection>
+      <CollapsibleSection title="Nhiễm sau ủ tối theo chỉ định cấy" icon={Moon}>
+        <DarkRoomContaminationByInstructionSection />
+      </CollapsibleSection>
+      <CollapsibleSection title="Mẫu mẹ dư được bàn giao lại" icon={Package}>
+        <SurplusMotherReturnedSection />
+      </CollapsibleSection>
     </div>
   );
 }
