@@ -125,22 +125,22 @@ export default async function ReportsOverviewPage() {
         />
       </div>
 
-      <CollapsibleSection title="Xu hướng hệ số nhân MM / ra thành phẩm" icon={TrendingUp}>
+      <CollapsibleSection title="Xu hướng hệ số nhân MM / ra thành phẩm" icon={<TrendingUp className="w-4 h-4 shrink-0" />}>
         <RatioTrendSection />
       </CollapsibleSection>
-      <CollapsibleSection title="Xếp hạng NV cấy mô theo tỉ lệ" icon={Trophy}>
+      <CollapsibleSection title="Xếp hạng NV cấy mô theo tỉ lệ" icon={<Trophy className="w-4 h-4 shrink-0" />}>
         <StaffRankingSection />
       </CollapsibleSection>
-      <CollapsibleSection title="Tỉ lệ nhiễm" icon={ShieldAlert}>
+      <CollapsibleSection title="Tỉ lệ nhiễm" icon={<ShieldAlert className="w-4 h-4 shrink-0" />}>
         <ContaminationBreakdownSection />
       </CollapsibleSection>
-      <CollapsibleSection title="Tiến độ chỉ định cấy" icon={ClipboardList}>
+      <CollapsibleSection title="Tiến độ chỉ định cấy" icon={<ClipboardList className="w-4 h-4 shrink-0" />}>
         <InstructionProgressSection />
       </CollapsibleSection>
-      <CollapsibleSection title="Nhiễm sau ủ tối theo chỉ định cấy" icon={Moon}>
+      <CollapsibleSection title="Nhiễm sau ủ tối theo chỉ định cấy" icon={<Moon className="w-4 h-4 shrink-0" />}>
         <DarkRoomContaminationByInstructionSection />
       </CollapsibleSection>
-      <CollapsibleSection title="Mẫu mẹ dư được bàn giao lại" icon={Package}>
+      <CollapsibleSection title="Mẫu mẹ dư được bàn giao lại" icon={<Package className="w-4 h-4 shrink-0" />}>
         <SurplusMotherReturnedSection />
       </CollapsibleSection>
     </div>
