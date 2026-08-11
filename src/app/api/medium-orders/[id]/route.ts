@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     include: {
       instructions: { select: { id: true, code: true, plantType: { select: { name: true } } } },
       items: { include: { mediumType: { select: { code: true, name: true } } } },
-      days: { orderBy: { date: "asc" } },
+      days: { orderBy: { date: "asc" }, include: { dayItems: true } },
     },
   });
   if (!order) return NextResponse.json({ error: "Không tìm thấy" }, { status: 404 });

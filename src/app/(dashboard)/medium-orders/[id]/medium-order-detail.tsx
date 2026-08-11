@@ -20,6 +20,7 @@ type OrderDay = {
   m05: number;
   t01: number;
   t05: number;
+  dayItems: { itemId: string; quantity: number }[];
   handedOverAt: string | null;
   confirmedAt: string | null;
 };
@@ -35,9 +36,6 @@ type Order = {
   actualProductionByStage: Record<string, number>;
 };
 
-type QuantityField = "m05" | "t01" | "t05";
-const FIELDS: QuantityField[] = ["m05", "t01", "t05"];
-
 const NUMBER_INPUT_CLASS = "block w-20 text-center mx-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
 
 function dayStatus(day: OrderDay) {
@@ -49,7 +47,7 @@ function dayStatus(day: OrderDay) {
 export default function MediumOrderDetail({ orderId, role }: { orderId: string; role: UserRole | null }) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
-  const [drafts, setDrafts] = useState<Record<string, Record<QuantityField, string>>>({});
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [savingDayId, setSavingDayId] = useState<string | null>(null);
   const [surplusDrafts, setSurplusDrafts] = useState<Record<string, string>>({});
   const [savingSurplusItemId, setSavingSurplusItemId] = useState<string | null>(null);
@@ -65,7 +63,14 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       if (!res.ok) { setOrder(null); return; }
       const data: Order = await res.json();
       setOrder(data);
-      setDrafts(Object.fromEntries(data.days.map((d) => [d.id, { m05: String(d.m05), t01: String(d.t01), t05: String(d.t05) }])));
+      setDrafts(
+        Object.fromEntries(
+          data.days.map((d) => [
+            d.id,
+            Object.fromEntries(data.items.map((item) => [item.id, String(d.dayItems.find((di) => di.itemId === item.id)?.quantity ?? 0)])),
+          ])
+        )
+      );
       setSurplusDrafts(Object.fromEntries(data.items.map((i) => [i.id, String(i.surplusQuantity)])));
     } finally {
       setLoading(false);
@@ -74,19 +79,19 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
 
   useEffect(() => { load(); }, [load]);
 
-  const setDraftField = (dayId: string, field: QuantityField, value: string) => {
-    setDrafts((prev) => ({ ...prev, [dayId]: { ...prev[dayId], [field]: value } }));
+  const setDraftField = (dayId: string, itemId: string, value: string) => {
+    setDrafts((prev) => ({ ...prev, [dayId]: { ...prev[dayId], [itemId]: value } }));
   };
 
   const handover = async (day: OrderDay) => {
     setSavingDayId(day.id);
     try {
       const draft = drafts[day.id];
-      const quantities = Object.fromEntries(FIELDS.map((f) => [f, Number(draft[f]) || 0]));
+      const items = (order?.items ?? []).map((item) => ({ itemId: item.id, quantity: Number(draft[item.id]) || 0 }));
       const saveRes = await fetch(`/api/medium-orders/${orderId}/days/${day.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(quantities),
+        body: JSON.stringify({ items }),
       });
       if (!saveRes.ok) { toast.error((await saveRes.json()).message ?? "Có lỗi xảy ra"); return; }
 
@@ -306,9 +311,11 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
               <thead>
                 <tr className="bg-primary-light text-primary-strong">
                   <th className="px-3 py-2 text-left whitespace-nowrap font-bold text-base">Ngày</th>
-                  <th className="px-3 py-2 text-center font-bold text-base">M05</th>
-                  <th className="px-3 py-2 text-center font-bold text-base">T01</th>
-                  <th className="px-3 py-2 text-center font-bold text-base">T05</th>
+                  {order.items.map((item) => (
+                    <th key={item.id} className="px-3 py-2 text-center whitespace-nowrap font-bold text-base">
+                      {item.stageCode} · {item.mediumType.code}
+                    </th>
+                  ))}
                   <th className="px-3 py-2 text-center font-bold text-base">Bàn giao</th>
                   <th className="px-3 py-2 text-left font-bold text-base">Trạng thái</th>
                 </tr>
@@ -323,25 +330,38 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                   // lại được vì editable còn đòi hỏi isToday) — Kho mô/Admin hoàn lại được mọi ngày.
                   const canUndo = !!day.handedOverAt && !day.confirmedAt && ((isMoiTruong && isToday) || isKhoMo || isAdminRole(role));
                   const draft = drafts[day.id];
+                  // Ngày đã khoá (bàn giao) TRƯỚC khi tính năng chi tiết theo loại lên — chỉ có tổng
+                  // m05/t01/t05 cũ, không có dayItems — hiện gộp 1 ô thay vì toàn số 0 gây hiểu nhầm mất
+                  // dữ liệu.
+                  const isLegacyDay = !editable && day.dayItems.length === 0 && (day.m05 > 0 || day.t01 > 0 || day.t05 > 0);
                   return (
                     <tr key={day.id} className="border-b last:border-0 even:bg-primary-light">
                       <td className="px-3 py-2 font-medium whitespace-nowrap">
                         {format(new Date(day.date), "EEEE, dd/MM", { locale: vi })}
                       </td>
-                      {FIELDS.map((field) => (
-                        <td key={field} className="px-2 py-2">
-                          {editable ? (
-                            <Input
-                              type="number" min={0}
-                              className={NUMBER_INPUT_CLASS}
-                              value={draft?.[field] ?? "0"}
-                              onChange={(e) => setDraftField(day.id, field, e.target.value)}
-                            />
-                          ) : (
-                            <p className="text-center text-foreground">{day[field].toLocaleString("vi-VN")}</p>
-                          )}
+                      {isLegacyDay ? (
+                        <td className="px-3 py-2 text-center text-text-muted text-xs" colSpan={order.items.length}>
+                          Đã bàn giao (số liệu cũ, chưa tách theo loại): M05 {day.m05.toLocaleString("vi-VN")} · T01{" "}
+                          {day.t01.toLocaleString("vi-VN")} · T05 {day.t05.toLocaleString("vi-VN")}
                         </td>
-                      ))}
+                      ) : (
+                        order.items.map((item) => (
+                          <td key={item.id} className="px-2 py-2">
+                            {editable ? (
+                              <Input
+                                type="number" min={0}
+                                className={NUMBER_INPUT_CLASS}
+                                value={draft?.[item.id] ?? "0"}
+                                onChange={(e) => setDraftField(day.id, item.id, e.target.value)}
+                              />
+                            ) : (
+                              <p className="text-center text-foreground">
+                                {(day.dayItems.find((di) => di.itemId === item.id)?.quantity ?? 0).toLocaleString("vi-VN")}
+                              </p>
+                            )}
+                          </td>
+                        ))
+                      )}
                       <td className="px-3 py-2 text-center">
                         {editable && (
                           <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={savingDayId === day.id} onClick={() => handover(day)}>
@@ -368,9 +388,14 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
                 })}
                 <tr className="border-b bg-info-light font-semibold">
                   <td className="px-3 py-2">Tổng cộng</td>
-                  <td className="px-3 py-2 text-center">{totals.m05.toLocaleString("vi-VN")}</td>
-                  <td className="px-3 py-2 text-center">{totals.t01.toLocaleString("vi-VN")}</td>
-                  <td className="px-3 py-2 text-center">{totals.t05.toLocaleString("vi-VN")}</td>
+                  {order.items.map((item) => {
+                    const itemTotal = order.days.reduce((sum, d) => sum + (d.dayItems.find((di) => di.itemId === item.id)?.quantity ?? 0), 0);
+                    return (
+                      <td key={item.id} className="px-3 py-2 text-center">
+                        {itemTotal.toLocaleString("vi-VN")}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2" colSpan={2}></td>
                 </tr>
               </tbody>

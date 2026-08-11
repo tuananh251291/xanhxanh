@@ -7,7 +7,7 @@ import { isAdminRole } from "@/types";
 import { z } from "zod";
 
 const patchSchema = z.union([
-  z.object({ m05: z.number().int().min(0), t01: z.number().int().min(0), t05: z.number().int().min(0) }),
+  z.object({ items: z.array(z.object({ itemId: z.string().min(1), quantity: z.number().int().min(0) })) }),
   z.object({ action: z.literal("handover") }),
   z.object({ action: z.literal("confirm") }),
   z.object({ action: z.literal("undoHandover") }),
@@ -88,11 +88,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  if ("m05" in parsed.data) {
-    const updated = await prisma.mediumOrderDay.update({
-      where: { id: dayId },
-      data: parsed.data,
-    });
+  if ("items" in parsed.data) {
+    const orderItems = await prisma.mediumOrderItem.findMany({ where: { orderId: id }, select: { id: true, stageCode: true } });
+    const orderItemById = new Map(orderItems.map((i) => [i.id, i]));
+    for (const { itemId } of parsed.data.items) {
+      if (!orderItemById.has(itemId)) {
+        return NextResponse.json({ message: "Có dòng quy cách không thuộc đơn này" }, { status: 400 });
+      }
+    }
+
+    const stageTotals = { m05: 0, t01: 0, t05: 0 };
+    for (const { itemId, quantity } of parsed.data.items) {
+      const stageCode = orderItemById.get(itemId)!.stageCode.toLowerCase();
+      if (stageCode === "m05" || stageCode === "t01" || stageCode === "t05") {
+        stageTotals[stageCode] += quantity;
+      }
+    }
+
+    const results = await prisma.$transaction([
+      ...parsed.data.items.map(({ itemId, quantity }) =>
+        prisma.mediumOrderDayItem.upsert({
+          where: { dayId_itemId: { dayId, itemId } },
+          create: { dayId, itemId, quantity },
+          update: { quantity },
+        })
+      ),
+      prisma.mediumOrderDay.update({ where: { id: dayId }, data: stageTotals, include: { dayItems: true } }),
+    ]);
+    const updated = results[results.length - 1];
     return NextResponse.json(updated);
   }
 

@@ -1201,6 +1201,8 @@ model MediumOrderItem {
   // khi có chỉ định mới (syncInstructionMediumOrder chỉ gộp vào đơn còn confirmedAt = null).
   surplusQuantity Int @default(0)
 
+  dayItems MediumOrderDayItem[]
+
   @@map("medium_order_items")
 }
 
@@ -1223,8 +1225,27 @@ model MediumOrderDay {
   confirmedById String?
   confirmedBy   User?     @relation("MediumOrderDayConfirmedBy", fields: [confirmedById], references: [id])
 
+  dayItems MediumOrderDayItem[]
+
   @@unique([orderId, date])
   @@map("medium_order_days")
+}
+
+// Chi tiết số lượng đã pha theo TỪNG dòng "Quy cách cần pha" (MediumOrderItem) của 1 ngày cụ thể — bổ
+// sung cho m05/t01/t05 (tổng theo quy cách, giữ nguyên để không phải migrate dữ liệu cũ). Tạo lazy qua
+// upsert lúc NV môi trường lưu số liệu, không pre-populate. onDelete Cascade trên item vì
+// syncInstructionMediumOrder xoá-tạo-lại MediumOrderItem mỗi khi có chỉ định mới gộp vào (chỉ xảy ra
+// trước lúc đơn confirmedAt).
+model MediumOrderDayItem {
+  id       String          @id @default(cuid())
+  dayId    String
+  day      MediumOrderDay  @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     MediumOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity Int             @default(0)
+
+  @@unique([dayId, itemId])
+  @@map("medium_order_day_items")
 }
 
 // ============================================================
