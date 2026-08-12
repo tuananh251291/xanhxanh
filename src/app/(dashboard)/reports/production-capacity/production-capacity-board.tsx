@@ -105,13 +105,13 @@ export default function ProductionCapacityBoard() {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <p className="text-sm text-text-secondary max-w-md">
             Đường xanh: sản lượng thực tế tới kỳ hiện tại. Đường đỏ: NĂNG LỰC dự kiến (không phải ngoại
-            suy xu hướng quá khứ) — điểm đầu (kỳ hiện tại) nối liền đường xanh để không đứt đoạn trên
-            biểu đồ, từ kỳ kế tiếp trở đi tính từ tồn mẫu mẹ M05 đủ tuổi cấy chuyển (đến hạn xoay vòng hôm
-            nay), CỘNG DỒN qua từng kỳ tới hết &quot;Đến&quot; đã chọn (nhân với hệ số nhân MM/ra rễ trung
-            bình 3 TUẦN gần nhất có dữ liệu thật, chỉ định thường không tính dự phòng — luôn tính theo
-            tuần dù đang xem đơn vị Tháng, để hệ thống mới có ít lịch sử vẫn ra được số) — có thể lệch
-            mạnh so với sản lượng thực tế vì là 2 khái niệm khác nhau (năng lực tối đa nếu tận dụng hết
-            tồn đủ tuổi).
+            suy xu hướng quá khứ) — điểm đầu (kỳ hiện tại) nối liền đường xanh, từ kỳ kế tiếp trở đi mô
+            phỏng TỪNG TUẦN: mỗi tuần chỉ Nhóm giàn mẫu mẹ đúng lượt xoay vòng mới được cấy (không phải 1
+            Nhóm áp dụng suốt — qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, mỗi Nhóm tự cộng dồn
+            theo chu kỳ riêng), cộng dồn các tuần vào đúng kỳ hiển thị tới hết &quot;Đến&quot; đã chọn
+            (nhân với hệ số nhân MM/ra rễ trung bình 3 TUẦN gần nhất có dữ liệu thật, chỉ định thường
+            không tính dự phòng) — có thể lệch mạnh so với sản lượng thực tế vì là 2 khái niệm khác nhau
+            (năng lực tối đa nếu tận dụng hết tồn đủ tuổi mọi Nhóm).
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">

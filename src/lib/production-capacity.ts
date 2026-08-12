@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { WeekBucket } from "@/lib/report-utils";
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
-import { startOfWeek } from "date-fns";
+import { startOfWeek, addWeeks } from "date-fns";
 
 // Phạm vi lọc năng suất — ALL = toàn hệ thống, WAREHOUSE = 1 kho sản xuất, STAFF = 1 NV cấy mô. Dùng
 // chung cho cả tính hệ số (Bước A) lẫn tồn mẫu mẹ hiện có (Bước B) — xem "Công thức đã chốt" trong plan.
@@ -133,21 +133,16 @@ export async function computeAverageRatios(
   return { avgRatioMM: avg(ratiosMM), avgRatioTP: avg(ratiosTP) };
 }
 
-// Tồn M05 "đủ tuổi" — chỉ tính lô thuộc (các) Nhóm tuần mẫu mẹ đang ĐẾN HẠN cấy chuyển HÔM NAY, dùng
-// đúng cơ chế xoay vòng giàn đã có (xem src/lib/mother-week-group.ts, N = PlantType.transferWaitWeeks
-// của mã cây đang lọc — dùng trực tiếp N này thay vì tra qua shelf.plantType.transferWaitWeeks vì kệ
-// "chung" không gán 1 mã cây cố định nên không tra được N qua kệ). KHÁC với đếm TOÀN BỘ tồn M05 active:
-// nhiều lô còn non, chưa tới lượt xoay vòng, đếm lẫn vào sẽ thổi phồng "vốn" gấp nhiều lần thực tế. Trả
-// 0 nếu SUPER_ADMIN chưa cấu hình "Tuần khởi đầu Nhóm tuần mẫu mẹ 1" hoặc hôm nay còn trước mốc đó — cùng
-// quy ước thận trọng như summarizeMotherWeekGroups (không suy đoán khe xoay vòng khi chưa có mốc thật).
-async function getDueMotherStock(plantTypeId: string, scope: CapacityScope, now: Date = new Date()): Promise<number> {
-  const plantType = await prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { transferWaitWeeks: true } });
-  const totalSlots = plantType?.transferWaitWeeks ?? 4;
-  const epoch = await getMotherRotationEpoch();
-  if (!epoch || now.getTime() < epoch.getTime()) return 0;
-  const currentSlot = getCurrentWeekSlot(totalSlots, now, epoch);
+type RotationGroupStock = { groupId: string; rotationOrder: number; stock: number };
 
-  const result = await prisma.lot.aggregate({
+// Tồn M05 hiện có của TỪNG Nhóm tuần mẫu mẹ (rotationGroup) riêng biệt — KHÁC bản trước (chỉ tính đúng 1
+// Nhóm đang đến hạn hôm nay): qua nhiều tuần/tháng, LẦN LƯỢT cả N Nhóm đều tới lượt cấy chuyển (mỗi tuần 1
+// Nhóm khác nhau, xoay hết vòng N tuần lại quay về Nhóm đầu) — nếu chỉ tính vốn của 1 Nhóm áp dụng cho
+// toàn bộ tương lai thì bỏ sót tồn của N-1 Nhóm còn lại, ước lượng thấp hơn thực tế nhiều lần (VD 6 Nhóm
+// mỗi Nhóm vài nghìn cây, tính 1 Nhóm thì hụt 5/6 sản lượng thật). Bỏ qua giàn chưa gán Nhóm
+// (rotationGroupId null) — không xác định được lịch xoay vòng nên không đưa vào mô phỏng được.
+async function getRotationGroupsWithStock(plantTypeId: string, scope: CapacityScope): Promise<RotationGroupStock[]> {
+  const lots = await prisma.lot.findMany({
     where: {
       status: "ACTIVE",
       stage: "MAU_ME",
@@ -156,39 +151,70 @@ async function getDueMotherStock(plantTypeId: string, scope: CapacityScope, now:
       shelfId: { not: null },
       shelf: {
         room: { type: "PHONG_MAU_ME" },
-        rotationGroup: { rotationOrder: currentSlot },
+        rotationGroupId: { not: null },
         ...(scope.kind === "STAFF" ? { assignedStaffId: scope.staffId } : {}),
         ...(scope.kind === "WAREHOUSE" ? { warehouseId: scope.warehouseId } : {}),
       },
     },
-    _sum: { quantity: true },
+    select: { quantity: true, shelf: { select: { rotationGroupId: true, rotationGroup: { select: { rotationOrder: true } } } } },
   });
-  return result._sum.quantity ?? 0;
+
+  const byGroup = new Map<string, RotationGroupStock>();
+  for (const lot of lots) {
+    const groupId = lot.shelf!.rotationGroupId!;
+    const rotationOrder = lot.shelf!.rotationGroup?.rotationOrder;
+    if (rotationOrder == null) continue;
+    const entry = byGroup.get(groupId) ?? { groupId, rotationOrder, stock: 0 };
+    entry.stock += lot.quantity;
+    byGroup.set(groupId, entry);
+  }
+  return Array.from(byGroup.values());
 }
 
-export type CapacityForecast = { motherForecast: number; finishedForecast: number };
+export type WeeklyForecastPoint = { weekStart: Date; motherForecast: number; finishedForecast: number };
 
-// Bước B — hệ số trung bình (Bước A) + "vốn" mẫu mẹ đủ tuổi hiện có, dùng làm gốc cho dự báo cộng dồn
-// nhiều kỳ (xem forecastAtStep) — tách riêng khỏi vòng lặp từng kỳ vì cả 2 giá trị này không đổi giữa
-// các kỳ tương lai (mô phỏng đơn giản: 1 vốn ban đầu, nhân luỹ thừa hệ số liên tục qua từng kỳ).
-export async function getForecastBasis(
+// Mô phỏng dự báo TỪNG TUẦN từ tuần kế tiếp tới "until" — đúng nghiệp vụ xoay vòng: mỗi tuần chỉ (các)
+// Nhóm tuần mẫu mẹ ĐÚNG LƯỢT (rotationOrder khớp khe tuần đó, xem getCurrentWeekSlot) mới được "cấy". Mỗi
+// Nhóm có 1 chuỗi cộng dồn RIÊNG, cách nhau đúng N tuần (transferWaitWeeks): lần đầu dùng tồn thật hiện
+// có của Nhóm đó, các lần sau dùng mẫu mẹ dự kiến của LẦN CẤY TRƯỚC của CHÍNH Nhóm đó (không trộn lẫn
+// giữa các Nhóm). Trả mảng rỗng nếu SUPER_ADMIN chưa cấu hình "Tuần khởi đầu Nhóm tuần mẫu mẹ 1" — không
+// suy đoán lịch xoay vòng khi chưa có mốc thật (cùng quy ước thận trọng như summarizeMotherWeekGroups).
+export async function simulateWeeklyForecast(
   plantTypeId: string,
+  scope: CapacityScope,
   now: Date,
-  scope: CapacityScope
-): Promise<{ avgRatioMM: number; avgRatioTP: number; baseMother: number }> {
-  const [{ avgRatioMM, avgRatioTP }, baseMother] = await Promise.all([
+  until: Date
+): Promise<WeeklyForecastPoint[]> {
+  const [plantType, epoch, { avgRatioMM, avgRatioTP }, groups] = await Promise.all([
+    prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { transferWaitWeeks: true } }),
+    getMotherRotationEpoch(),
     computeAverageRatios(plantTypeId, now, scope),
-    getDueMotherStock(plantTypeId, scope, now),
+    getRotationGroupsWithStock(plantTypeId, scope),
   ]);
-  return { avgRatioMM, avgRatioTP, baseMother };
-}
+  if (!epoch) return [];
+  const totalSlots = plantType?.transferWaitWeeks ?? 4;
 
-// Dự báo kỳ tương lai thứ `stepsAhead` (1 = kỳ kế tiếp, 2 = kỳ sau nữa...) — CỘNG DỒN từ baseMother: mẫu
-// mẹ dự kiến của 1 kỳ trở thành "vốn" mẫu mẹ cho kỳ sau, nhân tiếp với hệ số nhân MM (mẫu mẹ sinh ra lại
-// được đem cấy tiếp) — motherForecast = baseMother × avgRatioMM^stepsAhead. Ra rễ TP luôn tính từ ĐÚNG
-// mẫu mẹ dự kiến của kỳ đó (không cộng dồn riêng) — finishedForecast = motherForecast × avgRatioTP.
-export function forecastAtStep(basis: { avgRatioMM: number; avgRatioTP: number; baseMother: number }, stepsAhead: number): CapacityForecast {
-  const motherForecast = basis.baseMother * Math.pow(basis.avgRatioMM, stepsAhead);
-  const finishedForecast = motherForecast * basis.avgRatioTP;
-  return { motherForecast, finishedForecast };
+  const stockByGroup = new Map(groups.map((g) => [g.groupId, g.stock]));
+
+  const points: WeeklyForecastPoint[] = [];
+  let weekStart = startOfWeek(addWeeks(now, 1), { weekStartsOn: 1 });
+  while (weekStart.getTime() <= until.getTime()) {
+    let motherForecast = 0;
+    let finishedForecast = 0;
+    if (weekStart.getTime() >= epoch.getTime()) {
+      const slot = getCurrentWeekSlot(totalSlots, weekStart, epoch);
+      for (const g of groups) {
+        if (g.rotationOrder !== slot) continue;
+        const stock = stockByGroup.get(g.groupId) ?? 0;
+        const mOut = stock * avgRatioMM;
+        const fOut = mOut * avgRatioTP;
+        motherForecast += mOut;
+        finishedForecast += fOut;
+        stockByGroup.set(g.groupId, mOut);
+      }
+    }
+    points.push({ weekStart, motherForecast, finishedForecast });
+    weekStart = addWeeks(weekStart, 1);
+  }
+  return points;
 }

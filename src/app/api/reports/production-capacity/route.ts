@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
-import { computeActualSeries, getForecastBasis, forecastAtStep, type CapacityScope } from "@/lib/production-capacity";
-import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid, differenceInCalendarMonths, differenceInCalendarWeeks } from "date-fns";
+import { computeActualSeries, simulateWeeklyForecast, type CapacityScope } from "@/lib/production-capacity";
+import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 
 const DEFAULT_HISTORY_BUCKETS = 10;
@@ -12,16 +12,15 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // chẵn tuần/chẵn tháng — getWeekBucketsInRange/getMonthBucketsInRange), hoặc mặc định 10 kỳ gần nhất +
 // 1 kỳ kế tiếp nếu không nhập gì. Đường xanh (Thực tế) phủ mọi kỳ <= kỳ hiện tại THẬT (hôm nay, không
 // phụ thuộc quãng đang xem). Đường đỏ (Dự kiến) phủ mọi kỳ tương lai (> hôm nay) trong quãng đã chọn —
-// CỘNG DỒN theo từng kỳ, bắt đầu từ tồn M05 "đủ tuổi" (thuộc Nhóm tuần mẫu mẹ đang đến hạn cấy chuyển
-// hôm nay, xem getForecastBasis/getDueMotherStock) — mẫu mẹ dự kiến của 1 kỳ trở thành vốn mẫu mẹ cho kỳ
-// sau (nhân luỹ thừa hệ số trung bình theo số kỳ cách kỳ hiện tại — xem forecastAtStep), không phải 1
-// mức phẳng lặp lại. Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU thật tính tới "now"
-// (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng, và không bao giờ dùng dữ liệu tương
-// lai — nên hệ thống mới có vài tuần dữ liệu vẫn ra được số ngay, không phải đợi đủ 3 THÁNG mới tính
-// được. Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền
-// trên biểu đồ, không đứt đoạn — vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối
-// đa có thể đạt nếu tận dụng hết tồn đủ tuổi, không phải ngoại suy xu hướng quá khứ) nên số có thể lệch
-// hẳn nhau ngay tại điểm nối. Query params: unit=week|month, plantTypeId (bắt buộc),
+// MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn các tuần rơi vào đúng kỳ hiển thị: mỗi tuần
+// chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy" (không phải chỉ 1 Nhóm duy nhất áp dụng suốt —
+// qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt, mỗi Nhóm có 1 chuỗi cộng dồn RIÊNG cách nhau N
+// tuần = transferWaitWeeks). Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU thật tính tới
+// "now" (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng, không bao giờ dùng dữ liệu tương
+// lai. Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền trên biểu đồ,
+// không đứt đoạn — vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối đa có thể đạt
+// nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy xu hướng quá khứ) nên số có thể lệch hẳn
+// nhau ngay tại điểm nối. Query params: unit=week|month, plantTypeId (bắt buộc),
 // spec=mother|finished|total, scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to
 // (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
 export async function GET(req: NextRequest) {
@@ -66,15 +65,17 @@ export async function GET(req: NextRequest) {
   }
 
   // Kỳ hiện tại THẬT (hôm nay) — mốc phân định Thực tế (<=) / Dự kiến (>), không phụ thuộc quãng đang
-  // xem, nên tính riêng. Hệ số dự báo (getForecastBasis) tự tìm 3 tuần gần nhất có dữ liệu tính tới
-  // đúng thời điểm "now" này — không phụ thuộc đơn vị Tuần/Tháng đang chọn.
+  // xem, nên tính riêng.
   const now = new Date();
   const [todayBucket] = unit === "month" ? getMonthBuckets(1) : getWeekBuckets(1);
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
-  const [actualPoints, forecastBasis] = await Promise.all([
+  const futureBuckets = buckets.filter((b) => b.start > todayBucket.start);
+  const [actualPoints, weeklyForecast] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
-    getForecastBasis(plantTypeId, now, scope),
+    futureBuckets.length > 0
+      ? simulateWeeklyForecast(plantTypeId, scope, now, futureBuckets[futureBuckets.length - 1].end)
+      : Promise.resolve([]),
   ]);
 
   const valueFor = (p: { motherOutput: number; finishedOutput: number }) => {
@@ -91,9 +92,14 @@ export async function GET(req: NextRequest) {
       row["Thực tế"] = actualValue;
       if (b.start.getTime() === todayBucket.start.getTime()) row["Dự kiến"] = actualValue;
     } else {
-      const stepsAhead = (unit === "month" ? differenceInCalendarMonths(b.start, todayBucket.start) : differenceInCalendarWeeks(b.start, todayBucket.start, { weekStartsOn: 1 }));
-      const forecast = forecastAtStep(forecastBasis, stepsAhead);
-      row["Dự kiến"] = Math.round(valueFor({ motherOutput: forecast.motherForecast, finishedOutput: forecast.finishedForecast }));
+      // Cộng dồn mọi tuần mô phỏng rơi vào đúng kỳ hiển thị này — 1 kỳ Tháng thường gồm ~4 tuần, mỗi
+      // tuần có thể là 1 Nhóm tuần mẫu mẹ khác nhau tới lượt cấy (xem simulateWeeklyForecast).
+      const pointsInBucket = weeklyForecast.filter((p) => p.weekStart >= b.start && p.weekStart <= b.end);
+      const summed = pointsInBucket.reduce(
+        (acc, p) => ({ motherOutput: acc.motherOutput + p.motherForecast, finishedOutput: acc.finishedOutput + p.finishedForecast }),
+        { motherOutput: 0, finishedOutput: 0 }
+      );
+      row["Dự kiến"] = Math.round(valueFor(summed));
     }
     return row;
   });
