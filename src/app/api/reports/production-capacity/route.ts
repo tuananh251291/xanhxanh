@@ -10,19 +10,19 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 
 // Trang "Năng suất sản xuất" (Admin). Trục ngang gồm mọi kỳ từ "from" tới "to" NV tự nhập (làm tròn
 // chẵn tuần/chẵn tháng — getWeekBucketsInRange/getMonthBucketsInRange), hoặc mặc định 10 kỳ gần nhất +
-// 1 kỳ kế tiếp nếu không nhập gì. Đường xanh (Thực tế) phủ mọi kỳ <= kỳ hiện tại THẬT (hôm nay, không
-// phụ thuộc quãng đang xem). Đường đỏ (Dự kiến) phủ mọi kỳ tương lai (> hôm nay) trong quãng đã chọn —
-// MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn các tuần rơi vào đúng kỳ hiển thị: mỗi tuần
-// chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy" (không phải chỉ 1 Nhóm duy nhất áp dụng suốt —
-// qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt, mỗi Nhóm có 1 chuỗi cộng dồn RIÊNG cách nhau N
-// tuần = transferWaitWeeks). Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU thật tính tới
-// "now" (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng, không bao giờ dùng dữ liệu tương
-// lai. Kỳ hiện tại có CẢ 2 khoá Thực tế/Dự kiến (cùng giá trị thực tế) để 2 đường nối liền trên biểu đồ,
-// không đứt đoạn — vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối đa có thể đạt
-// nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy xu hướng quá khứ) nên số có thể lệch hẳn
-// nhau ngay tại điểm nối. Query params: unit=week|month, plantTypeId (bắt buộc),
-// spec=mother|finished|total, scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to
-// (tuỳ chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường đỏ).
+// 1 kỳ kế tiếp nếu không nhập gì. LUÔN trả về cả 3 quy cách (Mẫu mẹ/Thành phẩm/Tổng) cùng lúc — không lọc
+// theo 1 quy cách nữa — mỗi quy cách 2 khoá: khoá "gốc" (VD "Mẫu mẹ") phủ mọi kỳ <= kỳ hiện tại THẬT
+// (đã xảy ra, FE vẽ nét đậm), khoá "(dự kiến)" (VD "Mẫu mẹ (dự kiến)") phủ kỳ hiện tại (để nối liền, cùng
+// giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh) — MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi
+// cộng dồn các tuần rơi vào đúng kỳ hiển thị: mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới
+// "cấy" (không phải chỉ 1 Nhóm duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới
+// lượt, mỗi Nhóm có 1 chuỗi cộng dồn RIÊNG cách nhau N tuần = transferWaitWeeks). Hệ số trung bình luôn
+// tính theo 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU thật tính tới "now" (computeAverageRatios) — bất kể đơn vị đang
+// xem Tuần hay Tháng, không bao giờ dùng dữ liệu tương lai. Vốn dự báo và sản lượng thực tế là 2 khái
+// niệm khác nhau (năng LỰC tối đa có thể đạt nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy
+// xu hướng quá khứ) nên số có thể lệch hẳn nhau ngay tại điểm nối. Query params: unit=week|month,
+// plantTypeId (bắt buộc), scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ
+// chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường dự kiến).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -30,7 +30,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get("unit") === "month" ? "month" : "week";
   const plantTypeId = searchParams.get("plantTypeId");
-  const spec = searchParams.get("spec") === "mother" || searchParams.get("spec") === "finished" ? searchParams.get("spec") : "total";
   const scopeParam = searchParams.get("scope");
   const scopeId = searchParams.get("scopeId");
   const fromParam = searchParams.get("from");
@@ -78,19 +77,22 @@ export async function GET(req: NextRequest) {
       : Promise.resolve([]),
   ]);
 
-  const valueFor = (p: { motherOutput: number; finishedOutput: number }) => {
-    if (spec === "mother") return p.motherOutput;
-    if (spec === "finished") return p.finishedOutput;
-    return p.motherOutput + p.finishedOutput;
-  };
+  const SPECS = [
+    { label: "Mẫu mẹ", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput },
+    { label: "Thành phẩm", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.finishedOutput },
+    { label: "Tổng", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput + p.finishedOutput },
+  ];
 
   const data: Record<string, string | number>[] = buckets.map((b) => {
     const row: Record<string, string | number> = { period: b.label };
     if (b.start <= todayBucket.start) {
       const idx = historyBuckets.findIndex((h) => h.start.getTime() === b.start.getTime());
-      const actualValue = idx !== -1 ? Math.round(valueFor(actualPoints[idx])) : 0;
-      row["Thực tế"] = actualValue;
-      if (b.start.getTime() === todayBucket.start.getTime()) row["Dự kiến"] = actualValue;
+      const point = idx !== -1 ? actualPoints[idx] : { motherOutput: 0, finishedOutput: 0 };
+      for (const s of SPECS) {
+        const actualValue = Math.round(s.valueFor(point));
+        row[s.label] = actualValue;
+        if (b.start.getTime() === todayBucket.start.getTime()) row[`${s.label} (dự kiến)`] = actualValue;
+      }
     } else {
       // Cộng dồn mọi tuần mô phỏng rơi vào đúng kỳ hiển thị này — 1 kỳ Tháng thường gồm ~4 tuần, mỗi
       // tuần có thể là 1 Nhóm tuần mẫu mẹ khác nhau tới lượt cấy (xem simulateWeeklyForecast).
@@ -99,7 +101,9 @@ export async function GET(req: NextRequest) {
         (acc, p) => ({ motherOutput: acc.motherOutput + p.motherForecast, finishedOutput: acc.finishedOutput + p.finishedForecast }),
         { motherOutput: 0, finishedOutput: 0 }
       );
-      row["Dự kiến"] = Math.round(valueFor(summed));
+      for (const s of SPECS) {
+        row[`${s.label} (dự kiến)`] = Math.round(s.valueFor(summed));
+      }
     }
     return row;
   });

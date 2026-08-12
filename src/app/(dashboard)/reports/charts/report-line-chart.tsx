@@ -11,6 +11,10 @@ export interface LineSeries {
   key: string;
   label: string;
   color: string;
+  /** Độ dày nét vẽ — mặc định 2. Dùng để phân biệt 2 đoạn của cùng 1 khái niệm (VD đậm = đã xảy ra, mảnh = dự kiến) mà không cần đổi màu. */
+  strokeWidth?: number;
+  /** false = ẩn khỏi chú giải (Legend) — dùng khi 1 khái niệm được vẽ bằng 2 series (đậm/mảnh) chung màu, chỉ cần hiện 1 mục chú giải đại diện. */
+  showInLegend?: boolean;
 }
 
 interface ReportLineChartProps {
@@ -63,9 +67,10 @@ export default function ReportLineChart({
                 dataKey={s.key}
                 name={s.label}
                 stroke={s.color}
-                strokeWidth={2}
+                strokeWidth={s.strokeWidth ?? 2}
                 dot={{ r: 4, fill: s.color }}
                 activeDot={{ r: 5 }}
+                legendType={s.showInLegend === false ? "none" : "line"}
               />
             ))}
           </LineChart>

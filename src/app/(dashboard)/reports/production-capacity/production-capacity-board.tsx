@@ -26,7 +26,6 @@ type Staff = { id: string; code: string; name: string; role: string };
 type ComboOption = { value: string; label: string };
 
 type Unit = "week" | "month";
-type Spec = "total" | "mother" | "finished";
 type ScopeKind = "all" | "warehouse" | "staff";
 
 // `<input type="week">` trả về "YYYY-Www" (tuần ISO), `<input type="month">` trả về "YYYY-MM" — quy đổi
@@ -53,7 +52,6 @@ export default function ProductionCapacityBoard() {
 
   const [unit, setUnit] = useState<Unit>("week");
   const [plantTypeOption, setPlantTypeOption] = useState<ComboOption | null>(null);
-  const [spec, setSpec] = useState<Spec>("total");
   const [scopeKind, setScopeKind] = useState<ScopeKind>("all");
   const [scopeOption, setScopeOption] = useState<ComboOption | null>(null);
   // Quãng thời gian tự nhập (tuỳ chọn) — để trống cả 2 thì API tự dùng mặc định 10 kỳ gần nhất + 1 kỳ
@@ -84,7 +82,7 @@ export default function ProductionCapacityBoard() {
     if (scopeKind !== "all" && !scopeOption) { setData([]); return; }
     setLoading(true);
     try {
-      const params = new URLSearchParams({ unit, plantTypeId: plantTypeOption.value, spec, scope: scopeKind });
+      const params = new URLSearchParams({ unit, plantTypeId: plantTypeOption.value, scope: scopeKind });
       if (scopeKind !== "all" && scopeOption) params.set("scopeId", scopeOption.value);
       const fromStr = periodValueToDateStr(fromPeriod, unit);
       const toStr = periodValueToDateStr(toPeriod, unit);
@@ -95,7 +93,7 @@ export default function ProductionCapacityBoard() {
     } finally {
       setLoading(false);
     }
-  }, [unit, plantTypeOption, spec, scopeKind, scopeOption, fromPeriod, toPeriod]);
+  }, [unit, plantTypeOption, scopeKind, scopeOption, fromPeriod, toPeriod]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -105,15 +103,20 @@ export default function ProductionCapacityBoard() {
         <div className="space-y-4">
           <ul className="text-sm text-text-secondary space-y-1.5 list-disc pl-5">
             <li>
-              <span className="font-semibold text-foreground">Đường xanh</span> — sản lượng thực tế đã đạt,
-              tính tới kỳ hiện tại.
+              Luôn hiện <span className="font-semibold text-foreground">cả 3 đường</span> cùng lúc, phân
+              biệt bằng màu:{" "}
+              <span className="font-semibold" style={{ color: "#2e9e5b" }}>Tổng (xanh)</span>,{" "}
+              <span className="font-semibold" style={{ color: "#d9a72e" }}>Mẫu mẹ (vàng)</span>,{" "}
+              <span className="font-semibold" style={{ color: "#d9483d" }}>Thành phẩm (đỏ)</span>.
             </li>
             <li>
-              <span className="font-semibold text-foreground">Đường đỏ</span> — NĂNG LỰC tối đa dự kiến
-              (không phải ngoại suy xu hướng quá khứ). Điểm đầu (kỳ hiện tại) nối liền đường xanh.
+              Mỗi đường tự phân biệt <span className="font-semibold text-foreground">đã xảy ra</span> (nét
+              đậm — sản lượng thực tế) với <span className="font-semibold text-foreground">dự kiến</span>{" "}
+              (nét mảnh — NĂNG LỰC tối đa, không phải ngoại suy xu hướng quá khứ). Điểm nối 2 đoạn là kỳ
+              hiện tại.
             </li>
             <li>
-              Từ kỳ kế tiếp trở đi, mô phỏng <span className="font-semibold text-foreground">từng tuần</span>:
+              Từ kỳ kế tiếp trở đi, phần nét mảnh mô phỏng <span className="font-semibold text-foreground">từng tuần</span>:
               mỗi tuần chỉ Nhóm giàn mẫu mẹ đúng lượt xoay vòng mới được cấy — không phải 1 Nhóm áp dụng
               suốt, mà qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, mỗi Nhóm tự cộng dồn theo chu
               kỳ riêng.
@@ -121,11 +124,11 @@ export default function ProductionCapacityBoard() {
             <li>
               Hệ số nhân MM/ra rễ dùng để tính lấy trung bình{" "}
               <span className="font-semibold text-foreground">3 tuần gần nhất có dữ liệu thật</span> (chỉ
-              định thường, không tính dự phòng).
+              định thường, không tính dự phòng), cộng dồn các tuần vào đúng kỳ hiển thị tới hết
+              &quot;Đến&quot; đã chọn.
             </li>
-            <li>Các tuần được cộng dồn vào đúng kỳ hiển thị, kéo dài tới hết &quot;Đến&quot; đã chọn.</li>
             <li className="text-text-muted">
-              Lưu ý: đường đỏ có thể lệch mạnh so với sản lượng thực tế vì là 2 khái niệm khác nhau — năng
+              Lưu ý: đoạn nét mảnh có thể lệch mạnh so với đoạn nét đậm vì là 2 khái niệm khác nhau — năng
               lực tối đa nếu tận dụng hết tồn đủ tuổi của mọi Nhóm, không phải xu hướng đã xảy ra.
             </li>
           </ul>
@@ -194,22 +197,6 @@ export default function ProductionCapacityBoard() {
                   </ComboboxList>
                 </ComboboxContent>
               </Combobox>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Quy cách</Label>
-              <Select
-                items={[{ value: "total", label: "Tổng" }, { value: "mother", label: "Mẫu mẹ" }, { value: "finished", label: "Thành phẩm" }]}
-                value={spec}
-                onValueChange={(v) => setSpec(v as Spec)}
-              >
-                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="total">Tổng</SelectItem>
-                  <SelectItem value="mother">Mẫu mẹ</SelectItem>
-                  <SelectItem value="finished">Thành phẩm</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="space-y-1">
@@ -286,8 +273,12 @@ export default function ProductionCapacityBoard() {
             data={data}
             xKey="period"
             series={[
-              { key: "Thực tế", label: "Thực tế", color: "#2e9e5b" },
-              { key: "Dự kiến", label: "Dự kiến", color: "#d9483d" },
+              { key: "Tổng", label: "Tổng", color: "#2e9e5b", strokeWidth: 3 },
+              { key: "Tổng (dự kiến)", label: "Tổng (dự kiến)", color: "#2e9e5b", strokeWidth: 1.5, showInLegend: false },
+              { key: "Mẫu mẹ", label: "Mẫu mẹ", color: "#d9a72e", strokeWidth: 3 },
+              { key: "Mẫu mẹ (dự kiến)", label: "Mẫu mẹ (dự kiến)", color: "#d9a72e", strokeWidth: 1.5, showInLegend: false },
+              { key: "Thành phẩm", label: "Thành phẩm", color: "#d9483d", strokeWidth: 3 },
+              { key: "Thành phẩm (dự kiến)", label: "Thành phẩm (dự kiến)", color: "#d9483d", strokeWidth: 1.5, showInLegend: false },
             ]}
             unit=" cây/cụm"
           />
