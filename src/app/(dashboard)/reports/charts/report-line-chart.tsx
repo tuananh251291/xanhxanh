@@ -32,6 +32,12 @@ export default function ReportLineChart({
 }: ReportLineChartProps) {
   const [showTable, setShowTable] = useState(false);
 
+  // Cột trục dọc phải đủ rộng cho số LỚN NHẤT thực tế đang hiển thị — cố định 36px (cỡ 3 chữ số) làm số
+  // lớn hơn (VD hàng chục nghìn ở biểu đồ Năng lực sản xuất) bị cắt mất chữ số đầu. Tự tính theo độ dài
+  // chuỗi đã format (có dấu chấm phân cách nghìn, khớp tickFormatter bên dưới) của giá trị lớn nhất.
+  const maxValue = Math.max(0, ...data.flatMap((row) => series.map((s) => Number(row[s.key]) || 0)));
+  const yAxisWidth = Math.max(36, maxValue.toLocaleString("vi-VN").length * 8 + 14);
+
   return (
     <div>
       <div className="flex justify-end mb-1">
@@ -46,7 +52,13 @@ export default function ReportLineChart({
           <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" vertical={false} />
             <XAxis dataKey={xKey} tick={{ fontSize: 12, fill: "#898781" }} axisLine={{ stroke: "#c3c2b7" }} tickLine={false} />
-            <YAxis tick={{ fontSize: 12, fill: "#898781" }} axisLine={false} tickLine={false} width={36} />
+            <YAxis
+              tick={{ fontSize: 12, fill: "#898781" }}
+              axisLine={false}
+              tickLine={false}
+              width={yAxisWidth}
+              tickFormatter={(value) => Number(value).toLocaleString("vi-VN")}
+            />
             <Tooltip
               contentStyle={{ fontSize: 13, borderRadius: 8, border: "1px solid #e1e0d9" }}
               formatter={(value, name) => [`${Number(value).toLocaleString("vi-VN")}${unit}`, name]}
