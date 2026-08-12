@@ -29,6 +29,12 @@ const shelfItemSchema = z.object({
   // không dùng tới (xem buildInstructionMediumNeeds ở src/lib/medium-orders.ts).
   motherMediumTypeId: z.string().min(1).nullable(),
   finishedMediumTypeId: z.string().min(1).nullable(),
+  // Cấu hình mẫu mẹ TIỀN RA RỄ — cùng quy cách M05, tỉ lệ + môi trường RIÊNG, tính độc lập trên CÙNG
+  // quantity (không tách số lượng đầu vào giữa 2 loại M05). Hoàn toàn tùy chọn — để trống là 1 chỉ định
+  // chỉ có 1 loại M05 (Mẫu mẹ) như trước, không cần xác nhận gì thêm (khác motherSampleRatio/
+  // rootingRatio vốn phải xác nhận qua dialog nếu để trống, xem create-instruction-dialog.tsx).
+  preRootingMotherRatio: z.number().positive().nullable(),
+  preRootingMotherMediumTypeId: z.string().min(1).nullable(),
 });
 
 const createSchema = z.object({
@@ -181,6 +187,7 @@ export async function POST(req: NextRequest) {
     ...item,
     expectedMotherOutput: item.motherSampleRatio != null ? Math.floor(item.quantity * item.motherSampleRatio) : null,
     expectedFinishedOutput: item.rootingRatio != null ? Math.floor(item.quantity * item.rootingRatio) : null,
+    expectedPreRootingMotherOutput: item.preRootingMotherRatio != null ? Math.floor(item.quantity * item.preRootingMotherRatio) : null,
   }));
 
   const inputMotherQuantity = itemsWithOutput.reduce((sum, item) => sum + item.quantity, 0);
@@ -229,6 +236,9 @@ export async function POST(req: NextRequest) {
             expectedFinishedOutput: item.expectedFinishedOutput,
             motherMediumTypeId: item.motherMediumTypeId,
             finishedMediumTypeId: item.finishedMediumTypeId,
+            preRootingMotherRatio: item.preRootingMotherRatio,
+            expectedPreRootingMotherOutput: item.expectedPreRootingMotherOutput,
+            preRootingMotherMediumTypeId: item.preRootingMotherMediumTypeId,
           })),
         },
       },

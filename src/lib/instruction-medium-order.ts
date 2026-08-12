@@ -9,6 +9,7 @@ type ItemForNeeds = {
   motherMediumTypeId: string | null;
   expectedFinishedOutput: number | null;
   finishedMediumTypeId: string | null;
+  preRootingMotherMediumTypeId: string | null;
 };
 
 // Gỡ 1 chỉ định khỏi đơn đặt hàng môi trường đang gắn (dùng khi SỬA chỉ định — số lượng/tỉ lệ/môi

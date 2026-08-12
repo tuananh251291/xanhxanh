@@ -45,6 +45,10 @@ const editItemSchema = z.object({
   rootingRatio: z.number().nonnegative().nullable(),
   motherMediumTypeId: z.string().min(1).nullable(),
   finishedMediumTypeId: z.string().min(1).nullable(),
+  // Cấu hình mẫu mẹ tiền ra rễ — cùng ý nghĩa như ở shelfItemSchema (api/instructions/route.ts), hoàn
+  // toàn tùy chọn.
+  preRootingMotherRatio: z.number().positive().nullable(),
+  preRootingMotherMediumTypeId: z.string().min(1).nullable(),
 });
 
 const patchSchema = z.union([
@@ -95,6 +99,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           lot: { select: { code: true, quantity: true } },
           motherMedium: { select: { code: true, name: true } },
           finishedMedium: { select: { code: true, name: true } },
+          preRootingMotherMedium: { select: { code: true, name: true } },
         },
       },
       dailyRecords: {
@@ -414,6 +419,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       stageCode: itemsById.get(ei.itemId)!.stageCode,
       expectedMotherOutput: ei.motherSampleRatio != null ? Math.floor(ei.quantity * ei.motherSampleRatio) : null,
       expectedFinishedOutput: ei.rootingRatio != null ? Math.floor(ei.quantity * ei.rootingRatio) : null,
+      expectedPreRootingMotherOutput: ei.preRootingMotherRatio != null ? Math.floor(ei.quantity * ei.preRootingMotherRatio) : null,
     }));
     const inputMotherQuantity = itemsWithOutput.reduce((sum, i) => sum + i.quantity, 0);
     const expectedMotherOutput = itemsWithOutput.reduce((sum, i) => sum + (i.expectedMotherOutput ?? 0), 0);
@@ -440,6 +446,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             finishedMediumTypeId: i.finishedMediumTypeId,
             expectedMotherOutput: i.expectedMotherOutput,
             expectedFinishedOutput: i.expectedFinishedOutput,
+            preRootingMotherRatio: i.preRootingMotherRatio,
+            expectedPreRootingMotherOutput: i.expectedPreRootingMotherOutput,
+            preRootingMotherMediumTypeId: i.preRootingMotherMediumTypeId,
           },
         });
       }

@@ -485,6 +485,7 @@ model MediumType {
 
   instructionItemsAsMotherMedium    PlantingInstructionItem[] @relation("ItemMotherMedium")
   instructionItemsAsFinishedMedium  PlantingInstructionItem[] @relation("ItemFinishedMedium")
+  instructionItemsAsPreRootingMotherMedium PlantingInstructionItem[] @relation("ItemPreRootingMotherMedium")
   orderItems                        MediumOrderItem[]
 
   @@map("medium_types")
@@ -1019,6 +1020,15 @@ model PlantingInstructionItem {
   rootingRatio           Float?
   expectedMotherOutput   Int?
   expectedFinishedOutput Int?
+
+  // Cấu hình mẫu mẹ tiền ra rễ (M05) — TÁCH RIÊNG khỏi motherSampleRatio/motherMedium ở trên, cùng loại
+  // quy cách nguồn (M05) nhưng tỉ lệ nhân + môi trường khác, tính ĐỘC LẬP trên CÙNG quantity (không tách
+  // số lượng đầu vào, giống cách motherSampleRatio/rootingRatio đã tính độc lập từ trước). Tùy chọn —
+  // để trống nghĩa là chỉ định này chỉ có 1 loại M05 (Mẫu mẹ) như trước.
+  preRootingMotherRatio          Float?
+  expectedPreRootingMotherOutput Int?
+  preRootingMotherMediumTypeId   String?
+  preRootingMotherMedium         MediumType? @relation("ItemPreRootingMotherMedium", fields: [preRootingMotherMediumTypeId], references: [id])
 
   // Môi trường riêng cho dòng quy cách này: 1 để nhân thêm mẫu mẹ, 1 để ra rễ thành cây thành phẩm.
   motherMediumTypeId     String?

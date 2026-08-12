@@ -22,6 +22,7 @@ type InstructionItemForOrder = {
   motherMediumTypeId: string | null;
   expectedFinishedOutput: number | null;
   finishedMediumTypeId: string | null;
+  preRootingMotherMediumTypeId: string | null;
 };
 
 export type MediumOrderItemInput = {
@@ -45,6 +46,12 @@ export function buildInstructionMediumNeeds(
   for (const item of items) {
     if (item.stageCode === "M05" && item.motherMediumTypeId && item.quantity > 0) {
       result.push({ stageCode: item.stageCode, mediumTypeId: item.motherMediumTypeId, quantity: item.quantity });
+    }
+    // Mẫu mẹ tiền ra rễ — quy cách M05 riêng, tính ĐỘC LẬP trên CÙNG quantity (không tách số lượng đầu
+    // vào giữa 2 loại M05, xem PlantingInstructionItem.preRootingMotherRatio) nên cần chuẩn bị đủ môi
+    // trường cho quantity đó y hệt cách môi trường "Mẫu mẹ" ở trên đã tính.
+    if (item.stageCode === "M05" && item.preRootingMotherMediumTypeId && item.quantity > 0) {
+      result.push({ stageCode: item.stageCode, mediumTypeId: item.preRootingMotherMediumTypeId, quantity: item.quantity });
     }
   }
 

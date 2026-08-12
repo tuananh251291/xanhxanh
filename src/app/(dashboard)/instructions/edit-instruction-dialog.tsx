@@ -36,6 +36,8 @@ type InstructionDetail = {
     rootingRatio: number | null;
     motherMediumTypeId: string | null;
     finishedMediumTypeId: string | null;
+    preRootingMotherRatio: number | null;
+    preRootingMotherMediumTypeId: string | null;
     shelf: { code: string };
     lot: { quantity: number } | null;
   }[];
@@ -55,6 +57,8 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
   const [sharedRootingRatio, setSharedRootingRatio] = useState("");
   const [sharedMotherMediumTypeId, setSharedMotherMediumTypeId] = useState("");
   const [sharedFinishedMediumTypeId, setSharedFinishedMediumTypeId] = useState("");
+  const [sharedPreRootingMotherRatio, setSharedPreRootingMotherRatio] = useState("");
+  const [sharedPreRootingMotherMediumTypeId, setSharedPreRootingMotherMediumTypeId] = useState("");
   const [weekStart, setWeekStart] = useState("");
   const [notes, setNotes] = useState("");
   const [manualT01, setManualT01] = useState("0");
@@ -85,6 +89,8 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
     setSharedRootingRatio(first?.rootingRatio != null ? String(first.rootingRatio) : "");
     setSharedMotherMediumTypeId(first?.motherMediumTypeId ?? "");
     setSharedFinishedMediumTypeId(first?.finishedMediumTypeId ?? "");
+    setSharedPreRootingMotherRatio(first?.preRootingMotherRatio != null ? String(first.preRootingMotherRatio) : "");
+    setSharedPreRootingMotherMediumTypeId(first?.preRootingMotherMediumTypeId ?? "");
     setWeekStart(inst.weekStart ? format(new Date(inst.weekStart), "yyyy-MM-dd") : "");
     setNotes(inst.notes ?? "");
     setManualT01(String(inst.plannedT01Quantity ?? 0));
@@ -100,15 +106,24 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
 
   const motherRatioEntered = sharedMotherSampleRatio.trim() !== "";
   const rootingRatioEntered = sharedRootingRatio.trim() !== "";
+  const preRootingRatioEntered = sharedPreRootingMotherRatio.trim() !== "";
   const sharedMotherRatioNum = parseRatio(sharedMotherSampleRatio);
   const sharedRootingRatioNum = parseRatio(sharedRootingRatio);
+  const sharedPreRootingMotherRatioNum = parseRatio(sharedPreRootingMotherRatio);
 
   const rowOutputs = rows.map((r) => {
     const qty = Number(r.quantityUsed) || 0;
-    return { ...r, qty, expectedMother: Math.floor(qty * sharedMotherRatioNum), expectedFinished: Math.floor(qty * sharedRootingRatioNum) };
+    return {
+      ...r,
+      qty,
+      expectedMother: Math.floor(qty * sharedMotherRatioNum),
+      expectedFinished: Math.floor(qty * sharedRootingRatioNum),
+      expectedPreRootingMother: Math.floor(qty * sharedPreRootingMotherRatioNum),
+    };
   });
   const totalFinishedOutput = rowOutputs.reduce((s, r) => s + r.expectedFinished, 0);
   const totalMotherOutput = rowOutputs.reduce((s, r) => s + r.expectedMother, 0);
+  const totalPreRootingMotherOutput = rowOutputs.reduce((s, r) => s + r.expectedPreRootingMother, 0);
 
   const plannedT01 = plannedTouched ? manualT01 : String(totalFinishedOutput);
   const plannedT05 = plannedTouched ? manualT05 : "0";
@@ -137,6 +152,8 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
     if (!rootingRatioEntered && !window.confirm("Bạn đang để trống Tỉ lệ ra rễ (TP) — chỉ định sẽ không có thành phẩm dự kiến. Bạn có muốn tiếp tục không?")) return;
     if (motherRatioEntered && !sharedMotherMediumTypeId) { toast.error("Chọn môi trường nhân MM"); return; }
     if (rootingRatioEntered && !sharedFinishedMediumTypeId) { toast.error("Chọn môi trường ra rễ (TP)"); return; }
+    if (preRootingRatioEntered && sharedPreRootingMotherRatioNum <= 0) { toast.error("Tỉ lệ nhân MM tiền ra rễ phải lớn hơn 0"); return; }
+    if (preRootingRatioEntered && !sharedPreRootingMotherMediumTypeId) { toast.error("Chọn môi trường cho Mẫu mẹ tiền ra rễ"); return; }
     if (plannedSum !== totalFinishedOutput) {
       toast.error(`Tổng phân bổ T01 + T05 (${plannedSum.toLocaleString("vi-VN")} cây) phải bằng đúng thành phẩm dự kiến (${totalFinishedOutput.toLocaleString("vi-VN")} cây)`);
       return;
@@ -158,6 +175,8 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
               rootingRatio: rootingRatioEntered ? sharedRootingRatioNum : null,
               motherMediumTypeId: motherRatioEntered ? sharedMotherMediumTypeId : null,
               finishedMediumTypeId: rootingRatioEntered ? sharedFinishedMediumTypeId : null,
+              preRootingMotherRatio: preRootingRatioEntered ? sharedPreRootingMotherRatioNum : null,
+              preRootingMotherMediumTypeId: preRootingRatioEntered ? sharedPreRootingMotherMediumTypeId : null,
             })),
             plannedT01Quantity: Number(plannedT01) || 0,
             plannedT05Quantity: Number(plannedT05) || 0,
@@ -227,7 +246,7 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
             </div>
 
             <div className="border rounded-lg p-3 space-y-2">
-              <p className="text-xs font-medium text-text-secondary">Tỉ lệ + môi trường dùng chung cho tất cả các kệ trên</p>
+              <p className="text-xs font-medium text-text-secondary">Mẫu mẹ — dùng chung cho tất cả các kệ trên</p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Tỉ lệ nhân MM</Label>
@@ -238,17 +257,6 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
                   />
                   <p className="text-[11px] text-text-muted">Số cụm MM ra / số cụm MM dùng — gõ dấu phẩy hoặc dấu chấm đều được, có thể để trống nếu chưa xác định</p>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Tỉ lệ ra TP</Label>
-                  <Input
-                    type="text" inputMode="decimal" placeholder="VD: 1,5 hoặc 1.5"
-                    value={sharedRootingRatio}
-                    onChange={(e) => setSharedRootingRatio(e.target.value)}
-                  />
-                  <p className="text-[11px] text-text-muted">Số cây TP ra / số cụm MM dùng — gõ dấu phẩy hoặc dấu chấm đều được, có thể để trống nếu chưa xác định</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label className="text-xs">Môi trường nhân MM{!motherRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
                   <Select
@@ -263,6 +271,53 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-3 space-y-2">
+              <p className="text-xs font-medium text-text-secondary">
+                Mẫu mẹ tiền ra rễ (không bắt buộc) — quy cách M05 thứ 2, tỉ lệ + môi trường riêng, tính trên cùng số lượng dùng ở trên
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Tỉ lệ nhân MM (tiền ra rễ)</Label>
+                  <Input
+                    type="text" inputMode="decimal" placeholder="VD: 1,5 hoặc 1.5"
+                    value={sharedPreRootingMotherRatio}
+                    onChange={(e) => setSharedPreRootingMotherRatio(e.target.value)}
+                  />
+                  <p className="text-[11px] text-text-muted">Để trống nếu chỉ định này chỉ có 1 loại M05 (Mẫu mẹ)</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Môi trường (tiền ra rễ){!preRootingRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
+                  <Select
+                    items={mediumTypes.map((m) => ({ value: m.id, label: m.code }))}
+                    value={sharedPreRootingMotherMediumTypeId}
+                    onValueChange={(v) => setSharedPreRootingMotherMediumTypeId(v as string)}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Chọn MT" /></SelectTrigger>
+                    <SelectContent>
+                      {mediumTypes.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.code}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-3 space-y-2">
+              <p className="text-xs font-medium text-text-secondary">Thành phẩm (T01/T05) — dùng chung cho tất cả các kệ trên</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Tỉ lệ ra TP</Label>
+                  <Input
+                    type="text" inputMode="decimal" placeholder="VD: 1,5 hoặc 1.5"
+                    value={sharedRootingRatio}
+                    onChange={(e) => setSharedRootingRatio(e.target.value)}
+                  />
+                  <p className="text-[11px] text-text-muted">Số cây TP ra / số cụm MM dùng — gõ dấu phẩy hoặc dấu chấm đều được, có thể để trống nếu chưa xác định</p>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Môi trường ra rễ (TP){!rootingRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
@@ -306,6 +361,11 @@ export default function EditInstructionDialog({ instructionId }: { instructionId
                     → Mẫu mẹ dự kiến:{" "}
                     <strong>{motherRatioEntered ? `${totalMotherOutput.toLocaleString("vi-VN")} cụm` : "— (chưa nhập tỉ lệ)"}</strong>
                   </p>
+                  {preRootingRatioEntered && (
+                    <p>
+                      → Mẫu mẹ tiền ra rễ dự kiến: <strong>{totalPreRootingMotherOutput.toLocaleString("vi-VN")} cụm</strong>
+                    </p>
+                  )}
                   <p>
                     → Thành phẩm dự kiến:{" "}
                     <strong>{rootingRatioEntered ? `${totalFinishedOutput.toLocaleString("vi-VN")} cây` : "— (chưa nhập tỉ lệ)"}</strong>

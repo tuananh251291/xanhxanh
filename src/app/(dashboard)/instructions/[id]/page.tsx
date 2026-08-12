@@ -45,6 +45,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
           lot: { select: { code: true } },
           motherMedium: { select: { code: true, name: true } },
           finishedMedium: { select: { code: true, name: true } },
+          preRootingMotherMedium: { select: { code: true, name: true } },
         },
       },
       dailyRecords: {
@@ -100,6 +101,10 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   // "Tỉ lệ + môi trường dùng chung"), lấy dòng đầu có giá trị là đủ, cùng cách lấy targetMotherRatio ở trên.
   const motherMediumInfo = inst.items.find((i) => i.motherMedium)?.motherMedium ?? null;
   const finishedMediumInfo = inst.items.find((i) => i.finishedMedium)?.finishedMedium ?? null;
+  // Mẫu mẹ tiền ra rễ — cấu hình M05 thứ 2, tùy chọn (xem PlantingInstructionItem.preRootingMotherRatio).
+  const targetPreRootingMotherRatio = inst.items.find((i) => i.preRootingMotherRatio !== null)?.preRootingMotherRatio ?? null;
+  const preRootingMotherMediumInfo = inst.items.find((i) => i.preRootingMotherMedium)?.preRootingMotherMedium ?? null;
+  const preRootingMotherTotal = inst.items.reduce((s, i) => s + (i.expectedPreRootingMotherOutput ?? 0), 0);
   const actualMotherRatio = actualMotherUsed > 0 ? actualMotherOutput / actualMotherUsed : null;
   const actualFinishedRatio = actualMotherUsed > 0 ? actualFinishedOutput / actualMotherUsed : null;
   const fmtRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
@@ -255,6 +260,13 @@ export default async function InstructionDetailPage({ params }: { params: Promis
               <strong>Môi trường nhân MM:</strong> {motherMediumInfo?.code ?? "—"}
               &nbsp;&nbsp; <strong>Môi trường ra TP:</strong> {finishedMediumInfo?.code ?? "—"}
             </p>
+            {targetPreRootingMotherRatio !== null && (
+              <p className="pi-notes-text">
+                <strong>Mẫu mẹ tiền ra rễ</strong> — Tỉ lệ: <span className="pi-ratio-value">{fmtRatio(targetPreRootingMotherRatio)}</span>
+                &nbsp;&nbsp; Môi trường: {preRootingMotherMediumInfo?.code ?? "—"}
+                &nbsp;&nbsp; Dự kiến: {preRootingMotherTotal.toLocaleString("vi-VN")} cụm
+              </p>
+            )}
           </section>
 
           {/* Lưu ý */}
