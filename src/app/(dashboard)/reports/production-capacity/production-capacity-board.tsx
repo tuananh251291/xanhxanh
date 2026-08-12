@@ -62,6 +62,11 @@ export default function ProductionCapacityBoard() {
   const [toPeriod, setToPeriod] = useState("");
 
   const [data, setData] = useState<Record<string, string | number>[]>([]);
+  const [staffing, setStaffing] = useState<{ period: string; motherProcessed: number; workDaysNeeded: number }[]>([]);
+  // Tham số NV tự nhập — 1 số áp dụng chung cho mọi kỳ đang xem (số ngày làm việc thực tế của 1 NV trong
+  // 1 kỳ, VD trừ nghỉ thì còn ~24 ngày/tháng) — chia tiếp cho "Số ngày cấy cần" ra "Số nhân sự cần", tính
+  // ở FE để đổi số không cần gọi lại API (server trả sẵn "Số ngày cấy cần", không phụ thuộc tham số này).
+  const [workDaysPerStaff, setWorkDaysPerStaff] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -90,6 +95,7 @@ export default function ProductionCapacityBoard() {
       const res = await fetch(`/api/reports/production-capacity?${params}`);
       const json = await res.json();
       setData(Array.isArray(json.data) ? json.data : []);
+      setStaffing(Array.isArray(json.staffing) ? json.staffing : []);
     } finally {
       setLoading(false);
     }
@@ -269,19 +275,78 @@ export default function ProductionCapacityBoard() {
         ) : loading ? (
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
         ) : (
-          <ReportLineChart
-            data={data}
-            xKey="period"
-            series={[
-              { key: "Tổng", label: "Tổng", color: "#2e9e5b", strokeWidth: 3 },
-              { key: "Tổng (dự kiến)", label: "Tổng (dự kiến)", color: "#2e9e5b", strokeWidth: 1.5, showInLegend: false },
-              { key: "Mẫu mẹ", label: "Mẫu mẹ", color: "#d9a72e", strokeWidth: 3 },
-              { key: "Mẫu mẹ (dự kiến)", label: "Mẫu mẹ (dự kiến)", color: "#d9a72e", strokeWidth: 1.5, showInLegend: false },
-              { key: "Thành phẩm", label: "Thành phẩm", color: "#d9483d", strokeWidth: 3 },
-              { key: "Thành phẩm (dự kiến)", label: "Thành phẩm (dự kiến)", color: "#d9483d", strokeWidth: 1.5, showInLegend: false },
-            ]}
-            unit=" cây/cụm"
-          />
+          <>
+            <ReportLineChart
+              data={data}
+              xKey="period"
+              series={[
+                { key: "Tổng", label: "Tổng", color: "#2e9e5b", strokeWidth: 3 },
+                { key: "Tổng (dự kiến)", label: "Tổng (dự kiến)", color: "#2e9e5b", strokeWidth: 1.5, showInLegend: false },
+                { key: "Mẫu mẹ", label: "Mẫu mẹ", color: "#d9a72e", strokeWidth: 3 },
+                { key: "Mẫu mẹ (dự kiến)", label: "Mẫu mẹ (dự kiến)", color: "#d9a72e", strokeWidth: 1.5, showInLegend: false },
+                { key: "Thành phẩm", label: "Thành phẩm", color: "#d9483d", strokeWidth: 3 },
+                { key: "Thành phẩm (dự kiến)", label: "Thành phẩm (dự kiến)", color: "#d9483d", strokeWidth: 1.5, showInLegend: false },
+              ]}
+              unit=" cây/cụm"
+            />
+
+            {staffing.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-divider space-y-3">
+                <div className="flex items-start justify-between flex-wrap gap-3">
+                  <div className="max-w-2xl">
+                    <h3 className="font-bold text-primary-strong">Dự đoán theo kịch bản — nhân sự cần</h3>
+                    <p className="text-sm text-text-secondary mt-1">
+                      Đường &quot;dự kiến&quot; ở biểu đồ trên ngầm giả định không giới hạn nhân sự — mẫu mẹ
+                      đến tuổi là được cấy ngay. Bảng dưới quy đổi ngược: cần bao nhiêu ngày công NV cấy để
+                      đạt đúng kịch bản đó mỗi kỳ (tổng mẫu mẹ đến tuổi cần cấy ÷ năng suất trung bình 1 NV
+                      cấy được bao nhiêu mẫu mẹ/ngày, tính trên 3 tuần gần nhất có dữ liệu thật). Nhập số
+                      ngày làm việc thực tế của 1 NV trong kỳ để ra số nhân sự cần.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Số ngày làm việc / kỳ</Label>
+                    <Input
+                      type="number" min={1}
+                      value={workDaysPerStaff}
+                      onChange={(e) => setWorkDaysPerStaff(e.target.value)}
+                      placeholder="VD: 24"
+                      className="w-32"
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-primary-light text-primary-strong">
+                        <th className="px-3 py-2 text-left font-bold text-base">Kỳ</th>
+                        <th className="px-3 py-2 text-center font-bold text-base">Số ngày cấy cần</th>
+                        <th className="px-3 py-2 text-center font-bold text-base">Số nhân sự cần</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffing.map((s) => {
+                        const days = Number(workDaysPerStaff);
+                        const staffNeeded = days > 0 ? Math.ceil(s.workDaysNeeded / days) : null;
+                        return (
+                          <tr key={s.period} className="border-b last:border-0 even:bg-primary-light">
+                            <td className="px-3 py-2 font-medium">{s.period}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{s.workDaysNeeded.toLocaleString("vi-VN")}</td>
+                            <td className="px-3 py-2 text-center tabular-nums font-semibold text-primary-strong">
+                              {staffNeeded !== null ? staffNeeded.toLocaleString("vi-VN") : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!workDaysPerStaff && (
+                    <p className="text-xs text-text-muted mt-2">Nhập số ngày làm việc để tính số nhân sự cần.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

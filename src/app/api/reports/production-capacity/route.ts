@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
-import { computeActualSeries, simulateWeeklyForecast, type CapacityScope } from "@/lib/production-capacity";
+import { computeActualSeries, simulateWeeklyForecast, computeAverageRatios, type CapacityScope } from "@/lib/production-capacity";
 import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -23,6 +23,9 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // xu hướng quá khứ) nên số có thể lệch hẳn nhau ngay tại điểm nối. Query params: unit=week|month,
 // plantTypeId (bắt buộc), scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ
 // chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường dự kiến).
+// Response còn thêm `staffing` — mỗi kỳ TƯƠNG LAI cần bao nhiêu ngày công NV cấy để đạt đúng kịch bản tối
+// đa ở "data" (kịch bản đó ngầm giả định không giới hạn nhân sự) — FE tự chia tiếp cho tham số "số ngày
+// làm việc" NV nhập để ra số nhân sự cần (xem phần "Dự đoán theo kịch bản" ở production-capacity-board.tsx).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -70,11 +73,12 @@ export async function GET(req: NextRequest) {
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const futureBuckets = buckets.filter((b) => b.start > todayBucket.start);
-  const [actualPoints, weeklyForecast] = await Promise.all([
+  const [actualPoints, weeklyForecast, { avgMotherPerStaffDay }] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
     futureBuckets.length > 0
       ? simulateWeeklyForecast(plantTypeId, scope, now, futureBuckets[futureBuckets.length - 1].end)
       : Promise.resolve([]),
+    computeAverageRatios(plantTypeId, now, scope),
   ]);
 
   const SPECS = [
@@ -108,5 +112,17 @@ export async function GET(req: NextRequest) {
     return row;
   });
 
-  return NextResponse.json({ data });
+  // Dự đoán nhân sự — chỉ có ý nghĩa cho các kỳ TƯƠNG LAI (kỳ đã qua thì nhân sự đã là chuyện đã rồi).
+  // Số ngày cấy cần = tổng mẫu mẹ ĐEM CẤY trong kỳ (motherProcessed, "vốn" trước khi nhân hệ số — khác
+  // motherForecast là mẫu mẹ SINH RA) ÷ năng suất trung bình 1 NV cấy được bao nhiêu mẫu mẹ/ngày (3 tuần
+  // gần nhất có dữ liệu thật). Số nhân sự cần do FE tự chia tiếp cho tham số "số ngày làm việc" NV tự
+  // nhập (không cố định cứng ở server để đổi tham số không cần gọi lại API).
+  const staffing = futureBuckets.map((b) => {
+    const pointsInBucket = weeklyForecast.filter((p) => p.weekStart >= b.start && p.weekStart <= b.end);
+    const motherProcessed = pointsInBucket.reduce((s, p) => s + p.motherProcessed, 0);
+    const workDaysNeeded = avgMotherPerStaffDay > 0 ? motherProcessed / avgMotherPerStaffDay : 0;
+    return { period: b.label, motherProcessed: Math.round(motherProcessed), workDaysNeeded: Math.round(workDaysNeeded) };
+  });
+
+  return NextResponse.json({ data, staffing });
 }

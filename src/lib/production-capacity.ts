@@ -88,33 +88,34 @@ export async function computeActualSeries(plantTypeId: string, buckets: WeekBuck
   return points;
 }
 
-// Bước A — hệ số nhân MM / hệ số ra rễ TP trung bình của 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU (không nhất thiết
-// liền kề, không bao giờ tính tuần ở tương lai — đã loại chỉ định dự phòng), LUÔN gộp theo lưới TUẦN
-// thật bất kể đơn vị biểu đồ đang xem Tuần hay Tháng. KHÁC bản trước (gộp cứng theo 3 kỳ dương lịch liền
-// trước "kỳ hiện tại" của đúng đơn vị đang chọn): với đơn vị Tháng, đòi hỏi đủ 3 THÁNG dữ liệu thật nên hệ
-// thống còn ít lịch sử (VD mới chạy vài tuần) sẽ ra hệ số=0 suốt nhiều tháng đầu dù đã có dữ liệu thật gần
-// đây — nay chỉ cần có dữ liệu ở BẤT KỲ tuần nào trong quá khứ (kể cả chỉ 1-2 tuần) là tính được ngay,
-// lấy tối đa 3 tuần gần nhất, ít hơn 3 vẫn dùng được. Gộp thẳng theo từng (nhân sự, tuần) rồi trung bình
-// cộng — không trung bình theo NV trước.
+// Bước A — hệ số nhân MM / hệ số ra rễ TP / năng suất mẫu mẹ mỗi NV mỗi NGÀY, tất cả tính trên 3 TUẦN
+// GẦN NHẤT CÓ DỮ LIỆU (không nhất thiết liền kề, không bao giờ tính tuần ở tương lai — đã loại chỉ định
+// dự phòng), LUÔN gộp theo lưới TUẦN thật bất kể đơn vị biểu đồ đang xem Tuần hay Tháng. KHÁC bản trước
+// (gộp cứng theo 3 kỳ dương lịch liền trước "kỳ hiện tại" của đúng đơn vị đang chọn): với đơn vị Tháng,
+// đòi hỏi đủ 3 THÁNG dữ liệu thật nên hệ thống còn ít lịch sử (VD mới chạy vài tuần) sẽ ra hệ số=0 suốt
+// nhiều tháng đầu dù đã có dữ liệu thật gần đây — nay chỉ cần có dữ liệu ở BẤT KỲ tuần nào trong quá khứ
+// (kể cả chỉ 1-2 tuần) là tính được ngay, lấy tối đa 3 tuần gần nhất, ít hơn 3 vẫn dùng được. avgRatioMM/
+// avgRatioTP gộp thẳng theo từng (nhân sự, tuần) rồi trung bình cộng — không trung bình theo NV trước.
+// avgMotherPerStaffDay gộp theo (nhân sự, NGÀY) — 1 NV có thể có nhiều DailyRecord trong 1 ngày (nhiều
+// chỉ định khác nhau), cộng dồn motherUsed đúng ngày đó trước khi đưa vào trung bình — dùng để quy đổi
+// "tổng mẫu mẹ cần cấy" ra "số ngày công cần" ở phần Dự đoán nhân sự (xem estimateStaffingNeed).
 export async function computeAverageRatios(
   plantTypeId: string,
   now: Date,
   scope: CapacityScope
-): Promise<{ avgRatioMM: number; avgRatioTP: number }> {
+): Promise<{ avgRatioMM: number; avgRatioTP: number; avgMotherPerStaffDay: number }> {
   const scopedStaffIds = await resolveScopedStaffIds(scope);
   const rows = await fetchDailyRecords(plantTypeId, new Date(0), now, scopedStaffIds, false);
 
   const weekStartOf = (d: Date) => startOfWeek(d, { weekStartsOn: 1 }).getTime();
   const recentWeekStarts = [...new Set(rows.map((r) => weekStartOf(r.recordDate)))].sort((a, b) => b - a).slice(0, 3);
   const recentWeekSet = new Set(recentWeekStarts);
+  const relevantRows = rows.filter((r) => recentWeekSet.has(weekStartOf(r.recordDate)));
 
-  // Gộp theo (staffId, đầu tuần) — mỗi tổ hợp là 1 giá trị trong phép trung bình cuối, chỉ giữ lại các
-  // dòng thuộc 3 tuần gần nhất đã chọn ở trên.
+  // Gộp theo (staffId, đầu tuần) — mỗi tổ hợp là 1 giá trị trong phép trung bình hệ số MM/TP.
   const byStaffWeek = new Map<string, OutputRow[]>();
-  for (const r of rows) {
-    const weekStart = weekStartOf(r.recordDate);
-    if (!recentWeekSet.has(weekStart)) continue;
-    const key = `${r.staffId}|${weekStart}`;
+  for (const r of relevantRows) {
+    const key = `${r.staffId}|${weekStartOf(r.recordDate)}`;
     const list = byStaffWeek.get(key) ?? [];
     list.push(r);
     byStaffWeek.set(key, list);
@@ -129,8 +130,17 @@ export async function computeAverageRatios(
     ratiosTP.push(finishedOutput / motherUsed);
   }
 
+  // Gộp theo (staffId, ngày) — mỗi tổ hợp là 1 giá trị trong phép trung bình năng suất/ngày.
+  const dayKeyOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const motherUsedByStaffDay = new Map<string, number>();
+  for (const r of relevantRows) {
+    const key = `${r.staffId}|${dayKeyOf(r.recordDate)}`;
+    motherUsedByStaffDay.set(key, (motherUsedByStaffDay.get(key) ?? 0) + r.motherUsed);
+  }
+  const perStaffDayValues = [...motherUsedByStaffDay.values()].filter((v) => v > 0);
+
   const avg = (arr: number[]) => (arr.length === 0 ? 0 : arr.reduce((s, v) => s + v, 0) / arr.length);
-  return { avgRatioMM: avg(ratiosMM), avgRatioTP: avg(ratiosTP) };
+  return { avgRatioMM: avg(ratiosMM), avgRatioTP: avg(ratiosTP), avgMotherPerStaffDay: avg(perStaffDayValues) };
 }
 
 type RotationGroupStock = { groupId: string; rotationOrder: number; stock: number };
@@ -171,14 +181,16 @@ async function getRotationGroupsWithStock(plantTypeId: string, scope: CapacitySc
   return Array.from(byGroup.values());
 }
 
-export type WeeklyForecastPoint = { weekStart: Date; motherForecast: number; finishedForecast: number };
+export type WeeklyForecastPoint = { weekStart: Date; motherForecast: number; finishedForecast: number; motherProcessed: number };
 
 // Mô phỏng dự báo TỪNG TUẦN từ tuần kế tiếp tới "until" — đúng nghiệp vụ xoay vòng: mỗi tuần chỉ (các)
 // Nhóm tuần mẫu mẹ ĐÚNG LƯỢT (rotationOrder khớp khe tuần đó, xem getCurrentWeekSlot) mới được "cấy". Mỗi
 // Nhóm có 1 chuỗi cộng dồn RIÊNG, cách nhau đúng N tuần (transferWaitWeeks): lần đầu dùng tồn thật hiện
 // có của Nhóm đó, các lần sau dùng mẫu mẹ dự kiến của LẦN CẤY TRƯỚC của CHÍNH Nhóm đó (không trộn lẫn
-// giữa các Nhóm). Trả mảng rỗng nếu SUPER_ADMIN chưa cấu hình "Tuần khởi đầu Nhóm tuần mẫu mẹ 1" — không
-// suy đoán lịch xoay vòng khi chưa có mốc thật (cùng quy ước thận trọng như summarizeMotherWeekGroups).
+// giữa các Nhóm). motherProcessed = tổng "vốn" mẫu mẹ ĐEM CẤY tuần đó (trước khi nhân hệ số) — dùng ở
+// estimateStaffingNeed để quy ra số ngày công/nhân sự cần, khác motherForecast (mẫu mẹ SINH RA sau cấy).
+// Trả mảng rỗng nếu SUPER_ADMIN chưa cấu hình "Tuần khởi đầu Nhóm tuần mẫu mẹ 1" — không suy đoán lịch
+// xoay vòng khi chưa có mốc thật (cùng quy ước thận trọng như summarizeMotherWeekGroups).
 export async function simulateWeeklyForecast(
   plantTypeId: string,
   scope: CapacityScope,
@@ -201,6 +213,7 @@ export async function simulateWeeklyForecast(
   while (weekStart.getTime() <= until.getTime()) {
     let motherForecast = 0;
     let finishedForecast = 0;
+    let motherProcessed = 0;
     if (weekStart.getTime() >= epoch.getTime()) {
       const slot = getCurrentWeekSlot(totalSlots, weekStart, epoch);
       for (const g of groups) {
@@ -210,10 +223,11 @@ export async function simulateWeeklyForecast(
         const fOut = mOut * avgRatioTP;
         motherForecast += mOut;
         finishedForecast += fOut;
+        motherProcessed += stock;
         stockByGroup.set(g.groupId, mOut);
       }
     }
-    points.push({ weekStart, motherForecast, finishedForecast });
+    points.push({ weekStart, motherForecast, finishedForecast, motherProcessed });
     weekStart = addWeeks(weekStart, 1);
   }
   return points;
