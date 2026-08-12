@@ -7,10 +7,12 @@ export type MovedLotInfo = { lotCode: string; quantity: number };
 
 // Nhân viên Kho mô chuyển mẫu mẹ từ GIÀN NGUỒN sang GIÀN ĐÍCH trong CÙNG Phòng mẫu mẹ của kho mình phụ
 // trách — dùng để dồn/xếp lại kho cho gọn, KHÔNG liên quan tới bàn giao từ Phòng tối (đó là
-// receive-phong-toi.ts). NV chọn giàn (không chọn lô cụ thể) — 1 giàn có thể đang chứa NHIỀU lô cùng
-// lúc (khác NV/khác ngày cấy), nên rút theo FIFO (lô vào trước rút trước, giống quy ước trừ tồn nhiều
-// lô đang dùng ở nơi khác — xem api/goods-receipt-items/[id]/return/route.ts), tự tách lô nếu 1 lô
-// không đủ hết phần cần rút hoặc rút tràn sang nhiều lô.
+// receive-phong-toi.ts). NV chọn giàn + ĐÚNG 1 mã cây muốn chuyển (plantTypeId, bắt buộc — giàn "chung"
+// có thể đang chứa nhiều mã cây khác nhau cùng lúc, không được rút xuyên mã cây), không chọn lô cụ thể —
+// 1 mã cây trên 1 giàn có thể vẫn có NHIỀU lô cùng lúc (khác NV/khác ngày cấy), nên rút theo FIFO trong
+// phạm vi ĐÚNG mã cây đó (lô vào trước rút trước, giống quy ước trừ tồn nhiều lô đang dùng ở nơi khác —
+// xem api/goods-receipt-items/[id]/return/route.ts), tự tách lô nếu 1 lô không đủ hết phần cần rút hoặc
+// rút tràn sang nhiều lô.
 //
 // KHÔNG còn khái niệm "hạn cấy chuyển" gắn theo từng lô ở đây — "đạt hạn" của mẫu mẹ giờ tính THUẦN theo
 // lịch xoay vòng của Nhóm tuần mẫu mẹ mà GIÀN ĐÍCH thuộc về (xem summarizeMotherWeekGroups ở
@@ -24,8 +26,9 @@ export async function moveMotherStock(params: {
   quantity: number;
   toShelfCode: string;
   workplaceWarehouseId: string;
+  plantTypeId: string;
 }): Promise<{ movedLots: MovedLotInfo[]; fromShelfCode: string; toShelfCode: string; totalQuantity: number }> {
-  const { fromShelfCode, quantity, toShelfCode, workplaceWarehouseId } = params;
+  const { fromShelfCode, quantity, toShelfCode, workplaceWarehouseId, plantTypeId } = params;
 
   if (quantity <= 0) throw new ShelfAssignError("Số cụm chuyển phải lớn hơn 0");
   if (fromShelfCode.trim().toUpperCase() === toShelfCode.trim().toUpperCase()) {
@@ -49,7 +52,7 @@ export async function moveMotherStock(params: {
   }
 
   const sourceLots = await prisma.lot.findMany({
-    where: { shelfId: fromShelf.id, status: "ACTIVE", stage: "MAU_ME" },
+    where: { shelfId: fromShelf.id, status: "ACTIVE", stage: "MAU_ME", plantTypeId },
     include: {
       plantType: { select: { code: true } },
       instruction: { select: { assignedToId: true } },
@@ -67,11 +70,11 @@ export async function moveMotherStock(params: {
   });
   const totalAvailable = sourceLots.reduce((s, l) => s + l.quantity, 0);
   if (sourceLots.length === 0 || totalAvailable === 0) {
-    throw new ShelfAssignError(`Giàn ${fromShelf.code} hiện không có mẫu mẹ nào`);
+    throw new ShelfAssignError(`Giàn ${fromShelf.code} hiện không có mẫu mẹ của mã cây này`);
   }
   if (quantity > totalAvailable) {
     throw new ShelfAssignError(
-      `Số cụm chuyển (${quantity.toLocaleString("vi-VN")}) vượt quá tổng tồn hiện có của giàn ${fromShelf.code} (${totalAvailable.toLocaleString("vi-VN")})`
+      `Số cụm chuyển (${quantity.toLocaleString("vi-VN")}) vượt quá tồn hiện có của mã cây này trên giàn ${fromShelf.code} (${totalAvailable.toLocaleString("vi-VN")})`
     );
   }
 

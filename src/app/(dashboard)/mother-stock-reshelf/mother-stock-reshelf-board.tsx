@@ -22,6 +22,7 @@ type LotOnShelf = {
   code: string;
   quantity: number;
   stageCode: string;
+  plantTypeId: string;
   plantTypeCode: string;
   plantTypeName: string;
   lockedByInstructionCode: string | null;
@@ -60,6 +61,7 @@ export default function MotherStockReshelfBoard() {
   const [loading, setLoading] = useState(true);
   const [fromOption, setFromOption] = useState<ComboOption | null>(null);
   const [toOption, setToOption] = useState<ComboOption | null>(null);
+  const [plantTypeOption, setPlantTypeOption] = useState<ComboOption | null>(null);
   const [quantity, setQuantity] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,18 +91,40 @@ export default function MotherStockReshelfBoard() {
     [shelves, fromOption]
   );
 
+  // Giàn "chung" có thể đang chứa nhiều mã cây khác nhau cùng lúc — liệt kê các mã PHÂN BIỆT trên giàn
+  // nguồn để bắt buộc chọn đúng mã muốn chuyển, tránh rút xuyên mã cây (xem moveMotherStock).
+  const plantTypesOnFromShelf = useMemo(() => {
+    const map = new Map<string, ComboOption>();
+    fromShelf?.lots.forEach((l) => map.set(l.plantTypeId, { value: l.plantTypeId, label: `${l.plantTypeCode} — ${l.plantTypeName}` }));
+    return Array.from(map.values());
+  }, [fromShelf]);
+
+  // Giàn chỉ có đúng 1 mã cây (giàn đã chia, hoặc giàn chung nhưng hiện chỉ tồn 1 mã) thì tự chọn ngầm,
+  // không cần hỏi thêm — chỉ hiện Combobox chọn mã cây khi thật sự có nhiều hơn 1 lựa chọn.
+  useEffect(() => {
+    setPlantTypeOption(plantTypesOnFromShelf.length === 1 ? plantTypesOnFromShelf[0] : null);
+  }, [plantTypesOnFromShelf]);
+
+  const maxQtyForSelectedType = plantTypeOption
+    ? (fromShelf?.lots.filter((l) => l.plantTypeId === plantTypeOption.value).reduce((s, l) => s + l.quantity, 0) ?? 0)
+    : 0;
+
   const resetForm = () => {
     setFromOption(null);
     setToOption(null);
+    setPlantTypeOption(null);
     setQuantity("");
   };
 
   const submit = async () => {
     if (!fromOption) { toast.error("Chưa chọn giàn nguồn"); return; }
     if (!toOption) { toast.error("Chưa chọn giàn đích"); return; }
+    if (!plantTypeOption) { toast.error("Chưa chọn loại cây muốn chuyển"); return; }
     const qty = Number(quantity) || 0;
-    const maxQty = fromShelf?.used ?? 0;
-    if (qty <= 0 || qty > maxQty) { toast.error(`Số cụm chuyển phải từ 1 đến ${maxQty.toLocaleString("vi-VN")}`); return; }
+    if (qty <= 0 || qty > maxQtyForSelectedType) {
+      toast.error(`Số cụm chuyển phải từ 1 đến ${maxQtyForSelectedType.toLocaleString("vi-VN")}`);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/mother-stock-reshelf", {
@@ -110,6 +134,7 @@ export default function MotherStockReshelfBoard() {
           fromShelfCode: fromOption.value,
           quantity: qty,
           toShelfCode: toOption.value,
+          plantTypeId: plantTypeOption.value,
         }),
       });
       const json = await res.json();
@@ -210,6 +235,34 @@ export default function MotherStockReshelfBoard() {
             </div>
           )}
 
+          {plantTypesOnFromShelf.length > 1 && (
+            <div className="space-y-1">
+              <Label className="text-sm">Loại cây muốn chuyển</Label>
+              <Combobox
+                items={plantTypesOnFromShelf}
+                value={plantTypeOption}
+                isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                onValueChange={(v) => { setPlantTypeOption(v); setQuantity(""); }}
+              >
+                <ComboboxInputGroup className="w-full h-9">
+                  <ComboboxInput placeholder="Gõ mã hoặc tên cây…" />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+              {plantTypeOption && (
+                <p className="text-xs text-text-secondary">
+                  Đang chuyển mã {plantTypeOption.label.split(" — ")[0]} — khả dụng {maxQtyForSelectedType.toLocaleString("vi-VN")}/{fromShelf?.used.toLocaleString("vi-VN")} cụm trên giàn này
+                </p>
+              )}
+            </div>
+          )}
+
           {toShelf && (
             <p className="text-sm text-text-secondary">
               Giàn đích {toShelf.code}: {ownerText(toShelf)} —{" "}
@@ -228,11 +281,17 @@ export default function MotherStockReshelfBoard() {
             <Input
               type="number"
               min={1}
-              max={fromShelf?.used}
+              max={maxQtyForSelectedType}
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              placeholder={fromShelf ? `Tối đa ${fromShelf.used.toLocaleString("vi-VN")}` : "Chọn giàn nguồn trước"}
-              disabled={!fromShelf}
+              placeholder={
+                plantTypeOption
+                  ? `Tối đa ${maxQtyForSelectedType.toLocaleString("vi-VN")}`
+                  : fromShelf
+                    ? "Chọn loại cây muốn chuyển trước"
+                    : "Chọn giàn nguồn trước"
+              }
+              disabled={!plantTypeOption}
             />
           </div>
 

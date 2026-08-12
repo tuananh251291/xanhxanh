@@ -31,7 +31,7 @@ export async function GET() {
           code: true,
           quantity: true,
           stageCode: true,
-          plantType: { select: { code: true, name: true } },
+          plantType: { select: { id: true, code: true, name: true } },
           // Lô đã "có chủ" (nguồn của 1 chỉ định cấy ACTIVE/DRAFT nhưng chưa bàn giao) — chưa sắp xếp
           // được, xem comment ở moveMotherStock (src/lib/mother-stock-reshelf.ts). Hiện sẵn ở đây để Kho
           // mô biết trước khi thử chuyển, không cần đợi bấm mới thấy lỗi.
@@ -61,6 +61,7 @@ export async function GET() {
         code: l.code,
         quantity: l.quantity,
         stageCode: l.stageCode,
+        plantTypeId: l.plantType.id,
         plantTypeCode: l.plantType.code,
         plantTypeName: l.plantType.name,
         lockedByInstructionCode: l.instructionItems[0]?.instruction.code ?? null,
@@ -73,6 +74,7 @@ const moveSchema = z.object({
   fromShelfCode: z.string().trim().min(1),
   quantity: z.number().int().positive(),
   toShelfCode: z.string().trim().min(1),
+  plantTypeId: z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {
