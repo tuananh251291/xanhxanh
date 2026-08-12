@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
-import { addDays, endOfWeek, startOfDay, format } from "date-fns";
+import { addDays, endOfWeek, startOfWeek, startOfDay, format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 const createSchema = z.discriminatedUnion("type", [
@@ -63,8 +63,28 @@ export async function GET(req: NextRequest) {
   if (status) where.status = status;
   else if (excludeRejected) where.status = { not: "REJECTED" };
   if (availableToAssign) {
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+
+    // NV đã được gán 1 chỉ định dự phòng/xử lý trong TUẦN NÀY (bất kể từ đăng ký nào của họ, xem
+    // fulfilledAt dùng chung cho cả 2 loại chỉ định) thì KHÔNG đề xuất nữa cho lệnh dự phòng/xử lý tiếp
+    // theo cùng tuần — 1 NV chỉ nhận thêm đúng 1 việc/tuần qua đường đăng ký làm thêm.
+    const usedThisWeek = await prisma.extraWorkRequest.findMany({
+      where: { fulfilledAt: { gte: weekStart, lte: weekEnd } },
+      select: { staffId: true },
+    });
+
     where.status = "APPROVED";
     where.fulfilledAt = null;
+    where.staffId = { notIn: [...new Set(usedThisWeek.map((r) => r.staffId))] };
+    // Chỉ đề xuất đăng ký làm thêm/hoàn thành sớm CỦA ĐÚNG TUẦN NÀY — OVERTIME vốn chỉ đăng ký được
+    // trong tuần hiện tại (xem validate ở POST bên dưới) nhưng vẫn lọc lại cho chắc (phòng NV đăng ký từ
+    // tuần trước còn tồn đọng chưa dùng); EARLY_COMPLETION không bị giới hạn tuần lúc đăng ký nên cần lọc
+    // riêng ở đây.
+    where.OR = [
+      { type: "EARLY_COMPLETION", expectedEndDate: { gte: weekStart, lte: weekEnd } },
+      { type: "OVERTIME", slots: { some: { date: { gte: weekStart, lte: weekEnd } } } },
+    ];
   }
   if (role === "CAY_MO") {
     where.staffId = session.user.id;
