@@ -102,17 +102,33 @@ export default function ProductionCapacityBoard() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <p className="text-sm text-text-secondary max-w-md">
-            Đường xanh: sản lượng thực tế tới kỳ hiện tại. Đường đỏ: NĂNG LỰC dự kiến (không phải ngoại
-            suy xu hướng quá khứ) — điểm đầu (kỳ hiện tại) nối liền đường xanh, từ kỳ kế tiếp trở đi mô
-            phỏng TỪNG TUẦN: mỗi tuần chỉ Nhóm giàn mẫu mẹ đúng lượt xoay vòng mới được cấy (không phải 1
-            Nhóm áp dụng suốt — qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, mỗi Nhóm tự cộng dồn
-            theo chu kỳ riêng), cộng dồn các tuần vào đúng kỳ hiển thị tới hết &quot;Đến&quot; đã chọn
-            (nhân với hệ số nhân MM/ra rễ trung bình 3 TUẦN gần nhất có dữ liệu thật, chỉ định thường
-            không tính dự phòng) — có thể lệch mạnh so với sản lượng thực tế vì là 2 khái niệm khác nhau
-            (năng lực tối đa nếu tận dụng hết tồn đủ tuổi mọi Nhóm).
-          </p>
+        <div className="space-y-4">
+          <ul className="text-sm text-text-secondary space-y-1.5 list-disc pl-5">
+            <li>
+              <span className="font-semibold text-foreground">Đường xanh</span> — sản lượng thực tế đã đạt,
+              tính tới kỳ hiện tại.
+            </li>
+            <li>
+              <span className="font-semibold text-foreground">Đường đỏ</span> — NĂNG LỰC tối đa dự kiến
+              (không phải ngoại suy xu hướng quá khứ). Điểm đầu (kỳ hiện tại) nối liền đường xanh.
+            </li>
+            <li>
+              Từ kỳ kế tiếp trở đi, mô phỏng <span className="font-semibold text-foreground">từng tuần</span>:
+              mỗi tuần chỉ Nhóm giàn mẫu mẹ đúng lượt xoay vòng mới được cấy — không phải 1 Nhóm áp dụng
+              suốt, mà qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, mỗi Nhóm tự cộng dồn theo chu
+              kỳ riêng.
+            </li>
+            <li>
+              Hệ số nhân MM/ra rễ dùng để tính lấy trung bình{" "}
+              <span className="font-semibold text-foreground">3 tuần gần nhất có dữ liệu thật</span> (chỉ
+              định thường, không tính dự phòng).
+            </li>
+            <li>Các tuần được cộng dồn vào đúng kỳ hiển thị, kéo dài tới hết &quot;Đến&quot; đã chọn.</li>
+            <li className="text-text-muted">
+              Lưu ý: đường đỏ có thể lệch mạnh so với sản lượng thực tế vì là 2 khái niệm khác nhau — năng
+              lực tối đa nếu tận dụng hết tồn đủ tuổi của mọi Nhóm, không phải xu hướng đã xảy ra.
+            </li>
+          </ul>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Đơn vị thời gian</Label>
