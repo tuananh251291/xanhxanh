@@ -15,6 +15,7 @@ import type { InstructionStatus } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import EditInstructionDialog from "../edit-instruction-dialog";
 import CancelInstructionButton from "../cancel-instruction-button";
+import StaffFilterCombobox from "./staff-filter-combobox";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
   DRAFT: "bg-muted text-text-secondary",
@@ -29,7 +30,7 @@ const PAGE_SIZE = 8;
 export default async function InstructionsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; date?: string; shelf?: string; plantCode?: string }>;
+  searchParams: Promise<{ page?: string; date?: string; shelf?: string; plantCode?: string; staff?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -43,6 +44,7 @@ export default async function InstructionsListPage({
   const dateFilter = sp.date?.trim() ?? "";
   const shelfFilter = sp.shelf?.trim() ?? "";
   const plantCodeFilter = sp.plantCode?.trim() ?? "";
+  const staffFilter = sp.staff?.trim() ?? "";
 
   const where: Record<string, unknown> = {};
   if (dateFilter) {
@@ -64,8 +66,11 @@ export default async function InstructionsListPage({
       },
     };
   }
+  if (staffFilter) {
+    where.assignedToId = staffFilter;
+  }
 
-  const [total, instructions] = await Promise.all([
+  const [total, instructions, staff] = await Promise.all([
     prisma.plantingInstruction.count({ where }),
     prisma.plantingInstruction.findMany({
       where,
@@ -78,16 +83,20 @@ export default async function InstructionsListPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
+    prisma.user.findMany({ where: { role: "CAY_MO" }, select: { id: true, name: true, code: true }, orderBy: { name: "asc" } }),
   ]);
 
+  const staffOptions = staff.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const hasFilters = !!(dateFilter || shelfFilter || plantCodeFilter);
+  const hasFilters = !!(dateFilter || shelfFilter || plantCodeFilter || staffFilter);
 
   const pageHref = (p: number) => {
     const params = new URLSearchParams();
     if (dateFilter) params.set("date", dateFilter);
     if (shelfFilter) params.set("shelf", shelfFilter);
     if (plantCodeFilter) params.set("plantCode", plantCodeFilter);
+    if (staffFilter) params.set("staff", staffFilter);
     params.set("page", String(p));
     return `/instructions/list?${params.toString()}`;
   };
@@ -119,6 +128,10 @@ export default async function InstructionsListPage({
             <div className="space-y-1">
               <Label className="text-xs">Mã cây</Label>
               <Input type="text" name="plantCode" defaultValue={plantCodeFilter} placeholder="VD: AL001" className="w-40" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">NV cấy</Label>
+              <StaffFilterCombobox staffOptions={staffOptions} defaultValue={staffFilter} />
             </div>
             <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
               <Search className="w-4 h-4 mr-1" /> Tìm kiếm
