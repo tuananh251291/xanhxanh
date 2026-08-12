@@ -73,13 +73,14 @@ export async function GET(req: NextRequest) {
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const futureBuckets = buckets.filter((b) => b.start > todayBucket.start);
-  const [actualPoints, weeklyForecast, { avgMotherPerStaffDay }] = await Promise.all([
+  const [actualPoints, weeklyForecast, ratios] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
     futureBuckets.length > 0
       ? simulateWeeklyForecast(plantTypeId, scope, now, futureBuckets[futureBuckets.length - 1].end)
       : Promise.resolve([]),
     computeAverageRatios(plantTypeId, now, scope),
   ]);
+  const { avgRatioMM, avgRatioTP, avgMotherPerStaffDay } = ratios;
 
   const SPECS = [
     { label: "Mẫu mẹ", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput },
@@ -124,5 +125,8 @@ export async function GET(req: NextRequest) {
     return { period: b.label, motherProcessed: Math.round(motherProcessed), workDaysNeeded: Math.round(workDaysNeeded) };
   });
 
-  return NextResponse.json({ data, staffing });
+  // avgRatioMM/avgRatioTP/avgMotherPerStaffDay trả kèm để FE tự tính "Dự kiến theo số nhân sự thực tế"
+  // (kịch bản có giới hạn nhân sự, có dồn tồn qua kỳ sau khi thiếu người — xem production-capacity-board.tsx)
+  // hoàn toàn ở client, đổi tham số không cần gọi lại API.
+  return NextResponse.json({ data, staffing, avgRatioMM, avgRatioTP, avgMotherPerStaffDay });
 }

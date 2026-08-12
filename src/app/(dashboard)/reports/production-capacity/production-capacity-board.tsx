@@ -63,10 +63,14 @@ export default function ProductionCapacityBoard() {
 
   const [data, setData] = useState<Record<string, string | number>[]>([]);
   const [staffing, setStaffing] = useState<{ period: string; motherProcessed: number; workDaysNeeded: number }[]>([]);
+  const [ratios, setRatios] = useState({ avgRatioMM: 0, avgRatioTP: 0, avgMotherPerStaffDay: 0 });
   // Tham số NV tự nhập — 1 số áp dụng chung cho mọi kỳ đang xem (số ngày làm việc thực tế của 1 NV trong
   // 1 kỳ, VD trừ nghỉ thì còn ~24 ngày/tháng) — chia tiếp cho "Số ngày cấy cần" ra "Số nhân sự cần", tính
   // ở FE để đổi số không cần gọi lại API (server trả sẵn "Số ngày cấy cần", không phụ thuộc tham số này).
   const [workDaysPerStaff, setWorkDaysPerStaff] = useState("");
+  // Số nhân sự THỰC TẾ dự kiến bố trí — nhập riêng từng kỳ (period -> chuỗi số), dùng để tính "Dự kiến
+  // theo số nhân sự" (kịch bản có giới hạn, khác kịch bản tối đa ở staffing/workDaysPerStaff phía trên).
+  const [staffCounts, setStaffCounts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -96,12 +100,52 @@ export default function ProductionCapacityBoard() {
       const json = await res.json();
       setData(Array.isArray(json.data) ? json.data : []);
       setStaffing(Array.isArray(json.staffing) ? json.staffing : []);
+      setRatios({
+        avgRatioMM: Number(json.avgRatioMM) || 0,
+        avgRatioTP: Number(json.avgRatioTP) || 0,
+        avgMotherPerStaffDay: Number(json.avgMotherPerStaffDay) || 0,
+      });
+      setStaffCounts({});
     } finally {
       setLoading(false);
     }
   }, [unit, plantTypeOption, scopeKind, scopeOption, fromPeriod, toPeriod]);
 
   useEffect(() => { load(); }, [load]);
+
+  // "Dự kiến theo số nhân sự thực tế" — kịch bản CÓ giới hạn nhân sự, khác kịch bản tối đa ở bảng
+  // "Số ngày cấy cần"/"Số nhân sự cần" phía trên (giả định không giới hạn). Xử lý TUẦN TỰ theo từng kỳ,
+  // dồn phần mẫu mẹ đến tuổi nhưng chưa đủ người cấy sang kỳ kế tiếp (backlog) — đơn giản hoá ở mức tổng
+  // số lượng, KHÔNG mô phỏng lại toàn bộ chu kỳ xoay vòng từng Nhóm dưới ràng buộc nhân sự (xem mô tả).
+  const cappedRows = useMemo(() => {
+    const days = Number(workDaysPerStaff) || 0;
+    type CappedRow = {
+      period: string; need: number; processed: number; leftover: number;
+      motherForecast: number; finishedForecast: number; total: number;
+    };
+    return staffing.reduce<{ rows: CappedRow[]; backlog: number }>(
+      (acc, s) => {
+        const staffCount = Number(staffCounts[s.period]) || 0;
+        const capacity = staffCount * days * ratios.avgMotherPerStaffDay;
+        const need = s.motherProcessed + acc.backlog;
+        const processed = Math.min(need, capacity);
+        const leftover = Math.max(0, need - capacity);
+        const motherForecast = processed * ratios.avgRatioMM;
+        const finishedForecast = motherForecast * ratios.avgRatioTP;
+        const row: CappedRow = {
+          period: s.period,
+          need: Math.round(need),
+          processed: Math.round(processed),
+          leftover: Math.round(leftover),
+          motherForecast: Math.round(motherForecast),
+          finishedForecast: Math.round(finishedForecast),
+          total: Math.round(motherForecast + finishedForecast),
+        };
+        return { rows: [...acc.rows, row], backlog: leftover };
+      },
+      { rows: [], backlog: 0 }
+    ).rows;
+  }, [staffing, staffCounts, workDaysPerStaff, ratios]);
 
   return (
     <Card>
@@ -343,6 +387,67 @@ export default function ProductionCapacityBoard() {
                   {!workDaysPerStaff && (
                     <p className="text-xs text-text-muted mt-2">Nhập số ngày làm việc để tính số nhân sự cần.</p>
                   )}
+                </div>
+
+                <div className="pt-4">
+                  <h3 className="font-bold text-primary-strong">Dự kiến theo số nhân sự thực tế</h3>
+                  <p className="text-sm text-text-secondary mt-1 max-w-2xl">
+                    Nhập số nhân sự dự kiến bố trí cho TỪNG kỳ (dùng chung &quot;Số ngày làm việc/kỳ&quot; ở
+                    trên) — nếu không đủ người cấy hết số mẫu mẹ đến tuổi trong kỳ, phần còn lại DỒN sang
+                    kỳ kế tiếp (không mất, chỉ trễ) và làm giảm số dự kiến của đúng kỳ đó.
+                  </p>
+                  <div className="overflow-x-auto mt-3">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-primary-light text-primary-strong">
+                          <th className="px-3 py-2 text-left font-bold text-base">Kỳ</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Số nhân sự</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Cần cấy (gồm dồn)</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Đã cấy được</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Dồn sang kỳ sau</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Mẫu mẹ dự kiến</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Thành phẩm dự kiến</th>
+                          <th className="px-3 py-2 text-center font-bold text-base">Tổng dự kiến</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cappedRows.map((r) => (
+                          <tr key={r.period} className="border-b last:border-0 even:bg-primary-light">
+                            <td className="px-3 py-2 font-medium">{r.period}</td>
+                            <td className="px-2 py-2">
+                              <Input
+                                type="number" min={0}
+                                value={staffCounts[r.period] ?? ""}
+                                onChange={(e) => setStaffCounts((prev) => ({ ...prev, [r.period]: e.target.value }))}
+                                className="w-20 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-center tabular-nums">{r.need.toLocaleString("vi-VN")}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">{r.processed.toLocaleString("vi-VN")}</td>
+                            <td className="px-3 py-2 text-center tabular-nums">
+                              {r.leftover > 0 ? (
+                                <span className="text-warning-foreground font-semibold">{r.leftover.toLocaleString("vi-VN")}</span>
+                              ) : (
+                                "0"
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-center tabular-nums" style={{ color: "#d9a72e" }}>
+                              {r.motherForecast.toLocaleString("vi-VN")}
+                            </td>
+                            <td className="px-3 py-2 text-center tabular-nums" style={{ color: "#d9483d" }}>
+                              {r.finishedForecast.toLocaleString("vi-VN")}
+                            </td>
+                            <td className="px-3 py-2 text-center tabular-nums font-semibold" style={{ color: "#2e9e5b" }}>
+                              {r.total.toLocaleString("vi-VN")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!workDaysPerStaff && (
+                      <p className="text-xs text-text-muted mt-2">Nhập &quot;Số ngày làm việc/kỳ&quot; ở trên để tính.</p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
