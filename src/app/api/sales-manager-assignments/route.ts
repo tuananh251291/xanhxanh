@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
   if (!salesUser) return NextResponse.json({ message: "Nhân viên bán hàng không tồn tại" }, { status: 400 });
   if (!manager) return NextResponse.json({ message: "Nhân viên quản lý không tồn tại" }, { status: 400 });
   if (!market) return NextResponse.json({ message: "Thị trường không tồn tại" }, { status: 400 });
+  // Cả 2 vế đều phải là NV bán hàng (SALE) — quản lý ở đây là 1 NV bán hàng kiêm quản lý, không phải
+  // vai trò khác trong hệ thống (chặn ở server phòng client gửi thẳng lên, bỏ qua dropdown đã lọc sẵn).
+  if (salesUser.role !== "SALE") return NextResponse.json({ message: "Chỉ được gán cho nhân viên bán hàng" }, { status: 400 });
+  if (manager.role !== "SALE") return NextResponse.json({ message: "Nhân viên quản lý phải là nhân viên bán hàng" }, { status: 400 });
 
   const assignment = await prisma.salesManagerAssignment.upsert({
     where: { salesUserId_marketId: { salesUserId, marketId } },
