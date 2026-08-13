@@ -481,6 +481,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // null). Vì mẫu mẹ nguồn vẫn giữ ACTIVE cho tới đúng lúc bàn giao (xem markSourceLotsPlanted/POST
   // /api/instructions), hủy ở đây KHÔNG cần hoàn trạng thái lô — chưa từng bị trừ. Đây cũng chính là
   // cách "giải phóng" 1 lô đang bị mother-stock-reshelf.ts chặn sắp xếp vì đã "có chủ".
+  // XÓA HẲN khỏi DB (không phải soft-cancel qua status CANCELLED nữa) — chỉ định hủy phải biến mất hoàn
+  // toàn khỏi mọi nơi (kể cả danh sách của Admin/KY_THUAT), không giữ lại bản ghi để hiện badge "Đã hủy"
+  // nữa. An toàn xóa cứng vì điều kiện handedOverAt=null ở trên đảm bảo chưa từng có DailyRecord/Lot/
+  // ExtraWorkRequest nào tham chiếu tới chỉ định này (những bảng đó chỉ gắn instructionId SAU khi đã bàn
+  // giao/xác nhận nhận mẫu mẹ) — không có FK nào khác cần dọn ngoài PlantingInstructionItem.
   if ("cancelInstruction" in parsed.data) {
     if (!(isAdminRole(role) || role === "KY_THUAT")) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -490,7 +495,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.handedOverAt) {
       return NextResponse.json({ message: "Chỉ định đã bàn giao — không thể hủy nữa" }, { status: 400 });
     }
-    if (instruction.status === "CANCELLED" || instruction.status === "ENDED" || instruction.status === "COMPLETED") {
+    if (instruction.status === "ENDED" || instruction.status === "COMPLETED") {
       return NextResponse.json({ message: "Chỉ định đã kết thúc — không thể hủy" }, { status: 400 });
     }
 
@@ -500,14 +505,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       mediumOrderLocked = !!order?.confirmedAt;
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const deleted = await prisma.$transaction(async (tx) => {
       if (instruction.mediumOrderId && !mediumOrderLocked) {
         await detachInstructionFromMediumOrder(tx, instruction.id, instruction.mediumOrderId);
       }
-      return tx.plantingInstruction.update({ where: { id }, data: { status: "CANCELLED" } });
+      await tx.plantingInstructionItem.deleteMany({ where: { instructionId: id } });
+      return tx.plantingInstruction.delete({ where: { id } });
     });
 
-    return NextResponse.json({ ...updated, mediumOrderLocked });
+    return NextResponse.json({ ...deleted, mediumOrderLocked });
   }
 
   // Kho mô bấm "Bàn giao" khi NV cấy mô đã có sẵn (kệ "đã chia" tự động điền mặc định lúc tạo chỉ

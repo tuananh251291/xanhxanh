@@ -560,7 +560,7 @@ export default function CreateInstructionDialog({
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">Tỉ lệ nhân MM (tiền ra rễ)</Label>
+                    <Label className="text-xs">Tỉ lệ nhân MM tiền ra rễ</Label>
                     <Input
                       type="text" inputMode="decimal" placeholder="VD: 1,5 hoặc 1.5"
                       value={sharedPreRootingMotherRatio}
@@ -569,7 +569,7 @@ export default function CreateInstructionDialog({
                     <p className="text-[11px] text-text-muted">Để trống nếu chỉ định này chỉ có 1 loại M05 (Mẫu mẹ)</p>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Môi trường (tiền ra rễ){!preRootingRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
+                    <Label className="text-xs">Môi trường nhân MM tiền ra rễ{!preRootingRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
                     <Select
                       items={mediumTypes.map((m) => ({ value: m.id, label: m.code }))}
                       value={sharedPreRootingMotherMediumTypeId}
@@ -601,7 +601,7 @@ export default function CreateInstructionDialog({
                     <p className="text-[11px] text-text-muted">Số cây TP ra / số cụm MM dùng — gõ dấu phẩy hoặc dấu chấm đều được, có thể để trống nếu chưa xác định</p>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Môi trường ra rễ (TP){!rootingRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
+                    <Label className="text-xs">Môi trường ra TP{!rootingRatioEntered && " (không bắt buộc — chưa nhập tỉ lệ)"}</Label>
                     <Select
                       items={mediumTypes.map((m) => ({ value: m.id, label: m.code }))}
                       value={sharedFinishedMediumTypeId}

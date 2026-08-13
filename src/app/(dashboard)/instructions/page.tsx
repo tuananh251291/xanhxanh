@@ -49,8 +49,13 @@ export default async function InstructionsPage({
   if (role === "CAY_MO") where.assignedToId = session!.user.id;
   // Kỹ thuật xem toàn bộ chỉ định cấy trong hệ thống, không chỉ chỉ định do mình tạo.
   // Kho mô chỉ cần theo dõi chỉ định "chưa bàn giao" và "đã bàn giao/chưa xác nhận" — chỉ định đã
-  // hoàn thành (NV cấy mô đã xác nhận nhận mẫu mẹ) không cần hiện lại trong danh sách này nữa.
-  if (role === "KHO_MO") where.motherReceivedAt = null;
+  // hoàn thành (NV cấy mô đã xác nhận nhận mẫu mẹ) không cần hiện lại trong danh sách này nữa. Chỉ định
+  // đã bị KY_THUAT hủy (CANCELLED) cũng phải biến mất hẳn khỏi đây — motherReceivedAt vẫn null nên nếu
+  // không loại status riêng, chỉ định hủy vẫn lọt vào danh sách "chưa bàn giao" của Kho mô.
+  if (role === "KHO_MO") {
+    where.motherReceivedAt = null;
+    where.status = { not: "CANCELLED" };
+  }
 
   if (dateFilter) {
     const d = new Date(dateFilter);

@@ -105,6 +105,14 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   const targetPreRootingMotherRatio = inst.items.find((i) => i.preRootingMotherRatio !== null)?.preRootingMotherRatio ?? null;
   const preRootingMotherMediumInfo = inst.items.find((i) => i.preRootingMotherMedium)?.preRootingMotherMedium ?? null;
   const preRootingMotherTotal = inst.items.reduce((s, i) => s + (i.expectedPreRootingMotherOutput ?? 0), 0);
+  // Bảng "SL dự kiến trả" trên phiếu in — chỉ hiện cột nào có số > 0, ẩn hẳn cột không dùng tới (VD chỉ
+  // định không có Mẫu mẹ tiền ra rễ, hoặc không ra T05) thay vì hiện cột toàn số 0 gây rối phiếu in.
+  const printOutputColumns = [
+    { label: "SL M05 (cụm)", value: m05Total },
+    { label: "SL M05 tiền ra rễ (cụm)", value: preRootingMotherTotal },
+    { label: "SL T01 (cây)", value: inst.plannedT01Quantity ?? 0 },
+    { label: "SL T05 (cây)", value: inst.plannedT05Quantity ?? 0 },
+  ].filter((c) => c.value > 0);
   const actualMotherRatio = actualMotherUsed > 0 ? actualMotherOutput / actualMotherUsed : null;
   const actualFinishedRatio = actualMotherUsed > 0 ? actualFinishedOutput / actualMotherUsed : null;
   const fmtRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
@@ -238,35 +246,34 @@ export default async function InstructionDetailPage({ params }: { params: Promis
               <thead>
                 <tr>
                   <th>Quy cách</th>
-                  <th>SL M05 (cụm)</th>
-                  <th>SL T01 (cây)</th>
-                  <th>SL T05 (cây)</th>
+                  {printOutputColumns.map((c) => (
+                    <th key={c.label}>{c.label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 <tr className="pi-total">
                   <td className="pi-left">SL dự kiến trả</td>
-                  <td>{m05Total.toLocaleString("vi-VN")}</td>
-                  <td>{(inst.plannedT01Quantity ?? 0).toLocaleString("vi-VN")}</td>
-                  <td>{(inst.plannedT05Quantity ?? 0).toLocaleString("vi-VN")}</td>
+                  {printOutputColumns.map((c) => (
+                    <td key={c.label}>{c.value.toLocaleString("vi-VN")}</td>
+                  ))}
                 </tr>
               </tbody>
             </table>
             <p className="pi-notes-text">
               <strong>Tỉ lệ nhân MM:</strong> <span className="pi-ratio-value">{targetMotherRatio === null ? "—" : fmtRatio(targetMotherRatio)}</span>
-              &nbsp;&nbsp; <strong>Tỉ lệ ra TP:</strong> <span className="pi-ratio-value">{targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}</span>
-            </p>
-            <p className="pi-notes-text">
-              <strong>Môi trường nhân MM:</strong> {motherMediumInfo?.code ?? "—"}
-              &nbsp;&nbsp; <strong>Môi trường ra TP:</strong> {finishedMediumInfo?.code ?? "—"}
+              &nbsp;&nbsp; <strong>Môi trường nhân MM:</strong> {motherMediumInfo?.code ?? "—"}
             </p>
             {targetPreRootingMotherRatio !== null && (
               <p className="pi-notes-text">
-                <strong>Mẫu mẹ tiền ra rễ</strong> — Tỉ lệ: <span className="pi-ratio-value">{fmtRatio(targetPreRootingMotherRatio)}</span>
-                &nbsp;&nbsp; Môi trường: {preRootingMotherMediumInfo?.code ?? "—"}
-                &nbsp;&nbsp; Dự kiến: {preRootingMotherTotal.toLocaleString("vi-VN")} cụm
+                <strong>Tỉ lệ nhân MM tiền ra rễ:</strong> <span className="pi-ratio-value">{fmtRatio(targetPreRootingMotherRatio)}</span>
+                &nbsp;&nbsp; <strong>Môi trường nhân MM tiền ra rễ:</strong> {preRootingMotherMediumInfo?.code ?? "—"}
               </p>
             )}
+            <p className="pi-notes-text">
+              <strong>Tỉ lệ ra TP:</strong> <span className="pi-ratio-value">{targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}</span>
+              &nbsp;&nbsp; <strong>Môi trường ra TP:</strong> {finishedMediumInfo?.code ?? "—"}
+            </p>
           </section>
 
           {/* Lưu ý */}

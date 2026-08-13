@@ -213,6 +213,9 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
     prisma.plantingInstruction.findMany({
       where: {
         createdAt: { lte: thursdayDeadline },
+        // Chỉ định đã bị KY_THUAT hủy không còn là việc "phải bàn giao" nữa — không tính vào tổng, tránh
+        // kéo % hoàn thành xuống oan (handedOverAt sẽ mãi không có vì đã hủy trước khi bàn giao).
+        status: { not: "CANCELLED" },
         ...(workplaceWarehouseId ? { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } : {}),
       },
       select: { handedOverAt: true },
