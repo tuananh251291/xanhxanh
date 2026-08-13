@@ -84,6 +84,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // KHÔNG giới hạn take: 200 nữa — mẫu mẹ (MAU_ME) tồn tại nhiều tuần qua nhiều lần xoay vòng/chuyển giàn
+  // (xem mother-stock-reshelf.ts, cố tình GIỮ NGUYÊN enteredAt gốc khi chuyển giàn, không cập nhật thành
+  // "vừa chuyển"), nên 1 lô mẫu mẹ nhập kho lâu vẫn hoàn toàn hợp lệ/đang hoạt động nhưng dễ bị rớt khỏi
+  // top 200 mới nhất nếu kho có nhiều lô khác — từng gây bug thật: Kho mô chuyển giàn mẫu mẹ thành công,
+  // nhưng giàn đó không hiện/hiện thiếu số lượng ở màn tạo chỉ định cấy dự phòng (unassignedShelfOnly,
+  // không lọc chính xác theo 1 kệ nên phụ thuộc thẳng vào cap này). Mọi nhánh where ở trên đều đã tự giới
+  // hạn phạm vi (theo kho/phòng/kệ/Nhóm) nên bỏ cap không lo trả về toàn bộ hệ thống không kiểm soát.
   const lots = await prisma.lot.findMany({
     where,
     include: {
@@ -102,7 +109,6 @@ export async function GET(req: NextRequest) {
       _count: { select: { contaminations: true, instructionItems: true } },
     },
     orderBy: { enteredAt: "desc" },
-    take: 200,
   });
 
   return NextResponse.json(lots);
