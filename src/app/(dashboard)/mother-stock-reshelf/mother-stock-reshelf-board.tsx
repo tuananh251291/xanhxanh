@@ -213,19 +213,35 @@ export default function MotherStockReshelfBoard() {
               <p className="text-sm font-medium text-foreground">
                 Giàn {fromShelf.code} đang có <strong>{fromShelf.used.toLocaleString("vi-VN")} cụm</strong> ({fromShelf.lots.length} lô)
               </p>
-              <div className="space-y-1">
-                {fromShelf.lots.map((l) => (
-                  <div key={l.code} className="flex items-center justify-between gap-2 text-xs text-text-secondary">
-                    <span className="font-mono">{l.code}</span>
-                    <span className="truncate">{l.plantTypeCode} — {l.plantTypeName}</span>
-                    <span className="shrink-0">{l.quantity.toLocaleString("vi-VN")} cụm</span>
-                    {l.lockedByInstructionCode && (
-                      <span className="shrink-0 rounded bg-warning-light px-1.5 py-0.5 text-warning-foreground font-medium">
-                        Đang chờ bàn giao CĐ {l.lockedByInstructionCode}
-                      </span>
-                    )}
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-primary-light">
+                      <th className="text-left px-2 py-1.5 text-base font-bold text-primary-strong">Mã lô</th>
+                      <th className="text-left px-2 py-1.5 text-base font-bold text-primary-strong">Mã cây</th>
+                      <th className="text-right px-2 py-1.5 text-base font-bold text-primary-strong">Số lượng</th>
+                      <th className="text-left px-2 py-1.5 text-base font-bold text-primary-strong">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fromShelf.lots.map((l) => (
+                      <tr key={l.code} className="border-b last:border-0 even:bg-primary-light">
+                        <td className="px-2 py-1.5 font-mono text-xs text-text-secondary">{l.code}</td>
+                        <td className="px-2 py-1.5">{l.plantTypeCode} — {l.plantTypeName}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity.toLocaleString("vi-VN")} cụm</td>
+                        <td className="px-2 py-1.5">
+                          {l.lockedByInstructionCode ? (
+                            <span className="inline-block rounded bg-warning-light px-1.5 py-0.5 text-warning-foreground font-medium text-xs whitespace-nowrap">
+                              Đang chờ bàn giao CĐ {l.lockedByInstructionCode}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted text-xs">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
               {fromShelf.lots.some((l) => l.lockedByInstructionCode) && (
                 <p className="text-xs text-warning-foreground">
