@@ -12,6 +12,7 @@ import { ensureRootingReadyAlerts } from "@/lib/rooting-ready";
 import { ensureInstructionsEnded, ensureBackupInstructionsCleaned } from "@/lib/instruction-lifecycle";
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { ensureMediumOrdersSent } from "@/lib/medium-order-lifecycle";
+import { ensureCustomerAutoExpire, ensureCustomerStatusReminders } from "@/lib/customer-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -27,8 +28,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   await ensureBackupInstructionsCleaned();
   await ensureExpiredOrdersCancelled();
   await ensureMediumOrdersSent();
+  await ensureCustomerAutoExpire();
   if (role === "KY_THUAT") await ensureMotherReadyAlerts();
   if (role === "KHO_MO") await ensureRootingReadyAlerts();
+  if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);
 
   const alertCount = await prisma.alert.count({
     where: {

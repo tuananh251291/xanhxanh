@@ -258,6 +258,7 @@ export const ALERT_TYPE_LABELS = {
   ASSIGNED_TASK_COMPLETED: "Đã hoàn thành việc được giao",
   MOTHER_WAREHOUSE_TRANSFER_SHORTFALL: "Nhận thiếu mẫu mẹ bàn giao liên kho",
   NV_VIOLATION: "Vi phạm kiểm tra kho tối",
+  CUSTOMER_STATUS_UPDATE_DUE: "Cần cập nhật tình trạng khách hàng",
 } as const;
 
 export const EXTRA_WORK_REQUEST_TYPE_LABELS = {
@@ -334,6 +335,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/settings/shelf-groups", label: "Nhóm giàn kệ", icon: "Layers" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
+    { href: "/settings/sale", label: "Cài đặt Sale", icon: "Handshake" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/data-corrections", label: "Theo dõi nhập sai dữ liệu cấy", icon: "AlertTriangle" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
@@ -433,6 +435,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   SALE: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/customer-check", label: "Kiểm tra trùng khách", icon: "Search" },
+    { href: "/customer-status", label: "Cập nhật tình trạng khách hàng", icon: "RefreshCw" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "Package" },
     { href: "/orders", label: "Kiểm tra đáp ứng", icon: "ShoppingCart" },
     { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },

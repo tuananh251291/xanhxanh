@@ -190,6 +190,10 @@ enum AlertType {
   // Kho mô ghi nhận lỗi vi phạm cho 1 NV cấy mô khi "Kiểm tra kho tối" (nhiệm vụ nhỏ "Kiểm tra kho cá
   // nhân") — báo cho đúng NV cấy mô đó (userId) biết lỗi vừa mắc phải, xem DarkRoomInspectionCheck.
   NV_VIOLATION
+  // Nhắc NV bán hàng cập nhật tình trạng khách hàng (Ngày ra đơn gần nhất/Mã đơn gần nhất) — bắn vào 3
+  // ngày cuối tháng nếu NV đang có >=1 khách "Đã phân công" (xem ensureCustomerStatusReminders,
+  // src/lib/customer-lifecycle.ts). Tắt khi NV bấm "Cập nhật" ở trang /customer-status.
+  CUSTOMER_STATUS_UPDATE_DUE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -311,6 +315,9 @@ model User {
   darkRoomInspectionChecksAsStaff     DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated              ViolationType[]
+  customersAssigned                  Customer[]                @relation("CustomerAssignedTo")
+  salesManagerAssignmentsAsSales     SalesManagerAssignment[]   @relation("SalesManagerAssignmentSales")
+  salesManagerAssignmentsAsManager   SalesManagerAssignment[]   @relation("SalesManagerAssignmentManager")
 
   @@map("users")
 }
@@ -1862,4 +1869,76 @@ model Alert {
   readAt      DateTime?
 
   @@map("alerts")
+}
+
+// ============================================================
+// SALE — CRM khách hàng (Kiểm tra trùng khách + Cài đặt Sale)
+// ============================================================
+
+enum CustomerStatus {
+  CHUA_PHAN_CONG
+  DA_PHAN_CONG
+}
+
+// Danh sách thị trường do Admin cấp cao (SUPER_ADMIN) quản lý, dùng riêng cho CRM khách hàng Sale —
+// KHÔNG liên quan đến OrderMarket (thị trường xuất hàng của đơn) hay RoomType.PHONG_THI_TRUONG (phòng
+// kho thành phẩm theo khu vực) — 2 khái niệm "thị trường" khác đã có sẵn trong hệ thống, xem
+// src/types/index.ts (MARKET_LABELS) và schema RoomType.
+model Market {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  customers   Customer[]
+  assignments SalesManagerAssignment[]
+
+  @@map("markets")
+}
+
+model Customer {
+  id                String         @id @default(cuid())
+  name              String
+  nameNormalized    String
+  website           String
+  websiteNormalized String
+  marketId          String
+  market            Market         @relation(fields: [marketId], references: [id])
+  email             String
+  phone             String
+  status            CustomerStatus @default(CHUA_PHAN_CONG)
+  firstContactAt    DateTime
+  lastOrderAt       DateTime?
+  lastOrderCode     String?
+  // null = Chưa phân công. "Nhân viên quản lý" KHÔNG lưu ở đây — suy ra runtime từ
+  // SalesManagerAssignment(assignedToId, marketId) qua getCustomerManager() (src/lib/customer.ts), vì
+  // đây là quan hệ tổ chức (đổi 1 lần áp dụng ngay cho mọi khách của NV đó), không phải mốc lưu cố định.
+  assignedToId      String?
+  assignedTo        User?          @relation("CustomerAssignedTo", fields: [assignedToId], references: [id])
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([marketId])
+  @@index([assignedToId])
+  @@index([nameNormalized])
+  @@index([websiteNormalized])
+  @@map("customers")
+}
+
+// Mỗi (salesUserId, marketId) có đúng 1 managerId — 1 NV bán hàng có thể do người khác nhau quản lý ở
+// từng thị trường khác nhau.
+model SalesManagerAssignment {
+  id          String   @id @default(cuid())
+  salesUserId String
+  salesUser   User     @relation("SalesManagerAssignmentSales", fields: [salesUserId], references: [id])
+  managerId   String
+  manager     User     @relation("SalesManagerAssignmentManager", fields: [managerId], references: [id])
+  marketId    String
+  market      Market   @relation(fields: [marketId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([salesUserId, marketId])
+  @@map("sales_manager_assignments")
 }

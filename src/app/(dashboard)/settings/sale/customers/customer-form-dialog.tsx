@@ -1,0 +1,182 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Plus, Pencil } from "lucide-react";
+import { toast } from "sonner";
+import { format } from "date-fns";
+
+type Market = { id: string; code: string; name: string };
+type User = { id: string; code: string; name: string; role: string };
+type Customer = {
+  id: string; name: string; website: string; marketId: string; email: string; phone: string;
+  status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG";
+  firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null; assignedToId: string | null;
+};
+
+export default function CustomerFormDialog({
+  markets, saleUsers, customer, onSaved,
+}: {
+  markets: Market[];
+  saleUsers: User[];
+  customer?: Customer;
+  onSaved: () => void;
+}) {
+  const isEdit = !!customer;
+  const [open, setOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    name: "", website: "", marketId: "", email: "", phone: "",
+    status: "CHUA_PHAN_CONG" as "CHUA_PHAN_CONG" | "DA_PHAN_CONG",
+    firstContactAt: format(new Date(), "yyyy-MM-dd"),
+    lastOrderAt: "", lastOrderCode: "", assignedToId: "",
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    if (customer) {
+      setForm({
+        name: customer.name, website: customer.website, marketId: customer.marketId,
+        email: customer.email, phone: customer.phone, status: customer.status,
+        firstContactAt: format(new Date(customer.firstContactAt), "yyyy-MM-dd"),
+        lastOrderAt: customer.lastOrderAt ? format(new Date(customer.lastOrderAt), "yyyy-MM-dd") : "",
+        lastOrderCode: customer.lastOrderCode ?? "",
+        assignedToId: customer.assignedToId ?? "",
+      });
+    } else {
+      setForm({
+        name: "", website: "", marketId: markets[0]?.id ?? "", email: "", phone: "",
+        status: "CHUA_PHAN_CONG", firstContactAt: format(new Date(), "yyyy-MM-dd"),
+        lastOrderAt: "", lastOrderCode: "", assignedToId: "",
+      });
+    }
+  }, [open, customer, markets]);
+
+  const submit = async () => {
+    if (!form.name.trim() || !form.website.trim() || !form.marketId || !form.email.trim() || !form.phone.trim() || !form.firstContactAt) {
+      toast.error("Điền đầy đủ các trường bắt buộc");
+      return;
+    }
+    if (form.status === "DA_PHAN_CONG" && !form.assignedToId) {
+      toast.error("Trạng thái Đã phân công cần chọn Nhân viên phụ trách");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const url = isEdit ? `/api/customers/${customer!.id}` : "/api/customers";
+      const res = await fetch(url, {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          website: form.website.trim(),
+          marketId: form.marketId,
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          status: form.status,
+          firstContactAt: form.firstContactAt,
+          lastOrderAt: form.lastOrderAt || null,
+          lastOrderCode: form.lastOrderCode.trim() || null,
+          assignedToId: form.status === "DA_PHAN_CONG" ? form.assignedToId : null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success(isEdit ? "Đã cập nhật khách hàng" : "Đã tạo khách hàng mới");
+      setOpen(false);
+      onSaved();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={isEdit
+          ? <Button size="sm" variant="ghost" />
+          : <Button className="bg-primary hover:bg-primary-hover" />}
+      >
+        {isEdit ? <Pencil className="w-3.5 h-3.5 text-text-muted" /> : <><Plus className="w-4 h-4 mr-1.5" /> Thêm khách hàng</>}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>{isEdit ? "Sửa khách hàng" : "Thêm khách hàng mới"}</DialogTitle></DialogHeader>
+
+        <div className="space-y-3 mt-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1 col-span-2">
+              <Label className="text-sm">Tên khách hàng - công ty *</Label>
+              <Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-sm">Website *</Label>
+              <Input value={form.website} onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Thị trường *</Label>
+              <Select value={form.marketId} onValueChange={(v) => setForm((p) => ({ ...p, marketId: v as string }))}>
+                <SelectTrigger><SelectValue placeholder="Chọn thị trường" /></SelectTrigger>
+                <SelectContent>
+                  {markets.map((m) => <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Trạng thái *</Label>
+              <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v as typeof p.status }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CHUA_PHAN_CONG">Chưa phân công</SelectItem>
+                  <SelectItem value="DA_PHAN_CONG">Đã phân công</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Email *</Label>
+              <Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Số điện thoại *</Label>
+              <Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
+            </div>
+            {form.status === "DA_PHAN_CONG" && (
+              <div className="space-y-1 col-span-2">
+                <Label className="text-sm">Nhân viên phụ trách *</Label>
+                <Select value={form.assignedToId} onValueChange={(v) => setForm((p) => ({ ...p, assignedToId: v as string }))}>
+                  <SelectTrigger><SelectValue placeholder="Chọn NV bán hàng" /></SelectTrigger>
+                  <SelectContent>
+                    {saleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name} ({u.code})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-sm">Ngày đầu tiếp cận *</Label>
+              <Input type="date" value={form.firstContactAt} onChange={(e) => setForm((p) => ({ ...p, firstContactAt: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Ngày ra đơn gần nhất</Label>
+              <Input type="date" value={form.lastOrderAt} onChange={(e) => setForm((p) => ({ ...p, lastOrderAt: e.target.value }))} />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-sm">Mã đơn gần nhất</Label>
+              <Input value={form.lastOrderCode} onChange={(e) => setForm((p) => ({ ...p, lastOrderCode: e.target.value }))} />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
+            <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
+              {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Lưu
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
