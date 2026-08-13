@@ -194,7 +194,9 @@ export default function CreateRepackInstructionDialog() {
                   const lot = lotForRow(row);
                   const qty = Number(row.quantity) || 0;
                   const rowComboOptions = comboOptionsForShelf(row.shelfId);
-                  const outputOptions = OUTPUT_STAGE_CODES.filter((c) => c !== lot?.stageCode);
+                  // Cho phép chọn cả quy cách trùng lô đầu vào (VD T01 -> T01) — đóng gói lại cùng quy
+                  // cách vẫn hợp lệ (dồn/xếp lại túi lẻ), không chỉ dùng để đổi quy cách.
+                  const outputOptions = OUTPUT_STAGE_CODES;
                   return (
                     <div
                       key={row.key}

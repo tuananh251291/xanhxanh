@@ -84,9 +84,8 @@ export async function POST(req: NextRequest) {
   if (inputQuantity > lot.quantity) {
     return NextResponse.json({ message: `Số lượng đầu vào vượt quá tồn hiện có của lô (còn ${lot.quantity.toLocaleString("vi-VN")})` }, { status: 400 });
   }
-  if (outputStageCode === lot.stageCode) {
-    return NextResponse.json({ message: "Quy cách đầu ra phải khác quy cách hiện tại của lô" }, { status: 400 });
-  }
+  // Cho phép outputStageCode trùng inputStageCode (VD T01 -> T01) — đóng gói lại CÙNG quy cách vẫn có
+  // nghĩa thực tế (dồn/xếp lại các túi lẻ thành túi đủ, không nhất thiết phải đổi quy cách).
 
   const code = await generateRepackInstructionCode({ warehouseCode: shelf.warehouse.code, shelfCode: shelf.code });
 
