@@ -14,7 +14,8 @@ import type { UserRole } from "@prisma/client";
 
 const ROLES = Object.keys(ROLE_LABELS) as UserRole[];
 
-type Template = { id: string; role: UserRole; title: string; sortOrder: number; isActive: boolean };
+type ChecklistItemKind = "SIMPLE" | "DARK_ROOM_CHECK";
+type Template = { id: string; role: UserRole; title: string; kind: ChecklistItemKind; sortOrder: number; isActive: boolean };
 type Threshold = { role: UserRole; minPercent: number };
 
 export default function ChecklistSettings() {
@@ -23,6 +24,7 @@ export default function ChecklistSettings() {
   const [role, setRole] = useState<UserRole>("CAY_MO");
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState("");
+  const [newKind, setNewKind] = useState<ChecklistItemKind>("SIMPLE");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -59,10 +61,11 @@ export default function ChecklistSettings() {
       const res = await fetch("/api/checklist-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, title: newTitle.trim() }),
+        body: JSON.stringify({ role, title: newTitle.trim(), kind: newKind }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       setNewTitle("");
+      setNewKind("SIMPLE");
       load();
     } finally {
       setAdding(false);
@@ -172,6 +175,9 @@ export default function ChecklistSettings() {
                   <>
                     <Checkbox checked={t.isActive} onCheckedChange={() => toggleActive(t)} />
                     <span className="flex-1">{t.title}</span>
+                    {t.kind === "DARK_ROOM_CHECK" && (
+                      <span className="text-xs bg-info-light text-info-foreground rounded px-1.5 py-0.5">2 nhiệm vụ nhỏ</span>
+                    )}
                     {!t.isActive && <span className="text-xs text-text-muted">(đã ẩn)</span>}
                     <Button size="sm" variant="ghost" onClick={() => startEdit(t)}><Pencil className="w-3.5 h-3.5 text-text-muted" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => removeTemplate(t)}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
@@ -189,6 +195,13 @@ export default function ChecklistSettings() {
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addTemplate(); }}
           />
+          <Select value={newKind} onValueChange={(v) => setNewKind(v as ChecklistItemKind)}>
+            <SelectTrigger className="w-44 shrink-0"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="SIMPLE">Đơn giản</SelectItem>
+              <SelectItem value="DARK_ROOM_CHECK">Kiểm tra kho tối (2 nhiệm vụ)</SelectItem>
+            </SelectContent>
+          </Select>
           <Button onClick={addTemplate} disabled={adding || !newTitle.trim()} className="bg-secondary hover:bg-secondary-hover shrink-0">
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
             Thêm

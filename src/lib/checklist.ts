@@ -23,7 +23,7 @@ export async function ensureTodayChecklist(userId: string, role: UserRole | null
       const hasToday = items.some((i) => isSameDay(i.assignedDate, today));
       return !hasPending && !hasToday;
     })
-    .map((t) => ({ templateId: t.id, userId, title: t.title, assignedDate: today }));
+    .map((t) => ({ templateId: t.id, userId, title: t.title, kind: t.kind, assignedDate: today }));
 
   if (toCreate.length > 0) {
     await prisma.checklistItem.createMany({ data: toCreate });

@@ -187,6 +187,9 @@ enum AlertType {
   // cấp cao (targetRole, bắn riêng 2 alert ADMIN/SUPER_ADMIN) biết phần chênh lệch, không hoàn lại tồn
   // kho nguồn (xem confirmMotherStockReceipt, src/lib/mother-warehouse-transfer.ts).
   MOTHER_WAREHOUSE_TRANSFER_SHORTFALL
+  // Kho mô ghi nhận lỗi vi phạm cho 1 NV cấy mô khi "Kiểm tra kho tối" (nhiệm vụ nhỏ "Kiểm tra kho cá
+  // nhân") — báo cho đúng NV cấy mô đó (userId) biết lỗi vừa mắc phải, xem DarkRoomInspectionCheck.
+  NV_VIOLATION
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -305,6 +308,9 @@ model User {
   goodsReceiptsAssignedBy   GoodsReceipt[]    @relation("GoodsReceiptAssignedBy")
   ordersAssignedTo          Order[]           @relation("OrderAssignedTo")
   ordersAssignedBy          Order[]           @relation("OrderAssignedBy")
+  darkRoomInspectionChecksAsStaff     DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckStaff")
+  darkRoomInspectionChecksAsCheckedBy DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckedBy")
+  violationTypesCreated              ViolationType[]
 
   @@map("users")
 }
@@ -340,26 +346,35 @@ model SystemConfig {
 // CHECKLIST — đầu việc hàng ngày theo vai trò
 // ============================================================
 
+// SIMPLE = tick 1 lần như cũ. DARK_ROOM_CHECK = "Kiểm tra kho tối" — 2 nhiệm vụ nhỏ (Kiểm tra kho cá
+// nhân + Kiểm tra kho nhiễm cá nhân), completed suy ra từ cả 2 xong (xem ChecklistItem.subTask1Done/
+// subTask2Done) — chỉ 1 loại này khác SIMPLE tính tới thời điểm hiện tại, mở enum để dễ mở rộng sau.
+enum ChecklistItemKind {
+  SIMPLE
+  DARK_ROOM_CHECK
+}
+
 // Danh mục đầu việc Admin soạn sẵn cho từng vai trò — mỗi ngày hệ thống tự sinh 1 ChecklistItem
 // cho từng NV thuộc vai trò đó từ các template đang isActive.
 model ChecklistTemplate {
-  id        String   @id @default(cuid())
+  id        String            @id @default(cuid())
   role      UserRole
   title     String
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  kind      ChecklistItemKind @default(SIMPLE)
+  sortOrder Int               @default(0)
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 
   items ChecklistItem[]
 
   @@map("checklist_templates")
 }
 
-// 1 dòng = 1 đầu việc đã giao cho 1 NV vào 1 ngày cụ thể (assignedDate). title chép lại từ template lúc
-// sinh (không đổi ngược nếu sau này Admin sửa template). Việc chưa hoàn thành sẽ tiếp tục hiện ở checklist
-// "hôm nay" của NV cho tới khi tích xong — không sinh thêm dòng mới cho cùng template khi còn dòng cũ
-// đang PENDING, nên xem như tự động "dồn sang ngày hôm sau" mà không nhân bản.
+// 1 dòng = 1 đầu việc đã giao cho 1 NV vào 1 ngày cụ thể (assignedDate). title/kind chép lại từ template
+// lúc sinh (không đổi ngược nếu sau này Admin sửa template). Việc chưa hoàn thành sẽ tiếp tục hiện ở
+// checklist "hôm nay" của NV cho tới khi tích xong — không sinh thêm dòng mới cho cùng template khi còn
+// dòng cũ đang PENDING, nên xem như tự động "dồn sang ngày hôm sau" mà không nhân bản.
 model ChecklistItem {
   id           String            @id @default(cuid())
   templateId   String
@@ -367,12 +382,20 @@ model ChecklistItem {
   userId       String
   user         User              @relation(fields: [userId], references: [id])
   title        String
+  kind         ChecklistItemKind @default(SIMPLE)
   assignedDate DateTime // chỉ lấy phần ngày (00:00) — ngày đầu việc được sinh ra, dùng để thống kê theo ngày
   completed    Boolean           @default(false)
   completedAt  DateTime?
   createdAt    DateTime          @default(now())
+  // Chỉ có ý nghĩa khi kind = DARK_ROOM_CHECK — completed = subTask1Done && subTask2Done. subTask1Done:
+  // NV kho mô đã "Hoàn tất kiểm tra" (POST /api/dark-room-inspection) ít nhất 1 lần trong ngày, không
+  // bắt buộc đi hết mọi NV cấy mô. subTask2Done: đã tick tự khai báo "chuyển cây nhiễm cá nhân về chung".
+  subTask1Done Boolean           @default(false)
+  subTask2Done Boolean           @default(false)
+  subTask2At   DateTime?
 
-  logs ChecklistItemLog[]
+  logs           ChecklistItemLog[]
+  darkRoomChecks DarkRoomInspectionCheck[]
 
   @@map("checklist_items")
 }
@@ -396,6 +419,53 @@ model ChecklistThreshold {
   updatedAt  DateTime @updatedAt
 
   @@map("checklist_thresholds")
+}
+
+// 1 dòng = 1 lượt "Hoàn tất kiểm tra" của NV kho mô cho 1 NV cấy mô trong nhiệm vụ nhỏ "Kiểm tra kho cá
+// nhân" (thuộc ChecklistItem kind=DARK_ROOM_CHECK) — có thể không kèm vi phạm nào (NV đạt, xem
+// ViolationRecord). Cho phép nhiều lượt/ngày cho cùng 1 hoặc nhiều NV cấy mô khác nhau, không giới hạn.
+model DarkRoomInspectionCheck {
+  id              String        @id @default(cuid())
+  checklistItemId String
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id])
+  staffId         String
+  staff           User          @relation("DarkRoomInspectionCheckStaff", fields: [staffId], references: [id])
+  checkedById     String
+  checkedBy       User          @relation("DarkRoomInspectionCheckedBy", fields: [checkedById], references: [id])
+  checkedAt       DateTime      @default(now())
+
+  violations ViolationRecord[]
+
+  @@map("dark_room_inspection_checks")
+}
+
+// Danh mục loại lỗi vi phạm dùng khi ghi nhận "Kiểm tra kho cá nhân" — Admin soạn sẵn (Settings), NV kho
+// mô cũng tự thêm được ngay lúc ghi nhận. Không hard-delete (chỉ isActive) để không vỡ báo cáo cũ nếu 1
+// loại từng dùng bị ẩn đi sau này.
+model ViolationType {
+  id          String   @id @default(cuid())
+  label       String   @unique
+  isActive    Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  records ViolationRecord[]
+
+  @@map("violation_types")
+}
+
+// 1 dòng = 1 lỗi vi phạm cụ thể ghi nhận trong 1 lượt kiểm tra (DarkRoomInspectionCheck) — 1 lượt có thể
+// có 0 (NV đạt), 1, hoặc nhiều dòng.
+model ViolationRecord {
+  id                String                  @id @default(cuid())
+  inspectionCheckId String
+  inspectionCheck   DarkRoomInspectionCheck @relation(fields: [inspectionCheckId], references: [id])
+  violationTypeId   String
+  violationType     ViolationType           @relation(fields: [violationTypeId], references: [id])
+  createdAt         DateTime                @default(now())
+
+  @@map("violation_records")
 }
 
 // ============================================================

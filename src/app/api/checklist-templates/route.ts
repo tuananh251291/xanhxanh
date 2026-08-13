@@ -9,6 +9,7 @@ const createSchema = z.object({
     "SUPER_ADMIN", "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI",
   ]),
   title: z.string().min(1, "Cần nhập nội dung đầu việc"),
+  kind: z.enum(["SIMPLE", "DARK_ROOM_CHECK"]).optional(),
 });
 
 export async function GET() {

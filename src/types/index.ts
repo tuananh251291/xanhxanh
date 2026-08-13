@@ -257,6 +257,7 @@ export const ALERT_TYPE_LABELS = {
   EXTRA_WORK_REQUEST: "Đăng ký cấy thêm",
   ASSIGNED_TASK_COMPLETED: "Đã hoàn thành việc được giao",
   MOTHER_WAREHOUSE_TRANSFER_SHORTFALL: "Nhận thiếu mẫu mẹ bàn giao liên kho",
+  NV_VIOLATION: "Vi phạm kiểm tra kho tối",
 } as const;
 
 export const EXTRA_WORK_REQUEST_TYPE_LABELS = {
@@ -335,6 +336,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/data-corrections", label: "Theo dõi nhập sai dữ liệu cấy", icon: "AlertTriangle" },
+    { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/reports/production-capacity", label: "Năng lực sản xuất", icon: "Gauge" },
@@ -352,6 +354,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/contamination-proposals", label: "Duyệt đề xuất nhiễm", icon: "AlertTriangle" },
     { href: "/data-corrections", label: "Theo dõi nhập sai dữ liệu cấy", icon: "AlertTriangle" },
+    { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/reports", label: "Báo cáo", icon: "BarChart3" },
     { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/reports/production-capacity", label: "Năng lực sản xuất", icon: "Gauge" },
@@ -397,6 +400,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/data-corrections", label: "Theo dõi nhập sai dữ liệu cấy", icon: "AlertTriangle" },
+    { href: "/violation-types", label: "Danh sách lỗi vi phạm", icon: "ClipboardList" },
+    { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
