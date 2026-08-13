@@ -52,7 +52,9 @@ export async function moveMotherStock(params: {
   }
 
   const sourceLots = await prisma.lot.findMany({
-    where: { shelfId: fromShelf.id, status: "ACTIVE", stage: "MAU_ME", plantTypeId },
+    // quantity > 0 — loại rác lô ACTIVE nhưng tồn đã về 0 (xem comment cùng chỗ ở GET
+    // /api/mother-stock-reshelf), không để lọt vào rút FIFO.
+    where: { shelfId: fromShelf.id, status: "ACTIVE", stage: "MAU_ME", plantTypeId, quantity: { gt: 0 } },
     include: {
       plantType: { select: { code: true } },
       instruction: { select: { assignedToId: true } },

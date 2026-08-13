@@ -26,7 +26,10 @@ export async function GET() {
       // = giàn chưa gán Nhóm (Kho mẫu mẹ chung hoặc giàn đã chia nhưng chưa gán) — không có hạn.
       rotationGroup: { select: { name: true, rotationOrder: true } },
       lots: {
-        where: { status: "ACTIVE" },
+        // quantity > 0 — lô ACTIVE nhưng tồn về 0 (rác còn sót lại từ Transfer/cơ chế chuyển cũ trước khi
+        // có moveMotherStock, không tự dọn) vẫn có thể tồn tại trong DB thực tế — không lọc thì mã cây đó
+        // vẫn hiện ra như đang "có sẵn" trên kệ dù thực chất đã chuyển đi hết, gây rối cho Kho mô.
+        where: { status: "ACTIVE", quantity: { gt: 0 } },
         select: {
           code: true,
           quantity: true,
