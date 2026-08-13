@@ -4,7 +4,7 @@ import { createAlert } from "@/lib/inventory";
 import { MOTHER_WAREHOUSE_TRANSFER_TAG } from "@/types";
 import { ShelfAssignError, matchesAllowedCodes } from "@/lib/shelf-assignment";
 
-// Bàn giao mẫu mẹ LIÊN KHO sản xuất — khác mother-stock-reshelf.ts (chuyển giàn trong CÙNG 1 kho, không
+// Luân chuyển mẫu mẹ LIÊN KHO sản xuất — khác mother-stock-reshelf.ts (chuyển giàn trong CÙNG 1 kho, không
 // đụng tồn) và khác SURPLUS_TRANSFER_TAG (MM dư tự động khi chỉ định kết thúc, không cho tự chọn đích).
 // Ở đây: KHO_MO kho nguồn chọn giàn + loại cây/quy cách + số lượng + kho sản xuất khác làm đích → trừ
 // tồn giàn nguồn NGAY (hàng đã rời kho vật lý), tạo Transfer PENDING. KHO_MO kho đích xác nhận SỐ LƯỢNG
