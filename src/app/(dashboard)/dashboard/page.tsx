@@ -13,6 +13,7 @@ import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
 import { vi } from "date-fns/locale";
 import TodayChecklist from "@/components/shared/today-checklist";
+import { ensureTodayChecklist } from "@/lib/checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
 import { isMediumOrderInProgress, isMediumSurplusEntryDay } from "@/lib/medium-orders";
 import { randomGreetingQuote } from "@/lib/greetings";
@@ -278,7 +279,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
 
 // Việc "hàng ngày" của Kho mô: xác nhận các phiếu bàn giao từ Phòng tối cá nhân (NV cấy mô gửi lên) được
 // tạo trong ngày — cùng phạm vi lọc phiếu với GET /api/transfers cho KHO_MO (toUserId null + đúng kho).
-async function getKhoMoDailyStats(workplaceWarehouseId: string | null) {
+async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: string) {
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
 
@@ -311,7 +312,19 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null) {
     mediumSurplusOrderId = candidateOrders.find((o) => isMediumOrderInProgress(o))?.id ?? null;
   }
 
-  return { receiveDone, receiveTotal, receivePercent, mediumSurplusOrderId };
+  // "Kiểm tra kho tối" — 2 nhiệm vụ nhỏ (Kiểm tra kho cá nhân + Kiểm tra kho nhiễm cá nhân), xem
+  // src/lib/checklist.ts (ensureTodayChecklist sinh ChecklistItem kind=DARK_ROOM_CHECK từ template Admin
+  // soạn trong Settings) và /dark-room-check (trang thao tác 2 nhiệm vụ nhỏ này).
+  await ensureTodayChecklist(userId, "KHO_MO");
+  const darkRoomCheckItem = await prisma.checklistItem.findFirst({
+    where: { userId, kind: "DARK_ROOM_CHECK", completed: false },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, subTask1Done: true, subTask2Done: true },
+  });
+  const darkRoomSubTasksDone = darkRoomCheckItem ? Number(darkRoomCheckItem.subTask1Done) + Number(darkRoomCheckItem.subTask2Done) : 2;
+  const darkRoomCheckPercent = Math.round((darkRoomSubTasksDone / 2) * 100);
+
+  return { receiveDone, receiveTotal, receivePercent, mediumSurplusOrderId, darkRoomCheckItemId: darkRoomCheckItem?.id ?? null, darkRoomCheckPercent, darkRoomSubTasksDone };
 }
 
 // Đơn "đang xử lý" của NV môi trường = đơn do chính họ xác nhận, chưa kết thúc (xem
@@ -401,7 +414,7 @@ export default async function DashboardPage() {
     const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
     const [weeklyStats, dailyStats] = await Promise.all([
       getKhoMoWeeklyStats(workplaceWarehouseId),
-      getKhoMoDailyStats(workplaceWarehouseId),
+      getKhoMoDailyStats(workplaceWarehouseId, userId),
     ]);
     return <KhoMoTaskDashboard weeklyStats={weeklyStats} dailyStats={dailyStats} userName={session?.user?.name ?? ""} />;
   }
@@ -849,6 +862,16 @@ function KhoMoTaskDashboard({
               deadline="Đối chiếu số dư lý thuyết với số đếm thực tế (chỉ Thứ 2, Thứ 3)"
               percent={0}
               countLabel="Chưa nhập"
+            />
+          )}
+          {dailyStats.darkRoomCheckItemId && (
+            <WeeklyTaskRow
+              href="/dark-room-check"
+              icon={Moon}
+              title="3. Kiểm tra kho tối"
+              deadline="Kiểm tra kho cá nhân NV cấy mô + xác nhận đã chuyển cây nhiễm cá nhân về kho nhiễm chung"
+              percent={dailyStats.darkRoomCheckPercent}
+              countLabel={`${dailyStats.darkRoomSubTasksDone}/2 nhiệm vụ`}
             />
           )}
         </CardContent>
