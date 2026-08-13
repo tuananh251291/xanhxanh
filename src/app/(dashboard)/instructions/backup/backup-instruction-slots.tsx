@@ -15,7 +15,15 @@ type Instruction = {
 // slotCount luôn >= minCount — mỗi ô trống (i <= minCount, chưa có chỉ định thứ i) hiện nút "Tạo chỉ
 // định cấy dự phòng {i}"; ô đã có chỉ định hiện thẳng thông tin chỉ định đó (link sang trang chi tiết).
 // Đã tạo vượt minCount thì các chỉ định dư vẫn hiện tiếp theo thứ tự, không có ô trống xen giữa.
-export default function BackupInstructionSlots({ instructions, minCount }: { instructions: Instruction[]; minCount: number }) {
+export default function BackupInstructionSlots({
+  instructions, minCount, weekStart,
+}: {
+  instructions: Instruction[];
+  minCount: number;
+  // Tuần đang xem (yyyy-MM-dd, Thứ 2 đầu tuần) — truyền xuống CreateInstructionDialog để mở dialog mặc
+  // định đúng tuần này/tuần sau đang xem, thay vì luôn mặc định "tuần sau" (xem /instructions/backup).
+  weekStart: string;
+}) {
   const slotCount = Math.max(minCount, instructions.length);
 
   return (
@@ -46,6 +54,7 @@ export default function BackupInstructionSlots({ instructions, minCount }: { ins
             <CreateInstructionDialog
               key={`slot-${i}`}
               backupMode
+              backupWeekStart={weekStart}
               slotNumber={i}
               triggerContent={`Tạo chỉ định cấy dự phòng ${i}`}
               triggerClassName="w-full h-auto py-2.5 justify-start bg-card border border-dashed border-border text-text-secondary hover:border-primary hover:text-primary-strong hover:bg-primary-light/30"
@@ -56,6 +65,7 @@ export default function BackupInstructionSlots({ instructions, minCount }: { ins
 
       <CreateInstructionDialog
         backupMode
+        backupWeekStart={weekStart}
         slotNumber={slotCount + 1}
         triggerContent={
           <>

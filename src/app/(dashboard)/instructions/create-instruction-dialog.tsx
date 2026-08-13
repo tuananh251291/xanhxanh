@@ -25,6 +25,10 @@ function currentWeekStart(): Date {
   return startOfWeek(new Date(), { weekStartsOn: 1 });
 }
 
+function currentWeekStartStr(): string {
+  return format(currentWeekStart(), "yyyy-MM-dd");
+}
+
 // Tỉ lệ nhân MM/ra rễ dùng input type="text" (không phải "number") để chấp nhận CẢ dấu phẩy lẫn dấu
 // chấm làm dấu thập phân — "number" chỉ hiểu dấu chấm theo chuẩn HTML, trong khi NV quen gõ kiểu Việt
 // (dấu phẩy). Quy đổi dấu phẩy thành dấu chấm trước khi parse, không đổi ngược lại (giữ nguyên ký tự
@@ -72,6 +76,7 @@ export default function CreateInstructionDialog({
   triggerContent,
   triggerClassName,
   backupMode,
+  backupWeekStart,
   slotNumber,
 }: {
   // Mở dialog và tự chọn sẵn đúng kệ này — dùng cho lối tắt "Tạo chỉ định" từ banner Nhóm tuần mẫu mẹ
@@ -82,9 +87,13 @@ export default function CreateInstructionDialog({
   triggerClassName?: string;
   // Tạo chỉ định cấy DỰ PHÒNG (nhiệm vụ tuần của KY_THUAT, xem /instructions/backup) — khác bản thường
   // ở 3 điểm: (1) giàn kệ nguồn CHỈ lấy từ kệ mẫu mẹ "chung" chưa chia (unassignedShelfOnly), (2) Tuần
-  // thực hiện khoá cứng = tuần sau (không cho sửa, để tính đúng vào chỉ tiêu 5 chỉ định/tuần), (3) gửi
+  // thực hiện chỉ chọn được "Tuần này" hoặc "Tuần sau" (Select thay vì Input date tự do), (3) gửi
   // kèm isBackup: true lên POST /api/instructions.
   backupMode?: boolean;
+  // Tuần mặc định chọn sẵn khi mở dialog ở backupMode — khớp đúng tuần đang xem ở trang /instructions/backup
+  // (?week=current|next), NV vẫn đổi được sang tuần còn lại qua Select. Bỏ trống = mặc định "tuần sau"
+  // (hành vi cũ, giữ nguyên cho những nơi gọi backupMode không truyền tuần cụ thể).
+  backupWeekStart?: string;
   // Số thứ tự hiển thị trên tiêu đề dialog khi backupMode (VD "Tạo chỉ định cấy dự phòng 3") — chỉ để
   // hiển thị, không gửi lên server.
   slotNumber?: number;
@@ -107,7 +116,7 @@ export default function CreateInstructionDialog({
   // định chỉ có 1 loại M05 như trước).
   const [sharedPreRootingMotherRatio, setSharedPreRootingMotherRatio] = useState("");
   const [sharedPreRootingMotherMediumTypeId, setSharedPreRootingMotherMediumTypeId] = useState("");
-  const [weekStart, setWeekStart] = useState(nextWeekStart);
+  const [weekStart, setWeekStart] = useState(backupWeekStart || nextWeekStart());
   const [notes, setNotes] = useState("");
   // Giá trị KY_THUAT tự gõ tay (chỉ có ý nghĩa sau khi plannedTouched = true) — giá trị HIỂN THỊ thực
   // tế (plannedT01/plannedT05 bên dưới) tính trực tiếp lúc render, không đồng bộ qua effect.
@@ -344,7 +353,7 @@ export default function CreateInstructionDialog({
   const plannedSum = (Number(plannedT01) || 0) + (Number(plannedT05) || 0);
 
   const resetForm = () => {
-    setShelfId(""); setRows([]); setGroupInfo(null); setWeekStart(nextWeekStart()); setNotes("");
+    setShelfId(""); setRows([]); setGroupInfo(null); setWeekStart(backupWeekStart || nextWeekStart()); setNotes("");
     setManualT01("0"); setManualT05("0");
     resetSharedInputs();
   };
@@ -622,16 +631,25 @@ export default function CreateInstructionDialog({
 
           <div className="space-y-1">
             <Label>Tuần thực hiện</Label>
-            <Input
-              type="date"
-              required
-              min={format(currentWeekStart(), "yyyy-MM-dd")}
-              value={weekStart}
-              onChange={(e) => setWeekStart(e.target.value)}
-              disabled={backupMode}
-            />
+            {backupMode ? (
+              <Select value={weekStart} onValueChange={(v) => setWeekStart(v as string)}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={currentWeekStartStr()}>Tuần này</SelectItem>
+                  <SelectItem value={nextWeekStart()}>Tuần sau</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                type="date"
+                required
+                min={format(currentWeekStart(), "yyyy-MM-dd")}
+                value={weekStart}
+                onChange={(e) => setWeekStart(e.target.value)}
+              />
+            )}
             {backupMode && (
-              <p className="text-xs text-text-muted">Chỉ định cấy dự phòng luôn cho tuần sau, không sửa được</p>
+              <p className="text-xs text-text-muted">Chỉ định cấy dự phòng chỉ được chọn tuần này hoặc tuần sau</p>
             )}
             {weekStart && (
               <p className="text-xs text-text-secondary">

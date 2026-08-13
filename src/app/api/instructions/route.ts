@@ -121,12 +121,17 @@ export async function POST(req: NextRequest) {
   if (startOfWeek(new Date(weekStart), { weekStartsOn: 1 }) < startOfWeek(new Date(), { weekStartsOn: 1 })) {
     return NextResponse.json({ message: "Không được chọn tuần đã trôi qua" }, { status: 400 });
   }
-  // Chỉ định dự phòng LUÔN cho tuần sau (nhiệm vụ tuần chỉ đếm đúng weekStart này) — chặn ở server
-  // phòng khi client gửi thẳng lên (UI đã khoá cứng field Tuần thực hiện, không cho sửa tay). So theo
+  // Chỉ định dự phòng CHỈ cho tuần hiện tại hoặc tuần kế sau tuần hiện tại (KY_THUAT tự chọn 1 trong 2 —
+  // xem create-instruction-dialog.tsx) — chặn ở server phòng khi client gửi thẳng lên. So theo
   // toStoredWeekStart (UTC-midnight, giống cách lưu bên dưới) — không dùng startOfWeek theo giờ local,
   // sẽ lệch múi giờ server so với giá trị thật sự lưu xuống DB.
-  if (isBackup && new Date(weekStart).getTime() !== toStoredWeekStart(startOfWeek(addWeeks(new Date(), 1), { weekStartsOn: 1 })).getTime()) {
-    return NextResponse.json({ message: "Chỉ định dự phòng chỉ được tạo cho tuần sau" }, { status: 400 });
+  if (isBackup) {
+    const chosen = new Date(weekStart).getTime();
+    const currentWeek = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 })).getTime();
+    const nextWeek = toStoredWeekStart(startOfWeek(addWeeks(new Date(), 1), { weekStartsOn: 1 })).getTime();
+    if (chosen !== currentWeek && chosen !== nextWeek) {
+      return NextResponse.json({ message: "Chỉ định dự phòng chỉ được tạo cho tuần này hoặc tuần sau" }, { status: 400 });
+    }
   }
 
   // Chỉ định cấy chỉ được lấy nguồn từ kệ trong Phòng mẫu mẹ của Kho sản xuất — chặn ở server phòng khi
