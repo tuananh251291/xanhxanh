@@ -9,14 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { CUSTOMER_STATUS_LABELS } from "@/types";
 
 type Market = { id: string; code: string; name: string };
 type User = { id: string; code: string; name: string; role: string };
+type CustomerStatus = "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
 type Customer = {
   id: string; name: string; website: string; marketId: string; email: string; phone: string;
-  status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG";
+  status: CustomerStatus;
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null; assignedToId: string | null;
 };
+
+// Đã phân công + Mặc định đều cần Nhân viên phụ trách — chỉ Chưa phân công mới để trống.
+const REQUIRES_ASSIGNEE = new Set<CustomerStatus>(["DA_PHAN_CONG", "MAC_DINH"]);
 
 export default function CustomerFormDialog({
   markets, saleUsers, customer, onSaved,
@@ -31,7 +36,7 @@ export default function CustomerFormDialog({
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     name: "", website: "", marketId: "", email: "", phone: "",
-    status: "CHUA_PHAN_CONG" as "CHUA_PHAN_CONG" | "DA_PHAN_CONG",
+    status: "CHUA_PHAN_CONG" as CustomerStatus,
     firstContactAt: format(new Date(), "yyyy-MM-dd"),
     lastOrderAt: "", lastOrderCode: "", assignedToId: "",
   });
@@ -61,8 +66,8 @@ export default function CustomerFormDialog({
       toast.error("Điền đầy đủ các trường bắt buộc");
       return;
     }
-    if (form.status === "DA_PHAN_CONG" && !form.assignedToId) {
-      toast.error("Trạng thái Đã phân công cần chọn Nhân viên phụ trách");
+    if (REQUIRES_ASSIGNEE.has(form.status) && !form.assignedToId) {
+      toast.error("Trạng thái này cần chọn Nhân viên phụ trách");
       return;
     }
     setSubmitting(true);
@@ -81,7 +86,7 @@ export default function CustomerFormDialog({
           firstContactAt: form.firstContactAt,
           lastOrderAt: form.lastOrderAt || null,
           lastOrderCode: form.lastOrderCode.trim() || null,
-          assignedToId: form.status === "DA_PHAN_CONG" ? form.assignedToId : null,
+          assignedToId: REQUIRES_ASSIGNEE.has(form.status) ? form.assignedToId : null,
         }),
       });
       const json = await res.json();
@@ -127,11 +132,12 @@ export default function CustomerFormDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Trạng thái *</Label>
-              <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v as typeof p.status }))}>
+              <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v as CustomerStatus }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="CHUA_PHAN_CONG">Chưa phân công</SelectItem>
-                  <SelectItem value="DA_PHAN_CONG">Đã phân công</SelectItem>
+                  <SelectItem value="CHUA_PHAN_CONG">{CUSTOMER_STATUS_LABELS.CHUA_PHAN_CONG}</SelectItem>
+                  <SelectItem value="DA_PHAN_CONG">{CUSTOMER_STATUS_LABELS.DA_PHAN_CONG}</SelectItem>
+                  <SelectItem value="MAC_DINH">{CUSTOMER_STATUS_LABELS.MAC_DINH}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -143,7 +149,7 @@ export default function CustomerFormDialog({
               <Label className="text-sm">Số điện thoại *</Label>
               <Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
             </div>
-            {form.status === "DA_PHAN_CONG" && (
+            {REQUIRES_ASSIGNEE.has(form.status) && (
               <div className="space-y-1 col-span-2">
                 <Label className="text-sm">Nhân viên phụ trách *</Label>
                 <Select value={form.assignedToId} onValueChange={(v) => setForm((p) => ({ ...p, assignedToId: v as string }))}>

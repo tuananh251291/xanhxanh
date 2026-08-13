@@ -319,6 +319,22 @@ export const DEVIATION_CAUSE_LABELS = {
   CAY_MO_SAI: "Do nhân viên cấy sai",
 } as const;
 
+// Trạng thái khách hàng (Customer.status, CRM Sale) — MAC_DINH = khách VIP/lâu năm gắn cố định với 1 NV,
+// không bị nhắc cập nhật hàng tháng và không bị tự thu hồi về Chưa phân công (xem prisma/schema.prisma).
+export const CUSTOMER_STATUS_LABELS = {
+  CHUA_PHAN_CONG: "Chưa phân công",
+  DA_PHAN_CONG: "Đã phân công",
+  MAC_DINH: "Mặc định",
+} as const;
+
+// Màu Badge tương ứng từng trạng thái khách hàng — dùng chung ở bảng khách hàng (Admin) và trang Cập
+// nhật tình trạng khách hàng (Sale), xem src/components/ui/badge.tsx cho các variant.
+export const CUSTOMER_STATUS_BADGE_VARIANT = {
+  CHUA_PHAN_CONG: "in-progress",
+  DA_PHAN_CONG: "completed",
+  MAC_DINH: "info",
+} as const;
+
 // Nav items per role
 export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: string }[]> = {
   SUPER_ADMIN: [

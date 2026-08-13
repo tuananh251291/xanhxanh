@@ -1878,6 +1878,12 @@ model Alert {
 enum CustomerStatus {
   CHUA_PHAN_CONG
   DA_PHAN_CONG
+  // Khách VIP/lâu năm gắn cố định với 1 NV — KHÔNG bị ensureCustomerStatusReminders nhắc cập nhật hàng
+  // tháng, KHÔNG bị ensureCustomerAutoExpire tự thu hồi về Chưa phân công dù không có đơn (xem
+  // src/lib/customer-lifecycle.ts, cả 2 hàm chỉ where status: DA_PHAN_CONG nên MAC_DINH tự động được
+  // loại trừ). Chỉ Admin cấp cao gán tay qua /settings/sale/customers, không qua luồng Kiểm tra trùng
+  // khách tự đăng ký.
+  MAC_DINH
 }
 
 // Danh sách thị trường do Admin cấp cao (SUPER_ADMIN) quản lý, dùng riêng cho CRM khách hàng Sale —

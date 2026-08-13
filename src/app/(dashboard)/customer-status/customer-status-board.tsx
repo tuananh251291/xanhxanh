@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { CUSTOMER_STATUS_LABELS, CUSTOMER_STATUS_BADGE_VARIANT } from "@/types";
 
 type Customer = {
   id: string; name: string; website: string;
   market: { code: string; name: string };
-  status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG";
+  status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null;
 };
 
@@ -92,9 +93,12 @@ export default function CustomerStatusBoard() {
                       </td>
                       <td className="px-3 py-2">{c.market.code}</td>
                       <td className="px-3 py-2">
-                        <Badge variant={c.status === "DA_PHAN_CONG" ? "completed" : "in-progress"}>
-                          {c.status === "DA_PHAN_CONG" ? "Đã phân công" : "Chưa phân công"}
+                        <Badge variant={CUSTOMER_STATUS_BADGE_VARIANT[c.status]}>
+                          {CUSTOMER_STATUS_LABELS[c.status]}
                         </Badge>
+                        {c.status === "MAC_DINH" && (
+                          <p className="text-xs text-text-muted mt-0.5">Không cần cập nhật hàng tháng</p>
+                        )}
                       </td>
                       <td className="px-3 py-2">{format(new Date(c.firstContactAt), "dd/MM/yyyy", { locale: vi })}</td>
                       <td className="px-3 py-2">

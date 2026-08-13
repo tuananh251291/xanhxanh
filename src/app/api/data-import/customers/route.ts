@@ -7,9 +7,10 @@ import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
 
 type RowError = { row: number; label: string; message: string };
 
-const STATUS_TEXT: Record<string, "CHUA_PHAN_CONG" | "DA_PHAN_CONG"> = {
+const STATUS_TEXT: Record<string, "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH"> = {
   "đã phân công": "DA_PHAN_CONG",
   "chưa phân công": "CHUA_PHAN_CONG",
+  "mặc định": "MAC_DINH",
 };
 
 // Nhập hàng loạt/cập nhật danh sách khách hàng — cập nhật thay thế theo khoá tự nhiên là Website
@@ -35,7 +36,7 @@ export async function GET() {
     { header: "Mã thị trường", key: "marketCode", width: 16 },
     { header: "Email", key: "email", width: 26 },
     { header: "Số điện thoại", key: "phone", width: 16 },
-    { header: "Trạng thái (Đã phân công / Chưa phân công)", key: "status", width: 30 },
+    { header: "Trạng thái (Đã phân công / Chưa phân công / Mặc định)", key: "status", width: 34 },
     { header: "Ngày đầu tiếp cận (dd/mm/yyyy)", key: "firstContactAt", width: 22 },
     { header: "Ngày ra đơn gần nhất (dd/mm/yyyy)", key: "lastOrderAt", width: 24 },
     { header: "Mã đơn gần nhất", key: "lastOrderCode", width: 18 },
@@ -68,7 +69,8 @@ export async function GET() {
   for (const s of staff) helpSheet.addRow({ type: "Mã NV bán hàng", code: s.code, name: s.name });
   helpSheet.addRow({});
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Khớp Website đã có trong hệ thống thì CẬP NHẬT THAY THẾ dòng đó, chưa có thì TẠO MỚI." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Trạng thái Đã phân công bắt buộc kèm Mã NV phụ trách; Chưa phân công thì để trống Mã NV phụ trách." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Trạng thái Đã phân công/Mặc định bắt buộc kèm Mã NV phụ trách; Chưa phân công thì để trống Mã NV phụ trách." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mặc định = khách VIP/lâu năm gắn cố định với NV phụ trách, không bị nhắc cập nhật hàng tháng và không tự thu hồi về Chưa phân công dù không có đơn." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Nhân viên quản lý KHÔNG nhập ở đây — cấu hình riêng tại Cài đặt Sale → NV quản lý (theo NV phụ trách + Thị trường)." });
 
   addGuideSheet(workbook, [
@@ -77,7 +79,7 @@ export async function GET() {
     { column: "Mã thị trường", required: true, description: "Phải khớp đúng 1 Mã thị trường đã có (xem sheet Danh mục)." },
     { column: "Email", required: true, description: "Email liên hệ khách hàng." },
     { column: "Số điện thoại", required: true, description: "Số điện thoại liên hệ khách hàng." },
-    { column: "Trạng thái", required: true, description: `Chỉ nhận 1 trong 2 giá trị: "Đã phân công" hoặc "Chưa phân công".` },
+    { column: "Trạng thái", required: true, description: `Chỉ nhận 1 trong 3 giá trị: "Đã phân công", "Chưa phân công" hoặc "Mặc định" (khách VIP/lâu năm, không bị nhắc cập nhật/không tự thu hồi).` },
     { column: "Ngày đầu tiếp cận", required: true, description: "Định dạng dd/mm/yyyy." },
     { column: "Ngày ra đơn gần nhất", required: false, description: "Định dạng dd/mm/yyyy, để trống nếu chưa có đơn." },
     { column: "Mã đơn gần nhất", required: false, description: "Để trống nếu chưa có đơn." },
@@ -170,7 +172,7 @@ export async function POST(req: NextRequest) {
     marketId: string;
     email: string;
     phone: string;
-    status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG";
+    status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
     firstContactAt: Date;
     lastOrderAt: Date | null;
     lastOrderCode: string | null;
@@ -196,15 +198,15 @@ export async function POST(req: NextRequest) {
     if (!parsed.phone) { errors.push({ row: parsed.row, label, message: "Thiếu Số điện thoại" }); continue; }
 
     const status = STATUS_TEXT[parsed.statusText.trim().toLowerCase()];
-    if (!status) { errors.push({ row: parsed.row, label, message: `Trạng thái phải là "Đã phân công" hoặc "Chưa phân công"` }); continue; }
+    if (!status) { errors.push({ row: parsed.row, label, message: `Trạng thái phải là "Đã phân công", "Chưa phân công" hoặc "Mặc định"` }); continue; }
 
     if (parsed.firstContactAtRaw === undefined) { errors.push({ row: parsed.row, label, message: "Thiếu Ngày đầu tiếp cận" }); continue; }
     if (parsed.firstContactAtRaw === null) { errors.push({ row: parsed.row, label, message: "Ngày đầu tiếp cận không đúng định dạng dd/mm/yyyy" }); continue; }
     if (parsed.lastOrderAtRaw === null) { errors.push({ row: parsed.row, label, message: "Ngày ra đơn gần nhất không đúng định dạng dd/mm/yyyy" }); continue; }
 
     let assignedToId: string | null = null;
-    if (status === "DA_PHAN_CONG") {
-      if (!parsed.assignedToCode) { errors.push({ row: parsed.row, label, message: `Trạng thái "Đã phân công" cần Mã NV phụ trách` }); continue; }
+    if (status === "DA_PHAN_CONG" || status === "MAC_DINH") {
+      if (!parsed.assignedToCode) { errors.push({ row: parsed.row, label, message: `Trạng thái "${parsed.statusText.trim()}" cần Mã NV phụ trách` }); continue; }
       const staffId = staffByCode.get(parsed.assignedToCode);
       if (!staffId) { errors.push({ row: parsed.row, label, message: `Mã NV phụ trách "${parsed.assignedToCode}" không tồn tại` }); continue; }
       assignedToId = staffId;

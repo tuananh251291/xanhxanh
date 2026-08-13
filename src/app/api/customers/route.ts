@@ -10,7 +10,7 @@ const createSchema = z.object({
   marketId: z.string().min(1, "Chọn thị trường"),
   email: z.string().trim().email("Email không hợp lệ"),
   phone: z.string().trim().min(1, "Nhập số điện thoại"),
-  status: z.enum(["CHUA_PHAN_CONG", "DA_PHAN_CONG"]),
+  status: z.enum(["CHUA_PHAN_CONG", "DA_PHAN_CONG", "MAC_DINH"]),
   firstContactAt: z.string().min(1, "Chọn ngày đầu tiếp cận"),
   lastOrderAt: z.string().optional().nullable(),
   lastOrderCode: z.string().trim().optional().nullable(),
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   const customers = await prisma.customer.findMany({
     where: {
       ...(marketId ? { marketId } : {}),
-      ...(status ? { status: status as "CHUA_PHAN_CONG" | "DA_PHAN_CONG" } : {}),
+      ...(status ? { status: status as "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH" } : {}),
       ...(q ? { nameNormalized: { contains: normalizeCustomerName(q) } } : {}),
     },
     select: CUSTOMER_LIST_SELECT,
@@ -90,8 +90,8 @@ export async function POST(req: NextRequest) {
   const market = await prisma.market.findUnique({ where: { id: data.marketId } });
   if (!market) return NextResponse.json({ message: "Thị trường không tồn tại" }, { status: 400 });
 
-  if (data.status === "DA_PHAN_CONG" && !data.assignedToId) {
-    return NextResponse.json({ message: "Trạng thái Đã phân công cần chọn Nhân viên phụ trách" }, { status: 400 });
+  if ((data.status === "DA_PHAN_CONG" || data.status === "MAC_DINH") && !data.assignedToId) {
+    return NextResponse.json({ message: "Trạng thái này cần chọn Nhân viên phụ trách" }, { status: 400 });
   }
   if (data.assignedToId) {
     const staff = await prisma.user.findUnique({ where: { id: data.assignedToId } });
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       firstContactAt: new Date(data.firstContactAt),
       lastOrderAt: data.lastOrderAt ? new Date(data.lastOrderAt) : null,
       lastOrderCode: data.lastOrderCode || null,
-      assignedToId: data.status === "DA_PHAN_CONG" ? data.assignedToId : null,
+      assignedToId: data.status === "CHUA_PHAN_CONG" ? null : data.assignedToId,
     },
   });
   return NextResponse.json(customer, { status: 201 });

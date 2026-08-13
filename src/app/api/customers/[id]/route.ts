@@ -10,7 +10,7 @@ const patchSchema = z.object({
   marketId: z.string().min(1).optional(),
   email: z.string().trim().email().optional(),
   phone: z.string().trim().min(1).optional(),
-  status: z.enum(["CHUA_PHAN_CONG", "DA_PHAN_CONG"]).optional(),
+  status: z.enum(["CHUA_PHAN_CONG", "DA_PHAN_CONG", "MAC_DINH"]).optional(),
   firstContactAt: z.string().min(1).optional(),
   lastOrderAt: z.string().optional().nullable(),
   lastOrderCode: z.string().trim().optional().nullable(),
@@ -42,8 +42,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let nextAssignedToId = data.assignedToId !== undefined ? data.assignedToId : existing.assignedToId;
   if (nextStatus === "CHUA_PHAN_CONG") {
     nextAssignedToId = null;
-  } else if (nextStatus === "DA_PHAN_CONG" && !nextAssignedToId) {
-    return NextResponse.json({ message: "Trạng thái Đã phân công cần chọn Nhân viên phụ trách" }, { status: 400 });
+  } else if ((nextStatus === "DA_PHAN_CONG" || nextStatus === "MAC_DINH") && !nextAssignedToId) {
+    return NextResponse.json({ message: "Trạng thái này cần chọn Nhân viên phụ trách" }, { status: 400 });
   }
   if (nextAssignedToId) {
     const staff = await prisma.user.findUnique({ where: { id: nextAssignedToId } });

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Users } from "lucide-react";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 import CustomerFormDialog from "./customer-form-dialog";
+import { CUSTOMER_STATUS_LABELS, CUSTOMER_STATUS_BADGE_VARIANT } from "@/types";
 
 type Market = { id: string; code: string; name: string };
 type UserLite = { id: string; code: string; name: string; role: string };
@@ -17,7 +18,7 @@ type Customer = {
   id: string; name: string; website: string; marketId: string;
   market: { code: string; name: string };
   email: string; phone: string;
-  status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG";
+  status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null;
   assignedToId: string | null;
   assignedTo: { id: string; code: string; name: string } | null;
@@ -82,8 +83,9 @@ export default function CustomersBoard() {
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi trạng thái</SelectItem>
-                <SelectItem value="CHUA_PHAN_CONG">Chưa phân công</SelectItem>
-                <SelectItem value="DA_PHAN_CONG">Đã phân công</SelectItem>
+                <SelectItem value="CHUA_PHAN_CONG">{CUSTOMER_STATUS_LABELS.CHUA_PHAN_CONG}</SelectItem>
+                <SelectItem value="DA_PHAN_CONG">{CUSTOMER_STATUS_LABELS.DA_PHAN_CONG}</SelectItem>
+                <SelectItem value="MAC_DINH">{CUSTOMER_STATUS_LABELS.MAC_DINH}</SelectItem>
               </SelectContent>
             </Select>
             <Input placeholder="Tìm theo tên công ty…" value={q} onChange={(e) => setQ(e.target.value)} className="w-56" />
@@ -120,8 +122,8 @@ export default function CustomersBoard() {
                         </td>
                         <td className="px-3 py-2">{c.market.code}</td>
                         <td className="px-3 py-2">
-                          <Badge variant={c.status === "DA_PHAN_CONG" ? "completed" : "in-progress"}>
-                            {c.status === "DA_PHAN_CONG" ? "Đã phân công" : "Chưa phân công"}
+                          <Badge variant={CUSTOMER_STATUS_BADGE_VARIANT[c.status]}>
+                            {CUSTOMER_STATUS_LABELS[c.status]}
                           </Badge>
                         </td>
                         <td className="px-3 py-2">{c.assignedTo ? `${c.assignedTo.name} (${c.assignedTo.code})` : "—"}</td>
