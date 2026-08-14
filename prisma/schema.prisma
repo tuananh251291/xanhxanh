@@ -1009,6 +1009,11 @@ model Lot {
 // MOTHER PHOTOS — "Cập nhật hình ảnh định kì" (nhiệm vụ tuần NV Kỹ thuật)
 // ============================================================
 
+enum MotherPhotoMediumRole {
+  MOTHER
+  PRE_ROOTING
+}
+
 // Ảnh chụp mẫu mẹ theo từng lô — không có bảng "nhiệm vụ tuần" riêng, trạng thái hoàn thành (đúng
 // hạn Thứ 2/Thứ 3) hay "đã thực hiện" (trễ hạn) tính LIVE từ createdAt/weekStart của các dòng này mỗi
 // lần cần, giống triết lý getKyThuatStats (dashboard/page.tsx) — không lưu cờ "đã hoàn thành".
@@ -1026,6 +1031,11 @@ model MotherPhoto {
   // "Kiểu ảnh" — tuần thứ mấy trong chu kỳ mẫu mẹ (1..PlantType.transferWaitWeeks-1), gợi ý tự động từ
   // Shelf.rotationGroup.rotationOrder lúc chụp nhưng NV có thể sửa tay.
   weekIndex   Int
+  // Chỉ định cấy của lô này có thể cấu hình 2 môi trường mẫu mẹ (PlantingInstructionItem.motherMedium +
+  // preRootingMotherMedium — xem "2 loại M05") — CHỈ mang tính NHÃN để NV phân biệt lúc chụp (túi nào),
+  // KHÔNG tách số liệu thật (daily-record vẫn gộp 1 lô duy nhất bất kể cấu hình mấy môi trường). null khi
+  // chỉ định chỉ có 1 môi trường (không cần phân biệt).
+  mediumRole  MotherPhotoMediumRole?
   // toStoredWeekStart(startOfWeek(now, {weekStartsOn:1})) lúc chụp — dùng tính % nhiệm vụ tuần của
   // takenBy mà không phải suy từ createdAt mỗi lần (xem src/lib/week-rotation.ts).
   weekStart   DateTime

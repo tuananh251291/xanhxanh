@@ -47,7 +47,10 @@ export async function GET(req: NextRequest) {
               items: {
                 where: { stageCode: "M05" },
                 take: 1,
-                select: { motherMedium: { select: { code: true, name: true } } },
+                select: {
+                  motherMedium: { select: { code: true, name: true } },
+                  preRootingMotherMedium: { select: { code: true, name: true } },
+                },
               },
             },
           },
@@ -70,17 +73,20 @@ export async function GET(req: NextRequest) {
     }
     return ids;
   });
-  // "Kiểu ảnh" nào của lô này đã có ảnh RỒI (mọi thời điểm) — mỗi kiểu ảnh chỉ ứng đúng 1 tuần lịch cụ
-  // thể của lô, không lặp lại, nên chụp 1 lần là xong vĩnh viễn cho tuần đó, dùng để mờ nút tương ứng.
+  // "Kiểu ảnh" nào của lô này đã có ảnh RỒI (mọi thời điểm, tách riêng theo vai trò môi trường nếu chỉ
+  // định có 2 môi trường) — mỗi kiểu ảnh chỉ ứng đúng 1 tuần lịch cụ thể của lô, không lặp lại, nên chụp
+  // 1 lần là xong vĩnh viễn cho tuần đó, dùng để mờ nút tương ứng.
   const existingPhotos = await prisma.motherPhoto.findMany({
     where: { lotId: { in: representativeLotIds } },
-    select: { lotId: true, weekIndex: true },
+    select: { lotId: true, weekIndex: true, mediumRole: true },
   });
-  const capturedByLotId = new Map<string, number[]>();
+  const capturedMotherByLotId = new Map<string, number[]>();
+  const capturedPreRootingByLotId = new Map<string, number[]>();
   for (const p of existingPhotos) {
-    const arr = capturedByLotId.get(p.lotId) ?? [];
+    const map = p.mediumRole === "PRE_ROOTING" ? capturedPreRootingByLotId : capturedMotherByLotId;
+    const arr = map.get(p.lotId) ?? [];
     arr.push(p.weekIndex);
-    capturedByLotId.set(p.lotId, arr);
+    map.set(p.lotId, arr);
   }
 
   const items = shelves
@@ -109,7 +115,10 @@ export async function GET(req: NextRequest) {
           enteredWeek: getCalendarWeekNumber(lot.enteredAt),
           motherMediumCode: lot.instruction?.items[0]?.motherMedium?.code ?? null,
           motherMediumName: lot.instruction?.items[0]?.motherMedium?.name ?? null,
-          capturedWeekIndexes: capturedByLotId.get(lot.id) ?? [],
+          preRootingMediumCode: lot.instruction?.items[0]?.preRootingMotherMedium?.code ?? null,
+          preRootingMediumName: lot.instruction?.items[0]?.preRootingMotherMedium?.name ?? null,
+          capturedWeekIndexesMother: capturedMotherByLotId.get(lot.id) ?? [],
+          capturedWeekIndexesPreRooting: capturedPreRootingByLotId.get(lot.id) ?? [],
         })),
       };
     });

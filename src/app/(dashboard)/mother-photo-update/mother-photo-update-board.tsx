@@ -18,6 +18,8 @@ import { Camera, CheckCircle2, ListChecks, Loader2, Plus, X } from "lucide-react
 import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 
+type MediumRole = "MOTHER" | "PRE_ROOTING";
+
 type CapturePlantType = {
   plantTypeId: string;
   plantTypeCode: string;
@@ -27,16 +29,20 @@ type CapturePlantType = {
   enteredWeek: number;
   motherMediumCode: string | null;
   motherMediumName: string | null;
-  capturedWeekIndexes: number[];
+  preRootingMediumCode: string | null;
+  preRootingMediumName: string | null;
+  capturedWeekIndexesMother: number[];
+  capturedWeekIndexesPreRooting: number[];
 };
 type ShelfOption = { id: string; code: string; name: string; rotationOrder: number | null; plantTypes: CapturePlantType[] };
 type DueItem = Omit<CapturePlantType, "lotId"> & { key: string; representativeLotId: string; representativeShelfId: string; shelfCodes: string[] };
 
 type WeekCapture = { saving: boolean; saved: boolean };
-type PendingTarget = { lotId: string; shelfId: string; weekIndex: number; plantTypeId: string; dueKey?: string };
+type PendingTarget = { lotId: string; shelfId: string; weekIndex: number; plantTypeId: string; mediumRole: MediumRole | null; dueKey?: string };
 
-function weekCaptureKey(lotId: string, weekIndex: number) {
-  return `${lotId}:${weekIndex}`;
+// null = chỉ định chỉ có 1 môi trường mẫu mẹ (không cần phân biệt) — xem MotherPhoto.mediumRole.
+function weekCaptureKey(lotId: string, weekIndex: number, mediumRole: MediumRole | null) {
+  return `${lotId}:${mediumRole ?? "single"}:${weekIndex}`;
 }
 
 export default function MotherPhotoUpdateBoard({
@@ -59,16 +65,22 @@ export default function MotherPhotoUpdateBoard({
 
   const percent = totalPlantTypes === 0 ? 100 : Math.round((photographedSet.size / totalPlantTypes) * 100);
 
-  const seedCaptured = (lotId: string, capturedWeekIndexes: number[]) => {
+  const seedCaptured = (lotId: string, mediumRole: MediumRole | null, capturedWeekIndexes: number[]) => {
     if (capturedWeekIndexes.length === 0) return;
     setWeekCaptures((prev) => {
       const next = { ...prev };
       for (const wi of capturedWeekIndexes) {
-        const key = weekCaptureKey(lotId, wi);
+        const key = weekCaptureKey(lotId, wi, mediumRole);
         if (!next[key]) next[key] = { saving: false, saved: true };
       }
       return next;
     });
+  };
+
+  const seedPlantType = (pt: CapturePlantType) => {
+    const hasTwoMediums = !!pt.preRootingMediumCode;
+    seedCaptured(pt.lotId, hasTwoMediums ? "MOTHER" : null, pt.capturedWeekIndexesMother);
+    if (hasTwoMediums) seedCaptured(pt.lotId, "PRE_ROOTING", pt.capturedWeekIndexesPreRooting);
   };
 
   useEffect(() => {
@@ -77,7 +89,7 @@ export default function MotherPhotoUpdateBoard({
       .then((json) => {
         const items: DueItem[] = json.due ?? [];
         setDue(items);
-        for (const d of items) seedCaptured(d.representativeLotId, d.capturedWeekIndexes);
+        for (const d of items) seedPlantType({ ...d, lotId: d.representativeLotId });
       })
       .finally(() => setDueLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,15 +112,15 @@ export default function MotherPhotoUpdateBoard({
   const selectShelf = (rowKey: string, shelf: ShelfOption | null) => {
     setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, shelf } : r)));
     if (!shelf) return;
-    for (const pt of shelf.plantTypes) seedCaptured(pt.lotId, pt.capturedWeekIndexes);
+    for (const pt of shelf.plantTypes) seedPlantType(pt);
   };
 
   const addRow = () => setRows((prev) => [...prev, { key: crypto.randomUUID(), shelf: null, options: [], loading: false }]);
 
   const removeRow = (rowKey: string) => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== rowKey) : prev));
 
-  const triggerCapture = (pt: CapturePlantType, shelfId: string, weekIndex: number, dueKey?: string) => {
-    pendingTargetRef.current = { lotId: pt.lotId, shelfId, weekIndex, plantTypeId: pt.plantTypeId, dueKey };
+  const triggerCapture = (pt: CapturePlantType, shelfId: string, weekIndex: number, mediumRole: MediumRole | null, dueKey?: string) => {
+    pendingTargetRef.current = { lotId: pt.lotId, shelfId, weekIndex, plantTypeId: pt.plantTypeId, mediumRole, dueKey };
     if (cameraInputRef.current) {
       cameraInputRef.current.value = "";
       cameraInputRef.current.click();
@@ -119,15 +131,15 @@ export default function MotherPhotoUpdateBoard({
     const file = e.target.files?.[0];
     const target = pendingTargetRef.current;
     if (!file || !target) return;
-    const { lotId, shelfId, weekIndex, plantTypeId, dueKey } = target;
-    const key = weekCaptureKey(lotId, weekIndex);
+    const { lotId, shelfId, weekIndex, plantTypeId, mediumRole, dueKey } = target;
+    const key = weekCaptureKey(lotId, weekIndex, mediumRole);
     setWeekCaptures((prev) => ({ ...prev, [key]: { saving: true, saved: false } }));
     try {
       const dataUrl = await compressImageToDataUrl(file);
       const res = await fetch("/api/mother-photos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lotId, shelfId, weekIndex, image: dataUrl }),
+        body: JSON.stringify({ lotId, shelfId, weekIndex, mediumRole, image: dataUrl }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -137,9 +149,15 @@ export default function MotherPhotoUpdateBoard({
       }
       setWeekCaptures((prev) => ({ ...prev, [key]: { saving: false, saved: true } }));
       setPhotographedSet((prev) => new Set(prev).add(plantTypeId));
-      // Giàn khác cùng Nhóm tuần mẫu mẹ + cùng mã cây trong thẻ "cần chụp" này tự biến mất theo (đã gộp
-      // sẵn ở server, xem /api/mother-photo-update/due) — chỉ cần bỏ đúng 1 thẻ dueKey khỏi danh sách.
-      if (dueKey) setDue((prev) => prev.filter((d) => d.key !== dueKey));
+      // Giàn khác cùng nhóm gộp (Nhóm tuần mẫu mẹ hoặc cùng tuần nhập kho sáng) + cùng mã cây trong thẻ
+      // "cần chụp" này tự biến mất theo (đã gộp sẵn ở server, xem /api/mother-photo-update/due) — chỉ
+      // bỏ đúng 1 thẻ dueKey khỏi danh sách khi đủ điều kiện (server đã kiểm tra đủ cả 2 môi trường nếu
+      // chỉ định có 2 môi trường, không phải cứ chụp 1 nút là clear cả thẻ).
+      if (dueKey) {
+        const stillDue = await fetch("/api/mother-photo-update/due").then((r) => r.json());
+        const stillPresent = (stillDue.due as DueItem[]).some((d) => d.key === dueKey);
+        if (!stillPresent) setDue((prev) => prev.filter((d) => d.key !== dueKey));
+      }
       toast.success("Đã lưu ảnh");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Nén/lưu ảnh thất bại — thử lại");
@@ -147,27 +165,15 @@ export default function MotherPhotoUpdateBoard({
     }
   };
 
-  function CaptureCard({ pt, shelfId, dueKey, header }: { pt: CapturePlantType; shelfId: string; dueKey?: string; header: React.ReactNode }) {
+  function WeekButtonRow({ pt, shelfId, mediumRole, dueKey, roleLabel }: { pt: CapturePlantType; shelfId: string; mediumRole: MediumRole | null; dueKey?: string; roleLabel?: string }) {
     const maxIndex = Math.max(1, pt.transferWaitWeeks - 1);
     const weekOptions = Array.from({ length: maxIndex }, (_, i) => i + 1);
     return (
-      <div className="rounded-lg border border-border p-3 space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            {header}
-            <p className="text-xs text-text-secondary">
-              Môi trường mẫu mẹ: {pt.motherMediumName ? `${pt.motherMediumName} (${pt.motherMediumCode})` : "Chưa rõ"}
-            </p>
-            <p className="text-xs text-text-secondary">Tuần nhập kho sáng: {pt.enteredWeek}</p>
-          </div>
-          {photographedSet.has(pt.plantTypeId) && (
-            <span className="text-xs text-primary-strong bg-primary-light rounded-full px-2 py-0.5">Đã chụp tuần này ✓</span>
-          )}
-        </div>
-
+      <div className="space-y-1">
+        {roleLabel && <p className="text-xs font-medium text-text-secondary">{roleLabel}</p>}
         <div className="flex items-center gap-2 flex-wrap">
           {weekOptions.map((w) => {
-            const cap = weekCaptures[weekCaptureKey(pt.lotId, w)];
+            const cap = weekCaptures[weekCaptureKey(pt.lotId, w, mediumRole)];
             const saving = cap?.saving ?? false;
             const saved = cap?.saved ?? false;
             return (
@@ -176,7 +182,7 @@ export default function MotherPhotoUpdateBoard({
                 size="sm"
                 variant={saved ? "outline" : "default"}
                 disabled={saved || saving}
-                onClick={() => triggerCapture(pt, shelfId, w, dueKey)}
+                onClick={() => triggerCapture(pt, shelfId, w, mediumRole, dueKey)}
               >
                 {saving ? (
                   <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
@@ -190,6 +196,49 @@ export default function MotherPhotoUpdateBoard({
             );
           })}
         </div>
+      </div>
+    );
+  }
+
+  function CaptureCard({ pt, shelfId, dueKey, header }: { pt: CapturePlantType; shelfId: string; dueKey?: string; header: React.ReactNode }) {
+    const hasTwoMediums = !!pt.preRootingMediumCode;
+    return (
+      <div className="rounded-lg border border-border p-3 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            {header}
+            {!hasTwoMediums && (
+              <p className="text-xs text-text-secondary">
+                Môi trường mẫu mẹ: {pt.motherMediumName ? `${pt.motherMediumName} (${pt.motherMediumCode})` : "Chưa rõ"}
+              </p>
+            )}
+            <p className="text-xs text-text-secondary">Tuần nhập kho sáng: {pt.enteredWeek}</p>
+          </div>
+          {photographedSet.has(pt.plantTypeId) && (
+            <span className="text-xs text-primary-strong bg-primary-light rounded-full px-2 py-0.5">Đã chụp tuần này ✓</span>
+          )}
+        </div>
+
+        {hasTwoMediums ? (
+          <div className="space-y-3">
+            <WeekButtonRow
+              pt={pt}
+              shelfId={shelfId}
+              mediumRole="MOTHER"
+              dueKey={dueKey}
+              roleLabel={`Mẫu mẹ${pt.motherMediumName ? ` — ${pt.motherMediumName} (${pt.motherMediumCode})` : ""}`}
+            />
+            <WeekButtonRow
+              pt={pt}
+              shelfId={shelfId}
+              mediumRole="PRE_ROOTING"
+              dueKey={dueKey}
+              roleLabel={`Mẫu mẹ tiền ra rễ — ${pt.preRootingMediumName} (${pt.preRootingMediumCode})`}
+            />
+          </div>
+        ) : (
+          <WeekButtonRow pt={pt} shelfId={shelfId} mediumRole={null} dueKey={dueKey} />
+        )}
       </div>
     );
   }

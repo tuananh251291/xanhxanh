@@ -28,12 +28,13 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         weekIndex: true,
+        mediumRole: true,
         imageUrl: true,
         createdAt: true,
         takenBy: { select: { name: true } },
         lot: { select: { enteredAt: true } },
       },
-      orderBy: { weekIndex: "asc" },
+      orderBy: [{ weekIndex: "asc" }, { mediumRole: "asc" }],
     });
     return NextResponse.json({
       photos: photos.map(({ lot, ...p }) => ({
@@ -76,6 +77,9 @@ const createSchema = z.object({
   lotId: z.string().min(1),
   shelfId: z.string().min(1),
   weekIndex: z.number().int().positive(),
+  // Chỉ có giá trị khi chỉ định cấy của lô này cấu hình 2 môi trường mẫu mẹ — thuần nhãn để NV phân
+  // biệt túi lúc chụp, không tách số liệu thật (xem comment MotherPhoto.mediumRole).
+  mediumRole: z.enum(["MOTHER", "PRE_ROOTING"]).nullable().optional(),
   image: z.string().regex(/^data:image\/(png|jpeg|jpg|webp);base64,/, "Ảnh không hợp lệ"),
 });
 
@@ -112,6 +116,7 @@ export async function POST(req: NextRequest) {
         plantTypeId: lot.plantTypeId,
         shelfId: parsed.data.shelfId,
         weekIndex: parsed.data.weekIndex,
+        mediumRole: parsed.data.mediumRole ?? null,
         weekStart,
         imageUrl,
         takenById: session.user.id,
