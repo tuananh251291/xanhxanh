@@ -184,6 +184,7 @@ export default function MotherPhotoUpdateBoard({
                     items={row.options}
                     value={row.shelf}
                     isItemEqualToValue={(a: ShelfOption, b: ShelfOption) => a.id === b.id}
+                    itemToStringLabel={(item: ShelfOption) => `${item.code} — ${item.name}`}
                     onValueChange={(v) => selectShelf(row.key, v as ShelfOption | null)}
                     onInputValueChange={(v) => searchShelves(row.key, v)}
                   >
