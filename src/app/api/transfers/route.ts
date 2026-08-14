@@ -21,7 +21,13 @@ const createSchema = z.object({
   notes: z.string().optional(),
   items: z.array(z.object({
     lotId: z.string(),
-    quantity: z.number().int().positive(),
+    // min(0) thay vì positive() — cho phép bàn giao lô đã về 0 (VD mất trắng do nhiễm) cùng đợt với các
+    // lô khác cùng mã+ngày còn số lượng thật, để đóng lại cho xong thay vì kẹt mãi trong "Bàn giao sản
+    // phẩm" (không còn chặn cả phiếu chỉ vì 1 dòng bằng 0, xem product-handover-board.tsx). Lô 0 vẫn
+    // được đánh dấu confirmedAt bình thường ở applyPlacements (receive-phong-toi.ts) dù không có kệ nào
+    // được xếp cho nó — planShelfAssignments/planSurplusPlacement tự sinh 0 kết quả xếp cho quantity 0,
+    // không lỗi.
+    quantity: z.number().int().min(0),
     notes: z.string().optional(),
     // NV cấy mô tự khai "không đạt" (VD cây thành phẩm quá nhỏ) trong số `quantity` — CHỈ áp dụng cho lô
     // thành phẩm (T01/T05), validate lại ở dưới (chặn nếu gửi cho lô mẫu mẹ hoặc vượt quá quantity). Xem
