@@ -8,6 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { Plus, Loader2, Calculator, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { MOTHER_SPEC_LABELS, FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
@@ -139,6 +149,7 @@ export default function CreateInstructionDialog({
         shelfId: string;
         shelfCode: string;
         plantTypeId: string;
+        plantTypeCode: string;
         plantTypeName: string;
         warehouseId: string;
         assignedStaffId: string | null;
@@ -158,6 +169,7 @@ export default function CreateInstructionDialog({
           shelfId: lot.shelf.id,
           shelfCode: lot.shelf.code,
           plantTypeId: lot.plantTypeId,
+          plantTypeCode: lot.plantType.code,
           plantTypeName: lot.plantType.name,
           warehouseId: lot.shelf.warehouseId,
           assignedStaffId: lot.shelf.assignedStaffId,
@@ -169,6 +181,16 @@ export default function CreateInstructionDialog({
     return Array.from(map.values());
   }, [motherLots]);
   const selectedShelf = shelfGroups.find((s) => s.key === shelfId);
+
+  // Gợi ý tìm kiếm theo giàn HOẶC theo mã cây — nhãn gộp cả 2 để Combobox lọc theo bất kỳ từ khoá nào
+  // gõ vào khớp trên (mã giàn, mã cây, tên cây), giàn kệ nguồn có thể lên tới hàng chục dòng khi kho
+  // nhiều mã cây nên không còn tiện cuộn tay như dropdown thường.
+  type ShelfOption = { key: string; label: string };
+  const shelfOptions: ShelfOption[] = useMemo(
+    () => shelfGroups.map((g) => ({ key: g.key, label: `Kệ ${g.shelfCode} · ${g.plantTypeCode} - ${g.plantTypeName}` })),
+    [shelfGroups]
+  );
+  const selectedShelfOption = shelfOptions.find((o) => o.key === shelfId) ?? null;
 
   const buildRows = (lots: MotherLot[]): Row[] =>
     [...lots]
@@ -449,24 +471,24 @@ export default function CreateInstructionDialog({
             <Label className="flex items-center gap-1">
               <QrCode className="w-3.5 h-3.5 text-text-muted" /> Giàn kệ nguồn <span className="text-destructive">*</span>
             </Label>
-            <Select onValueChange={(v) => onShelfChange(v as string)} value={shelfId}>
-              <SelectTrigger>
-                <SelectValue>
-                  {(v: string | null) => {
-                    const g = shelfGroups.find((x) => x.key === v);
-                    return g ? `Kệ ${g.shelfCode} · ${g.plantTypeName}` : "Chọn kệ + mã cây";
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {shelfGroups.map((g) => (
-                  <SelectItem key={g.key} value={g.key}>
-                    Kệ {g.shelfCode} · {g.plantTypeName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-text-muted">Sau này sẽ quét QR code kệ để tự chọn đúng kệ này</p>
+            <Combobox
+              items={shelfOptions}
+              value={selectedShelfOption}
+              isItemEqualToValue={(a: ShelfOption, b: ShelfOption) => a.key === b.key}
+              onValueChange={(opt: ShelfOption | null) => onShelfChange(opt?.key ?? "")}
+            >
+              <ComboboxInputGroup className="w-full">
+                <ComboboxInput placeholder="Gõ mã giàn (VD: G02) hoặc mã cây (VD: MT005) để tìm…" />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy giàn/mã cây phù hợp</ComboboxEmpty>
+                <ComboboxList>
+                  {(opt: ShelfOption) => <ComboboxItem key={opt.key} value={opt}>{opt.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            <p className="text-xs text-text-muted">Gõ để tìm theo mã giàn hoặc mã cây — sau này sẽ quét QR code kệ để tự chọn đúng kệ này</p>
           </div>
 
           {groupLoading && (
