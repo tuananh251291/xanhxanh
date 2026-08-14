@@ -1,4 +1,4 @@
-import { differenceInCalendarWeeks, startOfISOWeekYear, addWeeks, format } from "date-fns";
+import { differenceInCalendarWeeks, startOfISOWeekYear, addWeeks, format, getWeek } from "date-fns";
 
 // Thứ 2 cố định làm mốc khi SUPER_ADMIN CHƯA cấu hình "Tuần khởi đầu của Nhóm 1" (xem
 // ROOTING_ROTATION_START_WEEK_KEY ở src/lib/rooting-week-group.ts, MOTHER_ROTATION_START_WEEK_KEY ở
@@ -41,4 +41,11 @@ export function getCurrentWeekSlot(totalSlots: number, date: Date = new Date(), 
 // 1 Date tính theo giờ local (lệch múi giờ server sẽ luôn không khớp giờ UTC-midnight đã lưu).
 export function toStoredWeekStart(date: Date): Date {
   return new Date(format(date, "yyyy-MM-dd"));
+}
+
+// Số tuần trong năm (1-53) — CÙNG công thức với lotCodeBase (src/lib/codes.ts, dùng làm 2 số tuần trong
+// mã lô) để "Tuần X" hiển thị ở Cập nhật hình ảnh định kì khớp đúng số tuần NV đã quen nhìn trên mã lô,
+// không dùng getISOWeek (có thể lệch 1 số tuần so với getWeek ở vài năm).
+export function getCalendarWeekNumber(date: Date): number {
+  return getWeek(date, { weekStartsOn: 1 });
 }

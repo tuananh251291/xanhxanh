@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { uploadMotherPhoto } from "@/lib/mother-photo-storage";
 import { startOfWeek } from "date-fns";
-import { toStoredWeekStart } from "@/lib/week-rotation";
+import { toStoredWeekStart, getCalendarWeekNumber } from "@/lib/week-rotation";
 import { z } from "zod";
 
 // GET ?plantTypeId=... — trang "Xem dữ liệu hình ảnh": danh sách lô có ảnh của 1 loại cây, theo ngày
@@ -31,10 +31,17 @@ export async function GET(req: NextRequest) {
         imageUrl: true,
         createdAt: true,
         takenBy: { select: { name: true } },
+        lot: { select: { enteredAt: true } },
       },
       orderBy: { weekIndex: "asc" },
     });
-    return NextResponse.json({ photos });
+    return NextResponse.json({
+      photos: photos.map(({ lot, ...p }) => ({
+        ...p,
+        // Tuần thật của ảnh này = tuần nhập kho sáng + weekIndex (xem getCalendarWeekNumber).
+        realWeek: getCalendarWeekNumber(lot.enteredAt) + p.weekIndex,
+      })),
+    });
   }
 
   if (plantTypeId) {
@@ -46,11 +53,18 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { lot: { enteredAt: "desc" } },
     });
-    const byLot = new Map<string, { lotId: string; lotCode: string; enteredAt: Date; coverImageUrl: string; photoCount: number }>();
+    const byLot = new Map<string, { lotId: string; lotCode: string; enteredAt: Date; enteredWeek: number; coverImageUrl: string; photoCount: number }>();
     for (const p of photos) {
       const entry = byLot.get(p.lot.id);
       if (entry) entry.photoCount += 1;
-      else byLot.set(p.lot.id, { lotId: p.lot.id, lotCode: p.lot.code, enteredAt: p.lot.enteredAt, coverImageUrl: p.imageUrl, photoCount: 1 });
+      else byLot.set(p.lot.id, {
+        lotId: p.lot.id,
+        lotCode: p.lot.code,
+        enteredAt: p.lot.enteredAt,
+        enteredWeek: getCalendarWeekNumber(p.lot.enteredAt),
+        coverImageUrl: p.imageUrl,
+        photoCount: 1,
+      });
     }
     return NextResponse.json({ lots: Array.from(byLot.values()) });
   }

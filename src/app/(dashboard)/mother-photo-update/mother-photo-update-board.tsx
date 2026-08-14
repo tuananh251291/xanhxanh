@@ -25,6 +25,7 @@ type ShelfPlantType = {
   plantTypeName: string;
   transferWaitWeeks: number;
   lotId: string;
+  enteredWeek: number;
   motherMediumCode: string | null;
   motherMediumName: string | null;
 };
@@ -227,6 +228,9 @@ export default function MotherPhotoUpdateBoard({
                         <p className="text-xs text-text-secondary">
                           Môi trường mẫu mẹ: {pt.motherMediumName ? `${pt.motherMediumName} (${pt.motherMediumCode})` : "Chưa rõ"}
                         </p>
+                        <p className="text-xs text-text-secondary">
+                          Tuần nhập kho sáng: {pt.enteredWeek} · Cập nhật ảnh tuần: {weekOptions.map((w) => pt.enteredWeek + w).join(", ")}
+                        </p>
                       </div>
                       {photographedSet.has(pt.plantTypeId) && (
                         <span className="text-xs text-primary-strong bg-primary-light rounded-full px-2 py-0.5">Đã chụp tuần này ✓</span>
@@ -237,14 +241,14 @@ export default function MotherPhotoUpdateBoard({
                       <div className="space-y-1">
                         <Label className="text-xs">Kiểu ảnh</Label>
                         <Select
-                          items={weekOptions.map((w) => ({ value: String(w), label: `Tuần ${w}/${maxIndex}` }))}
+                          items={weekOptions.map((w) => ({ value: String(w), label: `Tuần ${pt.enteredWeek + w}` }))}
                           value={String(cap?.weekIndex ?? 1)}
                           onValueChange={(v) => setWeekIndex(pt.lotId, Number(v))}
                         >
                           <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {weekOptions.map((w) => (
-                              <SelectItem key={w} value={String(w)}>Tuần {w}/{maxIndex}</SelectItem>
+                              <SelectItem key={w} value={String(w)}>Tuần {pt.enteredWeek + w}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>

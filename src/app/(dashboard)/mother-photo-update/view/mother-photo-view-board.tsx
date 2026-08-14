@@ -19,8 +19,8 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 type Option = { value: string; label: string };
-type LotSummary = { lotId: string; lotCode: string; enteredAt: string; coverImageUrl: string; photoCount: number };
-type Photo = { id: string; weekIndex: number; imageUrl: string; createdAt: string; takenBy: { name: string } };
+type LotSummary = { lotId: string; lotCode: string; enteredAt: string; enteredWeek: number; coverImageUrl: string; photoCount: number };
+type Photo = { id: string; weekIndex: number; realWeek: number; imageUrl: string; createdAt: string; takenBy: { name: string } };
 type WeeklyStatusRow = {
   userId: string;
   name: string;
@@ -123,7 +123,7 @@ export default function MotherPhotoViewBoard({ plantTypeOptions }: { plantTypeOp
                   <img src={lot.coverImageUrl} alt={lot.lotCode} className="w-full aspect-square object-cover rounded-md mb-2" />
                   <p className="text-sm font-medium text-foreground truncate">{lot.lotCode}</p>
                   <p className="text-xs text-text-secondary">
-                    Nhập kho sáng: {format(new Date(lot.enteredAt), "dd/MM/yyyy", { locale: vi })}
+                    Nhập kho sáng: {format(new Date(lot.enteredAt), "dd/MM/yyyy", { locale: vi })} (Tuần {lot.enteredWeek})
                   </p>
                   <p className="text-xs text-text-muted">{lot.photoCount} ảnh</p>
                 </button>
@@ -145,8 +145,8 @@ export default function MotherPhotoViewBoard({ plantTypeOptions }: { plantTypeOp
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                 {photos.map((p) => (
                   <div key={p.id} className="space-y-1">
-                    <img src={p.imageUrl} alt={`Tuần ${p.weekIndex}`} className="w-full aspect-square object-cover rounded-lg border border-border" />
-                    <p className="text-sm font-medium text-foreground">Tuần {p.weekIndex}</p>
+                    <img src={p.imageUrl} alt={`Tuần ${p.realWeek}`} className="w-full aspect-square object-cover rounded-lg border border-border" />
+                    <p className="text-sm font-medium text-foreground">Tuần {p.realWeek}</p>
                     <p className="text-xs text-text-secondary">
                       {format(new Date(p.createdAt), "dd/MM/yyyy", { locale: vi })} · {p.takenBy.name}
                     </p>

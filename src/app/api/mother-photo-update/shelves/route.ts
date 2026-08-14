@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
+import { getCalendarWeekNumber } from "@/lib/week-rotation";
 
 // Tìm giàn kệ Phòng mẫu mẹ theo mã/tên cho trang "Cập nhật hình ảnh định kì" — KHÔNG giới hạn theo 1
 // kho (khác /api/mother-stock-reshelf vốn khoá theo workplaceWarehouseId của KHO_MO), vì NV Kỹ thuật
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           quantity: true,
+          enteredAt: true,
           plantType: { select: { id: true, code: true, name: true, transferWaitWeeks: true } },
           instruction: {
             select: {
@@ -74,6 +76,9 @@ export async function GET(req: NextRequest) {
           plantTypeName: lot.plantType.name,
           transferWaitWeeks: lot.plantType.transferWaitWeeks,
           lotId: lot.id,
+          // Tuần nhập lên kho sáng (cùng cách tính số tuần trong mã lô, xem getCalendarWeekNumber) —
+          // cập nhật ảnh cần làm ở các tuần enteredWeek+1 .. enteredWeek+(transferWaitWeeks-1).
+          enteredWeek: getCalendarWeekNumber(lot.enteredAt),
           motherMediumCode: lot.instruction?.items[0]?.motherMedium?.code ?? null,
           motherMediumName: lot.instruction?.items[0]?.motherMedium?.name ?? null,
         })),
