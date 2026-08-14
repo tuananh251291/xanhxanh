@@ -23,6 +23,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@supabase/supabase-js": "^2.112.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",

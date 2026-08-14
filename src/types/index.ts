@@ -346,6 +346,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/instructions/edit", label: "Sửa chỉ định cấy", icon: "PenLine" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
+    { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

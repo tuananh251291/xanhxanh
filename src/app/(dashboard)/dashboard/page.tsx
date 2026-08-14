@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
   PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
-  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, type LucideIcon,
+  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, Camera, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import type { UserRole } from "@prisma/client";
@@ -186,11 +186,33 @@ async function getKyThuatStats(userId: string) {
   });
   const backupPercent = Math.min(100, Math.round((backupCount / MIN_BACKUP_INSTRUCTION_COUNT) * 100));
 
+  // Việc "4. Cập nhật hình ảnh định kì" — hạn chót mềm Thứ 3 (khác Thứ 5 của việc 1/3), tính live từ
+  // MotherPhoto (không có bảng "nhiệm vụ" riêng — xem prisma/schema.prisma). % = số loại cây NV này đã
+  // chụp tuần này / tổng số loại cây đang có lô mẫu mẹ ACTIVE hệ thống.
+  const tuesdayDeadline = endOfDay(addDays(weekStart, 1));
+  const [activeMotherPlantTypes, motherPhotosThisWeek] = await Promise.all([
+    prisma.lot.findMany({
+      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 } },
+      distinct: ["plantTypeId"],
+      select: { plantTypeId: true },
+    }),
+    prisma.motherPhoto.findMany({
+      where: { takenById: userId, weekStart: toStoredWeekStart(weekStart) },
+      select: { plantTypeId: true, createdAt: true },
+    }),
+  ]);
+  const motherPhotoTotal = activeMotherPlantTypes.length;
+  const motherPhotoDistinctPlantTypes = new Set(motherPhotosThisWeek.map((p) => p.plantTypeId));
+  const motherPhotoDone = motherPhotoTotal === 0 ? true : motherPhotoDistinctPlantTypes.size >= motherPhotoTotal;
+  const motherPhotoPercent = motherPhotoTotal === 0 ? 100 : Math.round((motherPhotoDistinctPlantTypes.size / motherPhotoTotal) * 100);
+
   return {
     weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent,
     instructionDone: handledItems.length,
     instructionTotal: dueLotIds.length,
     backupCount, backupPercent,
+    tuesdayDeadline, motherPhotoPercent, motherPhotoDone,
+    motherPhotoDoneCount: motherPhotoDistinctPlantTypes.size, motherPhotoTotal,
   };
 }
 
@@ -708,6 +730,11 @@ function KyThuatDashboard({
   const backupBadgeState: TaskBadgeState = backupDone
     ? (isPastThursdayEnd ? "done_late" : "done")
     : (isPastThursdayEnd ? "urgent" : "not_done");
+  // "Việc 4: Cập nhật hình ảnh định kì" — hạn chót mềm riêng (Thứ 3, khác Thứ 5 của việc 1/3). Khác 3
+  // việc kia: ẩn HẲN dòng này khi đã xong (không hiện badge "Đã hoàn thành") — xong Thứ 2 thì Thứ 3
+  // không cần nhắc lại nữa, xem plan "Cập nhật hình ảnh định kì".
+  const isPastTuesdayEnd = new Date() > stats.tuesdayDeadline;
+  const motherPhotoBadgeState: TaskBadgeState = isPastTuesdayEnd ? "urgent" : "not_done";
 
   return (
     <div className="space-y-6">
@@ -747,6 +774,17 @@ function KyThuatDashboard({
             countLabel={`${stats.backupCount}/${MIN_BACKUP_INSTRUCTION_COUNT} chỉ định`}
             badgeState={backupBadgeState}
           />
+          {!stats.motherPhotoDone && (
+            <WeeklyTaskRow
+              href="/mother-photo-update"
+              icon={Camera}
+              title="4. Cập nhật hình ảnh định kì"
+              deadline={`Chụp ảnh mẫu mẹ mọi loại cây — cần hoàn thiện trong ngày Thứ 3 hàng tuần (${format(addDays(stats.weekStart, 1), "dd/MM", { locale: vi })})`}
+              percent={stats.motherPhotoPercent}
+              countLabel={`${stats.motherPhotoDoneCount}/${stats.motherPhotoTotal} loại cây`}
+              badgeState={motherPhotoBadgeState}
+            />
+          )}
         </CardContent>
       </Card>
 
