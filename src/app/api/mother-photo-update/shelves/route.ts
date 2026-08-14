@@ -4,9 +4,11 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getCalendarWeekNumber } from "@/lib/week-rotation";
 
-// Tìm giàn kệ Phòng mẫu mẹ theo mã/tên cho trang "Cập nhật hình ảnh định kì" — KHÔNG giới hạn theo 1
-// kho (khác /api/mother-stock-reshelf vốn khoá theo workplaceWarehouseId của KHO_MO), vì NV Kỹ thuật
-// làm việc ở mọi kho sản xuất (xem comment User.workplaceWarehouseId trong schema.prisma).
+// Tìm giàn kệ Phòng mẫu mẹ theo mã/tên cho trang "Cập nhật hình ảnh định kì" (ô tìm bổ sung cạnh danh
+// sách "Cần chụp tuần này", xem /api/mother-photo-update/due) — KHÔNG giới hạn theo 1 kho (khác
+// /api/mother-stock-reshelf vốn khoá theo workplaceWarehouseId của KHO_MO), vì NV Kỹ thuật làm việc ở
+// mọi kho sản xuất. CHỈ trả về giàn ĐÃ GẮN cho nhân sự (assignedStaffId khác null) — nghĩa vụ chụp ảnh
+// định kì không áp dụng cho "kệ chung".
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
@@ -22,6 +24,7 @@ export async function GET(req: NextRequest) {
     where: {
       isActive: true,
       room: { type: "PHONG_MAU_ME" },
+      assignedStaffId: { not: null },
       OR: [
         { code: { contains: q, mode: "insensitive" } },
         { name: { contains: q, mode: "insensitive" } },
@@ -59,8 +62,9 @@ export async function GET(req: NextRequest) {
   const items = shelves
     .filter((s) => s.lots.length > 0)
     .map((s) => {
-      // 1 giàn có thể có nhiều lô cùng 1 mã cây (giàn chung) — chỉ lấy lô số lượng lớn nhất làm đại
-      // diện để chụp ảnh (đã orderBy quantity desc ở trên nên phần tử đầu tiên mỗi mã cây là lô đó).
+      // 1 giàn đã chia vẫn có thể có nhiều lô cùng 1 mã cây (nhiều đợt cấy khác nhau) — chỉ lấy lô số
+      // lượng lớn nhất làm đại diện để chụp ảnh (đã orderBy quantity desc nên phần tử đầu mỗi mã cây
+      // chính là lô đó).
       const byPlantType = new Map<string, (typeof s.lots)[number]>();
       for (const lot of s.lots) {
         if (!byPlantType.has(lot.plantType.id)) byPlantType.set(lot.plantType.id, lot);

@@ -14,7 +14,8 @@ export default async function MotherPhotoUpdatePage() {
 
   const [activePlantTypes, photographedThisWeek] = await Promise.all([
     prisma.lot.findMany({
-      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 } },
+      // Chỉ tính giàn ĐÃ GẮN cho nhân sự — không cần cập nhật ảnh cho lô ở "kệ chung".
+      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
       distinct: ["plantTypeId"],
       select: { plantTypeId: true },
     }),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -15,11 +15,11 @@ import {
   ComboboxTrigger,
 } from "@/components/ui/combobox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, CheckCircle2, ImageUp, Loader2, Plus, RotateCcw, X } from "lucide-react";
+import { Camera, CheckCircle2, ImageUp, ListChecks, Loader2, Plus, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 
-type ShelfPlantType = {
+type CapturePlantType = {
   plantTypeId: string;
   plantTypeCode: string;
   plantTypeName: string;
@@ -29,14 +29,15 @@ type ShelfPlantType = {
   motherMediumCode: string | null;
   motherMediumName: string | null;
 };
-type ShelfOption = { id: string; code: string; name: string; rotationOrder: number | null; plantTypes: ShelfPlantType[] };
+type ShelfOption = { id: string; code: string; name: string; rotationOrder: number | null; plantTypes: CapturePlantType[] };
+type DueItem = Omit<CapturePlantType, "lotId"> & { key: string; representativeLotId: string; representativeShelfId: string; shelfCodes: string[] };
 
 type Capture = { weekIndex: number; saving: boolean; saved: { id: string; imageUrl: string } | null };
+type PendingTarget = { lotId: string; shelfId: string; weekIndex: number; plantTypeId: string; dueKey?: string };
 
-function suggestWeekIndex(shelf: ShelfOption, transferWaitWeeks: number): number {
+function suggestWeekIndex(rotationOrder: number | null, transferWaitWeeks: number): number {
   const maxIndex = Math.max(1, transferWaitWeeks - 1);
-  const order = shelf.rotationOrder;
-  if (order && order >= 1 && order <= maxIndex) return order;
+  if (rotationOrder && rotationOrder >= 1 && rotationOrder <= maxIndex) return rotationOrder;
   return 1;
 }
 
@@ -51,17 +52,26 @@ export default function MotherPhotoUpdateBoard({
   totalPlantTypes: number;
   initialPhotographedPlantTypeIds: string[];
 }) {
+  const [due, setDue] = useState<DueItem[]>([]);
+  const [dueLoading, setDueLoading] = useState(true);
   const [rows, setRows] = useState<{ key: string; shelf: ShelfOption | null; options: ShelfOption[]; loading: boolean }[]>([
     { key: crypto.randomUUID(), shelf: null, options: [], loading: false },
   ]);
   const [captures, setCaptures] = useState<Record<string, Capture>>({});
   const [photographedSet, setPhotographedSet] = useState<Set<string>>(new Set(initialPhotographedPlantTypeIds));
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingTargetRef = useRef<{ lotId: string; shelfId: string; weekIndex: number; plantTypeId: string } | null>(null);
+  const pendingTargetRef = useRef<PendingTarget | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const percent = totalPlantTypes === 0 ? 100 : Math.round((photographedSet.size / totalPlantTypes) * 100);
+
+  useEffect(() => {
+    fetch("/api/mother-photo-update/due")
+      .then((r) => r.json())
+      .then((json) => setDue(json.due ?? []))
+      .finally(() => setDueLoading(false));
+  }, []);
 
   const searchShelves = useCallback(async (rowKey: string, q: string) => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -84,7 +94,7 @@ export default function MotherPhotoUpdateBoard({
       const next = { ...prev };
       for (const pt of shelf.plantTypes) {
         const key = captureKey(pt.lotId);
-        if (!next[key]) next[key] = { weekIndex: suggestWeekIndex(shelf, pt.transferWaitWeeks), saving: false, saved: null };
+        if (!next[key]) next[key] = { weekIndex: suggestWeekIndex(shelf.rotationOrder, pt.transferWaitWeeks), saving: false, saved: null };
       }
       return next;
     });
@@ -98,9 +108,9 @@ export default function MotherPhotoUpdateBoard({
     setCaptures((prev) => ({ ...prev, [captureKey(lotId)]: { ...prev[captureKey(lotId)], weekIndex, saving: false, saved: prev[captureKey(lotId)]?.saved ?? null } }));
   };
 
-  const triggerCapture = (source: "camera" | "upload", lotId: string, shelfId: string, plantTypeId: string) => {
-    const weekIndex = captures[captureKey(lotId)]?.weekIndex ?? 1;
-    pendingTargetRef.current = { lotId, shelfId, weekIndex, plantTypeId };
+  const triggerCapture = (source: "camera" | "upload", pt: CapturePlantType, shelfId: string, dueKey?: string) => {
+    const weekIndex = captures[captureKey(pt.lotId)]?.weekIndex ?? suggestWeekIndex(null, pt.transferWaitWeeks);
+    pendingTargetRef.current = { lotId: pt.lotId, shelfId, weekIndex, plantTypeId: pt.plantTypeId, dueKey };
     const input = source === "camera" ? cameraInputRef.current : uploadInputRef.current;
     if (input) {
       input.value = "";
@@ -112,7 +122,7 @@ export default function MotherPhotoUpdateBoard({
     const file = e.target.files?.[0];
     const target = pendingTargetRef.current;
     if (!file || !target) return;
-    const { lotId, shelfId, weekIndex, plantTypeId } = target;
+    const { lotId, shelfId, weekIndex, plantTypeId, dueKey } = target;
     const key = captureKey(lotId);
     setCaptures((prev) => ({ ...prev, [key]: { ...prev[key], saving: true } }));
     try {
@@ -130,6 +140,9 @@ export default function MotherPhotoUpdateBoard({
       }
       setCaptures((prev) => ({ ...prev, [key]: { weekIndex, saving: false, saved: { id: json.id, imageUrl: json.imageUrl } } }));
       setPhotographedSet((prev) => new Set(prev).add(plantTypeId));
+      // Giàn khác cùng Nhóm tuần mẫu mẹ + cùng mã cây trong thẻ "cần chụp" này tự biến mất theo (đã gộp
+      // sẵn ở server, xem /api/mother-photo-update/due) — chỉ cần bỏ đúng 1 thẻ dueKey khỏi danh sách.
+      if (dueKey) setDue((prev) => prev.filter((d) => d.key !== dueKey));
       toast.success("Đã lưu ảnh");
     } catch {
       toast.error("Nén/lưu ảnh thất bại — thử lại");
@@ -140,6 +153,71 @@ export default function MotherPhotoUpdateBoard({
   const retake = (lotId: string) => {
     setCaptures((prev) => ({ ...prev, [captureKey(lotId)]: { ...prev[captureKey(lotId)], saved: null } }));
   };
+
+  function CaptureCard({ pt, shelfId, dueKey, header }: { pt: CapturePlantType; shelfId: string; dueKey?: string; header: React.ReactNode }) {
+    const cap = captures[captureKey(pt.lotId)];
+    const maxIndex = Math.max(1, pt.transferWaitWeeks - 1);
+    const weekOptions = Array.from({ length: maxIndex }, (_, i) => i + 1);
+    return (
+      <div className="rounded-lg border border-border p-3 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            {header}
+            <p className="text-xs text-text-secondary">
+              Môi trường mẫu mẹ: {pt.motherMediumName ? `${pt.motherMediumName} (${pt.motherMediumCode})` : "Chưa rõ"}
+            </p>
+            <p className="text-xs text-text-secondary">
+              Tuần nhập kho sáng: {pt.enteredWeek} · Cập nhật ảnh tuần: {weekOptions.map((w) => pt.enteredWeek + w).join(", ")}
+            </p>
+          </div>
+          {photographedSet.has(pt.plantTypeId) && (
+            <span className="text-xs text-primary-strong bg-primary-light rounded-full px-2 py-0.5">Đã chụp tuần này ✓</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="space-y-1">
+            <Label className="text-xs">Kiểu ảnh</Label>
+            <Select
+              items={weekOptions.map((w) => ({ value: String(w), label: `Tuần ${pt.enteredWeek + w}` }))}
+              value={String(cap?.weekIndex ?? suggestWeekIndex(null, pt.transferWaitWeeks))}
+              onValueChange={(v) => setWeekIndex(pt.lotId, Number(v))}
+            >
+              <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {weekOptions.map((w) => (
+                  <SelectItem key={w} value={String(w)}>Tuần {pt.enteredWeek + w}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {cap?.saving ? (
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu…
+            </div>
+          ) : cap?.saved ? (
+            <div className="flex items-center gap-2">
+              <img src={cap.saved.imageUrl} alt="Ảnh đã lưu" className="w-14 h-14 object-cover rounded-md border border-border" />
+              <span className="text-sm text-primary-strong flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Đã lưu</span>
+              <Button size="sm" variant="outline" onClick={() => retake(pt.lotId)}>
+                <RotateCcw className="w-3.5 h-3.5 mr-1" /> Chụp lại
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => triggerCapture("camera", pt, shelfId, dueKey)}>
+                <Camera className="w-4 h-4 mr-1.5" /> Chụp ảnh
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => triggerCapture("upload", pt, shelfId, dueKey)}>
+                <ImageUp className="w-4 h-4 mr-1.5" /> Tải ảnh lên
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -173,6 +251,45 @@ export default function MotherPhotoUpdateBoard({
 
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
       <input ref={uploadInputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ListChecks className="w-4.5 h-4.5 text-primary-strong" /> Giàn cần chụp tuần này
+          </CardTitle>
+          <p className="text-xs text-text-secondary">
+            Chỉ tính giàn đã gắn cho nhân sự — chụp xong 1 giàn sẽ tự biến mất khỏi danh sách (kể cả với NV khác)
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {dueLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
+          ) : due.length === 0 ? (
+            <p className="text-sm text-text-muted">Không còn giàn nào cần chụp tuần này 🎉</p>
+          ) : (
+            due.map((d) => (
+              <CaptureCard
+                key={d.key}
+                pt={{ ...d, lotId: d.representativeLotId }}
+                shelfId={d.representativeShelfId}
+                dueKey={d.key}
+                header={
+                  <p className="font-medium text-foreground">
+                    {d.plantTypeName} <span className="text-text-muted font-mono text-xs">({d.plantTypeCode})</span>
+                    {" · "}
+                    <span className="text-text-secondary font-normal text-xs">Giàn: {d.shelfCodes.join(", ")}</span>
+                  </p>
+                }
+              />
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="space-y-1">
+        <h2 className="text-sm font-medium text-foreground">Hoặc tìm giàn kệ khác</h2>
+        <p className="text-xs text-text-secondary">Dùng khi cần chụp bổ sung/sửa ảnh ngoài danh sách phía trên</p>
+      </div>
 
       <div className="space-y-4">
         {rows.map((row) => (
@@ -216,70 +333,18 @@ export default function MotherPhotoUpdateBoard({
                 <p className="text-sm text-text-muted">Giàn này chưa có mẫu mẹ đang lưu.</p>
               )}
 
-              {row.shelf?.plantTypes.map((pt) => {
-                const cap = captures[captureKey(pt.lotId)];
-                const maxIndex = Math.max(1, pt.transferWaitWeeks - 1);
-                const weekOptions = Array.from({ length: maxIndex }, (_, i) => i + 1);
-                return (
-                  <div key={pt.lotId} className="rounded-lg border border-border p-3 space-y-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <p className="font-medium text-foreground">{pt.plantTypeName} <span className="text-text-muted font-mono text-xs">({pt.plantTypeCode})</span></p>
-                        <p className="text-xs text-text-secondary">
-                          Môi trường mẫu mẹ: {pt.motherMediumName ? `${pt.motherMediumName} (${pt.motherMediumCode})` : "Chưa rõ"}
-                        </p>
-                        <p className="text-xs text-text-secondary">
-                          Tuần nhập kho sáng: {pt.enteredWeek} · Cập nhật ảnh tuần: {weekOptions.map((w) => pt.enteredWeek + w).join(", ")}
-                        </p>
-                      </div>
-                      {photographedSet.has(pt.plantTypeId) && (
-                        <span className="text-xs text-primary-strong bg-primary-light rounded-full px-2 py-0.5">Đã chụp tuần này ✓</span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Kiểu ảnh</Label>
-                        <Select
-                          items={weekOptions.map((w) => ({ value: String(w), label: `Tuần ${pt.enteredWeek + w}` }))}
-                          value={String(cap?.weekIndex ?? 1)}
-                          onValueChange={(v) => setWeekIndex(pt.lotId, Number(v))}
-                        >
-                          <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {weekOptions.map((w) => (
-                              <SelectItem key={w} value={String(w)}>Tuần {pt.enteredWeek + w}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {cap?.saving ? (
-                        <div className="flex items-center gap-2 text-sm text-text-secondary">
-                          <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu…
-                        </div>
-                      ) : cap?.saved ? (
-                        <div className="flex items-center gap-2">
-                          <img src={cap.saved.imageUrl} alt="Ảnh đã lưu" className="w-14 h-14 object-cover rounded-md border border-border" />
-                          <span className="text-sm text-primary-strong flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Đã lưu</span>
-                          <Button size="sm" variant="outline" onClick={() => retake(pt.lotId)}>
-                            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Chụp lại
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Button size="sm" onClick={() => triggerCapture("camera", pt.lotId, row.shelf!.id, pt.plantTypeId)}>
-                            <Camera className="w-4 h-4 mr-1.5" /> Chụp ảnh
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => triggerCapture("upload", pt.lotId, row.shelf!.id, pt.plantTypeId)}>
-                            <ImageUp className="w-4 h-4 mr-1.5" /> Tải ảnh lên
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {row.shelf?.plantTypes.map((pt) => (
+                <CaptureCard
+                  key={pt.lotId}
+                  pt={pt}
+                  shelfId={row.shelf!.id}
+                  header={
+                    <p className="font-medium text-foreground">
+                      {pt.plantTypeName} <span className="text-text-muted font-mono text-xs">({pt.plantTypeCode})</span>
+                    </p>
+                  }
+                />
+              ))}
             </CardContent>
           </Card>
         ))}
