@@ -59,6 +59,30 @@ export async function GET(req: NextRequest) {
     take: 20,
   });
 
+  const representativeLotIds = shelves.flatMap((s) => {
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const lot of s.lots) {
+      if (!seen.has(lot.plantType.id)) {
+        seen.add(lot.plantType.id);
+        ids.push(lot.id);
+      }
+    }
+    return ids;
+  });
+  // "Kiểu ảnh" nào của lô này đã có ảnh RỒI (mọi thời điểm) — mỗi kiểu ảnh chỉ ứng đúng 1 tuần lịch cụ
+  // thể của lô, không lặp lại, nên chụp 1 lần là xong vĩnh viễn cho tuần đó, dùng để mờ nút tương ứng.
+  const existingPhotos = await prisma.motherPhoto.findMany({
+    where: { lotId: { in: representativeLotIds } },
+    select: { lotId: true, weekIndex: true },
+  });
+  const capturedByLotId = new Map<string, number[]>();
+  for (const p of existingPhotos) {
+    const arr = capturedByLotId.get(p.lotId) ?? [];
+    arr.push(p.weekIndex);
+    capturedByLotId.set(p.lotId, arr);
+  }
+
   const items = shelves
     .filter((s) => s.lots.length > 0)
     .map((s) => {
@@ -85,6 +109,7 @@ export async function GET(req: NextRequest) {
           enteredWeek: getCalendarWeekNumber(lot.enteredAt),
           motherMediumCode: lot.instruction?.items[0]?.motherMedium?.code ?? null,
           motherMediumName: lot.instruction?.items[0]?.motherMedium?.name ?? null,
+          capturedWeekIndexes: capturedByLotId.get(lot.id) ?? [],
         })),
       };
     });

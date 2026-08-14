@@ -14,8 +14,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, CheckCircle2, ImageUp, ListChecks, Loader2, Plus, RotateCcw, X } from "lucide-react";
+import { Camera, CheckCircle2, ListChecks, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 
@@ -28,21 +27,16 @@ type CapturePlantType = {
   enteredWeek: number;
   motherMediumCode: string | null;
   motherMediumName: string | null;
+  capturedWeekIndexes: number[];
 };
 type ShelfOption = { id: string; code: string; name: string; rotationOrder: number | null; plantTypes: CapturePlantType[] };
 type DueItem = Omit<CapturePlantType, "lotId"> & { key: string; representativeLotId: string; representativeShelfId: string; shelfCodes: string[] };
 
-type Capture = { weekIndex: number; saving: boolean; saved: { id: string; imageUrl: string } | null };
+type WeekCapture = { saving: boolean; saved: boolean };
 type PendingTarget = { lotId: string; shelfId: string; weekIndex: number; plantTypeId: string; dueKey?: string };
 
-function suggestWeekIndex(rotationOrder: number | null, transferWaitWeeks: number): number {
-  const maxIndex = Math.max(1, transferWaitWeeks - 1);
-  if (rotationOrder && rotationOrder >= 1 && rotationOrder <= maxIndex) return rotationOrder;
-  return 1;
-}
-
-function captureKey(lotId: string) {
-  return lotId;
+function weekCaptureKey(lotId: string, weekIndex: number) {
+  return `${lotId}:${weekIndex}`;
 }
 
 export default function MotherPhotoUpdateBoard({
@@ -57,20 +51,36 @@ export default function MotherPhotoUpdateBoard({
   const [rows, setRows] = useState<{ key: string; shelf: ShelfOption | null; options: ShelfOption[]; loading: boolean }[]>([
     { key: crypto.randomUUID(), shelf: null, options: [], loading: false },
   ]);
-  const [captures, setCaptures] = useState<Record<string, Capture>>({});
+  const [weekCaptures, setWeekCaptures] = useState<Record<string, WeekCapture>>({});
   const [photographedSet, setPhotographedSet] = useState<Set<string>>(new Set(initialPhotographedPlantTypeIds));
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTargetRef = useRef<PendingTarget | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const percent = totalPlantTypes === 0 ? 100 : Math.round((photographedSet.size / totalPlantTypes) * 100);
+
+  const seedCaptured = (lotId: string, capturedWeekIndexes: number[]) => {
+    if (capturedWeekIndexes.length === 0) return;
+    setWeekCaptures((prev) => {
+      const next = { ...prev };
+      for (const wi of capturedWeekIndexes) {
+        const key = weekCaptureKey(lotId, wi);
+        if (!next[key]) next[key] = { saving: false, saved: true };
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetch("/api/mother-photo-update/due")
       .then((r) => r.json())
-      .then((json) => setDue(json.due ?? []))
+      .then((json) => {
+        const items: DueItem[] = json.due ?? [];
+        setDue(items);
+        for (const d of items) seedCaptured(d.representativeLotId, d.capturedWeekIndexes);
+      })
       .finally(() => setDueLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const searchShelves = useCallback(async (rowKey: string, q: string) => {
@@ -90,31 +100,18 @@ export default function MotherPhotoUpdateBoard({
   const selectShelf = (rowKey: string, shelf: ShelfOption | null) => {
     setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, shelf } : r)));
     if (!shelf) return;
-    setCaptures((prev) => {
-      const next = { ...prev };
-      for (const pt of shelf.plantTypes) {
-        const key = captureKey(pt.lotId);
-        if (!next[key]) next[key] = { weekIndex: suggestWeekIndex(shelf.rotationOrder, pt.transferWaitWeeks), saving: false, saved: null };
-      }
-      return next;
-    });
+    for (const pt of shelf.plantTypes) seedCaptured(pt.lotId, pt.capturedWeekIndexes);
   };
 
   const addRow = () => setRows((prev) => [...prev, { key: crypto.randomUUID(), shelf: null, options: [], loading: false }]);
 
   const removeRow = (rowKey: string) => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== rowKey) : prev));
 
-  const setWeekIndex = (lotId: string, weekIndex: number) => {
-    setCaptures((prev) => ({ ...prev, [captureKey(lotId)]: { ...prev[captureKey(lotId)], weekIndex, saving: false, saved: prev[captureKey(lotId)]?.saved ?? null } }));
-  };
-
-  const triggerCapture = (source: "camera" | "upload", pt: CapturePlantType, shelfId: string, dueKey?: string) => {
-    const weekIndex = captures[captureKey(pt.lotId)]?.weekIndex ?? suggestWeekIndex(null, pt.transferWaitWeeks);
+  const triggerCapture = (pt: CapturePlantType, shelfId: string, weekIndex: number, dueKey?: string) => {
     pendingTargetRef.current = { lotId: pt.lotId, shelfId, weekIndex, plantTypeId: pt.plantTypeId, dueKey };
-    const input = source === "camera" ? cameraInputRef.current : uploadInputRef.current;
-    if (input) {
-      input.value = "";
-      input.click();
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
+      cameraInputRef.current.click();
     }
   };
 
@@ -123,8 +120,8 @@ export default function MotherPhotoUpdateBoard({
     const target = pendingTargetRef.current;
     if (!file || !target) return;
     const { lotId, shelfId, weekIndex, plantTypeId, dueKey } = target;
-    const key = captureKey(lotId);
-    setCaptures((prev) => ({ ...prev, [key]: { ...prev[key], saving: true } }));
+    const key = weekCaptureKey(lotId, weekIndex);
+    setWeekCaptures((prev) => ({ ...prev, [key]: { saving: true, saved: false } }));
     try {
       const dataUrl = await compressImageToDataUrl(file);
       const res = await fetch("/api/mother-photos", {
@@ -135,27 +132,22 @@ export default function MotherPhotoUpdateBoard({
       const json = await res.json();
       if (!res.ok) {
         toast.error(json.message ?? "Lưu ảnh thất bại");
-        setCaptures((prev) => ({ ...prev, [key]: { ...prev[key], saving: false } }));
+        setWeekCaptures((prev) => ({ ...prev, [key]: { saving: false, saved: false } }));
         return;
       }
-      setCaptures((prev) => ({ ...prev, [key]: { weekIndex, saving: false, saved: { id: json.id, imageUrl: json.imageUrl } } }));
+      setWeekCaptures((prev) => ({ ...prev, [key]: { saving: false, saved: true } }));
       setPhotographedSet((prev) => new Set(prev).add(plantTypeId));
       // Giàn khác cùng Nhóm tuần mẫu mẹ + cùng mã cây trong thẻ "cần chụp" này tự biến mất theo (đã gộp
       // sẵn ở server, xem /api/mother-photo-update/due) — chỉ cần bỏ đúng 1 thẻ dueKey khỏi danh sách.
       if (dueKey) setDue((prev) => prev.filter((d) => d.key !== dueKey));
       toast.success("Đã lưu ảnh");
-    } catch {
-      toast.error("Nén/lưu ảnh thất bại — thử lại");
-      setCaptures((prev) => ({ ...prev, [key]: { ...prev[key], saving: false } }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Nén/lưu ảnh thất bại — thử lại");
+      setWeekCaptures((prev) => ({ ...prev, [key]: { saving: false, saved: false } }));
     }
   };
 
-  const retake = (lotId: string) => {
-    setCaptures((prev) => ({ ...prev, [captureKey(lotId)]: { ...prev[captureKey(lotId)], saved: null } }));
-  };
-
   function CaptureCard({ pt, shelfId, dueKey, header }: { pt: CapturePlantType; shelfId: string; dueKey?: string; header: React.ReactNode }) {
-    const cap = captures[captureKey(pt.lotId)];
     const maxIndex = Math.max(1, pt.transferWaitWeeks - 1);
     const weekOptions = Array.from({ length: maxIndex }, (_, i) => i + 1);
     return (
@@ -166,54 +158,37 @@ export default function MotherPhotoUpdateBoard({
             <p className="text-xs text-text-secondary">
               Môi trường mẫu mẹ: {pt.motherMediumName ? `${pt.motherMediumName} (${pt.motherMediumCode})` : "Chưa rõ"}
             </p>
-            <p className="text-xs text-text-secondary">
-              Tuần nhập kho sáng: {pt.enteredWeek} · Cập nhật ảnh tuần: {weekOptions.map((w) => pt.enteredWeek + w).join(", ")}
-            </p>
+            <p className="text-xs text-text-secondary">Tuần nhập kho sáng: {pt.enteredWeek}</p>
           </div>
           {photographedSet.has(pt.plantTypeId) && (
             <span className="text-xs text-primary-strong bg-primary-light rounded-full px-2 py-0.5">Đã chụp tuần này ✓</span>
           )}
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="space-y-1">
-            <Label className="text-xs">Kiểu ảnh</Label>
-            <Select
-              items={weekOptions.map((w) => ({ value: String(w), label: `Tuần ${pt.enteredWeek + w}` }))}
-              value={String(cap?.weekIndex ?? suggestWeekIndex(null, pt.transferWaitWeeks))}
-              onValueChange={(v) => setWeekIndex(pt.lotId, Number(v))}
-            >
-              <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {weekOptions.map((w) => (
-                  <SelectItem key={w} value={String(w)}>Tuần {pt.enteredWeek + w}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {cap?.saving ? (
-            <div className="flex items-center gap-2 text-sm text-text-secondary">
-              <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu…
-            </div>
-          ) : cap?.saved ? (
-            <div className="flex items-center gap-2">
-              <img src={cap.saved.imageUrl} alt="Ảnh đã lưu" className="w-14 h-14 object-cover rounded-md border border-border" />
-              <span className="text-sm text-primary-strong flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Đã lưu</span>
-              <Button size="sm" variant="outline" onClick={() => retake(pt.lotId)}>
-                <RotateCcw className="w-3.5 h-3.5 mr-1" /> Chụp lại
+        <div className="flex items-center gap-2 flex-wrap">
+          {weekOptions.map((w) => {
+            const cap = weekCaptures[weekCaptureKey(pt.lotId, w)];
+            const saving = cap?.saving ?? false;
+            const saved = cap?.saved ?? false;
+            return (
+              <Button
+                key={w}
+                size="sm"
+                variant={saved ? "outline" : "default"}
+                disabled={saved || saving}
+                onClick={() => triggerCapture(pt, shelfId, w, dueKey)}
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : saved ? (
+                  <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                ) : (
+                  <Camera className="w-4 h-4 mr-1.5" />
+                )}
+                Tuần {pt.enteredWeek + w}
               </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => triggerCapture("camera", pt, shelfId, dueKey)}>
-                <Camera className="w-4 h-4 mr-1.5" /> Chụp ảnh
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => triggerCapture("upload", pt, shelfId, dueKey)}>
-                <ImageUp className="w-4 h-4 mr-1.5" /> Tải ảnh lên
-              </Button>
-            </div>
-          )}
+            );
+          })}
         </div>
       </div>
     );
@@ -250,7 +225,6 @@ export default function MotherPhotoUpdateBoard({
       </Card>
 
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
-      <input ref={uploadInputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
       <Card>
         <CardHeader className="pb-2">

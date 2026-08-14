@@ -119,24 +119,34 @@ export async function GET() {
     if (enteredAt) g.enteredWeek = getCalendarWeekNumber(enteredAt);
   }
 
-  // Loại bỏ nhóm đã có ít nhất 1 ảnh tuần này (bất kể ai chụp, chụp ở đúng giàn nào trong nhóm).
+  // Tất cả ảnh (mọi thời điểm, không chỉ tuần này) của các giàn liên quan — dùng để: (1) loại bỏ nhóm đã
+  // có ảnh TUẦN NÀY (bất kể ai chụp, chụp ở đúng giàn nào trong nhóm), (2) biết "kiểu ảnh" nào trong nhóm
+  // đã chụp RỒI (mọi tuần, vì mỗi kiểu ảnh chỉ ứng đúng 1 tuần lịch cụ thể của lô, không lặp lại) để nút
+  // tuần đó tự mờ đi ở client, không hỏi chụp lại.
   const allShelfIds = Array.from(new Set(lots.filter((l) => l.shelf).map((l) => l.shelf!.id)));
-  const photosThisWeek = await prisma.motherPhoto.findMany({
-    where: { weekStart, shelfId: { in: allShelfIds } },
-    select: { plantTypeId: true, shelfId: true },
+  const allPhotos = await prisma.motherPhoto.findMany({
+    where: { shelfId: { in: allShelfIds } },
+    select: { plantTypeId: true, shelfId: true, weekIndex: true, weekStart: true },
   });
-  const covered = new Set(photosThisWeek.map((p) => `${p.plantTypeId}::${p.shelfId}`));
+  const coveredThisWeek = new Set(
+    allPhotos.filter((p) => p.weekStart.getTime() === weekStart.getTime()).map((p) => `${p.plantTypeId}::${p.shelfId}`)
+  );
 
   const due = Array.from(groups.values()).filter((g) => {
     for (const shelfId of g.shelfIds) {
-      if (covered.has(`${g.plantTypeId}::${shelfId}`)) return false;
+      if (coveredThisWeek.has(`${g.plantTypeId}::${shelfId}`)) return false;
     }
     return true;
   });
 
   return NextResponse.json({
     due: due
-      .map(({ shelfIds: _shelfIds, representativeQuantity: _q, ...rest }) => rest)
+      .map(({ shelfIds, representativeQuantity: _q, ...rest }) => ({
+        ...rest,
+        capturedWeekIndexes: Array.from(
+          new Set(allPhotos.filter((p) => p.plantTypeId === rest.plantTypeId && shelfIds.has(p.shelfId)).map((p) => p.weekIndex))
+        ),
+      }))
       .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode)),
   });
 }
