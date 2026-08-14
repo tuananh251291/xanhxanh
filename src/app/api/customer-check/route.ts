@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { normalizeCustomerName, normalizeWebsite, getCustomerManager } from "@/lib/customer";
+import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
+import { getCustomerManager } from "@/lib/customer-manager";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
-  website: z.string().trim().min(1, "Nhập website"),
+  website: z.string().trim().min(1, "Nhập website").superRefine((v, ctx) => {
+    const error = validateWebsite(v);
+    if (error) ctx.addIssue({ code: "custom", message: error });
+  }),
 });
 
 // Kiểm tra trùng khách — báo trùng nếu khớp Tên công ty HOẶC Website (không phân biệt hoa/thường, bỏ
@@ -18,7 +22,9 @@ export async function POST(req: NextRequest) {
   }
   const body = await req.json();
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
+  }
 
   const nameNormalized = normalizeCustomerName(parsed.data.name);
   const websiteNormalized = normalizeWebsite(parsed.data.website);

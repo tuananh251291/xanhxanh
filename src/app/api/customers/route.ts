@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   });
 
   // Suy "Nhân viên quản lý" hàng loạt thay vì N+1 — batch load toàn bộ SalesManagerAssignment liên quan
-  // rồi map theo (assignedToId, marketId), xem getCustomerManager (src/lib/customer.ts) cho logic 1-dòng.
+  // rồi map theo (assignedToId, marketId), xem getCustomerManager (src/lib/customer-manager.ts) cho logic 1-dòng.
   const pairs = Array.from(
     new Set(customers.filter((c) => c.assignedToId).map((c) => `${c.assignedToId}:${c.marketId}`))
   );

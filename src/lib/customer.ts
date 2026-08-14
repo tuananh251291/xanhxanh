@@ -1,5 +1,3 @@
-import { prisma } from "@/lib/prisma";
-
 // Các từ chỉ loại hình pháp lý của công ty — bỏ qua khi so khớp trùng khách, để "AAA" và "AAA, Ltd" hay
 // "AAA Co., Ltd" được coi là cùng 1 khách. Chỉ gồm từ chỉ LOẠI HÌNH công ty (không gồm các từ mô tả
 // ngành nghề như "Trading"/"Group"/"Import Export" — những từ đó vẫn mang nghĩa phân biệt, giữ nguyên
@@ -34,13 +32,32 @@ export function normalizeWebsite(url: string): string {
     .replace(/\/+$/, "");
 }
 
-// "Nhân viên quản lý" của 1 khách hàng KHÔNG lưu cứng trên Customer — suy ra runtime từ
-// SalesManagerAssignment(salesUserId=assignedToId, marketId) tại thời điểm xem, xem prisma/schema.prisma.
-export async function getCustomerManager(assignedToId: string | null, marketId: string) {
-  if (!assignedToId) return null;
-  const assignment = await prisma.salesManagerAssignment.findUnique({
-    where: { salesUserId_marketId: { salesUserId: assignedToId, marketId } },
-    select: { manager: { select: { id: true, code: true, name: true } } },
-  });
-  return assignment?.manager ?? null;
+export const WEBSITE_MAX_LENGTH = 40;
+
+// Domain hợp lệ: cho phép http(s):// và www. đứng trước, ít nhất 1 nhãn + tên miền cấp cao (TLD) từ 2
+// ký tự trở lên (VD: abc-company.com, shop.abc.co.uk), có thể có path phía sau nhưng path đó không được
+// chứa khoảng trắng (khoảng trắng đã bị chặn riêng ở validateWebsite trước khi tới bước test regex này).
+const DOMAIN_REGEX = /^(https?:\/\/)?(www\.)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
+
+// Dùng chung cho cả form nhập (validate ngay khi gõ, xem customer-check-form.tsx) lẫn API nhận request
+// (/api/customer-check, /api/customer-check/create) — NV bán hàng hay gõ nhầm domain, dán link kèm
+// khoảng trắng, hoặc dán nguyên đoạn text dài thay vì link — chặn sớm 3 lỗi này trước khi lưu vào DB.
+export function validateWebsite(url: string): string | null {
+  const trimmed = url.trim();
+  if (/\s/.test(trimmed)) return "Website không được chứa khoảng trắng";
+  if (trimmed.length >= WEBSITE_MAX_LENGTH) return `Website phải ngắn hơn ${WEBSITE_MAX_LENGTH} kí tự`;
+  if (!DOMAIN_REGEX.test(trimmed)) return "Website phải có domain hợp lệ (VD: abc-company.com)";
+  return null;
+}
+
+// Phát hiện link trang con (VD abc.com/aboutus, abc.com/shop) để NHẮC NV bán hàng chỉ nhập link trang
+// chủ — không chặn lưu (nhiều công ty chỉ có trang giới thiệu ở 1 đường dẫn con thật), chỉ cảnh báo.
+// Dấu "/" cuối cùng (trailing slash) không tính là trang con, VD "abc.com/" vẫn coi là trang chủ.
+export function hasWebsitePath(url: string): boolean {
+  const withoutHost = url
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/+$/, "");
+  return withoutHost.includes("/");
 }
