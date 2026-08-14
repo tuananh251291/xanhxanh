@@ -51,7 +51,9 @@ const confirmSchema = z.object({
   // Có mặt = chỉ xác nhận ĐÚNG 1 lô (xem LotGroup ở receive-phong-toi.ts) thay vì cả stage — mỗi lô xác
   // nhận độc lập. Không truyền = xác nhận toàn bộ stage (giữ tương thích ngược).
   lotId: z.string().optional(),
-  manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().positive() })).optional(),
+  // min(0) thay vì positive() — cho phép dòng kệ nhập số lượng 0 (dòng dự phòng KHO_MO thêm rồi không
+  // dùng tới) đi qua validate, confirmStageManual (src/lib/receive-phong-toi.ts) tự lọc bỏ trước khi xử lý.
+  manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().min(0) })).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ transferId: string }> }) {

@@ -48,8 +48,10 @@ const confirmSchema = z.object({
   // Không truyền = xác nhận toàn bộ stage (giữ tương thích ngược, hiện không còn UI nào gọi kiểu này).
   lotId: z.string().optional(),
   // Có mặt = KHO_MO chọn tự nhập kệ (bỏ qua nguyên tắc), chỉ hợp lệ khi stage = MAU_ME — xem
-  // confirmStageManual (src/lib/receive-phong-toi.ts).
-  manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().positive() })).optional(),
+  // confirmStageManual (src/lib/receive-phong-toi.ts). min(0) thay vì positive() — cho phép dòng kệ nhập
+  // số lượng 0 (dòng dự phòng KHO_MO thêm rồi không dùng tới) đi qua validate, confirmStageManual tự lọc
+  // bỏ trước khi xử lý.
+  manualPlacements: z.array(z.object({ shelfCode: z.string().trim().min(1), quantity: z.number().int().min(0) })).optional(),
 });
 
 export async function POST(req: NextRequest) {

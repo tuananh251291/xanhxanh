@@ -206,13 +206,16 @@ export type ManualPlacementInput = { shelfCode: string; quantity: number };
 // của nhánh tự động — luôn xếp hết 100%, không cho xếp dở dang).
 export async function confirmStageManual(
   pendingItemsForStage: PendingItem[],
-  manualPlacements: ManualPlacementInput[],
+  manualPlacementsInput: ManualPlacementInput[],
   workplaceWarehouseId: string
 ): Promise<ShelfPlacement[]> {
   const motherItems = pendingItemsForStage.filter((i) => i.lot.stage === "MAU_ME");
   if (motherItems.length !== pendingItemsForStage.length) {
     throw new ShelfAssignError("Tự nhập kệ chỉ áp dụng cho mẫu mẹ");
   }
+  // Bỏ qua dòng số lượng 0 (KHO_MO thêm dòng kệ dự phòng rồi không dùng tới, hoặc chưa kịp xoá) — không
+  // còn chặn cả phiếu chỉ vì lẫn 1 dòng rỗng, miễn tổng các dòng có số lượng thật vẫn khớp đủ.
+  const manualPlacements = manualPlacementsInput.filter((m) => m.quantity > 0);
   if (manualPlacements.length === 0) {
     throw new ShelfAssignError("Cần nhập ít nhất 1 dòng kệ");
   }
