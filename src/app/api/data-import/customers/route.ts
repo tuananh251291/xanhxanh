@@ -74,7 +74,7 @@ export async function GET() {
   helpSheet.addRow({});
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Chỉ 4 cột có dấu * (Tên công ty, Website, Thị trường, Trạng thái) là bắt buộc — mọi cột khác để trống vẫn nhập được." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Khớp Website đã có trong hệ thống thì CẬP NHẬT THAY THẾ dòng đó, chưa có thì TẠO MỚI." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống Ngày đầu tiếp cận: khách MỚI lấy ngày hôm nay, khách ĐÃ CÓ giữ nguyên ngày cũ." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống 1 cột không bắt buộc: khách MỚI để trống thật (riêng Ngày đầu tiếp cận thì lấy ngày hôm nay); khách ĐÃ CÓ (khớp Website) thì GIỮ NGUYÊN giá trị cũ của đúng cột đó, không bị xoá." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Trạng thái Đã phân công/Mặc định bắt buộc kèm Mã NV phụ trách; Chưa phân công thì để trống Mã NV phụ trách." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mặc định = khách VIP/lâu năm gắn cố định với NV phụ trách, không bị nhắc cập nhật hàng tháng và không tự thu hồi về Chưa phân công dù không có đơn." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV quản lý: điền vào sẽ TỰ GÁN/CẬP NHẬT người quản lý cho đúng (NV phụ trách, Thị trường) của dòng đó — chỉ điền khi đã có Mã NV phụ trách, không được trùng chính Mã NV phụ trách." });
@@ -183,13 +183,15 @@ export async function POST(req: NextRequest) {
     websiteNormalized: string;
     nameNormalized: string;
     marketId: string;
-    email: string | null;
-    phone: string | null;
+    // undefined = không đổi (để trống trong file, khách ĐÃ CÓ giữ nguyên giá trị cũ; khách MỚI thì thành
+    // null) — áp dụng thống nhất cho mọi trường không bắt buộc, tránh 1 lượt nhập chỉ sửa vài cột lại vô
+    // tình xoá sạch dữ liệu các cột khác đã có từ trước.
+    email: string | null | undefined;
+    phone: string | null | undefined;
     status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
-    // undefined = không đổi (để trống, khách đã có giữ nguyên); Date = ghi đè/tạo mới.
     firstContactAt: Date | undefined;
-    lastOrderAt: Date | null;
-    lastOrderCode: string | null;
+    lastOrderAt: Date | null | undefined;
+    lastOrderCode: string | null | undefined;
     assignedToId: string | null;
   };
   const errors: RowError[] = [];
@@ -265,12 +267,12 @@ export async function POST(req: NextRequest) {
       websiteNormalized,
       nameNormalized: normalizeCustomerName(parsed.name),
       marketId,
-      email: parsed.email || null,
-      phone: parsed.phone || null,
+      email: parsed.email || (existing ? undefined : null),
+      phone: parsed.phone || (existing ? undefined : null),
       status,
       firstContactAt,
-      lastOrderAt: parsed.lastOrderAtRaw ?? null,
-      lastOrderCode: parsed.lastOrderCode || null,
+      lastOrderAt: parsed.lastOrderAtRaw ?? (existing ? undefined : null),
+      lastOrderCode: parsed.lastOrderCode || (existing ? undefined : null),
       assignedToId,
     });
   }
@@ -280,25 +282,41 @@ export async function POST(req: NextRequest) {
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
         const existing = existingByWebsite.get(vr.websiteNormalized);
-        const data = {
+        const baseData = {
           name: vr.name,
           nameNormalized: vr.nameNormalized,
           website: vr.website,
           websiteNormalized: vr.websiteNormalized,
           marketId: vr.marketId,
-          email: vr.email,
-          phone: vr.phone,
           status: vr.status,
-          ...(vr.firstContactAt ? { firstContactAt: vr.firstContactAt } : {}),
-          lastOrderAt: vr.lastOrderAt,
-          lastOrderCode: vr.lastOrderCode,
           assignedToId: vr.assignedToId,
         };
         if (existing) {
-          await tx.customer.update({ where: { id: existing.id }, data });
+          // Để trống 1 cột không bắt buộc trong file = GIỮ NGUYÊN giá trị cũ của khách đã có (chỉ ghi đè
+          // đúng cột nào thật sự có dữ liệu trong dòng này) — tránh 1 lượt cập nhật chỉ đổi vài cột lại
+          // vô tình xoá sạch email/SĐT/đơn hàng đã ghi nhận từ trước.
+          await tx.customer.update({
+            where: { id: existing.id },
+            data: {
+              ...baseData,
+              ...(vr.firstContactAt !== undefined ? { firstContactAt: vr.firstContactAt } : {}),
+              ...(vr.email !== undefined ? { email: vr.email } : {}),
+              ...(vr.phone !== undefined ? { phone: vr.phone } : {}),
+              ...(vr.lastOrderAt !== undefined ? { lastOrderAt: vr.lastOrderAt } : {}),
+              ...(vr.lastOrderCode !== undefined ? { lastOrderCode: vr.lastOrderCode } : {}),
+            },
+          });
         } else {
-          // Tạo mới luôn có firstContactAt (đã tự đặt = hôm nay ở bước validate nếu để trống).
-          await tx.customer.create({ data: { ...data, firstContactAt: vr.firstContactAt! } });
+          await tx.customer.create({
+            data: {
+              ...baseData,
+              firstContactAt: vr.firstContactAt!,
+              email: vr.email ?? null,
+              phone: vr.phone ?? null,
+              lastOrderAt: vr.lastOrderAt ?? null,
+              lastOrderCode: vr.lastOrderCode ?? null,
+            },
+          });
         }
         successCount += 1;
       }
