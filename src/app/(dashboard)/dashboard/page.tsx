@@ -8,7 +8,7 @@ import {
   PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
   FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, Camera, type LucideIcon,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -67,7 +67,7 @@ async function getCayMoStats(userId: string) {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount] = await Promise.all([
+  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount, staffUser] = await Promise.all([
     // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
     // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
     prisma.plantingInstruction.findFirst({
@@ -106,6 +106,7 @@ async function getCayMoStats(userId: string) {
     prisma.dailyRecordEdit.count({
       where: { staffId: userId, createdAt: { gte: weekStart, lte: weekEnd } },
     }),
+    prisma.user.findUnique({ where: { id: userId }, select: { inspectionLane: true } }),
   ]);
 
   const now = new Date();
@@ -118,6 +119,7 @@ async function getCayMoStats(userId: string) {
     handoverDone: !!handoverToday,
     unreadInspectionResults,
     weeklyCorrectionCount,
+    inspectionLane: staffUser?.inspectionLane ?? null,
   };
 }
 
@@ -574,13 +576,23 @@ function CayMoDashboard({
           <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
           <p className="text-text-secondary text-sm mt-1 capitalize">Nhân viên nuôi cấy mô · {today}</p>
         </div>
-        <Link
-          href="/dashboard-basic"
-          className="flex items-center gap-1.5 text-sm font-medium text-primary-strong hover:underline shrink-0"
-        >
-          <LayoutList className="w-4 h-4" />
-          Giao diện cơ bản
-        </Link>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <Link
+            href="/dashboard-basic"
+            className="flex items-center gap-1.5 text-sm font-medium text-primary-strong hover:underline"
+          >
+            <LayoutList className="w-4 h-4" />
+            Giao diện cơ bản
+          </Link>
+          {stats.inspectionLane && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${stats.inspectionLane === "XANH" ? "bg-success" : "bg-destructive"}`}
+              />
+              Bạn thuộc luồng {INSPECTION_LANE_LABELS[stats.inspectionLane]}
+            </div>
+          )}
+        </div>
       </div>
       <GreetingBanner />
 
