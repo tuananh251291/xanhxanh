@@ -18,7 +18,7 @@ import ProductivityLeaderboard from "@/components/shared/productivity-leaderboar
 import { isMediumOrderInProgress, isMediumSurplusEntryDay } from "@/lib/medium-orders";
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
-import { toStoredWeekStart, MOTHER_PHOTO_TRACKING_CUTOFF } from "@/lib/week-rotation";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -192,15 +192,8 @@ async function getKyThuatStats(userId: string) {
   const tuesdayDeadline = endOfDay(addDays(weekStart, 1));
   const [activeMotherPlantTypes, motherPhotosThisWeek] = await Promise.all([
     prisma.lot.findMany({
-      // Chỉ tính giàn ĐÃ GẮN cho nhân sự (không tính "kệ chung") VÀ nhập kho sáng từ
-      // MOTHER_PHOTO_TRACKING_CUTOFF trở đi (lô cũ hơn không tính vào nhiệm vụ).
-      where: {
-        stage: "MAU_ME",
-        status: "ACTIVE",
-        quantity: { gt: 0 },
-        shelf: { assignedStaffId: { not: null } },
-        enteredAt: { gte: MOTHER_PHOTO_TRACKING_CUTOFF },
-      },
+      // Chỉ tính giàn ĐÃ GẮN cho nhân sự — không cần cập nhật ảnh cho lô ở "kệ chung".
+      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
       distinct: ["plantTypeId"],
       select: { plantTypeId: true },
     }),

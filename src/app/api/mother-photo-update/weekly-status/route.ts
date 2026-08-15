@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { startOfWeek, addWeeks, addDays, endOfDay } from "date-fns";
-import { toStoredWeekStart, MOTHER_PHOTO_TRACKING_CUTOFF } from "@/lib/week-rotation";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 
 const WEEKS_SHOWN = 8;
 
@@ -27,15 +27,8 @@ export async function GET() {
       orderBy: { name: "asc" },
     }),
     prisma.lot.findMany({
-      // Chỉ tính giàn ĐÃ GẮN cho nhân sự (không tính "kệ chung") VÀ nhập kho sáng từ
-      // MOTHER_PHOTO_TRACKING_CUTOFF trở đi (lô cũ hơn không tính vào nhiệm vụ).
-      where: {
-        stage: "MAU_ME",
-        status: "ACTIVE",
-        quantity: { gt: 0 },
-        shelf: { assignedStaffId: { not: null } },
-        enteredAt: { gte: MOTHER_PHOTO_TRACKING_CUTOFF },
-      },
+      // Chỉ tính giàn ĐÃ GẮN cho nhân sự — không cần cập nhật ảnh cho lô ở "kệ chung".
+      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
       distinct: ["plantTypeId"],
       select: { plantTypeId: true },
     }),

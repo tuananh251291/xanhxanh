@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { startOfWeek } from "date-fns";
-import { toStoredWeekStart, getCalendarWeekNumber, MOTHER_PHOTO_TRACKING_CUTOFF } from "@/lib/week-rotation";
+import { toStoredWeekStart, getCalendarWeekNumber } from "@/lib/week-rotation";
 import type { MotherPhotoMediumRole } from "@prisma/client";
 
 // Danh sách giàn kệ "cần chụp ảnh" tuần này — CHỈ tính giàn ĐÃ GẮN cho nhân sự (assignedStaffId khác
@@ -16,9 +16,6 @@ import type { MotherPhotoMediumRole } from "@prisma/client";
 // không phụ thuộc Admin đã cấu hình Nhóm đủ/đúng chưa). Bắc cầu qua Union-Find: A-B gộp qua Nhóm, B-C gộp
 // qua tuần nhập thì A-C cũng thuộc 1 nhóm dù không khớp trực tiếp — cùng 1 "gia đình lô" hợp lý vì đều bắt
 // nguồn từ cùng 1 đợt cấy. Chụp đại diện 1 giàn trong nhóm là đủ, giàn còn lại tự biến mất theo.
-//
-// CHỈ tính lô nhập kho sáng TỪ MOTHER_PHOTO_TRACKING_CUTOFF trở đi (mốc lúc tính năng ra mắt) — lô cũ
-// hơn không đề xuất vào danh sách này (xem comment hàm hằng số).
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "KY_THUAT") {
@@ -33,7 +30,6 @@ export async function GET() {
       status: "ACTIVE",
       quantity: { gt: 0 },
       shelf: { assignedStaffId: { not: null } },
-      enteredAt: { gte: MOTHER_PHOTO_TRACKING_CUTOFF },
     },
     select: {
       id: true,
