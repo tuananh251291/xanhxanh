@@ -49,3 +49,12 @@ export function toStoredWeekStart(date: Date): Date {
 export function getCalendarWeekNumber(date: Date): number {
   return getWeek(date, { weekStartsOn: 1 });
 }
+
+// Mốc bắt đầu áp dụng nghĩa vụ "Cập nhật hình ảnh định kì" — Thứ 2 tuần 33/2026 (chốt theo yêu cầu ngày
+// 2026-08-15). CHỈ lô mẫu mẹ nhập kho sáng (Lot.enteredAt) TỪ đúng mốc này trở đi mới được đề xuất vào
+// danh sách "cần chụp" và tính vào mẫu số % nhiệm vụ tuần — lô nhập TRƯỚC mốc (tồn tại từ trước khi có
+// tính năng, không có ảnh tuần đầu để so sánh) không đề xuất, không tính. Mốc CỐ ĐỊNH — KHÔNG được tính
+// lại theo "hôm nay" mỗi lần gọi (sẽ biến thành luật trượt loại bỏ dần lô cũ mỗi tuần, sai ý đồ ban đầu
+// là chỉ loại lô có TRƯỚC khi tính năng ra mắt). So sánh trực tiếp Date, không dùng getCalendarWeekNumber
+// (số tuần trong năm dễ trùng giữa các năm khác nhau, VD tuần 33/2025 và 33/2026).
+export const MOTHER_PHOTO_TRACKING_CUTOFF = new Date("2026-08-10");
