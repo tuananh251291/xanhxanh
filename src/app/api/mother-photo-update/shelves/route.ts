@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getCalendarWeekNumber } from "@/lib/week-rotation";
+import { computeMotherPhotoGroups, findMotherPhotoGroup } from "@/lib/mother-photo-grouping";
 
 // Tìm giàn kệ Phòng mẫu mẹ theo mã/tên cho trang "Cập nhật hình ảnh định kì" (ô tìm bổ sung cạnh danh
 // sách "Cần chụp tuần này", xem /api/mother-photo-update/due) — KHÔNG giới hạn theo 1 kho (khác
@@ -62,32 +63,15 @@ export async function GET(req: NextRequest) {
     take: 20,
   });
 
-  const representativeLotIds = shelves.flatMap((s) => {
-    const seen = new Set<string>();
-    const ids: string[] = [];
-    for (const lot of s.lots) {
-      if (!seen.has(lot.plantType.id)) {
-        seen.add(lot.plantType.id);
-        ids.push(lot.id);
-      }
-    }
-    return ids;
+  // Gộp giống hệt /api/mother-photo-update/due (xem src/lib/mother-photo-grouping.ts) — "kiểu ảnh đã
+  // chụp" tra theo CẢ NHÓM (không chỉ riêng lô/giàn đang xem), để chụp ở 1 giàn trong nhóm thì giàn khác
+  // cùng nhóm tìm thủ công ở đây cũng tự khoá đúng nút tương ứng, không cho chụp trùng.
+  const groups = await computeMotherPhotoGroups();
+  const allGroupShelfIds = Array.from(new Set(Array.from(groups.values()).flatMap((g) => Array.from(g.shelfIds))));
+  const allPhotos = await prisma.motherPhoto.findMany({
+    where: { shelfId: { in: allGroupShelfIds } },
+    select: { plantTypeId: true, shelfId: true, weekIndex: true, mediumRole: true },
   });
-  // "Kiểu ảnh" nào của lô này đã có ảnh RỒI (mọi thời điểm, tách riêng theo vai trò môi trường nếu chỉ
-  // định có 2 môi trường) — mỗi kiểu ảnh chỉ ứng đúng 1 tuần lịch cụ thể của lô, không lặp lại, nên chụp
-  // 1 lần là xong vĩnh viễn cho tuần đó, dùng để mờ nút tương ứng.
-  const existingPhotos = await prisma.motherPhoto.findMany({
-    where: { lotId: { in: representativeLotIds } },
-    select: { lotId: true, weekIndex: true, mediumRole: true },
-  });
-  const capturedMotherByLotId = new Map<string, number[]>();
-  const capturedPreRootingByLotId = new Map<string, number[]>();
-  for (const p of existingPhotos) {
-    const map = p.mediumRole === "PRE_ROOTING" ? capturedPreRootingByLotId : capturedMotherByLotId;
-    const arr = map.get(p.lotId) ?? [];
-    arr.push(p.weekIndex);
-    map.set(p.lotId, arr);
-  }
 
   const items = shelves
     .filter((s) => s.lots.length > 0)
@@ -104,23 +88,30 @@ export async function GET(req: NextRequest) {
         code: s.code,
         name: s.name,
         rotationOrder: s.rotationGroup?.rotationOrder ?? null,
-        plantTypes: Array.from(byPlantType.values()).map((lot) => ({
-          plantTypeId: lot.plantType.id,
-          plantTypeCode: lot.plantType.code,
-          plantTypeName: lot.plantType.name,
-          transferWaitWeeks: lot.plantType.transferWaitWeeks,
-          lotId: lot.id,
-          // Tuần nhập lên kho sáng (cùng cách tính số tuần trong mã lô, xem getCalendarWeekNumber) —
-          // cập nhật ảnh cần làm ở các tuần enteredWeek+1 .. enteredWeek+(transferWaitWeeks-1).
-          enteredWeek: getCalendarWeekNumber(lot.enteredAt),
-          enteredAt: lot.enteredAt,
-          motherMediumCode: lot.instruction?.items[0]?.motherMedium?.code ?? null,
-          motherMediumName: lot.instruction?.items[0]?.motherMedium?.name ?? null,
-          preRootingMediumCode: lot.instruction?.items[0]?.preRootingMotherMedium?.code ?? null,
-          preRootingMediumName: lot.instruction?.items[0]?.preRootingMotherMedium?.name ?? null,
-          capturedWeekIndexesMother: capturedMotherByLotId.get(lot.id) ?? [],
-          capturedWeekIndexesPreRooting: capturedPreRootingByLotId.get(lot.id) ?? [],
-        })),
+        plantTypes: Array.from(byPlantType.values()).map((lot) => {
+          // Giàn không thuộc nhóm nào (hiếm — chưa gán Nhóm xoay vòng và không trùng tuần nhập kho sáng
+          // với giàn nào khác) thì tự nó là "nhóm" chỉ có đúng lô này, tra cứu ảnh trực tiếp theo shelfId.
+          const group = findMotherPhotoGroup(groups, s.id, lot.plantType.id);
+          const relevantShelfIds = group ? group.shelfIds : new Set([s.id]);
+          const relevant = allPhotos.filter((p) => p.plantTypeId === lot.plantType.id && relevantShelfIds.has(p.shelfId));
+          return {
+            plantTypeId: lot.plantType.id,
+            plantTypeCode: lot.plantType.code,
+            plantTypeName: lot.plantType.name,
+            transferWaitWeeks: lot.plantType.transferWaitWeeks,
+            lotId: lot.id,
+            // Tuần nhập lên kho sáng (cùng cách tính số tuần trong mã lô, xem getCalendarWeekNumber) —
+            // cập nhật ảnh cần làm ở các tuần enteredWeek+1 .. enteredWeek+(transferWaitWeeks-1).
+            enteredWeek: getCalendarWeekNumber(lot.enteredAt),
+            enteredAt: lot.enteredAt,
+            motherMediumCode: lot.instruction?.items[0]?.motherMedium?.code ?? null,
+            motherMediumName: lot.instruction?.items[0]?.motherMedium?.name ?? null,
+            preRootingMediumCode: lot.instruction?.items[0]?.preRootingMotherMedium?.code ?? null,
+            preRootingMediumName: lot.instruction?.items[0]?.preRootingMotherMedium?.name ?? null,
+            capturedWeekIndexesMother: Array.from(new Set(relevant.filter((p) => p.mediumRole !== "PRE_ROOTING").map((p) => p.weekIndex))),
+            capturedWeekIndexesPreRooting: Array.from(new Set(relevant.filter((p) => p.mediumRole === "PRE_ROOTING").map((p) => p.weekIndex))),
+          };
+        }),
       };
     });
 
