@@ -208,11 +208,13 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    if (!parsed.marketCode) { errors.push({ row: parsed.row, label, message: "Thiếu Thị trường" }); continue; }
     const marketId = marketByCode.get(parsed.marketCode);
     if (!marketId) { errors.push({ row: parsed.row, label, message: `Mã thị trường "${parsed.marketCode}" không tồn tại` }); continue; }
 
     if (parsed.email && !parsed.email.includes("@")) { errors.push({ row: parsed.row, label, message: "Email không hợp lệ" }); continue; }
 
+    if (!parsed.statusText.trim()) { errors.push({ row: parsed.row, label, message: "Thiếu Trạng thái" }); continue; }
     const status = STATUS_TEXT[parsed.statusText.trim().toLowerCase()];
     if (!status) { errors.push({ row: parsed.row, label, message: `Trạng thái phải là "Đã phân công", "Chưa phân công" hoặc "Mặc định"` }); continue; }
 
