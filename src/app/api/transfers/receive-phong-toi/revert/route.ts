@@ -52,14 +52,14 @@ export async function POST(req: NextRequest) {
   // Chặn cứng — chỉ hoàn lại được phiếu CHƯA bị động tới ở bất kỳ đâu: đúng kho mình phụ trách, đang
   // PENDING, chưa có dòng nào được xác nhận xếp kệ (confirmedAt). Riêng bước kiểm tra (luồng Đỏ) vẫn cho
   // hoàn lại NẾU phiếu kiểm tra chưa thực sự ghi nhận gì — mọi dòng còn nguyên giá trị mặc định lúc mở
-  // form (contaminatedQuantity=0, unqualifiedQuantity=0, randomCheckPassRate=100%, xem inspect-form.tsx)
-  // — nghĩa là Kho mô mới bấm "Xác nhận kiểm tra xong" mà chưa thật sự đếm/nhập gì, không có Lot.quantity
+  // form (contaminatedQuantity=0, unqualifiedQuantity=0, randomCheckPassRate=0%, xem inspect-form.tsx) —
+  // nghĩa là Kho mô mới bấm "Xác nhận kiểm tra xong" mà chưa thật sự đếm/nhập gì, không có Lot.quantity
   // nào bị trừ, không có bản ghi Phòng nhiễm nào được tạo (xem POST .../inspect bỏ qua item có
   // contaminatedQuantity <= 0) — hoàn lại lúc này an toàn tuyệt đối, không mất dữ liệu kiểm tra thật nào.
-  // Chỉ cần MỘT dòng khác mặc định (có nhập số nhiễm/không đạt thật, hoặc đổi tỉ lệ kiểm tra ngẫu nhiên)
-  // là coi như đã kiểm tra thật — chặn như cũ.
+  // Chỉ cần MỘT dòng khác mặc định (có nhập số nhiễm/không đạt thật, hoặc đổi tỉ lệ nhiễm) là coi như đã
+  // kiểm tra thật — chặn như cũ.
   const isTrivialInspection = (items: { contaminatedQuantity: number; unqualifiedQuantity: number; randomCheckPassRate: number }[]) =>
-    items.every((i) => i.contaminatedQuantity === 0 && i.unqualifiedQuantity === 0 && i.randomCheckPassRate === 100);
+    items.every((i) => i.contaminatedQuantity === 0 && i.unqualifiedQuantity === 0 && i.randomCheckPassRate === 0);
 
   for (const t of transfers) {
     if (t.fromRoom?.type !== "PHONG_TOI" || t.fromRoom.warehouseId !== workplaceWarehouseId) {

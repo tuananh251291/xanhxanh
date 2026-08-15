@@ -133,11 +133,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
     group.unqualifiedQuantity += item.unqualifiedQuantity;
     group.rateSum += item.randomCheckPassRate;
     group.rateCount += 1;
-    // SL NV cấy mô được ghi nhận = (SL bàn giao - max(A, B)) x tỉ lệ đạt kiểm tra ngẫu nhiên, tính riêng
-    // theo từng lô (A = Kho mô tự kiểm tra, B = NV cấy mô tự khai lúc bàn giao — TransferItem.unqualifiedQuantity).
+    // SL NV cấy mô được ghi nhận = (SL bàn giao - max(A, B)) x (100% - tỉ lệ nhiễm), tính riêng theo từng
+    // lô (A = Kho mô tự kiểm tra, B = NV cấy mô tự khai lúc bàn giao — TransferItem.unqualifiedQuantity).
+    // randomCheckPassRate lưu đúng giá trị NHẬP ở ô "Tỉ lệ nhiễm (%)" (tên field giữ nguyên vì lịch sử,
+    // không phải tỉ lệ ĐẠT — phải lấy phần bù 100% mới ra tỉ lệ đạt để nhân vào).
     group.creditedQuantity += Math.max(
       0,
-      Math.round((lot.quantity - Math.max(item.unqualifiedQuantity, transferItem.unqualifiedQuantity)) * (item.randomCheckPassRate / 100))
+      Math.round((lot.quantity - Math.max(item.unqualifiedQuantity, transferItem.unqualifiedQuantity)) * ((100 - item.randomCheckPassRate) / 100))
     );
     groups.set(lot.stageCode, group);
   }

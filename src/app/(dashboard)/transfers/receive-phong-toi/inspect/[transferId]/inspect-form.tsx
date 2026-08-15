@@ -106,7 +106,7 @@ export default function InspectForm({ transferId }: { transferId: string }) {
         return {
           lotId: l.lotId,
           contaminatedQuantity: parseOrDefault(state?.contaminatedQuantity, 0),
-          randomCheckPassRate: parseOrDefault(state?.randomCheckPassRate, 100),
+          randomCheckPassRate: parseOrDefault(state?.randomCheckPassRate, 0),
           unqualifiedQuantity: l.stageCode === "M05" ? 0 : parseOrDefault(state?.unqualifiedQuantity, 0),
         };
       });
@@ -136,11 +136,10 @@ export default function InspectForm({ transferId }: { transferId: string }) {
       {/* Mỗi HÀNG = 1 lô (mã cây + quy cách riêng) — nhập độc lập cho từng lô. Kết quả kiểm tra chỉ LƯU
           được gộp theo quy cách (TransferInspectionItem unique theo [inspectionId, stageCode]) nên khi
           xác nhận, các lô cùng quy cách sẽ được gộp lại (cộng dồn số lượng, trung bình tỉ lệ) — xem
-          route.ts. SL ghi nhận = (SL bàn giao - max(A, B)) x Tỉ lệ nhiễm (%) — tên gọi đổi từ "tỉ lệ đạt
-          kiểm tra ngẫu nhiên" nhưng CÔNG THỨC GIỮ NGUYÊN như cũ, không đảo ngược giá trị. A = Kho mô tự
-          kiểm tra (nhập ở đây), B = NV cấy mô tự khai lúc bàn giao (chỉ đọc). Cả 3 ô nhập (SL nhiễm, Tỉ lệ
-          nhiễm, SL không đạt A) mặc định TRỐNG (không hiện sẵn 0/100) — trống lúc gửi coi như đúng giá
-          trị mặc định cũ (0/100/0, xem parseOrDefault), chỉ khác ở chỗ không hiện số trên màn hình. */}
+          route.ts. SL ghi nhận = (SL bàn giao - max(A, B)) x (100% - Tỉ lệ nhiễm). A = Kho mô tự kiểm tra
+          (nhập ở đây), B = NV cấy mô tự khai lúc bàn giao (chỉ đọc). Cả 3 ô nhập (SL nhiễm, Tỉ lệ nhiễm,
+          SL không đạt A) mặc định TRỐNG (không hiện sẵn số) — trống lúc gửi coi như đúng giá trị mặc định
+          "không phát hiện gì" (0/0/0, xem parseOrDefault), chỉ khác ở chỗ không hiện số trên màn hình. */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -168,10 +167,10 @@ export default function InspectForm({ transferId }: { transferId: string }) {
                   const rateRaw = inputs[l.lotId]?.randomCheckPassRate ?? "";
                   const unqualifiedRaw = inputs[l.lotId]?.unqualifiedQuantity ?? "";
                   const contaminated = parseOrDefault(contaminatedRaw, 0);
-                  const rate = parseOrDefault(rateRaw, 100);
+                  const rate = parseOrDefault(rateRaw, 0);
                   const a = isM05 ? 0 : parseOrDefault(unqualifiedRaw, 0);
                   const b = l.selfReportedUnqualifiedQuantity;
-                  const credited = Math.max(0, Math.round((l.quantity - Math.max(a, b)) * (rate / 100)));
+                  const credited = Math.max(0, Math.round((l.quantity - Math.max(a, b)) * ((100 - rate) / 100)));
                   return (
                     <tr key={l.lotId} className="border-b last:border-0 even:bg-primary-light/30">
                       <td className="px-4 py-3 font-mono text-text-secondary">{l.plantTypeCode}</td>
