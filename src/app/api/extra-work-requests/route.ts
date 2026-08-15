@@ -129,32 +129,40 @@ export async function POST(req: NextRequest) {
     }
 
     // Chỉ định đang thực hiện — cùng luật "1 chỉ định tại 1 thời điểm" đã áp dụng ở confirmMotherReceived
-    // (đã xác nhận nhận mẫu mẹ, chưa kết thúc).
+    // (đã xác nhận nhận mẫu mẹ, chưa kết thúc). KHÔNG còn chặn nếu NV đã hoàn thành hết chỉ định được
+    // giao (instruction = null) — vẫn cho gửi, coi như báo "đã rảnh, sẵn sàng nhận thêm việc ngay" thay
+    // vì "sắp hoàn thành 1 chỉ định cụ thể". instructionId để trống (schema đã cho phép, xem
+    // ExtraWorkRequest.instructionId) — GET availableToAssign vẫn đề xuất bình thường (không lọc theo
+    // instructionId), KHO_MO/Admin vẫn duyệt/từ chối được y hệt (đã tự xử lý instruction null ở nơi hiển
+    // thị, xem extra-work-request-board.tsx và PATCH [id]/route.ts).
     const instruction = await prisma.plantingInstruction.findFirst({
       where: { assignedToId: staffId, motherReceivedAt: { not: null }, status: { in: ["ACTIVE", "DRAFT"] } },
       select: { id: true, code: true },
     });
-    if (!instruction) {
-      return NextResponse.json({ message: "Bạn không có chỉ định nào đang thực hiện để báo hoàn thành sớm" }, { status: 400 });
-    }
 
     const existing = await prisma.extraWorkRequest.findFirst({
-      where: { staffId, instructionId: instruction.id, type: "EARLY_COMPLETION", status: "PENDING" },
+      where: { staffId, instructionId: instruction?.id ?? null, type: "EARLY_COMPLETION", status: "PENDING" },
     });
     if (existing) {
-      return NextResponse.json({ message: "Bạn đã gửi thông báo hoàn thành sớm cho chỉ định này rồi — đang chờ Kho mô xác nhận" }, { status: 409 });
+      return NextResponse.json({
+        message: instruction
+          ? "Bạn đã gửi thông báo hoàn thành sớm cho chỉ định này rồi — đang chờ Kho mô xác nhận"
+          : "Bạn đã gửi thông báo sẵn sàng nhận thêm việc rồi — đang chờ Kho mô xác nhận",
+      }, { status: 409 });
     }
 
     const request = await prisma.extraWorkRequest.create({
-      data: { type: "EARLY_COMPLETION", staffId, instructionId: instruction.id, expectedEndDate: date, expectedEndSession },
+      data: { type: "EARLY_COMPLETION", staffId, instructionId: instruction?.id ?? null, expectedEndDate: date, expectedEndSession },
       include,
     });
 
     const sessionLabel = expectedEndSession === "SANG" ? "sáng" : "chiều";
     await createAlert({
       type: "EXTRA_WORK_REQUEST",
-      title: "NV cấy mô báo hoàn thành sớm chỉ định",
-      message: `${session.user.name} dự kiến hoàn thành sớm chỉ định ${instruction.code} vào ${sessionLabel} ${format(date, "dd/MM/yyyy", { locale: vi })}`,
+      title: instruction ? "NV cấy mô báo hoàn thành sớm chỉ định" : "NV cấy mô báo sẵn sàng nhận thêm việc",
+      message: instruction
+        ? `${session.user.name} dự kiến hoàn thành sớm chỉ định ${instruction.code} vào ${sessionLabel} ${format(date, "dd/MM/yyyy", { locale: vi })}`
+        : `${session.user.name} đã hoàn thành hết chỉ định hiện có, sẵn sàng nhận thêm việc từ ${sessionLabel} ${format(date, "dd/MM/yyyy", { locale: vi })}`,
       targetRole: "KHO_MO",
       relatedId: request.id,
       relatedType: "ExtraWorkRequest",
