@@ -113,6 +113,7 @@ export async function GET(req: NextRequest) {
           // Tuần nhập lên kho sáng (cùng cách tính số tuần trong mã lô, xem getCalendarWeekNumber) —
           // cập nhật ảnh cần làm ở các tuần enteredWeek+1 .. enteredWeek+(transferWaitWeeks-1).
           enteredWeek: getCalendarWeekNumber(lot.enteredAt),
+          enteredAt: lot.enteredAt,
           motherMediumCode: lot.instruction?.items[0]?.motherMedium?.code ?? null,
           motherMediumName: lot.instruction?.items[0]?.motherMedium?.name ?? null,
           preRootingMediumCode: lot.instruction?.items[0]?.preRootingMotherMedium?.code ?? null,

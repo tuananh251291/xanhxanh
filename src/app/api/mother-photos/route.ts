@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { uploadMotherPhoto } from "@/lib/mother-photo-storage";
-import { startOfWeek } from "date-fns";
+import { startOfWeek, addWeeks, addDays, startOfDay } from "date-fns";
 import { toStoredWeekStart, getCalendarWeekNumber } from "@/lib/week-rotation";
 import { z } from "zod";
 
@@ -76,7 +76,9 @@ export async function GET(req: NextRequest) {
 const createSchema = z.object({
   lotId: z.string().min(1),
   shelfId: z.string().min(1),
-  weekIndex: z.number().int().positive(),
+  // 0 = tuần nhập kho sáng (chụp luôn tuần lên kho, không phải tuần sau) — xem WeekButtonRow trong
+  // mother-photo-update-board.tsx.
+  weekIndex: z.number().int().min(0),
   // Chỉ có giá trị khi chỉ định cấy của lô này cấu hình 2 môi trường mẫu mẹ — thuần nhãn để NV phân
   // biệt túi lúc chụp, không tách số liệu thật (xem comment MotherPhoto.mediumRole).
   mediumRole: z.enum(["MOTHER", "PRE_ROOTING"]).nullable().optional(),
@@ -99,10 +101,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Ảnh quá lớn, vui lòng chụp lại" }, { status: 400 });
   }
 
-  const lot = await prisma.lot.findUnique({ where: { id: parsed.data.lotId }, select: { id: true, plantTypeId: true } });
+  const lot = await prisma.lot.findUnique({ where: { id: parsed.data.lotId }, select: { id: true, plantTypeId: true, enteredAt: true } });
   if (!lot) return NextResponse.json({ message: "Không tìm thấy lô" }, { status: 404 });
 
+  // Khoá tuần đã trôi qua ở phía server (không chỉ ẩn nút phía client) — chặn cả trường hợp gọi thẳng
+  // API, dùng đúng công thức weekDateRange ở mother-photo-update-board.tsx: Chủ nhật của tuần
+  // enteredWeek + weekIndex đã qua thì không cho chụp bù nữa, không còn ý nghĩa so sánh theo tuần thực tế.
   const now = new Date();
+  const weekMonday = addWeeks(startOfWeek(lot.enteredAt, { weekStartsOn: 1 }), parsed.data.weekIndex);
+  const weekSunday = addDays(weekMonday, 6);
+  if (weekSunday < startOfDay(now)) {
+    return NextResponse.json({ message: "Tuần này đã quá hạn, không thể chụp bù" }, { status: 400 });
+  }
+
   const weekStart = toStoredWeekStart(startOfWeek(now, { weekStartsOn: 1 }));
 
   try {

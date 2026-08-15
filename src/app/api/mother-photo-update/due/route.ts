@@ -120,6 +120,7 @@ export async function GET() {
     representativeShelfId: string;
     representativeQuantity: number;
     enteredWeek: number;
+    enteredAt: Date;
   };
 
   const groups = new Map<string, Group>();
@@ -143,6 +144,7 @@ export async function GET() {
         representativeShelfId: lot.shelf.id,
         representativeQuantity: lot.quantity,
         enteredWeek: lot.enteredWeek,
+        enteredAt: lot.enteredAt,
       });
     } else {
       if (!existing.shelfIds.has(lot.shelf.id)) {
@@ -155,6 +157,7 @@ export async function GET() {
         existing.representativeShelfId = lot.shelf.id;
         existing.representativeQuantity = lot.quantity;
         existing.enteredWeek = lot.enteredWeek;
+        existing.enteredAt = lot.enteredAt;
       }
     }
   }

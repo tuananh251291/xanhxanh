@@ -14,9 +14,10 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Camera, CheckCircle2, ListChecks, Loader2, Plus, X } from "lucide-react";
+import { Ban, Camera, CheckCircle2, ListChecks, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
+import { addDays, addWeeks, format, startOfDay, startOfWeek } from "date-fns";
 
 type MediumRole = "MOTHER" | "PRE_ROOTING";
 
@@ -27,6 +28,7 @@ type CapturePlantType = {
   transferWaitWeeks: number;
   lotId: string;
   enteredWeek: number;
+  enteredAt: string;
   motherMediumCode: string | null;
   motherMediumName: string | null;
   preRootingMediumCode: string | null;
@@ -34,6 +36,15 @@ type CapturePlantType = {
   capturedWeekIndexesMother: number[];
   capturedWeekIndexesPreRooting: number[];
 };
+
+// Khoảng ngày (Thứ 2 - Chủ nhật) của "Tuần enteredWeek + weekIndex" — tính từ Thứ 2 của tuần lô lên kho
+// sáng (enteredAt) cộng thêm weekIndex tuần, khớp đúng cách suy ra nhãn "Tuần N" đang hiển thị (server
+// tính enteredWeek = getCalendarWeekNumber(enteredAt), xem week-rotation.ts).
+function weekDateRange(enteredAt: string, weekIndex: number): { start: Date; end: Date } {
+  const enteredMonday = startOfWeek(new Date(enteredAt), { weekStartsOn: 1 });
+  const start = addWeeks(enteredMonday, weekIndex);
+  return { start, end: addDays(start, 6) };
+}
 type ShelfOption = { id: string; code: string; name: string; rotationOrder: number | null; plantTypes: CapturePlantType[] };
 type DueItem = Omit<CapturePlantType, "lotId"> & { key: string; representativeLotId: string; representativeShelfId: string; shelfCodes: string[] };
 
@@ -167,7 +178,10 @@ export default function MotherPhotoUpdateBoard({
 
   function WeekButtonRow({ pt, shelfId, mediumRole, dueKey, roleLabel }: { pt: CapturePlantType; shelfId: string; mediumRole: MediumRole | null; dueKey?: string; roleLabel?: string }) {
     const maxIndex = Math.max(1, pt.transferWaitWeeks - 1);
-    const weekOptions = Array.from({ length: maxIndex }, (_, i) => i + 1);
+    // weekIndex 0 = tuần nhập kho sáng luôn (không phải tuần sau) — NV lên kho tuần nào thì chụp luôn
+    // tuần đó, đủ (transferWaitWeeks - 1) tuần liên tiếp trước khi quay lại chu trình cấy.
+    const weekOptions = Array.from({ length: maxIndex }, (_, i) => i);
+    const todayStart = startOfDay(new Date());
     return (
       <div className="space-y-1">
         {roleLabel && <p className="text-xs font-medium text-text-secondary">{roleLabel}</p>}
@@ -176,22 +190,34 @@ export default function MotherPhotoUpdateBoard({
             const cap = weekCaptures[weekCaptureKey(pt.lotId, w, mediumRole)];
             const saving = cap?.saving ?? false;
             const saved = cap?.saved ?? false;
+            const { start, end } = weekDateRange(pt.enteredAt, w);
+            // Tuần đã trôi qua (Chủ nhật của tuần đó đã qua) mà chưa chụp thì mờ đi, không bấm được nữa —
+            // chụp bù cho 1 tuần đã qua không còn ý nghĩa so sánh hiện trạng theo đúng tuần thực tế.
+            const missed = !saved && !saving && end < todayStart;
             return (
               <Button
                 key={w}
                 size="sm"
-                variant={saved ? "outline" : "default"}
-                disabled={saved || saving}
+                variant={saved ? "outline" : missed ? "ghost" : "default"}
+                disabled={saved || saving || missed}
                 onClick={() => triggerCapture(pt, shelfId, w, mediumRole, dueKey)}
+                className="h-auto flex-col gap-0.5 py-1.5"
               >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                ) : saved ? (
-                  <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                ) : (
-                  <Camera className="w-4 h-4 mr-1.5" />
-                )}
-                Tuần {pt.enteredWeek + w}
+                <span className="flex items-center gap-1.5">
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : saved ? (
+                    <CheckCircle2 className="w-4 h-4" />
+                  ) : missed ? (
+                    <Ban className="w-4 h-4" />
+                  ) : (
+                    <Camera className="w-4 h-4" />
+                  )}
+                  Tuần {pt.enteredWeek + w}
+                </span>
+                <span className="text-[0.65rem] font-normal opacity-80">
+                  {format(start, "dd/MM")} – {format(end, "dd/MM")}
+                </span>
               </Button>
             );
           })}
