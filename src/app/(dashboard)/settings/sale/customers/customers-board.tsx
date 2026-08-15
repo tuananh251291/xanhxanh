@@ -17,7 +17,7 @@ type UserLite = { id: string; code: string; name: string; role: string };
 type Customer = {
   id: string; name: string; website: string; marketId: string;
   market: { code: string; name: string };
-  email: string; phone: string;
+  email: string | null; phone: string | null;
   status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null;
   assignedToId: string | null;

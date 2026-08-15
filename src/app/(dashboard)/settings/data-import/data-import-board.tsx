@@ -1,6 +1,6 @@
 "use client";
 
-import { UploadCloud, Users, Layers, Sprout, ClipboardList, Send, Leaf, PenLine } from "lucide-react";
+import { UploadCloud, Users, Layers, Sprout, ClipboardList, Send, Leaf, PenLine, Handshake } from "lucide-react";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 
 export default function DataImportBoard() {
@@ -89,6 +89,15 @@ export default function DataImportBoard() {
         templateUrl="/api/data-import/transfers"
         uploadUrl="/api/data-import/transfers"
         successLabel={(n) => `Đã nhập ${n} lô vào phiếu bàn giao`}
+      />
+
+      <ExcelImportCard
+        icon={<Handshake className="w-5 h-5" />}
+        title="9. Danh sách khách hàng"
+        description={'Nhập/cập nhật danh sách khách hàng (CRM Sale) — chỉ 4 cột Tên công ty/Website/Thị trường/Trạng thái bắt buộc. CẬP NHẬT THAY THẾ theo Website: khớp Website đã có thì ghi đè, chưa có thì tạo mới. Mã NV phụ trách cần đã có trong hệ thống (mục 1) và Mã thị trường cần tạo sẵn ở Cài đặt Sale → Thị trường trước. Có thể điền thêm Mã NV quản lý để tự gán/cập nhật luôn người quản lý cho từng NV phụ trách theo thị trường (thay cho vào tay ở Cài đặt Sale → NV quản lý).'}
+        templateUrl="/api/data-import/customers"
+        uploadUrl="/api/data-import/customers"
+        successLabel={(n) => `Đã nhập/cập nhật ${n} khách hàng`}
       />
     </div>
   );

@@ -1961,8 +1961,11 @@ model Customer {
   websiteNormalized String
   marketId          String
   market            Market         @relation(fields: [marketId], references: [id])
-  email             String
-  phone             String
+  // Nullable — bắt buộc khi Admin/Sale tự tạo tay (form vẫn validate không rỗng), nhưng nhập Excel hàng
+  // loạt ở Nhập liệu trực tiếp CHO PHÉP để trống (chỉ 4 trường Tên công ty/Website/Thị trường/Trạng thái
+  // là bắt buộc, xem /api/data-import/customers).
+  email             String?
+  phone             String?
   status            CustomerStatus @default(CHUA_PHAN_CONG)
   firstContactAt    DateTime
   lastOrderAt       DateTime?

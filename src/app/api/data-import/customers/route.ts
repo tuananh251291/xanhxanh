@@ -15,8 +15,10 @@ const STATUS_TEXT: Record<string, "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH"
 
 // Nhập hàng loạt/cập nhật danh sách khách hàng — cập nhật thay thế theo khoá tự nhiên là Website
 // (chuẩn hoá qua normalizeWebsite, xem src/lib/customer.ts): khớp Website đã có -> update, chưa có ->
-// tạo mới. KHÔNG có cột "Nhân viên quản lý" — đó là dữ liệu suy ra từ Cài đặt Sale → NV quản lý (theo
-// cặp NV phụ trách + Thị trường), cấu hình riêng ở /settings/sale/managers, không gán theo từng khách.
+// tạo mới. CHỈ 4 cột đầu bắt buộc (Tên công ty, Website, Thị trường, Trạng thái) — mọi cột khác để trống
+// vẫn nhập được. "Mã NV quản lý" nhập vào sẽ TỰ GÁN/CẬP NHẬT bảng SalesManagerAssignment cho đúng cặp
+// (NV phụ trách, Thị trường) của dòng đó (khác quyết định trước đây — lúc đó chưa cho nhập cột này qua
+// Excel, chỉ cấu hình tay ở /settings/sale/managers; giờ cho phép cả 2 cách).
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "SUPER_ADMIN") {
@@ -31,30 +33,32 @@ export async function GET() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Khách hàng");
   sheet.columns = [
-    { header: "Tên khách hàng - công ty", key: "name", width: 30 },
+    { header: "Tên công ty", key: "name", width: 30 },
     { header: "Website", key: "website", width: 26 },
-    { header: "Mã thị trường", key: "marketCode", width: 16 },
-    { header: "Email", key: "email", width: 26 },
-    { header: "Số điện thoại", key: "phone", width: 16 },
+    { header: "Thị trường (Mã)", key: "marketCode", width: 16 },
     { header: "Trạng thái (Đã phân công / Chưa phân công / Mặc định)", key: "status", width: 34 },
+    { header: "SĐT", key: "phone", width: 16 },
+    { header: "Email", key: "email", width: 26 },
     { header: "Ngày đầu tiếp cận (dd/mm/yyyy)", key: "firstContactAt", width: 22 },
     { header: "Ngày ra đơn gần nhất (dd/mm/yyyy)", key: "lastOrderAt", width: 24 },
     { header: "Mã đơn gần nhất", key: "lastOrderCode", width: 18 },
     { header: "Mã NV phụ trách", key: "assignedToCode", width: 18 },
+    { header: "Mã NV quản lý", key: "managerCode", width: 18 },
   ];
   sheet.getRow(1).font = { bold: true };
-  markRequiredHeaders(sheet, [1, 2, 3, 4, 5, 6, 7]);
+  markRequiredHeaders(sheet, [1, 2, 3, 4]);
   sheet.addRow({
     name: "ABC Import Export Co., Ltd",
     website: "abc-import.com",
     marketCode: markets[0]?.code ?? "EU",
-    email: "contact@abc-import.com",
-    phone: "0901234567",
     status: "Chưa phân công",
-    firstContactAt: "15/01/2026",
+    phone: "0901234567",
+    email: "contact@abc-import.com",
+    firstContactAt: "",
     lastOrderAt: "",
     lastOrderCode: "",
     assignedToCode: "",
+    managerCode: "",
   });
   styleExampleRow(sheet.getRow(2));
 
@@ -68,22 +72,25 @@ export async function GET() {
   for (const m of markets) helpSheet.addRow({ type: "Mã thị trường", code: m.code, name: m.name });
   for (const s of staff) helpSheet.addRow({ type: "Mã NV bán hàng", code: s.code, name: s.name });
   helpSheet.addRow({});
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Chỉ 4 cột có dấu * (Tên công ty, Website, Thị trường, Trạng thái) là bắt buộc — mọi cột khác để trống vẫn nhập được." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Khớp Website đã có trong hệ thống thì CẬP NHẬT THAY THẾ dòng đó, chưa có thì TẠO MỚI." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống Ngày đầu tiếp cận: khách MỚI lấy ngày hôm nay, khách ĐÃ CÓ giữ nguyên ngày cũ." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Trạng thái Đã phân công/Mặc định bắt buộc kèm Mã NV phụ trách; Chưa phân công thì để trống Mã NV phụ trách." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mặc định = khách VIP/lâu năm gắn cố định với NV phụ trách, không bị nhắc cập nhật hàng tháng và không tự thu hồi về Chưa phân công dù không có đơn." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Nhân viên quản lý KHÔNG nhập ở đây — cấu hình riêng tại Cài đặt Sale → NV quản lý (theo NV phụ trách + Thị trường)." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV quản lý: điền vào sẽ TỰ GÁN/CẬP NHẬT người quản lý cho đúng (NV phụ trách, Thị trường) của dòng đó — chỉ điền khi đã có Mã NV phụ trách, không được trùng chính Mã NV phụ trách." });
 
   addGuideSheet(workbook, [
-    { column: "Tên khách hàng - công ty", required: true, description: "Tên công ty khách hàng." },
+    { column: "Tên công ty", required: true, description: "Tên công ty khách hàng." },
     { column: "Website", required: true, description: "Dùng để kiểm tra trùng khách và làm khoá cập nhật khi nhập lại file." },
-    { column: "Mã thị trường", required: true, description: "Phải khớp đúng 1 Mã thị trường đã có (xem sheet Danh mục)." },
-    { column: "Email", required: true, description: "Email liên hệ khách hàng." },
-    { column: "Số điện thoại", required: true, description: "Số điện thoại liên hệ khách hàng." },
+    { column: "Thị trường (Mã)", required: true, description: "Phải khớp đúng 1 Mã thị trường đã có (xem sheet Danh mục)." },
     { column: "Trạng thái", required: true, description: `Chỉ nhận 1 trong 3 giá trị: "Đã phân công", "Chưa phân công" hoặc "Mặc định" (khách VIP/lâu năm, không bị nhắc cập nhật/không tự thu hồi).` },
-    { column: "Ngày đầu tiếp cận", required: true, description: "Định dạng dd/mm/yyyy." },
+    { column: "SĐT", required: false, description: "Số điện thoại liên hệ — để trống nếu chưa có." },
+    { column: "Email", required: false, description: "Email liên hệ — để trống nếu chưa có." },
+    { column: "Ngày đầu tiếp cận", required: false, description: "Định dạng dd/mm/yyyy. Để trống: khách mới lấy ngày hôm nay, khách đã có giữ nguyên ngày cũ." },
     { column: "Ngày ra đơn gần nhất", required: false, description: "Định dạng dd/mm/yyyy, để trống nếu chưa có đơn." },
     { column: "Mã đơn gần nhất", required: false, description: "Để trống nếu chưa có đơn." },
-    { column: "Mã NV phụ trách", required: false, description: `Bắt buộc khi Trạng thái = "Đã phân công" (xem sheet Danh mục để lấy đúng mã). Để trống khi "Chưa phân công".` },
+    { column: "Mã NV phụ trách", required: false, description: `Bắt buộc khi Trạng thái = "Đã phân công" hoặc "Mặc định" (xem sheet Danh mục để lấy đúng mã). Để trống khi "Chưa phân công".` },
+    { column: "Mã NV quản lý", required: false, description: "Tự gán/cập nhật người quản lý cho cặp (NV phụ trách, Thị trường) của dòng này — cần điền kèm Mã NV phụ trách." },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -123,13 +130,14 @@ export async function POST(req: NextRequest) {
     name: string;
     website: string;
     marketCode: string;
-    email: string;
-    phone: string;
     statusText: string;
+    phone: string;
+    email: string;
     firstContactAtRaw: ReturnType<typeof cellDate>;
     lastOrderAtRaw: ReturnType<typeof cellDate>;
     lastOrderCode: string;
     assignedToCode: string;
+    managerCode: string;
   };
   const parsedRows: ParsedRow[] = [];
   sheet.eachRow((row, rowNumber) => {
@@ -141,13 +149,14 @@ export async function POST(req: NextRequest) {
       name,
       website: cellText(row.getCell(2).value),
       marketCode: cellText(row.getCell(3).value).toUpperCase(),
-      email: cellText(row.getCell(4).value),
+      statusText: cellText(row.getCell(4).value),
       phone: cellText(row.getCell(5).value),
-      statusText: cellText(row.getCell(6).value),
+      email: cellText(row.getCell(6).value),
       firstContactAtRaw: cellDate(row.getCell(7).value),
       lastOrderAtRaw: cellDate(row.getCell(8).value),
       lastOrderCode: cellText(row.getCell(9).value),
       assignedToCode: cellText(row.getCell(10).value).toUpperCase(),
+      managerCode: cellText(row.getCell(11).value).toUpperCase(),
     });
   });
 
@@ -155,12 +164,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "File không có dòng dữ liệu nào" }, { status: 400 });
   }
 
-  const [markets, staffList] = await Promise.all([
+  const [markets, staffList, existingCustomers] = await Promise.all([
     prisma.market.findMany({ select: { id: true, code: true } }),
-    prisma.user.findMany({ select: { id: true, code: true } }),
+    // Chỉ NV bán hàng (SALE) mới được làm Nhân viên phụ trách/Nhân viên quản lý — khớp đúng ràng buộc đã
+    // áp dụng ở POST /api/sales-manager-assignments (2 vế đều phải role SALE).
+    prisma.user.findMany({ where: { role: "SALE" }, select: { id: true, code: true } }),
+    prisma.customer.findMany({ select: { id: true, websiteNormalized: true, firstContactAt: true } }),
   ]);
   const marketByCode = new Map(markets.map((m) => [m.code, m.id]));
   const staffByCode = new Map(staffList.map((s) => [s.code, s.id]));
+  const existingByWebsite = new Map(existingCustomers.map((c) => [c.websiteNormalized, c]));
 
   type ValidRow = {
     row: number;
@@ -170,10 +183,11 @@ export async function POST(req: NextRequest) {
     websiteNormalized: string;
     nameNormalized: string;
     marketId: string;
-    email: string;
-    phone: string;
+    email: string | null;
+    phone: string | null;
     status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
-    firstContactAt: Date;
+    // undefined = không đổi (để trống, khách đã có giữ nguyên); Date = ghi đè/tạo mới.
+    firstContactAt: Date | undefined;
     lastOrderAt: Date | null;
     lastOrderCode: string | null;
     assignedToId: string | null;
@@ -181,6 +195,9 @@ export async function POST(req: NextRequest) {
   const errors: RowError[] = [];
   const validRows: ValidRow[] = [];
   const claimedWebsites = new Set<string>();
+  // key "salesUserId:marketId" -> { managerId, managerCode, row } — phát hiện 2 dòng trong CÙNG file ghi
+  // khác nhau cho cùng 1 cặp (NV phụ trách, Thị trường).
+  const managerAssignments = new Map<string, { managerId: string; managerCode: string; row: number }>();
 
   for (const parsed of parsedRows) {
     const label = parsed.name;
@@ -194,13 +211,11 @@ export async function POST(req: NextRequest) {
     const marketId = marketByCode.get(parsed.marketCode);
     if (!marketId) { errors.push({ row: parsed.row, label, message: `Mã thị trường "${parsed.marketCode}" không tồn tại` }); continue; }
 
-    if (!parsed.email || !parsed.email.includes("@")) { errors.push({ row: parsed.row, label, message: "Email không hợp lệ" }); continue; }
-    if (!parsed.phone) { errors.push({ row: parsed.row, label, message: "Thiếu Số điện thoại" }); continue; }
+    if (parsed.email && !parsed.email.includes("@")) { errors.push({ row: parsed.row, label, message: "Email không hợp lệ" }); continue; }
 
     const status = STATUS_TEXT[parsed.statusText.trim().toLowerCase()];
     if (!status) { errors.push({ row: parsed.row, label, message: `Trạng thái phải là "Đã phân công", "Chưa phân công" hoặc "Mặc định"` }); continue; }
 
-    if (parsed.firstContactAtRaw === undefined) { errors.push({ row: parsed.row, label, message: "Thiếu Ngày đầu tiếp cận" }); continue; }
     if (parsed.firstContactAtRaw === null) { errors.push({ row: parsed.row, label, message: "Ngày đầu tiếp cận không đúng định dạng dd/mm/yyyy" }); continue; }
     if (parsed.lastOrderAtRaw === null) { errors.push({ row: parsed.row, label, message: "Ngày ra đơn gần nhất không đúng định dạng dd/mm/yyyy" }); continue; }
 
@@ -208,9 +223,36 @@ export async function POST(req: NextRequest) {
     if (status === "DA_PHAN_CONG" || status === "MAC_DINH") {
       if (!parsed.assignedToCode) { errors.push({ row: parsed.row, label, message: `Trạng thái "${parsed.statusText.trim()}" cần Mã NV phụ trách` }); continue; }
       const staffId = staffByCode.get(parsed.assignedToCode);
-      if (!staffId) { errors.push({ row: parsed.row, label, message: `Mã NV phụ trách "${parsed.assignedToCode}" không tồn tại` }); continue; }
+      if (!staffId) { errors.push({ row: parsed.row, label, message: `Mã NV phụ trách "${parsed.assignedToCode}" không tồn tại hoặc không phải NV bán hàng` }); continue; }
       assignedToId = staffId;
     }
+
+    if (parsed.managerCode) {
+      if (!assignedToId) {
+        errors.push({ row: parsed.row, label, message: "Mã NV quản lý cần đi kèm Mã NV phụ trách (chỉ áp dụng khi Trạng thái Đã phân công/Mặc định)" });
+        continue;
+      }
+      const managerId = staffByCode.get(parsed.managerCode);
+      if (!managerId) { errors.push({ row: parsed.row, label, message: `Mã NV quản lý "${parsed.managerCode}" không tồn tại hoặc không phải NV bán hàng` }); continue; }
+      if (managerId === assignedToId) {
+        errors.push({ row: parsed.row, label, message: "Mã NV quản lý không được trùng với Mã NV phụ trách" });
+        continue;
+      }
+      const key = `${assignedToId}:${marketId}`;
+      const claimed = managerAssignments.get(key);
+      if (claimed && claimed.managerId !== managerId) {
+        errors.push({
+          row: parsed.row, label,
+          message: `Mã NV quản lý cho NV phụ trách "${parsed.assignedToCode}" ở thị trường "${parsed.marketCode}" bị ghi khác nhau — dòng ${claimed.row} ghi "${claimed.managerCode}", dòng này ghi "${parsed.managerCode}"`,
+        });
+        continue;
+      }
+      if (!claimed) managerAssignments.set(key, { managerId, managerCode: parsed.managerCode, row: parsed.row });
+    }
+
+    // Để trống Ngày đầu tiếp cận: khách MỚI lấy hôm nay, khách ĐÃ CÓ (khớp Website) giữ nguyên ngày cũ.
+    const existing = existingByWebsite.get(websiteNormalized);
+    const firstContactAt = parsed.firstContactAtRaw ?? (existing ? undefined : new Date());
 
     claimedWebsites.add(websiteNormalized);
     validRows.push({
@@ -221,10 +263,10 @@ export async function POST(req: NextRequest) {
       websiteNormalized,
       nameNormalized: normalizeCustomerName(parsed.name),
       marketId,
-      email: parsed.email,
-      phone: parsed.phone,
+      email: parsed.email || null,
+      phone: parsed.phone || null,
       status,
-      firstContactAt: parsed.firstContactAtRaw,
+      firstContactAt,
       lastOrderAt: parsed.lastOrderAtRaw ?? null,
       lastOrderCode: parsed.lastOrderCode || null,
       assignedToId,
@@ -235,7 +277,7 @@ export async function POST(req: NextRequest) {
   if (validRows.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
-        const existing = await tx.customer.findFirst({ where: { websiteNormalized: vr.websiteNormalized }, select: { id: true } });
+        const existing = existingByWebsite.get(vr.websiteNormalized);
         const data = {
           name: vr.name,
           nameNormalized: vr.nameNormalized,
@@ -245,7 +287,7 @@ export async function POST(req: NextRequest) {
           email: vr.email,
           phone: vr.phone,
           status: vr.status,
-          firstContactAt: vr.firstContactAt,
+          ...(vr.firstContactAt ? { firstContactAt: vr.firstContactAt } : {}),
           lastOrderAt: vr.lastOrderAt,
           lastOrderCode: vr.lastOrderCode,
           assignedToId: vr.assignedToId,
@@ -253,9 +295,19 @@ export async function POST(req: NextRequest) {
         if (existing) {
           await tx.customer.update({ where: { id: existing.id }, data });
         } else {
-          await tx.customer.create({ data });
+          // Tạo mới luôn có firstContactAt (đã tự đặt = hôm nay ở bước validate nếu để trống).
+          await tx.customer.create({ data: { ...data, firstContactAt: vr.firstContactAt! } });
         }
         successCount += 1;
+      }
+
+      for (const [key, { managerId }] of managerAssignments) {
+        const [salesUserId, marketId] = key.split(":");
+        await tx.salesManagerAssignment.upsert({
+          where: { salesUserId_marketId: { salesUserId, marketId } },
+          update: { managerId },
+          create: { salesUserId, managerId, marketId },
+        });
       }
     });
   }

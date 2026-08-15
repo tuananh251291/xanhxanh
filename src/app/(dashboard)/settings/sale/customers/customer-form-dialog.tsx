@@ -15,7 +15,7 @@ type Market = { id: string; code: string; name: string };
 type User = { id: string; code: string; name: string; role: string };
 type CustomerStatus = "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
 type Customer = {
-  id: string; name: string; website: string; marketId: string; email: string; phone: string;
+  id: string; name: string; website: string; marketId: string; email: string | null; phone: string | null;
   status: CustomerStatus;
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null; assignedToId: string | null;
 };
@@ -46,7 +46,7 @@ export default function CustomerFormDialog({
     if (customer) {
       setForm({
         name: customer.name, website: customer.website, marketId: customer.marketId,
-        email: customer.email, phone: customer.phone, status: customer.status,
+        email: customer.email ?? "", phone: customer.phone ?? "", status: customer.status,
         firstContactAt: format(new Date(customer.firstContactAt), "yyyy-MM-dd"),
         lastOrderAt: customer.lastOrderAt ? format(new Date(customer.lastOrderAt), "yyyy-MM-dd") : "",
         lastOrderCode: customer.lastOrderCode ?? "",
