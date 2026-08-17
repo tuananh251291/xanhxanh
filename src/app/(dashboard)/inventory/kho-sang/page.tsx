@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sun } from "lucide-react";
-import { format, differenceInCalendarDays } from "date-fns";
+import { format, differenceInCalendarDays, addWeeks } from "date-fns";
 import { vi } from "date-fns/locale";
 import { STAGE_LABELS, sumLotQuantity, isKhoThanhPhamRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
+import { isoWeekStringToMonday } from "@/lib/week-rotation";
 import type { RoomType } from "@prisma/client";
 import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
@@ -25,7 +26,7 @@ function expiryClass(expectedMoveAt: Date | null): string {
 export default async function KhoSangPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plantTypeId?: string }>;
+  searchParams: Promise<{ plantTypeId?: string; enteredWeek?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -33,6 +34,13 @@ export default async function KhoSangPage({
 
   const sp = await searchParams;
   const rootingPlantTypeId = sp.plantTypeId?.trim() || null;
+  // "Tuần nhập lên kho sáng" (input type="week", "YYYY-Www") — lọc thành phẩm Phòng ra rễ theo đúng
+  // Lot.enteredAt (ngày lên kệ kho sáng, xem commitShelfPlacements) trong tuần này. null/không hợp lệ =
+  // không lọc theo tuần.
+  const enteredWeekParam = sp.enteredWeek?.trim() || null;
+  const enteredWeekStart = enteredWeekParam ? isoWeekStringToMonday(enteredWeekParam) : null;
+  const enteredWeekEnd = enteredWeekStart ? addWeeks(enteredWeekStart, 1) : null;
+  const enteredAtFilter = enteredWeekStart && enteredWeekEnd ? { gte: enteredWeekStart, lt: enteredWeekEnd } : undefined;
 
   // Nhân viên kỹ thuật chỉ xem được số liệu Phòng mẫu mẹ, không xem được toàn bộ Kho sáng
   // (ẩn Phòng ra rễ — thuộc phạm vi theo dõi của KHO_MO).
@@ -109,21 +117,25 @@ export default async function KhoSangPage({
   // đúng mã cây đó (bớt hẳn kệ khác trong danh sách thay vì hiện "Trống" gây rối), và trong 1 kệ có
   // nhiều mã cây khác nhau (Phòng ra rễ không có plantTypeId cố định như Phòng mẫu mẹ) chỉ hiện đúng lô
   // khớp mã cây đang tìm, không lẫn lô mã cây khác trên cùng kệ.
+  const raReLotFilter = {
+    status: "ACTIVE" as const,
+    quantity: { gt: 0 },
+    ...(rootingPlantTypeId ? { plantTypeId: rootingPlantTypeId } : {}),
+    ...(enteredAtFilter ? { enteredAt: enteredAtFilter } : {}),
+  };
   const raReShelves = raReRoomIds.length
     ? await prisma.shelf.findMany({
         where: {
           roomId: { in: raReRoomIds },
           isActive: true,
-          ...(rootingPlantTypeId
-            ? { lots: { some: { status: "ACTIVE", quantity: { gt: 0 }, plantTypeId: rootingPlantTypeId } } }
-            : {}),
+          ...((rootingPlantTypeId || enteredAtFilter) ? { lots: { some: raReLotFilter } } : {}),
         },
         include: {
           plantType: { select: { name: true } },
           assignedStaff: { select: { name: true } },
           lots: {
             // quantity > 0 — xem giải thích ở src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
-            where: { status: "ACTIVE", quantity: { gt: 0 }, ...(rootingPlantTypeId ? { plantTypeId: rootingPlantTypeId } : {}) },
+            where: raReLotFilter,
             include: { plantType: { select: { code: true, name: true } } },
             orderBy: { enteredAt: "asc" },
           },
@@ -132,11 +144,20 @@ export default async function KhoSangPage({
       })
     : [];
   const raReShelvesByRoom = new Map<string, typeof raReShelves>();
+  let filteredFinishedTotal = 0;
+  let filteredFinishedLotCount = 0;
   for (const shelf of raReShelves) {
     const list = raReShelvesByRoom.get(shelf.roomId!) ?? [];
     list.push(shelf);
     raReShelvesByRoom.set(shelf.roomId!, list);
+    for (const lot of shelf.lots) {
+      if (lot.stage === "THANH_PHAM") {
+        filteredFinishedTotal += lot.quantity;
+        filteredFinishedLotCount += 1;
+      }
+    }
   }
+  const hasRootingFilter = !!rootingPlantTypeId || !!enteredAtFilter;
 
   const motherRoomIds = rooms.filter((r) => r.type === "PHONG_MAU_ME").map((r) => r.id);
   const [assignedCounts, unassignedCounts] = await Promise.all([
@@ -165,8 +186,19 @@ export default async function KhoSangPage({
       {/* Summary by plant type */}
       <SummaryByType entries={summaryByTypeEntries} />
 
-      {/* Tìm nhanh 1 mã cây trong Phòng ra rễ — không có ý nghĩa gì ở chế độ chỉ xem Phòng mẫu mẹ. */}
-      {!onlyMotherRoom && <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />}
+      {/* Tìm nhanh 1 mã cây + lọc theo tuần nhập lên kho sáng trong Phòng ra rễ — không có ý nghĩa gì ở
+          chế độ chỉ xem Phòng mẫu mẹ. */}
+      {!onlyMotherRoom && (
+        <div className="space-y-3">
+          <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />
+          {hasRootingFilter && (
+            <p className="text-sm text-text-secondary">
+              Khớp bộ lọc: <strong className="text-primary-strong">{filteredFinishedTotal.toLocaleString("vi-VN")} cây</strong> thành phẩm
+              {" "}({filteredFinishedLotCount.toLocaleString("vi-VN")} lô)
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Per phòng sáng and shelf */}
       {rooms.map((room) => (
