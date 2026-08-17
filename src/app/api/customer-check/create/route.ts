@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
+import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
-  website: z.string().trim().min(1, "Nhập website"),
+  website: z.string().trim().min(1, "Nhập website").superRefine((v, ctx) => {
+    const error = validateWebsite(v);
+    if (error) ctx.addIssue({ code: "custom", message: error });
+  }),
   marketId: z.string().min(1, "Chọn thị trường"),
   email: z.string().trim().email("Email không hợp lệ"),
   phone: z.string().trim().min(1, "Nhập số điện thoại"),

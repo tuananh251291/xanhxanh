@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Loader2, Search, AlertTriangle, UserPlus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { CUSTOMER_STATUS_LABELS } from "@/types";
+import { validateWebsite, hasWebsitePath, WEBSITE_MAX_LENGTH } from "@/lib/customer";
 
 type Market = { id: string; code: string; name: string };
 type MatchResult = {
@@ -43,6 +44,8 @@ export default function CustomerCheckForm() {
 
   const check = async () => {
     if (!name.trim() || !website.trim()) { toast.error("Nhập đủ Tên khách hàng - công ty và Website"); return; }
+    const websiteError = validateWebsite(website);
+    if (websiteError) { toast.error(websiteError); return; }
     setChecking(true);
     setChecked(false);
     try {
@@ -118,7 +121,20 @@ export default function CustomerCheckForm() {
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Website</Label>
-              <Input value={website} onChange={(e) => { setWebsite(e.target.value); setChecked(false); }} placeholder="VD: abc-import.com" />
+              <Input
+                value={website}
+                onChange={(e) => { setWebsite(e.target.value); setChecked(false); }}
+                placeholder="VD: abc-import.com"
+                maxLength={WEBSITE_MAX_LENGTH - 1}
+              />
+              <p className="text-xs text-text-muted">
+                Chỉ nhập link trang chủ, không gắn đường dẫn phụ (VD: /aboutus, /shop)
+              </p>
+              {website.trim() && hasWebsitePath(website) && (
+                <p className="text-xs text-warning-foreground flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Link này có vẻ là trang con, hãy kiểm tra lại và chỉ nhập link trang chủ
+                </p>
+              )}
             </div>
           </div>
           <Button onClick={check} disabled={checking} className="bg-primary hover:bg-primary-hover">
