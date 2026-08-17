@@ -30,7 +30,11 @@ function computeExpectedMoveAt(
     if (rotationOrder != null && motherEpochMonday) {
       const totalSlots = plantType.transferWaitWeeks;
       const currentSlot = getCurrentWeekSlot(totalSlots, enteredAt, motherEpochMonday);
-      const weeksUntilDue = (rotationOrder - currentSlot + totalSlots) % totalSlots;
+      // Lô vừa lên kệ đúng khe đang là "tuần hiện tại" của Nhóm (rotationOrder === currentSlot) không thể
+      // "đến hạn ngay hôm nay" — vừa nhập thì phải đợi ĐỦ 1 chu kỳ (totalSlots tuần) mới quay lại đúng khe
+      // đó. % totalSlots cho kết quả 0 ở trường hợp này — quy về totalSlots thay vì 0 (dùng "|| totalSlots"
+      // vì 0 falsy trong JS, mọi giá trị khác giữ nguyên).
+      const weeksUntilDue = ((rotationOrder - currentSlot + totalSlots) % totalSlots) || totalSlots;
       return startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 });
     }
     return addWeeks(enteredAt, plantType.transferWaitWeeks);

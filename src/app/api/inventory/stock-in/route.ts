@@ -282,7 +282,9 @@ export async function POST(req: NextRequest) {
         if (stage === "MAU_ME" && shelf.rotationGroup?.rotationOrder != null && motherEpochMonday) {
           const totalSlots = pt.transferWaitWeeks;
           const currentSlot = getCurrentWeekSlot(totalSlots, now, motherEpochMonday);
-          const weeksUntilDue = (shelf.rotationGroup.rotationOrder - currentSlot + totalSlots) % totalSlots;
+          // Giống computeExpectedMoveAt (src/lib/dark-room-shelf-commit.ts) — khe trùng tuần hiện tại
+          // (kết quả 0) nghĩa là phải đợi đủ 1 chu kỳ nữa mới đến hạn, không phải đến hạn ngay.
+          const weeksUntilDue = ((shelf.rotationGroup.rotationOrder - currentSlot + totalSlots) % totalSlots) || totalSlots;
           expectedMoveAt = startOfWeek(addWeeks(now, weeksUntilDue), { weekStartsOn: 1 });
         } else {
           expectedMoveAt = addWeeks(now, stage === "MAU_ME" ? pt.transferWaitWeeks : pt.rootingWeeks);
