@@ -27,7 +27,7 @@ export async function ensureMotherReadyAlerts(): Promise<void> {
         // không còn giữ chỗ, giống điều kiện ở /instructions và /instructions/mother-due/[warehouseId].
         lots: {
           where: { status: "ACTIVE", instructionItems: { none: { instruction: { status: { in: ["ACTIVE", "DRAFT"] } } } } },
-          select: { quantity: true },
+          select: { quantity: true, expectedMoveAt: true },
         },
       },
     }),

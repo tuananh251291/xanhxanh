@@ -1,4 +1,4 @@
-import { addWeeks, startOfWeek, addDays } from "date-fns";
+import { addWeeks, startOfWeek, endOfWeek, addDays } from "date-fns";
 import { getCurrentWeekSlot, isoWeekStringToMonday } from "@/lib/week-rotation";
 import { getSystemConfig } from "@/lib/inventory";
 
@@ -80,11 +80,23 @@ export function summarizeMotherWeekGroups(
     warehouse: { id: string; code: string; name: string };
     rotationGroup: { id: string; name: string; rotationOrder: number | null } | null;
     plantType: { code: string; transferWaitWeeks?: number } | null;
-    lots: { quantity: number }[];
+    lots: { quantity: number; expectedMoveAt?: Date | null }[];
   }[],
   now: Date = new Date(),
   motherEpochMonday?: Date
 ): MotherWeekGroupStatus[] {
+  // Cửa sổ "đến hạn" của TỪNG LÔ (tuần này hoặc tuần sau — khớp đúng cửa sổ báo trước 1 tuần dùng để
+  // tính isDue cấp Nhóm bên dưới). Nhóm "đến hạn" theo đúng lịch xoay vòng KHÔNG có nghĩa MỌI kệ trong
+  // Nhóm đó đều thật sự đến hạn — kệ vừa được xếp lô mới (VD Kho mô vừa nhận cây sáng nay, đúng lúc rơi
+  // vào khe đang là "tuần hiện tại" của Nhóm) có Lot.expectedMoveAt đã tính lại thành tận chu kỳ sau
+  // (xem computeExpectedMoveAt, dark-room-shelf-commit.ts), nên phải lọc thêm theo expectedMoveAt của
+  // CHÍNH lô đó — không thể chỉ dựa vào rotationOrder của cả Nhóm — tránh hiện nhầm kệ vừa nhập lên như
+  // "sắp đến hạn cấy chuyển".
+  const dueWindowStart = startOfWeek(now, { weekStartsOn: 1 });
+  const dueWindowEnd = endOfWeek(addWeeks(now, 1), { weekStartsOn: 1 });
+  const isLotDue = (lot: { expectedMoveAt?: Date | null }) =>
+    !!lot.expectedMoveAt && lot.expectedMoveAt >= dueWindowStart && lot.expectedMoveAt <= dueWindowEnd;
+
   const byGroup = new Map<string, MotherWeekGroupStatus & { totalSlots: number | null }>();
   for (const shelf of shelves) {
     if (!shelf.rotationGroup) continue;
@@ -100,12 +112,13 @@ export function summarizeMotherWeekGroups(
       isDue: false,
       totalSlots,
     };
-    const quantity = shelf.lots.reduce((sum, lot) => sum + lot.quantity, 0);
-    // Chỉ liệt kê kệ THẬT SỰ có lô mẫu mẹ — 1 Nhóm xoay vòng thường có nhiều kệ trống (chưa từng xếp
-    // gì, chờ dự phòng) hơn số kệ đang dùng; nếu vẫn liệt kê cả kệ trống, KY_THUAT sẽ thấy kệ đó trong
-    // danh sách "đến hạn cấy chuyển" nhưng bấm "Tạo chỉ định" thì không có dữ liệu gì để chọn (không có
-    // lô nào trên kệ đó).
-    if (shelf.lots.length > 0) {
+    // Chỉ liệt kê kệ THẬT SỰ có lô mẫu mẹ ĐẾN HẠN (đã lọc isLotDue) — 1 Nhóm xoay vòng thường có nhiều
+    // kệ trống (chưa từng xếp gì, chờ dự phòng) hoặc kệ vừa mới xếp lô (chưa đến hạn) hơn số kệ thật sự
+    // cần tạo chỉ định; nếu vẫn liệt kê, KY_THUAT sẽ thấy kệ đó trong danh sách "đến hạn cấy chuyển"
+    // nhưng bấm "Tạo chỉ định" thì không có lô nào thật sự sẵn sàng.
+    const dueLots = shelf.lots.filter(isLotDue);
+    if (dueLots.length > 0) {
+      const quantity = dueLots.reduce((sum, lot) => sum + lot.quantity, 0);
       entry.shelves.push({
         id: shelf.id,
         code: shelf.code,
@@ -117,13 +130,11 @@ export function summarizeMotherWeekGroups(
         rowNumber: shelf.rowNumber,
         colNumber: shelf.colNumber,
         block: shelf.block,
-        lotCount: shelf.lots.length,
+        lotCount: dueLots.length,
         quantity,
       });
-    }
-    for (const lot of shelf.lots) {
-      entry.lotCount += 1;
-      entry.totalQuantity += lot.quantity;
+      entry.lotCount += dueLots.length;
+      entry.totalQuantity += quantity;
     }
     byGroup.set(key, entry);
   }
