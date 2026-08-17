@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent } from "@/components/ui/card";
 import { isPageAllowed } from "@/lib/permissions";
 import { getWeekBuckets } from "@/lib/report-utils";
-import { TrendingUp, Sprout, Flower2, ShieldAlert, AlertTriangle, Trophy, ClipboardList, Moon, Package } from "lucide-react";
+import { TrendingUp, Sprout, Flower2, ShieldAlert, AlertTriangle, Trophy, ClipboardList, Moon, Package, Leaf } from "lucide-react";
 import RatioTrendSection from "./ratio-trend-section";
 import StaffRankingSection from "./staff-ranking-section";
+import MotherContaminationReport from "../mother-contamination-report";
 import ContaminationBreakdownSection from "./contamination-breakdown-section";
 import InstructionProgressSection from "./instruction-progress-section";
 import SurplusMotherReturnedSection from "./surplus-mother-returned-section";
@@ -130,6 +131,9 @@ export default async function ReportsOverviewPage() {
       </CollapsibleSection>
       <CollapsibleSection title="Xếp hạng NV cấy mô theo tỉ lệ" icon={<Trophy className="w-4 h-4 shrink-0" />}>
         <StaffRankingSection />
+      </CollapsibleSection>
+      <CollapsibleSection title="Tỉ lệ nhiễm mẫu mẹ bàn giao" icon={<Leaf className="w-4 h-4 shrink-0" />}>
+        <MotherContaminationReport />
       </CollapsibleSection>
       <CollapsibleSection title="Tỉ lệ nhiễm" icon={<ShieldAlert className="w-4 h-4 shrink-0" />}>
         <ContaminationBreakdownSection />
