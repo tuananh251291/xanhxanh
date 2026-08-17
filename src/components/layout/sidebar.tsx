@@ -9,7 +9,7 @@ import {
   PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
   LogOut, Bell, ChevronLeft, ChevronRight, UserCircle, Menu, Flag, Boxes, Send, Layers, UploadCloud,
   Recycle, Truck, ArrowLeftRight, PackagePlus, TrendingUp, CalendarPlus, ShieldPlus, DollarSign, RefreshCw, Gauge,
-  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert,
+  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert, CalendarX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Settings, ClipboardList, ClipboardCheck, Sun, Moon, PenLine, PackageCheck,
   PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
   UserCircle, Flag, Boxes, Send, Layers, UploadCloud, Recycle, Truck, ArrowLeftRight, PackagePlus, TrendingUp, CalendarPlus, ShieldPlus, DollarSign, RefreshCw, Gauge,
-  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert,
+  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert, CalendarX,
 };
 
 interface SidebarProps {

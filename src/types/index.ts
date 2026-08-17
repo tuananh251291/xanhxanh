@@ -404,6 +404,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/data-corrections", label: "Theo dõi nhập sai dữ liệu cấy", icon: "AlertTriangle" },
     { href: "/violation-types", label: "Danh sách lỗi vi phạm", icon: "ClipboardList" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
+    { href: "/task-completion-report", label: "Số ngày không hoàn thành nhiệm vụ", icon: "CalendarX" },
     { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

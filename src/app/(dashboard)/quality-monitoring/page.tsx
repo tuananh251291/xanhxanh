@@ -5,6 +5,7 @@ import { ShieldAlert } from "lucide-react";
 import { isAdminRole } from "@/types";
 import DataCorrectionsBoard from "../data-corrections/data-corrections-board";
 import ViolationReportBoard from "../violation-report/violation-report-board";
+import TaskCompletionReportBoard from "../task-completion-report/task-completion-report-board";
 
 // Gộp menu Admin — KHÔNG đụng menu KHO_MO, 2 trang này vẫn hiện riêng trong ROLE_NAV của KHO_MO như cũ
 // (ngoài phạm vi lần này, chỉ gộp menu Admin).
@@ -26,6 +27,7 @@ export default async function QualityMonitoringPage() {
         <TabsList>
           <TabsTrigger value="data-corrections">Theo dõi nhập sai dữ liệu cấy</TabsTrigger>
           <TabsTrigger value="violation-report">Báo cáo vi phạm</TabsTrigger>
+          <TabsTrigger value="task-completion">Số ngày không hoàn thành nhiệm vụ</TabsTrigger>
         </TabsList>
 
         <TabsContent value="data-corrections" className="mt-4">
@@ -33,6 +35,9 @@ export default async function QualityMonitoringPage() {
         </TabsContent>
         <TabsContent value="violation-report" className="mt-4">
           <ViolationReportBoard />
+        </TabsContent>
+        <TabsContent value="task-completion" className="mt-4">
+          <TaskCompletionReportBoard isAdmin />
         </TabsContent>
       </Tabs>
     </div>

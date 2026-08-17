@@ -319,6 +319,8 @@ model User {
   salesManagerAssignmentsAsSales     SalesManagerAssignment[]   @relation("SalesManagerAssignmentSales")
   salesManagerAssignmentsAsManager   SalesManagerAssignment[]   @relation("SalesManagerAssignmentManager")
   motherPhotos                       MotherPhoto[]
+  taskCompletionExemptions           TaskCompletionExemption[] @relation("TaskExemptionStaff")
+  taskCompletionExemptionsCreated    TaskCompletionExemption[] @relation("TaskExemptionCreatedBy")
 
   @@map("users")
 }
@@ -427,6 +429,24 @@ model ChecklistThreshold {
   updatedAt  DateTime @updatedAt
 
   @@map("checklist_thresholds")
+}
+
+// Admin miễn trừ 1 ngày cụ thể khỏi báo cáo "Số ngày không hoàn thành nhiệm vụ" (xem
+// src/lib/task-completion-report.ts) khi NV có lý do chính đáng (nghỉ phép, ốm...) — ngày đó không tính
+// vào tổng dù thực tế nhiệm vụ hôm đó chưa xong. Lưu vết ai miễn trừ, khi nào, vì lý do gì để tra cứu lại.
+model TaskCompletionExemption {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       User     @relation("TaskExemptionStaff", fields: [staffId], references: [id])
+  date        DateTime // chỉ lấy phần ngày (00:00) — ngày được miễn trừ
+  reason      String
+  createdById String
+  createdBy   User     @relation("TaskExemptionCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([staffId, date])
+  @@index([staffId])
+  @@map("task_completion_exemptions")
 }
 
 // 1 dòng = 1 lượt "Hoàn tất kiểm tra" của NV kho mô cho 1 NV cấy mô trong nhiệm vụ nhỏ "Kiểm tra kho cá
