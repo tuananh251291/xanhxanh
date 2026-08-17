@@ -18,15 +18,17 @@ import {
 
 type Option = { value: string; label: string };
 
-// Bộ lọc Phòng ra rễ — mã cây (gõ tự gợi ý) + tuần nhập lên kho sáng (input type="week", "YYYY-Www")
-// — lọc lại các thẻ giàn kệ + tổng thành phẩm khớp bộ lọc (xem page.tsx). Lưu vào URL (?plantTypeId=,
-// ?enteredWeek=) để giữ được khi F5/chia sẻ link, không dùng state cục bộ.
+// Bộ lọc Phòng ra rễ — mã cây (gõ tự gợi ý) + khoảng tuần nhập lên kho sáng (2 ô input type="week",
+// "YYYY-Www", độc lập nhau — chỉ nhập 1 trong 2 vẫn lọc được 1 phía) — lọc lại các thẻ giàn kệ + bảng
+// tổng hợp theo quy cách (xem page.tsx). Lưu vào URL (?plantTypeId=, ?enteredWeekFrom=, ?enteredWeekTo=)
+// để giữ được khi F5/chia sẻ link, không dùng state cục bộ.
 export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOptions: Option[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentPlantTypeId = searchParams.get("plantTypeId");
   const selected = plantTypeOptions.find((o) => o.value === currentPlantTypeId) ?? null;
-  const currentEnteredWeek = searchParams.get("enteredWeek") ?? "";
+  const currentEnteredWeekFrom = searchParams.get("enteredWeekFrom") ?? "";
+  const currentEnteredWeekTo = searchParams.get("enteredWeekTo") ?? "";
 
   const setParam = (key: string, value: string | null) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -35,7 +37,7 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
     router.push(`?${params.toString()}`);
   };
 
-  const hasFilter = !!currentPlantTypeId || !!currentEnteredWeek;
+  const hasFilter = !!currentPlantTypeId || !!currentEnteredWeekFrom || !!currentEnteredWeekTo;
 
   return (
     <div className="flex items-end gap-3 flex-wrap">
@@ -61,11 +63,21 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs">Tuần nhập lên kho sáng</Label>
+        <Label className="text-xs">Từ tuần nhập kho sáng</Label>
         <Input
           type="week"
-          value={currentEnteredWeek}
-          onChange={(e) => setParam("enteredWeek", e.target.value || null)}
+          value={currentEnteredWeekFrom}
+          onChange={(e) => setParam("enteredWeekFrom", e.target.value || null)}
+          className="w-40 h-9"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-xs">Đến tuần nhập kho sáng</Label>
+        <Input
+          type="week"
+          value={currentEnteredWeekTo}
+          onChange={(e) => setParam("enteredWeekTo", e.target.value || null)}
           className="w-40 h-9"
         />
       </div>

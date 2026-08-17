@@ -26,7 +26,7 @@ function expiryClass(expectedMoveAt: Date | null): string {
 export default async function KhoSangPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plantTypeId?: string; enteredWeek?: string }>;
+  searchParams: Promise<{ plantTypeId?: string; enteredWeekFrom?: string; enteredWeekTo?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -34,13 +34,22 @@ export default async function KhoSangPage({
 
   const sp = await searchParams;
   const rootingPlantTypeId = sp.plantTypeId?.trim() || null;
-  // "Tuần nhập lên kho sáng" (input type="week", "YYYY-Www") — lọc thành phẩm Phòng ra rễ theo đúng
-  // Lot.enteredAt (ngày lên kệ kho sáng, xem commitShelfPlacements) trong tuần này. null/không hợp lệ =
-  // không lọc theo tuần.
-  const enteredWeekParam = sp.enteredWeek?.trim() || null;
-  const enteredWeekStart = enteredWeekParam ? isoWeekStringToMonday(enteredWeekParam) : null;
-  const enteredWeekEnd = enteredWeekStart ? addWeeks(enteredWeekStart, 1) : null;
-  const enteredAtFilter = enteredWeekStart && enteredWeekEnd ? { gte: enteredWeekStart, lt: enteredWeekEnd } : undefined;
+  // Khoảng "Tuần nhập lên kho sáng" (input type="week", "YYYY-Www") — lọc thành phẩm Phòng ra rễ theo
+  // đúng Lot.enteredAt (ngày lên kệ kho sáng, xem commitShelfPlacements) từ tuần này ĐẾN tuần kia (2 mốc
+  // độc lập, chỉ nhập 1 trong 2 vẫn lọc được 1 phía). null/không hợp lệ = không lọc theo mốc đó.
+  const enteredWeekFromParam = sp.enteredWeekFrom?.trim() || null;
+  const enteredWeekToParam = sp.enteredWeekTo?.trim() || null;
+  const enteredWeekFromMonday = enteredWeekFromParam ? isoWeekStringToMonday(enteredWeekFromParam) : null;
+  const enteredWeekToMonday = enteredWeekToParam ? isoWeekStringToMonday(enteredWeekToParam) : null;
+  // Mốc "đến" là CUỐI tuần đó — cộng thêm 1 tuần vào Thứ 2 để làm biên trên loại trừ (lt).
+  const enteredWeekToExclusiveEnd = enteredWeekToMonday ? addWeeks(enteredWeekToMonday, 1) : null;
+  const enteredAtFilter =
+    enteredWeekFromMonday || enteredWeekToExclusiveEnd
+      ? {
+          ...(enteredWeekFromMonday ? { gte: enteredWeekFromMonday } : {}),
+          ...(enteredWeekToExclusiveEnd ? { lt: enteredWeekToExclusiveEnd } : {}),
+        }
+      : undefined;
 
   // Nhân viên kỹ thuật chỉ xem được số liệu Phòng mẫu mẹ, không xem được toàn bộ Kho sáng
   // (ẩn Phòng ra rễ — thuộc phạm vi theo dõi của KHO_MO).
@@ -144,19 +153,26 @@ export default async function KhoSangPage({
       })
     : [];
   const raReShelvesByRoom = new Map<string, typeof raReShelves>();
-  let filteredFinishedTotal = 0;
-  let filteredFinishedLotCount = 0;
+  // Tổng hợp theo QUY CÁCH (stageCode, VD T01/T05/T10) — không phân biệt theo giàn kệ, đúng dạng "danh
+  // sách" NV cần khi xem theo khoảng tuần (1 khoảng tuần có thể trải hàng chục giàn, gộp lại mới hữu ích).
+  const finishedByStageCode = new Map<string, { quantity: number; lotCount: number }>();
   for (const shelf of raReShelves) {
     const list = raReShelvesByRoom.get(shelf.roomId!) ?? [];
     list.push(shelf);
     raReShelvesByRoom.set(shelf.roomId!, list);
     for (const lot of shelf.lots) {
-      if (lot.stage === "THANH_PHAM") {
-        filteredFinishedTotal += lot.quantity;
-        filteredFinishedLotCount += 1;
-      }
+      if (lot.stage !== "THANH_PHAM") continue;
+      const entry = finishedByStageCode.get(lot.stageCode) ?? { quantity: 0, lotCount: 0 };
+      entry.quantity += lot.quantity;
+      entry.lotCount += 1;
+      finishedByStageCode.set(lot.stageCode, entry);
     }
   }
+  const finishedByStageCodeRows = Array.from(finishedByStageCode.entries())
+    .map(([stageCode, v]) => ({ stageCode, ...v }))
+    .sort((a, b) => a.stageCode.localeCompare(b.stageCode));
+  const filteredFinishedTotal = finishedByStageCodeRows.reduce((s, r) => s + r.quantity, 0);
+  const filteredFinishedLotCount = finishedByStageCodeRows.reduce((s, r) => s + r.lotCount, 0);
   const hasRootingFilter = !!rootingPlantTypeId || !!enteredAtFilter;
 
   const motherRoomIds = rooms.filter((r) => r.type === "PHONG_MAU_ME").map((r) => r.id);
@@ -192,10 +208,39 @@ export default async function KhoSangPage({
         <div className="space-y-3">
           <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />
           {hasRootingFilter && (
-            <p className="text-sm text-text-secondary">
-              Khớp bộ lọc: <strong className="text-primary-strong">{filteredFinishedTotal.toLocaleString("vi-VN")} cây</strong> thành phẩm
-              {" "}({filteredFinishedLotCount.toLocaleString("vi-VN")} lô)
-            </p>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Tổng hợp theo quy cách</CardTitle>
+                <p className="text-sm text-text-secondary">
+                  Khớp bộ lọc: <strong className="text-primary-strong">{filteredFinishedTotal.toLocaleString("vi-VN")} cây</strong> thành phẩm
+                  {" "}({filteredFinishedLotCount.toLocaleString("vi-VN")} lô, không phân biệt giàn kệ)
+                </p>
+              </CardHeader>
+              <CardContent>
+                {finishedByStageCodeRows.length === 0 ? (
+                  <p className="text-sm text-text-muted">Không có thành phẩm nào khớp bộ lọc</p>
+                ) : (
+                  <table className="w-full text-sm max-w-md">
+                    <thead>
+                      <tr className="bg-primary-light text-left text-primary-strong">
+                        <th className="py-2 px-3 font-bold text-base">Quy cách</th>
+                        <th className="py-2 px-3 font-bold text-base text-right">Số lượng (cây)</th>
+                        <th className="py-2 px-3 font-bold text-base text-right">Số lô</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {finishedByStageCodeRows.map((r) => (
+                        <tr key={r.stageCode} className="border-b last:border-0 even:bg-primary-light/30">
+                          <td className="py-2 px-3"><Badge variant="secondary">{r.stageCode}</Badge></td>
+                          <td className="py-2 px-3 text-right font-medium tabular-nums">{r.quantity.toLocaleString("vi-VN")}</td>
+                          <td className="py-2 px-3 text-right text-text-secondary tabular-nums">{r.lotCount.toLocaleString("vi-VN")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
