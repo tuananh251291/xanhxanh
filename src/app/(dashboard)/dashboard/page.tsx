@@ -763,7 +763,7 @@ function KyThuatDashboard({
         </CardHeader>
         <CardContent className="space-y-3">
           <WeeklyTaskRow
-            href="/mother-ready"
+            href="/instructions"
             icon={ClipboardList}
             title="1. Tạo chỉ định cấy"
             deadline={`Cần hoàn thiện trong ngày Thứ 5 hàng tuần (${format(stats.thursdayDeadline, "dd/MM", { locale: vi })})`}
