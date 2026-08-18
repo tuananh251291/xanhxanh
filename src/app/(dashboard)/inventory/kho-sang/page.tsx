@@ -33,7 +33,11 @@ export default async function KhoSangPage({
   if (!(await isPageAllowed(role, "/inventory/kho-sang"))) redirect("/dashboard");
 
   const sp = await searchParams;
-  const rootingPlantTypeId = sp.plantTypeId?.trim() || null;
+  const rawPlantTypeId = sp.plantTypeId?.trim() || null;
+  // "__ALL__" = mục "Chọn tất cả mã cây" trong RootingPlantSearch — không lọc theo mã cây (giống null)
+  // nhưng vẫn bật bảng tổng hợp chi tiết theo mã cây + quy cách (xem finishedByPlantStageRows dưới).
+  const isAllRooting = rawPlantTypeId === "__ALL__";
+  const rootingPlantTypeId = isAllRooting ? null : rawPlantTypeId;
   // Khoảng "Tuần nhập lên kho sáng" (input type="week", "YYYY-Www") — lọc thành phẩm Phòng ra rễ theo
   // đúng Lot.enteredAt (ngày lên kệ kho sáng, xem commitShelfPlacements) từ tuần này ĐẾN tuần kia (2 mốc
   // độc lập, chỉ nhập 1 trong 2 vẫn lọc được 1 phía). null/không hợp lệ = không lọc theo mốc đó.
@@ -156,21 +160,38 @@ export default async function KhoSangPage({
   // Tổng hợp theo QUY CÁCH (stageCode, VD T01/T05/T10) — không phân biệt theo giàn kệ, đúng dạng "danh
   // sách" NV cần khi xem theo khoảng tuần (1 khoảng tuần có thể trải hàng chục giàn, gộp lại mới hữu ích).
   const finishedByStageCode = new Map<string, { quantity: number; lotCount: number }>();
+  // Tổng hợp theo MÃ CÂY + quy cách — dùng cho box "Tổng hợp cây ra rễ tại kho sáng" khi chọn "Chọn tất
+  // cả mã cây" (isAllRooting), vì lúc đó bảng theo quy cách ở trên gộp lẫn nhiều mã cây khác nhau.
+  const finishedByPlantStage = new Map<string, { plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; lotCount: number }>();
   for (const shelf of raReShelves) {
     const list = raReShelvesByRoom.get(shelf.roomId!) ?? [];
     list.push(shelf);
     raReShelvesByRoom.set(shelf.roomId!, list);
     for (const lot of shelf.lots) {
       if (lot.stage !== "THANH_PHAM") continue;
-      const entry = finishedByStageCode.get(lot.stageCode) ?? { quantity: 0, lotCount: 0 };
-      entry.quantity += lot.quantity;
-      entry.lotCount += 1;
-      finishedByStageCode.set(lot.stageCode, entry);
+      const stageEntry = finishedByStageCode.get(lot.stageCode) ?? { quantity: 0, lotCount: 0 };
+      stageEntry.quantity += lot.quantity;
+      stageEntry.lotCount += 1;
+      finishedByStageCode.set(lot.stageCode, stageEntry);
+
+      const plantKey = `${lot.plantTypeId}|${lot.stageCode}`;
+      const plantEntry = finishedByPlantStage.get(plantKey) ?? {
+        plantTypeCode: lot.plantType.code,
+        plantTypeName: lot.plantType.name,
+        stageCode: lot.stageCode,
+        quantity: 0,
+        lotCount: 0,
+      };
+      plantEntry.quantity += lot.quantity;
+      plantEntry.lotCount += 1;
+      finishedByPlantStage.set(plantKey, plantEntry);
     }
   }
   const finishedByStageCodeRows = Array.from(finishedByStageCode.entries())
     .map(([stageCode, v]) => ({ stageCode, ...v }))
     .sort((a, b) => a.stageCode.localeCompare(b.stageCode));
+  const finishedByPlantStageRows = Array.from(finishedByPlantStage.values())
+    .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode) || a.stageCode.localeCompare(b.stageCode));
   const filteredFinishedTotal = finishedByStageCodeRows.reduce((s, r) => s + r.quantity, 0);
   const filteredFinishedLotCount = finishedByStageCodeRows.reduce((s, r) => s + r.lotCount, 0);
   const hasRootingFilter = !!rootingPlantTypeId || !!enteredAtFilter;
@@ -207,7 +228,7 @@ export default async function KhoSangPage({
       {!onlyMotherRoom && (
         <div className="space-y-3">
           <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />
-          {hasRootingFilter && (
+          {!isAllRooting && hasRootingFilter && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Tổng hợp theo quy cách</CardTitle>
@@ -238,6 +259,47 @@ export default async function KhoSangPage({
                       ))}
                     </tbody>
                   </table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          {isAllRooting && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Tổng hợp cây ra rễ tại kho sáng</CardTitle>
+                <p className="text-sm text-text-secondary">
+                  Tổng: <strong className="text-primary-strong">{filteredFinishedTotal.toLocaleString("vi-VN")} cây</strong> thành phẩm
+                  {" "}({filteredFinishedLotCount.toLocaleString("vi-VN")} lô, không phân biệt giàn kệ)
+                </p>
+              </CardHeader>
+              <CardContent>
+                {finishedByPlantStageRows.length === 0 ? (
+                  <p className="text-sm text-text-muted">Chưa có thành phẩm nào trong Phòng ra rễ</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-primary-light text-left text-primary-strong">
+                          <th className="py-2 px-3 font-bold text-base">Mã cây</th>
+                          <th className="py-2 px-3 font-bold text-base">Tên cây</th>
+                          <th className="py-2 px-3 font-bold text-base">Quy cách</th>
+                          <th className="py-2 px-3 font-bold text-base text-right">Số lượng (cây)</th>
+                          <th className="py-2 px-3 font-bold text-base text-right">Số lô</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finishedByPlantStageRows.map((r) => (
+                          <tr key={`${r.plantTypeCode}|${r.stageCode}`} className="border-b last:border-0 even:bg-primary-light/30">
+                            <td className="py-2 px-3 font-mono">{r.plantTypeCode}</td>
+                            <td className="py-2 px-3">{r.plantTypeName}</td>
+                            <td className="py-2 px-3"><Badge variant="secondary">{r.stageCode}</Badge></td>
+                            <td className="py-2 px-3 text-right font-medium tabular-nums">{r.quantity.toLocaleString("vi-VN")}</td>
+                            <td className="py-2 px-3 text-right text-text-secondary tabular-nums">{r.lotCount.toLocaleString("vi-VN")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </CardContent>
             </Card>

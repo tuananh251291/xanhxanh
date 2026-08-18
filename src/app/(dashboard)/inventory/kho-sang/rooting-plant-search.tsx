@@ -18,6 +18,10 @@ import {
 
 type Option = { value: string; label: string };
 
+// Mục đặc biệt "Chọn tất cả" — chọn mục này để xem bảng tổng hợp toàn bộ thành phẩm Phòng ra rễ theo mã
+// cây + quy cách (xem box "Tổng hợp cây ra rễ tại kho sáng" ở page.tsx), thay vì lọc còn 1 mã cây.
+const ALL_OPTION: Option = { value: "__ALL__", label: "— Chọn tất cả —" };
+
 // Bộ lọc Phòng ra rễ — mã cây (gõ tự gợi ý) + khoảng tuần nhập lên kho sáng (2 ô input type="week",
 // "YYYY-Www", độc lập nhau — chỉ nhập 1 trong 2 vẫn lọc được 1 phía) — lọc lại các thẻ giàn kệ + bảng
 // tổng hợp theo quy cách (xem page.tsx). Lưu vào URL (?plantTypeId=, ?enteredWeekFrom=, ?enteredWeekTo=)
@@ -26,7 +30,8 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentPlantTypeId = searchParams.get("plantTypeId");
-  const selected = plantTypeOptions.find((o) => o.value === currentPlantTypeId) ?? null;
+  const comboboxItems = [ALL_OPTION, ...plantTypeOptions];
+  const selected = comboboxItems.find((o) => o.value === currentPlantTypeId) ?? null;
   const currentEnteredWeekFrom = searchParams.get("enteredWeekFrom") ?? "";
   const currentEnteredWeekTo = searchParams.get("enteredWeekTo") ?? "";
 
@@ -44,7 +49,7 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
       <div className="space-y-1 w-64">
         <Label className="text-xs">Tìm theo mã cây (Phòng ra rễ)</Label>
         <Combobox
-          items={plantTypeOptions}
+          items={comboboxItems}
           value={selected}
           isItemEqualToValue={(a: Option, b: Option) => a.value === b.value}
           onValueChange={(v) => setParam("plantTypeId", (v as Option | null)?.value ?? null)}
