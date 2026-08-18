@@ -8,7 +8,6 @@ import { TrendingUp, Sprout, Flower2, ShieldAlert, AlertTriangle, Trophy, Clipbo
 import RatioTrendSection from "./ratio-trend-section";
 import StaffRankingSection from "./staff-ranking-section";
 import MotherContaminationReport from "../mother-contamination-report";
-import ContaminationBreakdownSection from "./contamination-breakdown-section";
 import InstructionProgressSection from "./instruction-progress-section";
 import SurplusMotherReturnedSection from "./surplus-mother-returned-section";
 import DarkRoomContaminationByInstructionSection from "./dark-room-contamination-by-instruction-section";
@@ -134,9 +133,6 @@ export default async function ReportsOverviewPage() {
       </CollapsibleSection>
       <CollapsibleSection title="Tỉ lệ nhiễm mẫu mẹ bàn giao" icon={<Leaf className="w-4 h-4 shrink-0" />}>
         <MotherContaminationReport />
-      </CollapsibleSection>
-      <CollapsibleSection title="Tỉ lệ nhiễm" icon={<ShieldAlert className="w-4 h-4 shrink-0" />}>
-        <ContaminationBreakdownSection />
       </CollapsibleSection>
       <CollapsibleSection title="Tiến độ chỉ định cấy" icon={<ClipboardList className="w-4 h-4 shrink-0" />}>
         <InstructionProgressSection />
