@@ -1563,6 +1563,13 @@ enum WorkSession {
   CHIEU
 }
 
+// Lý do đăng ký làm thêm ngoài giờ (chỉ áp dụng OVERTIME) — bắt buộc chọn 1 trong 2, KHO_MO xem thông tin
+// này để quyết định duyệt hay không (VD ưu tiên duyệt nếu là để hoàn thành chỉ định chính đúng hạn).
+enum ExtraWorkPurpose {
+  COMPLETE_MAIN_INSTRUCTION
+  INCREASE_OUTPUT
+}
+
 enum ExtraWorkRequestStatus {
   PENDING
   APPROVED // EARLY_COMPLETION dùng chung giá trị này cho hành động "Xác nhận"
@@ -1584,6 +1591,8 @@ model ExtraWorkRequest {
 
   // Chỉ dùng cho OVERTIME — nhiều dòng ngày/giờ trong 1 lần đăng ký, xem ExtraWorkSlot.
   slots ExtraWorkSlot[]
+  // Chỉ dùng cho OVERTIME — bắt buộc chọn lúc gửi đăng ký (xem ExtraWorkPurpose).
+  purpose ExtraWorkPurpose?
 
   status        ExtraWorkRequestStatus @default(PENDING)
   respondedById String?

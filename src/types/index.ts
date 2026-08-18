@@ -277,6 +277,11 @@ export const EXTRA_WORK_REQUEST_STATUS_LABELS = {
   REJECTED: "Từ chối",
 } as const;
 
+export const EXTRA_WORK_PURPOSE_LABELS = {
+  COMPLETE_MAIN_INSTRUCTION: "Để hoàn thành chỉ định cấy chính được giao trong tuần",
+  INCREASE_OUTPUT: "Để gia tăng sản lượng",
+} as const;
+
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).
 export const CONTAMINATION_PROPOSAL_TYPE_LABELS = {
   TRONG: "Trồng lại",
@@ -369,7 +374,6 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/instructions/backup", label: "Chỉ định cấy dự phòng", icon: "ShieldPlus" },
     { href: "/repack-instructions", label: "Chỉ định cấy xử lý", icon: "RefreshCw" },
     { href: "/inventory/kho-sang", label: "Phòng mẫu mẹ", icon: "Sun" },
-    { href: "/mother-ready", label: "Mẫu mẹ đạt chưa chỉ định", icon: "Sprout" },
     { href: "/planting-check", label: "Kiểm tra tình trạng cấy", icon: "ClipboardCheck" },
     { href: "/mother-photo-update", label: "Cập nhật hình ảnh định kì", icon: "Camera" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },

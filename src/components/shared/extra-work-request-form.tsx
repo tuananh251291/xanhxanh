@@ -12,10 +12,11 @@ import { Plus, X, Loader2, Send, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays, endOfWeek, startOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
-import { EXTRA_WORK_REQUEST_STATUS_LABELS, WORK_SESSION_LABELS } from "@/types";
+import { EXTRA_WORK_REQUEST_STATUS_LABELS, WORK_SESSION_LABELS, EXTRA_WORK_PURPOSE_LABELS } from "@/types";
 
 type RequestType = "EARLY_COMPLETION" | "OVERTIME";
 type OvertimeSlot = { date: string; startTime: string; endTime: string };
+type OvertimePurpose = "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT";
 
 type RequestHistoryItem = {
   id: string;
@@ -26,6 +27,7 @@ type RequestHistoryItem = {
   expectedEndDate: string | null;
   expectedEndSession: "SANG" | "CHIEU" | null;
   slots: { date: string; startTime: string; endTime: string }[];
+  purpose: OvertimePurpose | null;
 };
 
 const STATUS_BADGE_VARIANT = {
@@ -44,6 +46,7 @@ export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeade
   const [expectedEndDate, setExpectedEndDate] = useState("");
   const [expectedEndSession, setExpectedEndSession] = useState<"SANG" | "CHIEU">("SANG");
   const [slots, setSlots] = useState<OvertimeSlot[]>([emptySlot()]);
+  const [overtimePurpose, setOvertimePurpose] = useState<OvertimePurpose | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [history, setHistory] = useState<RequestHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -89,6 +92,7 @@ export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeade
   };
 
   const submitOvertime = async () => {
+    if (!overtimePurpose) { toast.error("Chọn lý do đăng ký làm thêm"); return; }
     for (const s of slots) {
       if (!s.date || !s.startTime || !s.endTime) { toast.error("Điền đủ ngày, giờ bắt đầu và giờ kết thúc cho mọi dòng"); return; }
       if (s.date < tomorrowStr || s.date > weekEndStr) { toast.error(`Ngày ${s.date} ngoài phạm vi cho phép`); return; }
@@ -99,13 +103,14 @@ export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeade
       const res = await fetch("/api/extra-work-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "OVERTIME", slots }),
+        body: JSON.stringify({ type: "OVERTIME", slots, purpose: overtimePurpose }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã gửi đăng ký làm thêm ngoài giờ cho Kho mô");
       setSelected(null);
       setSlots([emptySlot()]);
+      setOvertimePurpose(null);
       loadHistory();
     } finally {
       setSubmitting(false);
@@ -182,6 +187,27 @@ export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeade
             <p className="text-xs text-text-secondary">
               Chỉ được chọn từ {format(addDays(today, 1), "dd/MM", { locale: vi })} đến hết Chủ nhật ({format(endOfWeek(today, { weekStartsOn: 1 }), "dd/MM", { locale: vi })}).
             </p>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Lý do đăng ký (chọn 1 trong 2 — Kho mô xem thông tin này để quyết định duyệt)</Label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={overtimePurpose === "COMPLETE_MAIN_INSTRUCTION"}
+                  disabled={overtimePurpose === "INCREASE_OUTPUT"}
+                  onCheckedChange={(checked) => setOvertimePurpose(checked ? "COMPLETE_MAIN_INSTRUCTION" : null)}
+                />
+                <span className="text-sm">Đăng ký làm thêm để hoàn thành chỉ định cấy chính được giao trong tuần</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={overtimePurpose === "INCREASE_OUTPUT"}
+                  disabled={overtimePurpose === "COMPLETE_MAIN_INSTRUCTION"}
+                  onCheckedChange={(checked) => setOvertimePurpose(checked ? "INCREASE_OUTPUT" : null)}
+                />
+                <span className="text-sm">Đăng ký làm thêm để gia tăng sản lượng</span>
+              </label>
+            </div>
+
             <div className="space-y-2">
               {slots.map((slot, idx) => (
                 <div key={idx} className="flex flex-wrap items-end gap-2">
@@ -238,6 +264,9 @@ export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeade
                         ? `${h.instruction?.code ?? "—"} — dự kiến ${h.expectedEndSession ? WORK_SESSION_LABELS[h.expectedEndSession].toLowerCase() : ""} ${h.expectedEndDate ? format(new Date(h.expectedEndDate), "dd/MM/yyyy", { locale: vi }) : ""}`
                         : h.slots.map((s) => `${format(new Date(s.date), "dd/MM", { locale: vi })} (${s.startTime}-${s.endTime})`).join(", ")}
                     </p>
+                    {h.type === "OVERTIME" && h.purpose && (
+                      <p className="text-xs text-text-muted">{EXTRA_WORK_PURPOSE_LABELS[h.purpose]}</p>
+                    )}
                   </div>
                   <Badge variant={STATUS_BADGE_VARIANT[h.status]} className="shrink-0">{EXTRA_WORK_REQUEST_STATUS_LABELS[h.status]}</Badge>
                 </div>

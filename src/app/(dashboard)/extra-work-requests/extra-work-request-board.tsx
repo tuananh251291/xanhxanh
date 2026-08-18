@@ -8,7 +8,7 @@ import { Loader2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { EXTRA_WORK_REQUEST_STATUS_LABELS, WORK_SESSION_LABELS } from "@/types";
+import { EXTRA_WORK_REQUEST_STATUS_LABELS, WORK_SESSION_LABELS, EXTRA_WORK_PURPOSE_LABELS } from "@/types";
 
 type Request = {
   id: string;
@@ -21,6 +21,7 @@ type Request = {
   expectedEndSession: "SANG" | "CHIEU" | null;
   respondedBy: { name: string } | null;
   slots: { date: string; startTime: string; endTime: string }[];
+  purpose: "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT" | null;
 };
 
 const STATUS_BADGE_VARIANT = {
@@ -105,6 +106,9 @@ export default function ExtraWorkRequestBoard() {
                       </>
                     ) : (
                       <div className="space-y-0.5">
+                        {r.purpose && (
+                          <p className="font-medium text-foreground">{EXTRA_WORK_PURPOSE_LABELS[r.purpose]}</p>
+                        )}
                         {r.slots.map((s, i) => (
                           <div key={i}>{format(new Date(s.date), "EEEE dd/MM", { locale: vi })}: {s.startTime} - {s.endTime}</div>
                         ))}

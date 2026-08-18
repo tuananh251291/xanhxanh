@@ -24,6 +24,8 @@ const createSchema = z.discriminatedUnion("type", [
         })
       )
       .min(1, "Cần ít nhất 1 ngày đăng ký"),
+    // Bắt buộc chọn 1 trong 2 lý do — KHO_MO xem để quyết định duyệt hay không (xem ExtraWorkPurpose).
+    purpose: z.enum(["COMPLETE_MAIN_INSTRUCTION", "INCREASE_OUTPUT"], { message: "Chọn lý do đăng ký làm thêm" }),
   }),
 ]);
 
@@ -187,15 +189,20 @@ export async function POST(req: NextRequest) {
     data: {
       type: "OVERTIME",
       staffId,
+      purpose: parsed.data.purpose,
       slots: { create: parsedSlots.map((s) => ({ date: s.dateObj, startTime: s.startTime, endTime: s.endTime })) },
     },
     include,
   });
 
+  const purposeLabel =
+    parsed.data.purpose === "COMPLETE_MAIN_INSTRUCTION"
+      ? "để hoàn thành chỉ định cấy chính được giao trong tuần"
+      : "để gia tăng sản lượng";
   await createAlert({
     type: "EXTRA_WORK_REQUEST",
     title: "NV cấy mô đăng ký làm thêm ngoài giờ",
-    message: `${session.user.name} đăng ký làm thêm ${parsedSlots.length} ngày trong tuần này — vào Đăng ký cấy thêm để xem chi tiết và duyệt`,
+    message: `${session.user.name} đăng ký làm thêm ${parsedSlots.length} ngày trong tuần này (${purposeLabel}) — vào Đăng ký cấy thêm để xem chi tiết và duyệt`,
     targetRole: "KHO_MO",
     relatedId: request.id,
     relatedType: "ExtraWorkRequest",
