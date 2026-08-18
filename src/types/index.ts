@@ -393,8 +393,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/instructions", label: "Chỉ định cấy chưa bàn giao", icon: "ClipboardList" },
-    { href: "/instruction-quantity-edit", label: "Sửa SL chỉ định cấy", icon: "PenLine" },
+    { href: "/instruction-quantity-edit", label: "Chỉ định cấy", icon: "ClipboardList" },
     { href: "/repack-instructions", label: "Chỉ định cấy xử lý", icon: "RefreshCw" },
     { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
@@ -402,7 +401,6 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/mother-shelf-assign", label: "Gán mã cây & NV mẫu mẹ", icon: "Users" },
     { href: "/mother-stock-reshelf", label: "Sắp xếp kho mẫu mẹ", icon: "ArrowLeftRight" },
-    { href: "/mother-warehouse-transfer", label: "Luân chuyển mẫu mẹ", icon: "Truck" },
     { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
