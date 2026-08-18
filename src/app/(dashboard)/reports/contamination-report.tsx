@@ -15,67 +15,52 @@ const STATUS_COLOR_THRESHOLDS = [
   { min: 0, color: "#0ca30c" }, // good
 ];
 
+// Nguồn dữ liệu: DailyRecord.motherChecked/motherContaminatedM05 — 2 số NV cấy mô tự nhập tay MỖI NGÀY
+// lúc kiểm tra mẫu mẹ (tỉ lệ = nhiễm/đã kiểm tra), CÙNG nguồn với "Tỉ lệ nhiễm mẫu mẹ bàn giao" (xem
+// mother-contamination-report.tsx). KHÔNG dùng ContaminationRecord (model đó theo dõi nhiễm phát hiện
+// SAU trên kệ Kho sáng, cấp Lot, không liên quan tới nhịp kiểm tra hàng ngày — hiện chưa NV nào dùng
+// luồng "Lọc nhiễm" tạo ra bản ghi này nên trước đây tính ra 0% vĩnh viễn dù ĐÃ có dữ liệu nhiễm thật).
 export default async function ContaminationReport() {
   const buckets = getWeekBuckets(HISTORY_WEEKS);
 
-  const [producedItems, contamRecords] = await Promise.all([
-    prisma.dailyRecordItem.findMany({
-      where: { stage: "MAU_ME", dailyRecord: { recordDate: { gte: buckets[0].start } } },
-      select: { quantityCreated: true, dailyRecord: { select: { recordDate: true, instruction: { select: { assignedToId: true } } } } },
-    }),
-    prisma.contaminationRecord.findMany({
-      where: { recordDate: { gte: buckets[0].start } },
-      select: {
-        quantity: true,
-        recordDate: true,
-        lot: { select: { instruction: { select: { assignedToId: true, assignedTo: { select: { name: true } } } } } },
-      },
-    }),
-  ]);
+  const dailyRecords = await prisma.dailyRecord.findMany({
+    where: { recordDate: { gte: buckets[0].start } },
+    select: { recordDate: true, staffId: true, motherChecked: true, motherContaminatedM05: true },
+  });
 
   // Xu hướng toàn hệ thống theo tuần
-  const producedByWeek = buckets.map(() => 0);
-  for (const item of producedItems) {
-    const idx = bucketIndexForDate(buckets, item.dailyRecord.recordDate);
-    if (idx !== -1) producedByWeek[idx] += item.quantityCreated;
-  }
+  const checkedByWeek = buckets.map(() => 0);
   const contamByWeek = buckets.map(() => 0);
-  for (const rec of contamRecords) {
-    const idx = bucketIndexForDate(buckets, rec.recordDate);
-    if (idx !== -1) contamByWeek[idx] += rec.quantity;
+  for (const r of dailyRecords) {
+    const idx = bucketIndexForDate(buckets, r.recordDate);
+    if (idx === -1) continue;
+    checkedByWeek[idx] += r.motherChecked;
+    contamByWeek[idx] += r.motherContaminatedM05;
   }
   const trendData = buckets.map((b, i) => ({
     Tuần: b.label,
-    "Tỉ lệ nhiễm": producedByWeek[i] > 0 ? Math.round((contamByWeek[i] / producedByWeek[i]) * 1000) / 10 : 0,
+    "Tỉ lệ nhiễm": checkedByWeek[i] > 0 ? Math.round((contamByWeek[i] / checkedByWeek[i]) * 1000) / 10 : 0,
   }));
 
   // Theo nhân viên cấy mô
-  const producedByStaff = new Map<string, { name: string; produced: number; contaminated: number }>();
-  for (const item of producedItems) {
-    const staffId = item.dailyRecord.instruction?.assignedToId;
-    if (!staffId) continue;
-    if (!producedByStaff.has(staffId)) producedByStaff.set(staffId, { name: "", produced: 0, contaminated: 0 });
-    producedByStaff.get(staffId)!.produced += item.quantityCreated;
+  const byStaff = new Map<string, { name: string; checked: number; contaminated: number }>();
+  for (const r of dailyRecords) {
+    if (!byStaff.has(r.staffId)) byStaff.set(r.staffId, { name: "", checked: 0, contaminated: 0 });
+    const entry = byStaff.get(r.staffId)!;
+    entry.checked += r.motherChecked;
+    entry.contaminated += r.motherContaminatedM05;
   }
-  for (const rec of contamRecords) {
-    const staffId = rec.lot.instruction?.assignedToId;
-    if (!staffId) continue;
-    if (!producedByStaff.has(staffId)) producedByStaff.set(staffId, { name: "", produced: 0, contaminated: 0 });
-    const entry = producedByStaff.get(staffId)!;
-    entry.contaminated += rec.quantity;
-    entry.name = rec.lot.instruction?.assignedTo?.name ?? entry.name;
-  }
-  const staffUsers = await prisma.user.findMany({ where: { id: { in: Array.from(producedByStaff.keys()) } }, select: { id: true, name: true } });
+  const staffUsers = await prisma.user.findMany({ where: { id: { in: Array.from(byStaff.keys()) } }, select: { id: true, name: true } });
   for (const u of staffUsers) {
-    const entry = producedByStaff.get(u.id);
-    if (entry && !entry.name) entry.name = u.name;
+    const entry = byStaff.get(u.id);
+    if (entry) entry.name = u.name;
   }
 
-  const staffData = Array.from(producedByStaff.values())
-    .filter((e) => e.produced > 0)
+  const staffData = Array.from(byStaff.values())
+    .filter((e) => e.checked > 0)
     .map((e) => ({
       "Nhân viên": e.name,
-      "Tỉ lệ nhiễm": Math.round((e.contaminated / e.produced) * 1000) / 10,
+      "Tỉ lệ nhiễm": Math.round((e.contaminated / e.checked) * 1000) / 10,
     }));
 
   return (

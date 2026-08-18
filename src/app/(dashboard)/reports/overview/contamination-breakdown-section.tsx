@@ -11,77 +11,56 @@ const STATUS_COLOR_THRESHOLDS = [
 ];
 const PLANT_TYPE_CHART_LIMIT = 15;
 
-// 2 biểu đồ tỉ lệ nhiễm — theo NV cấy mô (cùng cách tính với /reports tab "Tỉ lệ nhiễm", xem
-// contamination-report.tsx, lặp lại truy vấn ở đây để trang tổng quan này độc lập, không phải chờ tab
-// kia render) và theo mã cây (mới, giúp phát hiện giống cây nào đang nhiễm bất thường bất kể NV nào cấy).
+// 2 biểu đồ tỉ lệ nhiễm — theo NV cấy mô và theo mã cây (giúp phát hiện giống cây nào đang nhiễm bất
+// thường bất kể NV nào cấy). Nguồn dữ liệu: DailyRecord.motherChecked/motherContaminatedM05 — 2 số NV
+// cấy mô tự nhập tay MỖI NGÀY lúc kiểm tra mẫu mẹ (tỉ lệ = nhiễm/đã kiểm tra), CÙNG nguồn với "Tỉ lệ
+// nhiễm mẫu mẹ bàn giao" (xem mother-contamination-report.tsx). KHÔNG dùng ContaminationRecord (model
+// đó theo dõi nhiễm phát hiện SAU trên kệ Kho sáng, cấp Lot, không liên quan tới nhịp kiểm tra hàng ngày
+// của NV cấy mô — hiện chưa NV nào dùng luồng "Lọc nhiễm" tạo ra bản ghi này nên trước đây tính ra 0%
+// vĩnh viễn dù ĐÃ có dữ liệu nhiễm thật ở DailyRecord).
 export default async function ContaminationBreakdownSection() {
   const buckets = getWeekBuckets(HISTORY_WEEKS);
 
-  const [producedItems, contamRecords] = await Promise.all([
-    prisma.dailyRecordItem.findMany({
-      where: { stage: "MAU_ME", dailyRecord: { recordDate: { gte: buckets[0].start } } },
-      select: {
-        quantityCreated: true,
-        lot: { select: { plantType: { select: { code: true } } } },
-        dailyRecord: { select: { instruction: { select: { assignedToId: true } } } },
-      },
-    }),
-    prisma.contaminationRecord.findMany({
-      where: { recordDate: { gte: buckets[0].start } },
-      select: {
-        quantity: true,
-        lot: {
-          select: {
-            plantType: { select: { code: true } },
-            instruction: { select: { assignedToId: true, assignedTo: { select: { name: true } } } },
-          },
-        },
-      },
-    }),
-  ]);
+  const dailyRecords = await prisma.dailyRecord.findMany({
+    where: { recordDate: { gte: buckets[0].start } },
+    select: {
+      staffId: true,
+      motherChecked: true,
+      motherContaminatedM05: true,
+      instruction: { select: { plantType: { select: { code: true } } } },
+    },
+  });
 
   // Theo NV cấy mô
-  const byStaff = new Map<string, { name: string; produced: number; contaminated: number }>();
-  for (const item of producedItems) {
-    const staffId = item.dailyRecord.instruction?.assignedToId;
-    if (!staffId) continue;
-    if (!byStaff.has(staffId)) byStaff.set(staffId, { name: "", produced: 0, contaminated: 0 });
-    byStaff.get(staffId)!.produced += item.quantityCreated;
-  }
-  for (const rec of contamRecords) {
-    const staffId = rec.lot.instruction?.assignedToId;
-    if (!staffId) continue;
-    if (!byStaff.has(staffId)) byStaff.set(staffId, { name: "", produced: 0, contaminated: 0 });
-    const entry = byStaff.get(staffId)!;
-    entry.contaminated += rec.quantity;
-    entry.name = rec.lot.instruction?.assignedTo?.name ?? entry.name;
+  const byStaff = new Map<string, { name: string; checked: number; contaminated: number }>();
+  for (const r of dailyRecords) {
+    if (!byStaff.has(r.staffId)) byStaff.set(r.staffId, { name: "", checked: 0, contaminated: 0 });
+    const entry = byStaff.get(r.staffId)!;
+    entry.checked += r.motherChecked;
+    entry.contaminated += r.motherContaminatedM05;
   }
   const staffUsers = await prisma.user.findMany({ where: { id: { in: Array.from(byStaff.keys()) } }, select: { id: true, name: true } });
   for (const u of staffUsers) {
     const entry = byStaff.get(u.id);
-    if (entry && !entry.name) entry.name = u.name;
+    if (entry) entry.name = u.name;
   }
   const staffData = Array.from(byStaff.values())
-    .filter((e) => e.produced > 0)
-    .map((e) => ({ "Nhân viên": e.name, "Tỉ lệ nhiễm": Math.round((e.contaminated / e.produced) * 1000) / 10 }))
+    .filter((e) => e.checked > 0)
+    .map((e) => ({ "Nhân viên": e.name, "Tỉ lệ nhiễm": Math.round((e.contaminated / e.checked) * 1000) / 10 }))
     .sort((a, b) => b["Tỉ lệ nhiễm"] - a["Tỉ lệ nhiễm"]);
 
   // Theo mã cây
-  const byPlantType = new Map<string, { produced: number; contaminated: number }>();
-  for (const item of producedItems) {
-    const code = item.lot.plantType.code;
-    if (!byPlantType.has(code)) byPlantType.set(code, { produced: 0, contaminated: 0 });
-    byPlantType.get(code)!.produced += item.quantityCreated;
-  }
-  for (const rec of contamRecords) {
-    const code = rec.lot.plantType?.code;
-    if (!code) continue;
-    if (!byPlantType.has(code)) byPlantType.set(code, { produced: 0, contaminated: 0 });
-    byPlantType.get(code)!.contaminated += rec.quantity;
+  const byPlantType = new Map<string, { checked: number; contaminated: number }>();
+  for (const r of dailyRecords) {
+    const code = r.instruction.plantType.code;
+    if (!byPlantType.has(code)) byPlantType.set(code, { checked: 0, contaminated: 0 });
+    const entry = byPlantType.get(code)!;
+    entry.checked += r.motherChecked;
+    entry.contaminated += r.motherContaminatedM05;
   }
   const plantTypeData = Array.from(byPlantType.entries())
-    .filter(([, v]) => v.produced > 0)
-    .map(([code, v]) => ({ "Mã cây": code, "Tỉ lệ nhiễm": Math.round((v.contaminated / v.produced) * 1000) / 10 }))
+    .filter(([, v]) => v.checked > 0)
+    .map(([code, v]) => ({ "Mã cây": code, "Tỉ lệ nhiễm": Math.round((v.contaminated / v.checked) * 1000) / 10 }))
     .sort((a, b) => b["Tỉ lệ nhiễm"] - a["Tỉ lệ nhiễm"])
     .slice(0, PLANT_TYPE_CHART_LIMIT);
 
