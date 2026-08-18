@@ -405,6 +405,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/reports/mother-contamination", label: "Báo cáo tỉ lệ nhiễm", icon: "Leaf" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

@@ -12,9 +12,13 @@ import { startOfDay, endOfDay, subDays, parseISO, isValid } from "date-fns";
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  // Báo cáo này được nhúng ở cả tab "Tỉ lệ nhiễm" của Admin (/reports) lẫn "Thống kê trực quan" của
-  // KY_THUAT (/reports/overview) — cho phép nếu 1 trong 2 trang đó bật với vai trò đang gọi.
-  const allowed = (await isPageAllowed(role, "/reports")) || (await isPageAllowed(role, "/reports/overview"));
+  // Báo cáo này được nhúng ở tab "Tỉ lệ nhiễm" của Admin (/reports), "Thống kê trực quan" của KY_THUAT
+  // (/reports/overview), và trang riêng của KHO_MO (/reports/mother-contamination) — cho phép nếu 1
+  // trong 3 trang đó bật với vai trò đang gọi.
+  const allowed =
+    (await isPageAllowed(role, "/reports")) ||
+    (await isPageAllowed(role, "/reports/overview")) ||
+    (await isPageAllowed(role, "/reports/mother-contamination"));
   if (!allowed) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
