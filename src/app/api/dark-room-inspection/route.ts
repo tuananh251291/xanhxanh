@@ -6,14 +6,19 @@ import { z } from "zod";
 
 const schema = z.object({
   checklistItemId: z.string().min(1),
-  staffId: z.string().min(1),
+  // Tuỳ chọn — để trống khi KHO_MO không chọn đích danh NV nào (VD hôm nay không phát hiện vi phạm nào,
+  // hoặc không còn NV cấy mô nào để chọn) vẫn được phép hoàn thành nhiệm vụ nhỏ này, chỉ là không có bản
+  // ghi kiểm tra gắn với 1 NV cụ thể.
+  staffId: z.string().min(1).optional(),
   violationTypeIds: z.array(z.string().min(1)),
 });
 
 // NV kho mô "Hoàn tất kiểm tra" 1 lượt trong nhiệm vụ nhỏ "Kiểm tra kho cá nhân" (thuộc checklist "Kiểm
-// tra kho tối") — chọn 1 NV cấy mô + 0 hoặc nhiều lỗi vi phạm tìm thấy. Bật subTask1Done ngay khi có
-// lượt đầu tiên trong ngày (không bắt buộc đi hết mọi NV cấy mô — xem ChecklistItem.subTask1Done),
-// completed suy ra từ cả 2 nhiệm vụ nhỏ. Nếu có vi phạm, báo cho đúng NV cấy mô đó.
+// tra kho tối") — chọn 0 hoặc 1 NV cấy mô + 0 hoặc nhiều lỗi vi phạm tìm thấy (không chọn NV thì không
+// được kèm lỗi vi phạm, vì không có ai để gắn lỗi vào). Bật subTask1Done ngay khi có lượt đầu tiên trong
+// ngày (không bắt buộc đi hết mọi NV cấy mô, cũng không bắt buộc phải chọn NV — xem
+// ChecklistItem.subTask1Done), completed suy ra từ cả 2 nhiệm vụ nhỏ. Nếu có vi phạm, báo cho đúng NV
+// cấy mô đó.
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,6 +28,10 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   const { checklistItemId, staffId, violationTypeIds } = parsed.data;
 
+  if (!staffId && violationTypeIds.length > 0) {
+    return NextResponse.json({ message: "Phải chọn NV cấy mô mới ghi nhận được lỗi vi phạm" }, { status: 400 });
+  }
+
   const item = await prisma.checklistItem.findUnique({ where: { id: checklistItemId } });
   if (!item) return NextResponse.json({ message: "Không tìm thấy đầu việc" }, { status: 404 });
   if (item.userId !== session.user.id) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -30,9 +39,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Đầu việc này không có nhiệm vụ Kiểm tra kho cá nhân" }, { status: 400 });
   }
 
-  const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { id: true, role: true } });
-  if (!staff || staff.role !== "CAY_MO") {
-    return NextResponse.json({ message: "Không tìm thấy NV cấy mô" }, { status: 400 });
+  if (staffId) {
+    const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { id: true, role: true } });
+    if (!staff || staff.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Không tìm thấy NV cấy mô" }, { status: 400 });
+    }
   }
 
   if (violationTypeIds.length > 0) {
@@ -43,24 +54,35 @@ export async function POST(req: NextRequest) {
   }
 
   const nowCompleted = item.subTask2Done; // subTask1 vừa bật = true, completed = subTask1 && subTask2
-  const checkCreate = prisma.darkRoomInspectionCheck.create({
-    data: {
-      checklistItemId,
-      staffId,
-      checkedById: session.user.id,
-      violations: { create: violationTypeIds.map((violationTypeId) => ({ violationTypeId })) },
-    },
-  });
   const itemUpdate = prisma.checklistItem.update({
     where: { id: checklistItemId },
     data: { subTask1Done: true, completed: nowCompleted, completedAt: nowCompleted ? new Date() : null },
   });
-  const [check] =
-    nowCompleted !== item.completed
+  const shouldLogTransition = nowCompleted !== item.completed;
+
+  // Chỉ tạo bản ghi "đã kiểm tra ai" khi có chọn đích danh NV — không có NV thì không có gì để ghi (chỉ
+  // cần bật subTask1Done).
+  let check: { id: string } | null = null;
+  if (staffId) {
+    const checkCreate = prisma.darkRoomInspectionCheck.create({
+      data: {
+        checklistItemId,
+        staffId,
+        checkedById: session.user.id,
+        violations: { create: violationTypeIds.map((violationTypeId) => ({ violationTypeId })) },
+      },
+    });
+    const results = shouldLogTransition
       ? await prisma.$transaction([checkCreate, itemUpdate, prisma.checklistItemLog.create({ data: { itemId: checklistItemId, completed: nowCompleted } })])
       : await prisma.$transaction([checkCreate, itemUpdate]);
+    check = results[0];
+  } else if (shouldLogTransition) {
+    await prisma.$transaction([itemUpdate, prisma.checklistItemLog.create({ data: { itemId: checklistItemId, completed: nowCompleted } })]);
+  } else {
+    await itemUpdate;
+  }
 
-  if (violationTypeIds.length > 0) {
+  if (staffId && violationTypeIds.length > 0 && check) {
     try {
       const types = await prisma.violationType.findMany({ where: { id: { in: violationTypeIds } }, select: { label: true } });
       await createAlert({
@@ -76,5 +98,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json(check, { status: 201 });
+  return NextResponse.json({ id: check?.id ?? null }, { status: 201 });
 }

@@ -88,7 +88,7 @@ export default function DarkRoomCheckBoard() {
             {item.subTask1Done ? <CheckCircle2 className="w-5 h-5 text-success-foreground shrink-0" /> : <div className="w-5 h-5 shrink-0 rounded-full border-2 border-divider" />}
             <div>
               <p className="font-medium text-foreground">1. Kiểm tra kho cá nhân</p>
-              <p className="text-sm text-text-secondary">Chọn NV cấy mô, ghi nhận lỗi vi phạm nếu có — cần ít nhất 1 lượt/ngày</p>
+              <p className="text-sm text-text-secondary">Ghi nhận lỗi vi phạm nếu có (không bắt buộc chọn NV) — cần ít nhất 1 lượt/ngày</p>
             </div>
           </div>
           <DarkRoomInspectionDialog checklistItemId={item.id} onSaved={load} />
