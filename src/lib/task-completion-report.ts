@@ -262,6 +262,10 @@ async function buildKhoMoSharedMissedByDay(
     prisma.plantingInstruction.findMany({
       where: {
         status: { not: "CANCELLED" },
+        // Chỉ định DỰ PHÒNG (isBackup) không có hạn bàn giao cố định vào Thứ 2 như chỉ định thường — Kho
+        // mô có thể bàn giao bất kỳ lúc nào trong tuần dự phòng đó (xem ensureBackupInstructionsCleaned),
+        // nên loại khỏi đánh giá "Giao mẫu mẹ theo chỉ định cấy" thay vì tính thiếu khi chưa bàn giao.
+        isBackup: false,
         createdAt: { lte: addDays(weekStart, -4) }, // trước Thứ 5 tuần trước (weekStart-4 = Thứ 5 tuần trước)
         items: { some: { shelf: { warehouseId } } },
       },

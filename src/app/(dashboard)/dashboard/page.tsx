@@ -242,6 +242,10 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
         // Chỉ định đã bị KY_THUAT hủy không còn là việc "phải bàn giao" nữa — không tính vào tổng, tránh
         // kéo % hoàn thành xuống oan (handedOverAt sẽ mãi không có vì đã hủy trước khi bàn giao).
         status: { not: "CANCELLED" },
+        // Chỉ định DỰ PHÒNG (isBackup) không có hạn bàn giao cố định Thứ 2 như chỉ định thường — Kho mô
+        // có thể bàn giao bất kỳ lúc nào trong tuần dự phòng đó (xem ensureBackupInstructionsCleaned),
+        // nên không tính vào việc "Giao mẫu mẹ theo chỉ định cấy" khi chưa bàn giao.
+        isBackup: false,
         ...(workplaceWarehouseId ? { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } : {}),
       },
       select: { handedOverAt: true },
