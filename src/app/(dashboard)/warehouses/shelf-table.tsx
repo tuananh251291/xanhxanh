@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QrCode, Trash2, Loader2, Pencil, Check, Plus } from "lucide-react";
+import { QrCode, Trash2, Loader2, Pencil, Eye, Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -125,6 +125,24 @@ function AllowedCodesCell({
       onBlur={() => onSave(shelfId, parseAllowedCodes(value))}
       placeholder="VD: EP, HM, AT, MT041"
     />
+  );
+}
+
+// 1 dòng lô CHỈ XEM (viewOnly) — không có ô nhập/nút lưu, dùng cho vai trò chỉ được xem chi tiết lô cây
+// (VD Kho mô xem Phòng ra rễ) nhưng không được sửa/xóa gì.
+function ReadOnlyLotRow({
+  lot, unit,
+}: {
+  lot: { id: string; code: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
+  unit: string;
+}) {
+  return (
+    <tr className="border-b last:border-0">
+      <td className="px-3 py-2 text-xs font-mono text-text-secondary whitespace-nowrap">{lot.code}</td>
+      <td className="px-3 py-2 text-xs text-foreground whitespace-nowrap">{lot.plantType.code}</td>
+      <td className="px-3 py-2 text-xs text-foreground whitespace-nowrap">{lot.stageCode}</td>
+      <td className="px-3 py-2 text-xs text-foreground whitespace-nowrap">{lot.quantity.toLocaleString("vi-VN")} {unit}</td>
+    </tr>
   );
 }
 
@@ -301,6 +319,7 @@ export default function ShelfTable({
   canMoveRoom = false,
   moveableRooms = [],
   section,
+  viewOnly = false,
 }: {
   shelves: Shelf[];
   currentRoomId: string | null;
@@ -313,6 +332,10 @@ export default function ShelfTable({
   canManageStaffAndPlant?: boolean;
   canMoveRoom?: boolean;
   moveableRooms?: MoveableRoom[];
+  // Cho phép xem chi tiết lô cây (bấm bút chì mở dialog) nhưng KHÔNG cho sửa/xóa gì — dùng cho vai trò
+  // chỉ được xem giống Admin nhưng không có quyền quản lý (VD Kho mô xem Phòng ra rễ). Không phụ thuộc
+  // canManageStaffAndPlant/canMoveRoom (2 cờ đó vẫn quyết định các thao tác sửa/xóa/chuyển phòng khác).
+  viewOnly?: boolean;
   // Khi truyền vào (từ trang con /da-chia hoặc /chung của Phòng mẫu mẹ — xem rooms/[roomId]/shelf-list-view.tsx),
   // component chỉ vẽ ĐÚNG 1 bảng theo nhóm đó, bỏ qua việc tự tách "đã chia"/"chung" từ danh sách `shelves`
   // (danh sách lúc này đã được server lọc sẵn đúng 1 trang của đúng 1 nhóm) — tránh đếm nhầm "(N kệ)" theo
@@ -768,14 +791,14 @@ export default function ShelfTable({
                 <span>{shelf.capacity ?? "Không giới hạn"}</span>
               )}
               <span>{isMauMeRoom ? "cụm" : "cây"}</span>
-              {canMoveRoom && (
+              {(canMoveRoom || viewOnly) && (
                 <Button
                   type="button" variant="ghost" size="icon-sm"
                   className="shrink-0 text-text-muted hover:text-primary-strong hover:bg-primary-light"
                   onClick={() => setEditLotsShelfId(shelf.id)}
-                  title="Sửa số lượng lô cây"
+                  title={canMoveRoom ? "Sửa số lượng lô cây" : "Xem chi tiết lô cây"}
                 >
-                  <Pencil className="w-3.5 h-3.5" />
+                  {canMoveRoom ? <Pencil className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </Button>
               )}
             </div>
@@ -991,7 +1014,7 @@ export default function ShelfTable({
       <Dialog open={!!editLotsShelf} onOpenChange={(open) => { if (!open) setEditLotsShelfId(null); }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Sửa số lượng lô cây — {editLotsShelf?.name}</DialogTitle>
+            <DialogTitle>{viewOnly ? "Chi tiết lô cây" : "Sửa số lượng lô cây"} — {editLotsShelf?.name}</DialogTitle>
           </DialogHeader>
           {editLotsShelf && (
             <div className="space-y-3">
@@ -1009,19 +1032,23 @@ export default function ShelfTable({
                       </tr>
                     </thead>
                     <tbody>
-                      {editLotsShelf.lots.map((lot) => (
-                        <LotQuantityRow
-                          key={lot.id}
-                          lot={lot}
-                          unit={isMauMeRoom ? "cụm" : "cây"}
-                          onSave={saveLotQuantity}
-                        />
-                      ))}
+                      {editLotsShelf.lots.map((lot) =>
+                        viewOnly ? (
+                          <ReadOnlyLotRow key={lot.id} lot={lot} unit={isMauMeRoom ? "cụm" : "cây"} />
+                        ) : (
+                          <LotQuantityRow
+                            key={lot.id}
+                            lot={lot}
+                            unit={isMauMeRoom ? "cụm" : "cây"}
+                            onSave={saveLotQuantity}
+                          />
+                        )
+                      )}
                     </tbody>
                   </table>
                 </div>
               )}
-              {(currentRoomType === "PHONG_MAU_ME" || currentRoomType === "PHONG_RA_RE") && plantTypeOptions.length > 0 && (
+              {!viewOnly && (currentRoomType === "PHONG_MAU_ME" || currentRoomType === "PHONG_RA_RE") && plantTypeOptions.length > 0 && (
                 <AddLotForm
                   shelfId={editLotsShelf.id}
                   warehouseId={editLotsShelf.warehouseId}

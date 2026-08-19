@@ -14,6 +14,7 @@ import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
 import MotherShelfTable from "./mother-shelf-table";
 import RootingPlantSearch from "./rooting-plant-search";
+import ShelfTable from "../../warehouses/shelf-table";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-text-muted";
@@ -144,8 +145,11 @@ export default async function KhoSangPage({
           ...((rootingPlantTypeId || enteredAtFilter) ? { lots: { some: raReLotFilter } } : {}),
         },
         include: {
-          plantType: { select: { name: true } },
-          assignedStaff: { select: { name: true } },
+          plantType: { select: { id: true, code: true, name: true } },
+          assignedStaff: { select: { id: true, code: true, name: true } },
+          // Chỉ thật sự cần khi hiện dạng bảng giống Admin cho Kho mô (xem ShelfTable bên dưới) — vẫn fetch
+          // chung cho gọn, không tốn thêm truy vấn riêng.
+          rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
           lots: {
             // quantity > 0 — xem giải thích ở src/app/(dashboard)/warehouses/page.tsx cùng shelfInclude.
             where: raReLotFilter,
@@ -331,6 +335,16 @@ export default async function KhoSangPage({
             )
           ) : (raReShelvesByRoom.get(room.id) ?? []).length === 0 ? (
             <p className="text-sm text-text-muted pl-2">Chưa có kệ</p>
+          ) : role === "KHO_MO" ? (
+            // Kho mô xem Phòng ra rễ theo đúng dạng bảng Admin đang dùng (xem ShelfTable, dùng chung với
+            // /warehouses/rooms/[roomId]) thay vì dạng thẻ — nhưng viewOnly nên không có ô sửa sức chứa,
+            // không đổi Nhóm tuần, không chuyển phòng, không xóa kệ; chỉ xem được chi tiết lô cây (nút mắt).
+            <ShelfTable
+              shelves={raReShelvesByRoom.get(room.id) ?? []}
+              currentRoomId={room.id}
+              currentRoomType="PHONG_RA_RE"
+              viewOnly
+            />
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               {(raReShelvesByRoom.get(room.id) ?? []).map((shelf) => {
