@@ -606,7 +606,9 @@ export default function ShelfTable({
       acc[l.stageCode] = (acc[l.stageCode] ?? 0) + l.quantity;
       return acc;
     }, {});
-    const breakdown = isMauMeRoom && isChungSection ? plantTypeBreakdown(shelf) : [];
+    // Phòng ra rễ không có plantTypeId cố định theo kệ như Phòng mẫu mẹ (đã chia) — 1 kệ có thể xếp lẫn
+    // nhiều mã cây, nên cũng cần tách theo mã cây giống hệt "Kho mẫu mẹ chung", mỗi mã cây 1 dòng riêng.
+    const breakdown = !isMauMeRoom || isChungSection ? plantTypeBreakdown(shelf) : [];
     const groups = breakdown.length > 0 ? breakdown : [null];
 
     return groups.map((group, idx) => renderRow(shelf, isChungSection, used, usage, bagsBySpecAll, group, idx, groups.length));
@@ -643,11 +645,25 @@ export default function ShelfTable({
           </td>
         )}
         {!isMauMeRoom && (
-          <td className="px-3 py-2 min-w-[160px]">
-            {canManageStaffAndPlant ? renderRotationSelect(shelf) : (
-              <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
+          <>
+            {idx === 0 && (
+              <td className="px-3 py-2 min-w-[160px]" rowSpan={rowCount}>
+                {canManageStaffAndPlant ? renderRotationSelect(shelf) : (
+                  <span className="text-xs text-text-secondary">{shelf.rotationGroup?.name ?? "— Chưa gán —"}</span>
+                )}
+              </td>
             )}
-          </td>
+            <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
+              {group ? `${group.plantTypeCode} — ${group.plantTypeName}` : "—"}
+            </td>
+            <td className="px-3 py-2 text-xs text-text-secondary whitespace-nowrap">
+              {Object.keys(bagsBySpec).length === 0
+                ? "—"
+                : Object.entries(bagsBySpec)
+                    .map(([spec, qty]) => `${spec}: ${qty.toLocaleString("vi-VN")} cây`)
+                    .join(" · ")}
+            </td>
+          </>
         )}
         {isMauMeRoom && (
           <>
@@ -893,7 +909,13 @@ export default function ShelfTable({
               </th>
             )}
             <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên kệ</th>
-            {!isMauMeRoom && <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần ra rễ</th>}
+            {!isMauMeRoom && (
+              <>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Nhóm tuần ra rễ</th>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã cây đang xếp</th>
+                <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Số lượng theo quy cách</th>
+              </>
+            )}
             {isMauMeRoom && (
               <>
                 {!isChungSection && (
