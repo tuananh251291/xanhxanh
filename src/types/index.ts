@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   SALE: "Nhân viên bán hàng",
   MOI_TRUONG: "NV Môi trường",
   DIEU_PHOI: "NV Điều phối",
+  HANH_CHINH_NHAN_SU: "NV Hành chính nhân sự",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -26,6 +27,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   SALE: "bg-pink-100 text-pink-800",
   MOI_TRUONG: "bg-cyan-100 text-cyan-800",
   DIEU_PHOI: "bg-orange-100 text-orange-800",
+  HANH_CHINH_NHAN_SU: "bg-indigo-100 text-indigo-800",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem /inspection-lane).
@@ -456,6 +458,12 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/all", label: "Tồn kho tổng", icon: "Warehouse" },
     { href: "/purchase-orders", label: "Đặt hàng NCC", icon: "ShoppingBag" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  HANH_CHINH_NHAN_SU: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
+    { href: "/reports/handover-summary", label: "Bàn giao & ghi nhận theo tháng", icon: "PackageCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

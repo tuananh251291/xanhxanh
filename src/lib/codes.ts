@@ -15,6 +15,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   SALE: { prefix: "NVS", pad: 2 },
   MOI_TRUONG: { prefix: "NVMT", pad: 2 },
   DIEU_PHOI: { prefix: "NVDP", pad: 2 },
+  HANH_CHINH_NHAN_SU: { prefix: "NVHC", pad: 2 },
 };
 
 // Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,

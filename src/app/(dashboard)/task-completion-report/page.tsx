@@ -8,7 +8,7 @@ import TaskCompletionReportBoard from "./task-completion-report-board";
 export default async function TaskCompletionReportPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/task-completion-report")) || !(isAdminRole(role) || role === "KHO_MO")) {
+  if (!(await isPageAllowed(role, "/task-completion-report")) || !(isAdminRole(role) || role === "KHO_MO" || role === "HANH_CHINH_NHAN_SU")) {
     redirect("/dashboard");
   }
 

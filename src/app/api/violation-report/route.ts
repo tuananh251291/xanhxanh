@@ -6,11 +6,12 @@ import { startOfMonth, endOfMonth, startOfDay, endOfDay, isValid } from "date-fn
 
 // Báo cáo vi phạm — tổng số lỗi vi phạm mỗi NV cấy mô bị ghi nhận trong khoảng thời gian (mặc định tháng
 // hiện tại). Admin/Admin cấp cao xem toàn bộ, Kho mô chỉ xem đúng NV cùng kho sản xuất mình làm việc —
-// cùng phạm vi canManageDailyRecords, y hệt /api/daily-record-edits/weekly-summary.
+// cùng phạm vi canManageDailyRecords, y hệt /api/daily-record-edits/weekly-summary. NV Hành chính nhân
+// sự (chỉ xem) cũng xem toàn bộ như Admin — không gán theo kho sản xuất.
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role) && role !== "KHO_MO") {
+  if (!isAdminRole(role) && role !== "KHO_MO" && role !== "HANH_CHINH_NHAN_SU") {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
   if (role === "KHO_MO" && !session?.user?.workplaceWarehouseId) {

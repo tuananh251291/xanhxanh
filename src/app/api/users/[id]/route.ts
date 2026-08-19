@@ -6,7 +6,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"] as const;
+const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU"] as const;
 
 // Chỉ NV kho mô/cấy mô/môi trường mới bị ràng buộc làm việc với đúng 1 kho sản xuất — NV kỹ thuật
 // làm việc được ở mọi kho nên không gán field này. NV bán hàng (SALE) cũng dùng field này nhưng ràng

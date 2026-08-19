@@ -24,6 +24,11 @@ enum UserRole {
   SALE
   MOI_TRUONG
   DIEU_PHOI
+  // Hành chính nhân sự — vai trò CHỈ XEM (không thao tác nghiệp vụ): báo cáo vi phạm/nhập sai dữ liệu của
+  // NV cấy mô, số ngày không hoàn thành nhiệm vụ (KY_THUAT/CAY_MO/KHO_MO — KHO_THANH_PHAM chưa có khái
+  // niệm nhiệm vụ theo ngày nên chưa đưa vào), báo cáo bàn giao/ghi nhận theo tháng (xem
+  // /api/reports/handover-summary). Không phải isAdminRole — không có quyền sửa/miễn trừ gì.
+  HANH_CHINH_NHAN_SU
 }
 
 enum WarehouseType {
