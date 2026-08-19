@@ -64,14 +64,7 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-base">Tìm theo mã cây (Phòng ra rễ)</CardTitle>
-          {hasAppliedFilter && (
-            <Button type="button" variant="ghost" size="sm" className="h-8" onClick={clearFilter}>
-              <X className="w-3.5 h-3.5 mr-1.5" /> Xoá lọc
-            </Button>
-          )}
-        </div>
+        <CardTitle className="text-base">Tìm theo mã cây (Phòng ra rễ)</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex items-end gap-3 flex-wrap">
@@ -119,6 +112,11 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
           <Button type="button" size="sm" className="h-9 bg-primary hover:bg-primary-hover" onClick={applyFilter}>
             <Search className="w-3.5 h-3.5 mr-1.5" /> Xem dữ liệu
           </Button>
+          {hasAppliedFilter && (
+            <Button type="button" variant="ghost" size="sm" className="h-9" onClick={clearFilter}>
+              <X className="w-3.5 h-3.5 mr-1.5" /> Xoá lọc
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
