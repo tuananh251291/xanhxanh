@@ -17,7 +17,7 @@ import RepackInstructionPanel from "./repack-instruction-panel";
 // fmtRatio ở instructions/[id]/page.tsx) — số cụm/cây ra trên 1 đơn vị MM dùng, không phải %.
 const formatRatio = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 
-type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
+type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null; expectedPreRootingMotherOutput: number | null };
 type VariantPlantType = { id: string; code: string; name: string };
 type Instruction = {
   id: string;
@@ -191,10 +191,14 @@ export default function DailyRecordPage() {
   const projectedMotherClusters = totals.m05 + pendingM05;
   const projectedFinished = totals.t05 + totals.t01 + pendingT05 + pendingT01;
 
+  // Chỉ định có cả mẫu mẹ thường + mẫu mẹ tiền ra rễ (2 mục tiêu tính độc lập trên CÙNG số MM sử dụng,
+  // xem PlantingInstructionItem.preRootingMotherRatio) thì cộng gộp lại thành 1 mục tiêu — vì thực tế
+  // NV cấy ra CẢ 2 loại cùng lúc, projectedMotherClusters bên dưới đã là tổng của cả 2 loại rồi, khớp
+  // đúng công thức server ở /api/daily-records.
   const targetMotherOutputClusters = selectedInst
     ? selectedInst.items
         .filter((i) => i.stageCode === "M05")
-        .reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0)
+        .reduce((s, i) => s + (i.expectedMotherOutput ?? 0) + (i.expectedPreRootingMotherOutput ?? 0), 0)
     : 0;
   const targetMotherRatio = selectedInst && selectedInst.inputMotherQuantity > 0 ? targetMotherOutputClusters / selectedInst.inputMotherQuantity : 0;
   const targetFinishedRatio =

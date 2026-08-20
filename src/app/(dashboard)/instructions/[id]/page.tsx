@@ -104,6 +104,17 @@ export default async function InstructionDetailPage({ params }: { params: Promis
   // Mẫu mẹ tiền ra rễ — cấu hình M05 thứ 2, tùy chọn (xem PlantingInstructionItem.preRootingMotherRatio).
   const targetPreRootingMotherRatio = inst.items.find((i) => i.preRootingMotherRatio !== null)?.preRootingMotherRatio ?? null;
   const preRootingMotherMediumInfo = inst.items.find((i) => i.preRootingMotherMedium)?.preRootingMotherMedium ?? null;
+  // Chỉ định có CẢ 2 loại M05 (mẫu mẹ thường + tiền ra rễ, tính độc lập trên CÙNG số MM sử dụng) — chỉ
+  // hiện dòng "Tỉ lệ nhân MM tổng" riêng khi có đủ CẢ 2 (gộp 1 tỉ lệ duy nhất sẽ thừa/trùng lặp).
+  const hasBothMotherRatios = targetMotherRatio !== null && targetPreRootingMotherRatio !== null;
+  // Mục tiêu THỰC SỰ dùng để so sánh với thực tế — cộng gộp nếu có cả 2, hoặc giữ nguyên tỉ lệ đang có
+  // (null nếu chỉ định không đặt tỉ lệ nào). NV cấy ra cả 2 loại cùng lúc nên thực tế (actualMotherRatio
+  // bên dưới) LUÔN là tổng của cả 2 loại (DailyRecordItem không tách riêng) — so 1 phần với tổng kia sẽ
+  // luôn lệch nếu không cộng gộp mục tiêu tương ứng.
+  const targetMotherRatioTotal =
+    targetMotherRatio !== null || targetPreRootingMotherRatio !== null
+      ? (targetMotherRatio ?? 0) + (targetPreRootingMotherRatio ?? 0)
+      : null;
   const preRootingMotherTotal = inst.items.reduce((s, i) => s + (i.expectedPreRootingMotherOutput ?? 0), 0);
   // Bảng "SL dự kiến trả" trên phiếu in — chỉ hiện cột nào có số > 0, ẩn hẳn cột không dùng tới (VD chỉ
   // định không có Mẫu mẹ tiền ra rễ, hoặc không ra T05) thay vì hiện cột toàn số 0 gây rối phiếu in.
@@ -270,6 +281,11 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                 &nbsp;&nbsp; <strong>Môi trường nhân MM tiền ra rễ:</strong> {preRootingMotherMediumInfo?.code ?? "—"}
               </p>
             )}
+            {hasBothMotherRatios && targetMotherRatioTotal !== null && (
+              <p className="pi-notes-text">
+                <strong>Tỉ lệ nhân MM tổng:</strong> <span className="pi-ratio-value">{fmtRatio(targetMotherRatioTotal)}</span>
+              </p>
+            )}
             <p className="pi-notes-text">
               <strong>Tỉ lệ ra TP:</strong> <span className="pi-ratio-value">{targetFinishedRatio === null ? "—" : fmtRatio(targetFinishedRatio)}</span>
               &nbsp;&nbsp; <strong>Môi trường ra TP:</strong> {finishedMediumInfo?.code ?? "—"}
@@ -428,9 +444,9 @@ export default async function InstructionDetailPage({ params }: { params: Promis
                         <td className="px-4 py-2" colSpan={2}>Tỉ lệ (lũy kế)</td>
                         <td className="px-4 py-2">{actualMotherUsed.toLocaleString("vi-VN")}</td>
                         <td className="px-4 py-2 text-text-secondary" colSpan={canManage ? 2 : 1}>
-                          <span className={targetMotherRatio !== null && actualMotherRatio !== null && actualMotherRatio < targetMotherRatio ? "text-destructive" : ""}>
-                            Tỉ lệ nhân MM: {actualMotherRatio === null ? "—" : fmtRatio(actualMotherRatio)}
-                            {targetMotherRatio !== null && ` (chỉ định ${fmtRatio(targetMotherRatio)})`}
+                          <span className={targetMotherRatioTotal !== null && actualMotherRatio !== null && actualMotherRatio < targetMotherRatioTotal ? "text-destructive" : ""}>
+                            {hasBothMotherRatios ? "Tỉ lệ nhân MM tổng" : "Tỉ lệ nhân MM"}: {actualMotherRatio === null ? "—" : fmtRatio(actualMotherRatio)}
+                            {targetMotherRatioTotal !== null && ` (chỉ định ${fmtRatio(targetMotherRatioTotal)})`}
                           </span>
                           {" / "}
                           <span className={targetFinishedRatio !== null && actualFinishedRatio !== null && actualFinishedRatio < targetFinishedRatio ? "text-destructive" : ""}>

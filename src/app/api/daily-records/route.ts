@@ -365,10 +365,14 @@ export async function POST(req: NextRequest) {
   const finishedRatioMinPct = parseFloat(await getSystemConfig("finished_ratio_min_pct", "80")) || 80;
   const finishedRatioMaxPct = parseFloat(await getSystemConfig("finished_ratio_max_pct", "120")) || 120;
 
-  // expectedMotherOutput đã tính thẳng theo cụm — không cần quy đổi thêm.
+  // expectedMotherOutput đã tính thẳng theo cụm — không cần quy đổi thêm. Chỉ định có CẢ 2 loại M05 (mẫu
+  // mẹ thường + mẫu mẹ tiền ra rễ, xem PlantingInstructionItem.preRootingMotherRatio) thì cộng gộp cả 2
+  // mục tiêu lại thành 1 — vì thực tế NV cấy ra CẢ 2 loại cùng lúc từ CÙNG số mẫu mẹ sử dụng
+  // (DailyRecordItem không tách riêng loại M05 nào, actualMotherOutputClusters bên dưới đã LUÔN là tổng
+  // của cả 2 loại rồi), so 1 phần với tổng kia sẽ luôn lệch nếu không cộng gộp mục tiêu tương ứng.
   const targetMotherOutputClusters = instruction.items
     .filter((i) => i.stageCode === "M05")
-    .reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
+    .reduce((s, i) => s + (i.expectedMotherOutput ?? 0) + (i.expectedPreRootingMotherOutput ?? 0), 0);
   const targetMotherRatio = instruction.inputMotherQuantity > 0 ? targetMotherOutputClusters / instruction.inputMotherQuantity : 0;
   const targetFinishedRatio = instruction.inputMotherQuantity > 0 ? (instruction.expectedFinishedOutput ?? 0) / instruction.inputMotherQuantity : 0;
 

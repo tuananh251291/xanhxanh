@@ -23,7 +23,7 @@ export default async function RatioTrendSection() {
         weekStart: true,
         inputMotherQuantity: true,
         expectedFinishedOutput: true,
-        items: { select: { stageCode: true, expectedMotherOutput: true } },
+        items: { select: { stageCode: true, expectedMotherOutput: true, expectedPreRootingMotherOutput: true } },
       },
     }),
   ]);
@@ -45,9 +45,11 @@ export default async function RatioTrendSection() {
     const idx = bucketIndexForDate(buckets, inst.weekStart);
     if (idx === -1) continue;
     target[idx].inputMotherQuantity += inst.inputMotherQuantity;
+    // Cộng gộp cả mẫu mẹ thường + tiền ra rễ (2 mục tiêu tính độc lập trên CÙNG số MM sử dụng, xem cùng
+    // logic ở /api/daily-records) — thực tế (actual[idx].motherOutput) vốn đã là tổng của cả 2 loại.
     target[idx].expectedMotherOutput += inst.items
       .filter((i) => i.stageCode === "M05")
-      .reduce((s, i) => s + (i.expectedMotherOutput ?? 0), 0);
+      .reduce((s, i) => s + (i.expectedMotherOutput ?? 0) + (i.expectedPreRootingMotherOutput ?? 0), 0);
     target[idx].expectedFinishedOutput += inst.expectedFinishedOutput ?? 0;
   }
 

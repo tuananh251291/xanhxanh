@@ -10,7 +10,11 @@ export default async function PlanVsActualReport() {
 
   const instructions = await prisma.plantingInstruction.findMany({
     where: { weekStart: { gte: buckets[0].start } },
-    select: { id: true, weekStart: true, expectedMotherOutput: true },
+    // Không dùng thẳng PlantingInstruction.expectedMotherOutput (cột lưu sẵn) — cột đó chỉ tính từ mẫu mẹ
+    // thường lúc tạo chỉ định, KHÔNG gồm mẫu mẹ tiền ra rễ (expectedPreRootingMotherOutput, tính độc lập
+    // trên CÙNG số MM sử dụng) — tự cộng gộp cả 2 ở đây để khớp đúng thực tế (actualByInstruction bên dưới
+    // vốn đã là tổng của cả 2 loại, cùng logic ở /api/daily-records).
+    select: { id: true, weekStart: true, items: { select: { stageCode: true, expectedMotherOutput: true, expectedPreRootingMotherOutput: true } } },
   });
 
   const actualItems = await prisma.dailyRecordItem.findMany({
@@ -28,7 +32,9 @@ export default async function PlanVsActualReport() {
     if (!inst.weekStart) continue;
     const idx = bucketIndexForDate(buckets, inst.weekStart);
     if (idx === -1) continue;
-    data[idx]["Dự kiến"] += inst.expectedMotherOutput ?? 0;
+    data[idx]["Dự kiến"] += inst.items
+      .filter((i) => i.stageCode === "M05")
+      .reduce((s, i) => s + (i.expectedMotherOutput ?? 0) + (i.expectedPreRootingMotherOutput ?? 0), 0);
     data[idx]["Thực tế"] += actualByInstruction.get(inst.id) ?? 0;
   }
 
