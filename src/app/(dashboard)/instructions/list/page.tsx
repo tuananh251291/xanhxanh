@@ -169,7 +169,14 @@ export default async function InstructionsListPage({
                 <tbody>
                   {instructions.map((inst) => (
                     <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{inst.code}</td>
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">
+                        {inst.code}
+                        {inst.returnedAt && (
+                          <Badge className="bg-warning-light text-warning-foreground ml-1.5 align-middle">
+                            Kho mô hoàn lại — chọn lại tuần
+                          </Badge>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm font-mono text-foreground">{inst.plantType.code}</td>
                       <td className="px-4 py-3 text-sm text-foreground">{inst.plantType.name}</td>
                       <td className="px-4 py-3 text-sm text-foreground">

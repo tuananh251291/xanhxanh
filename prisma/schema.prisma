@@ -199,6 +199,10 @@ enum AlertType {
   // ngày cuối tháng nếu NV đang có >=1 khách "Đã phân công" (xem ensureCustomerStatusReminders,
   // src/lib/customer-lifecycle.ts). Tắt khi NV bấm "Cập nhật" ở trang /customer-status.
   CUSTOMER_STATUS_UPDATE_DUE
+  // Kho mô bấm "Hoàn lại cho NV kỹ thuật" 1 chỉ định cấy đã ENDED (quá hạn) mà chưa bàn giao — báo cho
+  // đúng NV kỹ thuật đã tạo chỉ định đó (userId) biết để vào chọn lại tuần thực hiện (xem
+  // PlantingInstruction.returnedAt, PATCH /api/instructions/[id] nhánh returnToStaff).
+  INSTRUCTION_RETURNED_UNHANDED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -292,6 +296,7 @@ model User {
   plantingInstructions PlantingInstruction[] @relation("CreatedBy")
   assignedInstructions PlantingInstruction[] @relation("AssignedTo")
   handedOverInstructions PlantingInstruction[] @relation("HandedOverBy")
+  returnedInstructions PlantingInstruction[] @relation("ReturnedBy")
   contaminationProposalsRequested ContaminationProposal[] @relation("ContaminationProposalRequestedBy")
   contaminationProposalsApproved  ContaminationProposal[] @relation("ContaminationProposalApprovedBy")
   contaminationRoomEntries        ContaminationRoomEntry[]
@@ -1176,6 +1181,16 @@ model PlantingInstruction {
   // — 2 lý do duy nhất có thể còn MM chưa dùng hết) — set khi đã tạo Transfer bàn giao phần mẫu mẹ dư
   // cho Kho mô, tránh bàn giao lặp lại.
   surplusHandedOverAt DateTime?
+
+  // Kho mô "Hoàn lại cho NV kỹ thuật" — chỉ áp dụng chỉ định ENDED do quá hạn (endReason=TIME_UP) mà
+  // CHƯA bàn giao (handedOverAt null, mẫu mẹ nguồn vẫn ACTIVE, chưa từng bị trừ) — thay vì xóa hẳn, cho
+  // KY_THUAT cơ hội chọn lại tuần thực hiện. Action đặt lại status ACTIVE + weekStart = tuần hiện tại
+  // (tránh ensureInstructionsEnded lập tức ENDED lại), xóa endReason, bắn Alert riêng cho đúng
+  // createdById. KY_THUAT sau đó dùng tính năng "Sửa chỉ định" (PATCH .../edit) sẵn có để đổi sang tuần
+  // sau nếu cần — không cần thêm luồng edit riêng. Xem PATCH /api/instructions/[id] nhánh returnToStaff.
+  returnedAt   DateTime?
+  returnedById String?
+  returnedBy   User?     @relation("ReturnedBy", fields: [returnedById], references: [id])
 
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt

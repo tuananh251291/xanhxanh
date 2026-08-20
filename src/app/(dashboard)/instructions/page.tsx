@@ -17,6 +17,7 @@ import AssignStaffCell from "./assign-staff-cell";
 import AssignBackupStaffCell from "./assign-backup-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
 import UndoHandoverButton from "./undo-handover-button";
+import ReturnInstructionButton from "./return-instruction-button";
 import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse, getMotherRotationEpoch } from "@/lib/mother-week-group";
 import MotherDueWarehouseCard from "./mother-due-warehouse-card";
 
@@ -259,7 +260,10 @@ export default async function InstructionsPage({
                           </td>
                           {role === "KHO_MO" && (
                             <td className="px-4 py-3">
-                              {inst.assignedTo && !inst.handedOverAt && <ConfirmHandoverButton instructionId={inst.id} />}
+                              {inst.status === "ENDED" && !inst.handedOverAt && (
+                                <ReturnInstructionButton instructionId={inst.id} instructionCode={inst.code} />
+                              )}
+                              {inst.status !== "ENDED" && inst.assignedTo && !inst.handedOverAt && <ConfirmHandoverButton instructionId={inst.id} />}
                               {inst.handedOverAt && !inst.motherReceivedAt && (
                                 <UndoHandoverButton instructionId={inst.id} instructionCode={inst.code} />
                               )}
@@ -267,7 +271,9 @@ export default async function InstructionsPage({
                           )}
                           <td className="px-4 py-3">
                             {role === "KHO_MO" ? (
-                              !inst.handedOverAt ? (
+                              inst.status === "ENDED" && !inst.handedOverAt ? (
+                                <Badge className="bg-danger-light text-destructive">Quá hạn — chưa bàn giao</Badge>
+                              ) : !inst.handedOverAt ? (
                                 <Badge className="bg-danger-light text-destructive">Chưa bàn giao</Badge>
                               ) : (
                                 <Badge className="bg-warning-light text-warning-foreground">Đã bàn giao / chưa xác nhận</Badge>

@@ -6,6 +6,7 @@ import { isAdminRole } from "@/types";
 import { startOfWeek } from "date-fns";
 import { detachInstructionFromMediumOrder, syncInstructionMediumOrder } from "@/lib/instruction-medium-order";
 import { toStoredWeekStart } from "@/lib/week-rotation";
+import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
 // Mẫu mẹ nguồn (shelfItems[].lotId lúc tạo) CHỈ thật sự trừ khỏi tồn kệ (status ACTIVE -> PLANTED) đúng
@@ -60,6 +61,7 @@ const patchSchema = z.union([
   z.object({ confirmMotherReceived: z.literal(true) }),
   z.object({ endEarly: z.literal(true) }),
   z.object({ cancelInstruction: z.literal(true) }),
+  z.object({ returnToStaff: z.literal(true) }),
   z.object({
     edit: z.object({
       weekStart: z.string().min(1, "Cần chọn Tuần thực hiện"),
@@ -514,6 +516,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     return NextResponse.json({ ...deleted, mediumOrderLocked });
+  }
+
+  // Kho mô "Hoàn lại cho NV kỹ thuật" — chỉ định đã tự ENDED do quá hạn tuần thực hiện (TIME_UP) mà
+  // CHƯA bàn giao (khác cancelInstruction ở trên: cái đó xóa hẳn, cái này giữ lại + đẩy về cho KY_THUAT
+  // chọn lại tuần). Đặt lại ACTIVE + weekStart = tuần hiện tại (né ensureInstructionsEnded đóng lại
+  // ngay lập tức vì weekStart cũ đã ở quá khứ), xóa endReason, báo cho đúng NV kỹ thuật đã tạo. NV kỹ
+  // thuật sau đó dùng "Sửa chỉ định" (nhánh "edit" bên dưới, đã hỗ trợ sẵn đổi Tuần thực hiện sang tuần
+  // này hoặc tuần sau) để chốt lại tuần phù hợp.
+  if ("returnToStaff" in parsed.data) {
+    if (!(isAdminRole(role) || role === "KHO_MO")) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    const instruction = await prisma.plantingInstruction.findUnique({ where: { id } });
+    if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    if (instruction.handedOverAt) {
+      return NextResponse.json({ message: "Chỉ định đã bàn giao — không thể hoàn lại" }, { status: 400 });
+    }
+    if (instruction.status !== "ENDED") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho chỉ định đã kết thúc (quá hạn) mà chưa bàn giao" }, { status: 400 });
+    }
+
+    const updated = await prisma.plantingInstruction.update({
+      where: { id },
+      data: {
+        status: "ACTIVE",
+        weekStart: toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 })),
+        endReason: null,
+        returnedAt: new Date(),
+        returnedById: session!.user!.id,
+      },
+    });
+
+    await createAlert({
+      type: "INSTRUCTION_RETURNED_UNHANDED",
+      title: "Chỉ định cấy được hoàn lại",
+      message: `Chỉ định ${instruction.code} đã quá hạn tuần thực hiện mà chưa bàn giao — Kho mô đã hoàn lại, tuần thực hiện tạm chuyển sang tuần này. Vào "Sửa chỉ định" để chọn lại tuần thực hiện (tuần này hoặc tuần sau) nếu cần.`,
+      userId: instruction.createdById,
+      relatedId: id,
+      relatedType: "PlantingInstruction",
+    });
+
+    return NextResponse.json(updated);
   }
 
   // Kho mô bấm "Bàn giao" khi NV cấy mô đã có sẵn (kệ "đã chia" tự động điền mặc định lúc tạo chỉ

@@ -304,6 +304,7 @@ export const ALERT_TYPE_LABELS = {
   MOTHER_WAREHOUSE_TRANSFER_SHORTFALL: "Nhận thiếu mẫu mẹ bàn giao liên kho",
   NV_VIOLATION: "Vi phạm kiểm tra kho tối",
   CUSTOMER_STATUS_UPDATE_DUE: "Cần cập nhật tình trạng khách hàng",
+  INSTRUCTION_RETURNED_UNHANDED: "Chỉ định cấy được hoàn lại",
 } as const;
 
 export const EXTRA_WORK_REQUEST_TYPE_LABELS = {
