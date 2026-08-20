@@ -254,7 +254,10 @@ async function buildKhoMoSharedMissedByDay(
     result.get(key)!.push(task);
   };
 
-  const [receiveTransfers, mondayHandoverInstructions, finishedTransfers, mediumDays, contaminationLots] = await Promise.all([
+  const [
+    receiveTransfers, mondayHandoverInstructions, finishedTransfers, mediumDays, contaminationLots,
+    contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount,
+  ] = await Promise.all([
     prisma.transfer.findMany({
       where: { toUserId: null, fromRoom: { type: "PHONG_TOI", warehouseId }, createdAt: { gte: weekStart, lte: evalEnd } },
       select: { createdAt: true, confirmedAt: true },
@@ -287,11 +290,24 @@ async function buildKhoMoSharedMissedByDay(
       },
       select: { confirmedAt: true },
     }),
-    // "Đề xuất Trồng/Hủy" là trạng thái tức thời (tồn kho hiện tại của Phòng nhiễm) — không tái tạo được
-    // cho tuần đã qua, chỉ đánh giá cho tuần hiện tại.
+    // "Đề xuất Trồng/Hủy" và "Bàn giao cây trồng" đều dựa 1 phần vào trạng thái tức thời (tồn Phòng
+    // nhiễm/đề xuất Trồng lại chưa gộp phiếu hiện tại) — không tái tạo được cho tuần đã qua, chỉ đánh
+    // giá cho tuần hiện tại (xem khối if (isCurrentWeek) bên dưới).
     isCurrentWeek
       ? prisma.lot.findMany({ where: { status: "ACTIVE", room: { type: "PHONG_NHIEM", warehouseId } }, select: { quantity: true } })
       : Promise.resolve([]),
+    isCurrentWeek
+      ? prisma.contaminationProposal.findFirst({ where: { warehouseId, status: { not: "DRAFT" }, createdAt: { gte: weekStart, lte: evalEnd } }, select: { id: true } })
+      : Promise.resolve(null),
+    isCurrentWeek
+      ? prisma.replantHandover.findFirst({ where: { warehouseId, status: "CONFIRMED", createdAt: { gte: weekStart, lte: evalEnd } }, select: { id: true } })
+      : Promise.resolve(null),
+    isCurrentWeek
+      ? prisma.replantHandover.findFirst({ where: { warehouseId, status: "PENDING" }, select: { id: true } })
+      : Promise.resolve(null),
+    isCurrentWeek
+      ? prisma.contaminationProposal.count({ where: { warehouseId, type: "TRONG", status: "APPROVED", replantHandoverId: null } })
+      : Promise.resolve(0),
   ]);
 
   // Việc hàng ngày: "Nhận bàn giao từ kho tối" — hạn trong đúng ngày phiếu được tạo.
@@ -310,7 +326,7 @@ async function buildKhoMoSharedMissedByDay(
     if (mondayHandoverInstructions.length > 0 && !allHandedOverInTime) addMissed(weekStart, "Giao mẫu mẹ theo chỉ định cấy");
   }
 
-  // 3 việc còn lại: hạn Chủ nhật cuối tuần đang xem.
+  // 2 việc còn lại (hạn cố định trong tuần): hạn Chủ nhật cuối tuần đang xem.
   if (!isAfter(weekEnd, evalEnd)) {
     const sundayEnd = endOfDay(weekEnd);
     if (finishedTransfers.length > 0 && !finishedTransfers.every((t) => t.confirmedAt !== null && !isAfter(t.confirmedAt, sundayEnd))) {
@@ -319,9 +335,24 @@ async function buildKhoMoSharedMissedByDay(
     if (mediumDays.length > 0 && !mediumDays.every((d) => d.confirmedAt !== null && !isAfter(d.confirmedAt, sundayEnd))) {
       addMissed(weekEnd, "Nhận môi trường");
     }
-    if (isCurrentWeek) {
+  }
+
+  // "Gửi đề xuất Trồng/Hủy" — hạn Thứ 5 (chỉ bắt buộc khi thực sự còn tồn Phòng nhiễm); "Bàn giao cây
+  // trồng" — hạn Thứ 6 (chỉ bắt buộc khi còn đề xuất Trồng lại chưa gộp phiếu, hoặc đã gộp nhưng Nhân
+  // viên sản xuất chưa xác nhận). Làm trễ (qua hạn mới xong) vẫn tính "tuần không hoàn thành" vì missed
+  // được gắn cố định vào đúng ngày hạn chót, không xoá khi xong muộn — cùng quy ước với "Giao mẫu mẹ
+  // theo chỉ định cấy" ở trên.
+  if (isCurrentWeek) {
+    const thursdayDeadline = addDays(weekStart, 3);
+    if (!isAfter(thursdayDeadline, evalEnd)) {
       const outstanding = contaminationLots.reduce((s, l) => s + l.quantity, 0);
-      if (outstanding > 0) addMissed(weekEnd, "Đề xuất Trồng/Hủy");
+      if (outstanding > 0 && contaminationSubmission === null) addMissed(thursdayDeadline, "Gửi đề xuất Trồng/Hủy");
+    }
+
+    const fridayDeadline = addDays(weekStart, 4);
+    if (!isAfter(fridayDeadline, evalEnd)) {
+      const outstandingReplant = unbundledReplantCount > 0 || pendingReplantHandover !== null;
+      if (outstandingReplant && confirmedReplantHandover === null) addMissed(fridayDeadline, "Bàn giao cây trồng");
     }
   }
 

@@ -29,6 +29,11 @@ enum UserRole {
   // niệm nhiệm vụ theo ngày nên chưa đưa vào), báo cáo bàn giao/ghi nhận theo tháng (xem
   // /api/reports/handover-summary). Không phải isAdminRole — không có quyền sửa/miễn trừ gì.
   HANH_CHINH_NHAN_SU
+  // Nhân viên sản xuất — nhận "Bàn giao cây trồng" từ Kho mô (phần Trồng lại đã được Admin duyệt từ đề
+  // xuất Trồng/Hủy, xem ReplantHandover). Đặt tên đầy đủ (không phải "SAN_XUAT") để không trùng
+  // WarehouseType.SAN_XUAT — 2 khái niệm khác nhau, tránh nhầm lẫn khi đọc code cùng lúc check cả role
+  // lẫn warehouse.type.
+  NHAN_VIEN_SAN_XUAT
 }
 
 enum WarehouseType {
@@ -306,6 +311,8 @@ model User {
   contaminationRoomEntries        ContaminationRoomEntry[]
   personalContaminationChecksAsStaff   PersonalContaminationCheck[] @relation("PersonalContaminationCheckStaff")
   personalContaminationChecksAsChecker PersonalContaminationCheck[] @relation("PersonalContaminationCheckedBy")
+  replantHandoversCreated   ReplantHandover[] @relation("ReplantHandoverCreatedBy")
+  replantHandoversConfirmed ReplantHandover[] @relation("ReplantHandoverConfirmedBy")
   dailyRecords         DailyRecord[]
   dailyRecordEditsAsStaff  DailyRecordEdit[] @relation("DailyRecordEditStaff")
   dailyRecordEditsAsEditor DailyRecordEdit[] @relation("DailyRecordEditEditedBy")
@@ -861,6 +868,7 @@ model Warehouse {
   contaminationProposals ContaminationProposal[]
   contaminationStaffBalances ContaminationStaffBalance[]
   personalContaminationChecks PersonalContaminationCheck[]
+  replantHandovers ReplantHandover[]
 
   @@map("warehouses")
 }
@@ -1594,10 +1602,41 @@ model ContaminationProposal {
   approvedById  String?
   approvedBy    User?                        @relation("ContaminationProposalApprovedBy", fields: [approvedById], references: [id])
   approvedAt    DateTime?
+  // Chỉ có giá trị với dòng type=TRONG đã APPROVED — đã được gộp vào 1 phiếu "Bàn giao cây trồng" gửi
+  // Nhân viên sản xuất chưa (xem ReplantHandover). NULL = chưa gộp, còn chờ Kho mô bấm "Bàn giao".
+  replantHandoverId String?
+  replantHandover   ReplantHandover?          @relation(fields: [replantHandoverId], references: [id])
   createdAt     DateTime                     @default(now())
   updatedAt     DateTime                     @updatedAt
 
   @@map("contamination_proposals")
+}
+
+enum ReplantHandoverStatus {
+  PENDING
+  CONFIRMED
+}
+
+// "Bàn giao cây trồng" — Kho mô gộp các đề xuất Trồng lại (ContaminationProposal type=TRONG, đã được
+// Admin duyệt) chưa bàn giao thành 1 phiếu, gửi Nhân viên sản xuất (role NHAN_VIEN_SAN_XUAT, cùng kho
+// sản xuất) xác nhận đã nhận — nhiệm vụ tuần "Bàn giao cây trồng" chỉ tính hoàn thành khi ĐỦ CẢ 2 bước
+// (Kho mô bấm bàn giao TẠO phiếu này, Nhân viên sản xuất XÁC NHẬN status CONFIRMED), xem
+// dashboard/page.tsx + lib/task-completion-report.ts.
+model ReplantHandover {
+  id            String                 @id @default(cuid())
+  code          String                 @unique
+  warehouseId   String
+  warehouse     Warehouse              @relation(fields: [warehouseId], references: [id])
+  status        ReplantHandoverStatus  @default(PENDING)
+  createdById   String
+  createdBy     User                   @relation("ReplantHandoverCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime               @default(now())
+  confirmedById String?
+  confirmedBy   User?                  @relation("ReplantHandoverConfirmedBy", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+  proposals     ContaminationProposal[]
+
+  @@map("replant_handovers")
 }
 
 // Phân loại nguồn gốc số nhiễm trong ContaminationStaffBalance, suy ra từ ContaminationEntryReason (xem

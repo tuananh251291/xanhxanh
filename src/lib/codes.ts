@@ -16,6 +16,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   MOI_TRUONG: { prefix: "NVMT", pad: 2 },
   DIEU_PHOI: { prefix: "NVDP", pad: 2 },
   HANH_CHINH_NHAN_SU: { prefix: "NVHC", pad: 2 },
+  NHAN_VIEN_SAN_XUAT: { prefix: "NVSX", pad: 2 },
 };
 
 // Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,
@@ -253,6 +254,20 @@ export async function generateContaminationProposalCode(
   let candidate = base;
   let n = 1;
   while (await prisma.contaminationProposal.findFirst({ where: { code: candidate } })) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  return candidate;
+}
+
+// Mã phiếu "Bàn giao cây trồng" = "BGCT" + ngày tháng năm tạo "ddMMyy" — nhiều phiếu cùng ngày → thêm
+// hậu tố "-2", "-3"... để tránh trùng (giống generateContaminationProposalCode).
+export async function generateReplantHandoverCode(date: Date = new Date()): Promise<string> {
+  const base = `BGCT${format(date, "ddMMyy")}`;
+
+  let candidate = base;
+  let n = 1;
+  while (await prisma.replantHandover.findFirst({ where: { code: candidate } })) {
     n += 1;
     candidate = `${base}-${n}`;
   }

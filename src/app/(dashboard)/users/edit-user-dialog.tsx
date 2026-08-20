@@ -19,14 +19,14 @@ import { Pencil, Loader2 } from "lucide-react";
 import { ROLE_LABELS } from "@/types";
 import { toast } from "sonner";
 
-const ASSIGNABLE_ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU"] as const;
+const ASSIGNABLE_ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT"] as const;
 const ASSIGNABLE_ROLE_LABELS = Object.fromEntries(
   ASSIGNABLE_ROLES.map((r) => [r, ROLE_LABELS[r]])
 ) as Record<(typeof ASSIGNABLE_ROLES)[number], string>;
 
 // Đồng bộ với WORKPLACE_ROLES ở users/page.tsx và src/app/api/users/[id]/route.ts. NV/Quản lý kho thành
 // phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
 const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
 const NO_WAREHOUSE = "NONE";
 

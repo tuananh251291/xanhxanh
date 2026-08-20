@@ -14,7 +14,7 @@ const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_
 // kho thành phẩm (isKhoThanhPhamRole) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ —
 // KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm như trước (xem
 // getFinishedQualifiedRooms ở src/lib/processing.ts).
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
 
 const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),

@@ -14,6 +14,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   MOI_TRUONG: "NV Môi trường",
   DIEU_PHOI: "NV Điều phối",
   HANH_CHINH_NHAN_SU: "NV Hành chính nhân sự",
+  NHAN_VIEN_SAN_XUAT: "NV Sản xuất",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -28,6 +29,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   MOI_TRUONG: "bg-cyan-100 text-cyan-800",
   DIEU_PHOI: "bg-orange-100 text-orange-800",
   HANH_CHINH_NHAN_SU: "bg-indigo-100 text-indigo-800",
+  NHAN_VIEN_SAN_XUAT: "bg-lime-100 text-lime-800",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem /inspection-lane).
@@ -79,7 +81,7 @@ export function canManagePayroll(role: UserRole | null | undefined): boolean {
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
   "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
-  "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU",
+  "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT",
 ];
 export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN");
 
@@ -453,6 +455,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/replant-handovers", label: "Bàn giao cây trồng", icon: "Sprout" },
     // "Báo cáo tỉ lệ nhiễm" gộp vào tab trong hub này (xem violation-report/page.tsx) — route
     // /reports/mother-contamination vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
@@ -514,6 +517,11 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/handover-summary", label: "Bàn giao & ghi nhận theo tháng", icon: "PackageCheck" },
     { href: "/payroll-settings", label: "Cài đặt lương", icon: "Settings" },
     { href: "/reports/payroll", label: "Bảng lương", icon: "DollarSign" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  NHAN_VIEN_SAN_XUAT: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/replant-handovers", label: "Nhận bàn giao cây trồng", icon: "PackageCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

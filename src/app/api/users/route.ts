@@ -11,7 +11,7 @@ const createSchema = z.object({
   password: z.string().min(6),
   // Vai trò được validate lại theo đúng người tạo (creatableRolesFor) bên dưới — enum ở đây chỉ chặn giá
   // trị rác, KHÔNG chặn SUPER_ADMIN vì đã tự loại khỏi creatableRolesFor với mọi vai trò người tạo.
-  role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU"]),
+  role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
   // Chỉ áp dụng khi tạo tài khoản SALE — gán sẵn kho thành phẩm làm việc (Phòng đạt tiêu chuẩn xem mặc định)
   // và các Phòng thị trường được cấp quyền xem thêm, tránh phải cấu hình lại ở 2 chỗ khác sau khi tạo.

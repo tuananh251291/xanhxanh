@@ -6,11 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
   PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
-  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, Camera, type LucideIcon,
+  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, Camera, Sprout, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS } from "@/types";
 import type { UserRole } from "@prisma/client";
-import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format } from "date-fns";
+import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import TodayChecklist from "@/components/shared/today-checklist";
 import { ensureTodayChecklist } from "@/lib/checklist";
@@ -235,7 +235,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
 
-  const [dueInstructions, finishedTransfers, contaminationSubmission] = await Promise.all([
+  const [dueInstructions, finishedTransfers, contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount] = await Promise.all([
     prisma.plantingInstruction.findMany({
       where: {
         createdAt: { lte: thursdayDeadline },
@@ -265,7 +265,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
     }),
     // Gửi đề xuất Trồng/Hủy: coi là xong nếu đã "Gửi đề xuất trồng/hủy" (tạo đề xuất PENDING thật, không
     // tính dòng DRAFT còn đang gộp dở) ít nhất 1 lần trong tuần này — xem contaminationTaskVisible bên
-    // dưới cho quy tắc chỉ hiện việc này từ Thứ 6.
+    // dưới cho quy tắc chỉ hiện việc này từ Thứ 5.
     prisma.contaminationProposal.findFirst({
       where: {
         status: { not: "DRAFT" },
@@ -273,6 +273,29 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
         ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
       },
       select: { id: true },
+    }),
+    // Bàn giao cây trồng: coi là xong nếu có phiếu ReplantHandover đã CONFIRMED (Nhân viên sản xuất xác
+    // nhận) tạo trong tuần này — xem replantHandoverTaskVisible bên dưới.
+    prisma.replantHandover.findFirst({
+      where: {
+        status: "CONFIRMED",
+        createdAt: { gte: weekStart, lte: weekEnd },
+        ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
+      },
+      select: { id: true },
+    }),
+    // Còn phiếu bàn giao nào Nhân viên sản xuất chưa xác nhận không.
+    prisma.replantHandover.findFirst({
+      where: { status: "PENDING", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+      select: { id: true },
+    }),
+    // Có gì đang chờ bàn giao không (đề xuất Trồng lại đã duyệt, chưa gộp vào phiếu nào) — chỉ bắt buộc
+    // làm việc "Bàn giao cây trồng" khi thực sự có hàng cần bàn giao.
+    prisma.contaminationProposal.count({
+      where: {
+        type: "TRONG", status: "APPROVED", replantHandoverId: null,
+        ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
+      },
     }),
   ]);
 
@@ -284,17 +307,30 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const finishedDone = finishedTransfers.filter((t) => t.status === "CONFIRMED").length;
   const finishedPercent = finishedTotal === 0 ? 100 : Math.round((finishedDone / finishedTotal) * 100);
 
-  // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 6 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
-  // đúng Thứ 6 hay trễ hơn), ẩn hẳn (không tính nợ dồn) nếu tuần đã qua mà vẫn chưa gửi.
-  const fridayDeadline = addDays(weekStart, 4);
+  // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 5 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
+  // đúng Thứ 5 hay trễ hơn — trễ vẫn tính "tuần không hoàn thành" ở báo cáo Số ngày không hoàn thành
+  // nhiệm vụ, xem lib/task-completion-report.ts), ẩn hẳn (không tính nợ dồn) nếu tuần đã qua mà vẫn
+  // chưa gửi.
   const contaminationSubmitted = contaminationSubmission !== null;
-  const contaminationTaskVisible = now >= fridayDeadline && !contaminationSubmitted;
+  const contaminationTaskVisible = now >= thursdayDeadline && !contaminationSubmitted;
+  const contaminationOverdueDays = contaminationTaskVisible ? Math.max(0, differenceInCalendarDays(now, thursdayDeadline)) : 0;
+
+  // "Bàn giao cây trồng" — chỉ hiện từ Thứ 5, hạn muộn nhất Thứ 6 (hoàn thành sau Thứ 6 vẫn tính hoàn
+  // thành-trễ-hạn ở báo cáo, nhưng ẩn khỏi dashboard ngay khi đã CONFIRMED). Chỉ bắt buộc khi thực sự có
+  // hàng chờ bàn giao (còn đề xuất Trồng lại chưa gộp phiếu, hoặc đã gộp nhưng Nhân viên sản xuất chưa
+  // xác nhận).
+  const replantFridayDeadline = addDays(weekStart, 4);
+  const replantConfirmed = confirmedReplantHandover !== null;
+  const hasOutstandingReplant = unbundledReplantCount > 0 || pendingReplantHandover !== null;
+  const replantTaskVisible = now >= thursdayDeadline && !replantConfirmed && hasOutstandingReplant;
+  const replantOverdueDays = replantTaskVisible ? Math.max(0, differenceInCalendarDays(now, replantFridayDeadline)) : 0;
 
   return {
     weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
     finishedDone, finishedTotal, finishedPercent,
-    contaminationTaskVisible,
+    contaminationTaskVisible, contaminationOverdueDays,
+    replantTaskVisible, replantOverdueDays, replantAwaitingConfirmation: pendingReplantHandover !== null,
   };
 }
 
@@ -984,10 +1020,31 @@ function KhoMoTaskDashboard({
               href="/contamination-proposals/submit"
               icon={Send}
               title="3. Gửi đề xuất Trồng/Hủy"
-              deadline="Rà lại phiếu chung đã gộp ở mục Kiểm tra kho nhiễm cá nhân rồi gửi Admin duyệt — hạn Thứ 6"
+              deadline={
+                weeklyStats.contaminationOverdueDays > 0
+                  ? `Hạn Thứ 5 — đã trễ ${weeklyStats.contaminationOverdueDays} ngày, tuần này bị tính không hoàn thành nhiệm vụ`
+                  : "Rà lại phiếu chung đã gộp ở mục Kiểm tra kho nhiễm cá nhân rồi gửi Admin duyệt — hạn Thứ 5"
+              }
               percent={0}
               badgeState="urgent"
               countLabel="Chưa gửi"
+            />
+          )}
+          {weeklyStats.replantTaskVisible && (
+            <WeeklyTaskRow
+              href="/replant-handovers"
+              icon={Sprout}
+              title="4. Bàn giao cây trồng"
+              deadline={
+                weeklyStats.replantOverdueDays > 0
+                  ? `Hạn Thứ 6 — đã trễ ${weeklyStats.replantOverdueDays} ngày, tuần này bị tính không hoàn thành nhiệm vụ`
+                  : weeklyStats.replantAwaitingConfirmation
+                  ? "Đã bàn giao — đang chờ Nhân viên sản xuất xác nhận, hạn Thứ 6"
+                  : "Bàn giao đề xuất Trồng lại đã duyệt cho Nhân viên sản xuất — hạn Thứ 6"
+              }
+              percent={0}
+              badgeState="urgent"
+              countLabel={weeklyStats.replantAwaitingConfirmation ? "Chờ xác nhận" : "Chưa bàn giao"}
             />
           )}
         </CardContent>
