@@ -304,6 +304,8 @@ model User {
   contaminationProposalsRequested ContaminationProposal[] @relation("ContaminationProposalRequestedBy")
   contaminationProposalsApproved  ContaminationProposal[] @relation("ContaminationProposalApprovedBy")
   contaminationRoomEntries        ContaminationRoomEntry[]
+  personalContaminationChecksAsStaff   PersonalContaminationCheck[] @relation("PersonalContaminationCheckStaff")
+  personalContaminationChecksAsChecker PersonalContaminationCheck[] @relation("PersonalContaminationCheckedBy")
   dailyRecords         DailyRecord[]
   dailyRecordEditsAsStaff  DailyRecordEdit[] @relation("DailyRecordEditStaff")
   dailyRecordEditsAsEditor DailyRecordEdit[] @relation("DailyRecordEditEditedBy")
@@ -858,6 +860,7 @@ model Warehouse {
   staff        User[]
   contaminationProposals ContaminationProposal[]
   contaminationStaffBalances ContaminationStaffBalance[]
+  personalContaminationChecks PersonalContaminationCheck[]
 
   @@map("warehouses")
 }
@@ -1619,6 +1622,25 @@ model ContaminationStaffBalance {
 
   @@unique([warehouseId, staffId, plantTypeId, stageCode])
   @@map("contamination_staff_balances")
+}
+
+// Kho mô đánh dấu ĐÃ kiểm tra vật lý kho nhiễm cá nhân của 1 NV cấy mô trong ngày — thay cho việc tự tích
+// checkbox nhiệm vụ nhỏ "2. Kiểm tra kho nhiễm cá nhân" (xem dark-room-check/contamination-personal-board.tsx,
+// nút "Kiểm tra xong"). Nhiệm vụ nhỏ này tự động hoàn thành (ChecklistItem.subTask2Done, xem
+// lib/checklist.ts) khi ĐỦ tất cả NV cấy mô đang làm việc tại kho đó có 1 dòng ở đây cho hôm nay.
+model PersonalContaminationCheck {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       User     @relation("PersonalContaminationCheckStaff", fields: [staffId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  checkedDate DateTime
+  checkedById String
+  checkedBy   User     @relation("PersonalContaminationCheckedBy", fields: [checkedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([staffId, checkedDate])
+  @@map("personal_contamination_checks")
 }
 
 // Lịch sử TỪNG LẦN cộng nhiễm vào Phòng nhiễm — Phòng nhiễm (Lot code "NHIEM-{khoCode}-{maCay}") chỉ

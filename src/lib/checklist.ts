@@ -30,6 +30,41 @@ export async function ensureTodayChecklist(userId: string, role: UserRole | null
   }
 }
 
+// Tự động hoàn thành nhiệm vụ nhỏ "2. Kiểm tra kho nhiễm cá nhân" (ChecklistItem.subTask2Done) cho MỌI
+// NV kho mô đang làm việc tại 1 kho sản xuất — gọi sau khi tất cả NV cấy mô của kho đó đã được đánh dấu
+// "Kiểm tra xong" trong ngày (xem POST /api/personal-contamination-checks). Việc kiểm tra vật lý chỉ cần
+// 1 NV kho mô làm là đủ cho cả kho nên hoàn thành cho TẤT CẢ NV kho mô cùng kho, không chỉ người vừa bấm.
+export async function completeDarkRoomSubTask2ForWarehouse(warehouseId: string): Promise<void> {
+  const khoMoStaff = await prisma.user.findMany({
+    where: { role: "KHO_MO", workplaceWarehouseId: warehouseId },
+    select: { id: true },
+  });
+
+  for (const staff of khoMoStaff) {
+    const item = await prisma.checklistItem.findFirst({
+      where: { userId: staff.id, kind: "DARK_ROOM_CHECK" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!item || item.subTask2Done) continue;
+
+    const nowCompleted = item.subTask1Done;
+    const updateData = {
+      subTask2Done: true,
+      subTask2At: new Date(),
+      completed: nowCompleted,
+      completedAt: nowCompleted ? new Date() : item.completedAt,
+    };
+    if (nowCompleted !== item.completed) {
+      await prisma.$transaction([
+        prisma.checklistItem.update({ where: { id: item.id }, data: updateData }),
+        prisma.checklistItemLog.create({ data: { itemId: item.id, completed: nowCompleted } }),
+      ]);
+    } else {
+      await prisma.checklistItem.update({ where: { id: item.id }, data: updateData });
+    }
+  }
+}
+
 // Checklist hiển thị "hôm nay" cho NV: mọi việc chưa xong (bất kể sinh ngày nào — kể cả dồn từ hôm
 // trước), cộng thêm việc đã xong nhưng vừa được sinh/hoàn thành trong hôm nay (để NV thấy đã tích).
 export async function getTodayChecklist(userId: string) {

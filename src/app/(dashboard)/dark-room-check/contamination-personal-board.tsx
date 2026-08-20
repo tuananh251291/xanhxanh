@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Layers, User } from "lucide-react";
+import { Loader2, Layers, User, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import ContaminationDraftSubmit from "@/components/shared/contamination-draft-submit";
 
@@ -13,7 +13,10 @@ type Balance = {
   staffId: string; staffCode: string | null; staffName: string | null;
   plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number;
 };
-type StaffGroup = { staffId: string; label: string; totalQuantity: number; rows: Balance[] };
+type StaffCheck = { staffId: string; staffCode: string; staffName: string; checked: boolean };
+// checked = null cho bucket "" (tồn cũ/không rõ NV) — không có khái niệm "kiểm tra kho nhiễm cá nhân" vì
+// không phải 1 NV cấy mô thật.
+type StaffGroup = { staffId: string; label: string; totalQuantity: number; rows: Balance[]; checked: boolean | null };
 
 // Bảng nhập trồng/hủy cho 1 NV (hoặc bucket "Chưa rõ NV / tồn cũ") đang được chọn — cùng cơ chế nhập 1
 // trong 2 ô (còn lại tự tính phần dư) như trang Đề xuất Trồng/Hủy cũ, nhưng nguồn dữ liệu là số dư
@@ -66,18 +69,27 @@ function StaffEntryTable({ group, entryByKey, onChangeHuy, onChangeTrong }: {
   );
 }
 
-export default function ContaminationPersonalBoard() {
+// "2. Kiểm tra kho nhiễm cá nhân" — danh sách TẤT CẢ NV cấy mô của kho, không chỉ NV đang có nhiễm chờ
+// xử lý, vì việc kiểm tra là xác nhận vật lý (kể cả khi không có gì). Nhiệm vụ nhỏ này tự động hoàn thành
+// (xem checklist.ts) khi tất cả NV ở đây đã được bấm "Kiểm tra xong" — không còn checkbox tự tích.
+export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: () => void }) {
+  const [staffList, setStaffList] = useState<StaffCheck[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [entryByKey, setEntryByKey] = useState<Record<string, string>>({});
   const [merging, setMerging] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [draftKey, setDraftKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const b = await fetch("/api/contamination-staff-balances").then((r) => r.json());
+      const [s, b] = await Promise.all([
+        fetch("/api/personal-contamination-checks").then((r) => r.json()),
+        fetch("/api/contamination-staff-balances").then((r) => r.json()),
+      ]);
+      setStaffList(Array.isArray(s) ? s : []);
       setBalances(Array.isArray(b) ? b : []);
     } finally {
       setLoading(false);
@@ -87,25 +99,43 @@ export default function ContaminationPersonalBoard() {
   useEffect(() => { load(); }, [load]);
 
   const staffGroups = useMemo<StaffGroup[]>(() => {
-    const map = new Map<string, StaffGroup>();
-    for (const b of balances) {
-      const g = map.get(b.staffId) ?? {
-        staffId: b.staffId,
-        label: b.staffId === "" ? "Chưa rõ NV / tồn cũ" : `${b.staffCode ?? ""} — ${b.staffName ?? "?"}`,
-        totalQuantity: 0,
-        rows: [],
-      };
-      g.totalQuantity += b.quantity;
-      g.rows.push(b);
-      map.set(b.staffId, g);
+    const balancesByStaff = new Map<string, Balance[]>();
+    for (const bal of balances) {
+      const arr = balancesByStaff.get(bal.staffId) ?? [];
+      arr.push(bal);
+      balancesByStaff.set(bal.staffId, arr);
     }
-    return Array.from(map.values()).sort((a, b) => {
+
+    const groups: StaffGroup[] = staffList.map((s) => {
+      const rows = balancesByStaff.get(s.staffId) ?? [];
+      return {
+        staffId: s.staffId,
+        label: `${s.staffCode} — ${s.staffName}`,
+        totalQuantity: rows.reduce((sum, r) => sum + r.quantity, 0),
+        rows,
+        checked: s.checked,
+      };
+    });
+
+    const unattributedRows = balancesByStaff.get("") ?? [];
+    if (unattributedRows.length > 0) {
+      groups.push({
+        staffId: "",
+        label: "Chưa rõ NV / tồn cũ",
+        totalQuantity: unattributedRows.reduce((sum, r) => sum + r.quantity, 0),
+        rows: unattributedRows,
+        checked: null,
+      });
+    }
+
+    return groups.sort((a, b) => {
       if (a.staffId === "") return 1;
       if (b.staffId === "") return -1;
       return a.label.localeCompare(b.label);
     });
-  }, [balances]);
+  }, [staffList, balances]);
 
+  const checkedCount = staffList.filter((s) => s.checked).length;
   const selectedGroup = staffGroups.find((g) => g.staffId === selectedStaffId) ?? null;
 
   const selectStaff = (staffId: string) => {
@@ -141,11 +171,30 @@ export default function ContaminationPersonalBoard() {
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã gộp vào phiếu chung");
       setEntryByKey({});
-      setSelectedStaffId(null);
       setDraftKey((k) => k + 1);
       load();
     } finally {
       setMerging(false);
+    }
+  };
+
+  const markChecked = async (staffId: string) => {
+    setChecking(true);
+    try {
+      const res = await fetch("/api/personal-contamination-checks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staffId }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã đánh dấu kiểm tra xong");
+      setSelectedStaffId(null);
+      setEntryByKey({});
+      await load();
+      onChecked?.();
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -156,10 +205,12 @@ export default function ContaminationPersonalBoard() {
   return (
     <div className="space-y-4">
       {staffGroups.length === 0 ? (
-        <p className="text-sm text-text-muted">Không có NV nào đang có nhiễm chờ xử lý.</p>
+        <p className="text-sm text-text-muted">Không có NV cấy mô nào ở kho này.</p>
       ) : (
         <div className="space-y-2">
-          <p className="text-sm text-text-secondary">Chọn 1 NV để xem và nhập đề xuất trồng/hủy cho số nhiễm của họ:</p>
+          <p className="text-sm text-text-secondary">
+            Đã kiểm tra {checkedCount}/{staffList.length} NV hôm nay — chọn 1 NV để xem/nhập đề xuất trồng/hủy rồi bấm &quot;Kiểm tra xong&quot;:
+          </p>
           <div className="flex flex-wrap gap-2">
             {staffGroups.map((g) => (
               <button
@@ -169,26 +220,48 @@ export default function ContaminationPersonalBoard() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${
                   selectedStaffId === g.staffId
                     ? "bg-primary-light border-primary text-primary-strong font-semibold"
+                    : g.checked
+                    ? "bg-success-light border-success text-success-foreground"
                     : "bg-card border-divider text-foreground hover:border-primary"
                 }`}
               >
-                <User className="w-3.5 h-3.5" />
+                {g.checked ? <CheckCircle2 className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                 {g.label}
-                <Badge variant="in-progress">{g.totalQuantity.toLocaleString("vi-VN")}</Badge>
+                {g.totalQuantity > 0 && <Badge variant="in-progress">{g.totalQuantity.toLocaleString("vi-VN")}</Badge>}
               </button>
             ))}
           </div>
 
           {selectedGroup && (
             <Card>
-              <CardContent className="p-0">
-                <StaffEntryTable group={selectedGroup} entryByKey={entryByKey} onChangeHuy={changeHuy} onChangeTrong={changeTrong} />
-              </CardContent>
-              <div className="flex justify-end p-3 pt-0">
-                <Button size="sm" className="bg-secondary hover:bg-secondary-hover text-secondary-foreground" disabled={merging} onClick={mergeSelected}>
-                  {merging ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Layers className="w-4 h-4 mr-1.5" />}
-                  Gộp phiếu
-                </Button>
+              {selectedGroup.rows.length > 0 ? (
+                <CardContent className="p-0">
+                  <StaffEntryTable group={selectedGroup} entryByKey={entryByKey} onChangeHuy={changeHuy} onChangeTrong={changeTrong} />
+                </CardContent>
+              ) : (
+                <CardContent className="py-6 text-center text-sm text-text-muted">
+                  Không có nhiễm nào đang chờ xử lý
+                </CardContent>
+              )}
+              <div className="flex flex-col items-end gap-2 p-3 pt-0">
+                {selectedGroup.rows.length > 0 && (
+                  <Button size="sm" className="bg-secondary hover:bg-secondary-hover text-secondary-foreground" disabled={merging} onClick={mergeSelected}>
+                    {merging ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Layers className="w-4 h-4 mr-1.5" />}
+                    Gộp phiếu
+                  </Button>
+                )}
+                {selectedGroup.checked !== null && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-success text-success-foreground hover:bg-success-light"
+                    disabled={checking || selectedGroup.checked}
+                    onClick={() => markChecked(selectedGroup.staffId)}
+                  >
+                    {checking ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1.5" />}
+                    {selectedGroup.checked ? "Đã kiểm tra xong" : "Kiểm tra xong"}
+                  </Button>
+                )}
               </div>
             </Card>
           )}
