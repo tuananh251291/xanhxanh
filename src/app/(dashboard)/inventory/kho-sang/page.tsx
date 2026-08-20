@@ -157,7 +157,11 @@ export default async function KhoSangPage({
             orderBy: { enteredAt: "asc" },
           },
         },
-        orderBy: [{ rowNumber: "asc" }, { colNumber: "asc" }],
+        // block (VD "A01"/"A02") PHẢI đứng trước rowNumber — rowNumber chỉ là phần số của block (reset về
+        // 1 ở mỗi chữ cái hàng khác nhau, xem POST /api/shelves), sắp mỗi mình rowNumber sẽ trộn lẫn "A01,
+        // B01, A02, B02..." thay vì đúng thứ tự vật lý "A01C01..A01C10, A02C01...". Khớp đúng orderBy đã
+        // dùng ở rooms/[roomId]/shelf-list-view.tsx (trang Admin).
+        orderBy: [{ block: "asc" }, { rowNumber: "asc" }, { colNumber: "asc" }],
       })
     : [];
   const raReShelvesByRoom = new Map<string, typeof raReShelves>();
