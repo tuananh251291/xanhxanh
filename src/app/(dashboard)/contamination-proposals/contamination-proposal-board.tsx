@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Send, Check, X, Plus, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Send, Check, X, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -28,21 +27,6 @@ type Proposal = {
   requestedBy: { name: string };
   approvedBy: { name: string } | null;
 };
-type PlantTypeOption = { id: string; code: string; name: string };
-
-// crypto.randomUUID() chỉ chạy được trong secure context (HTTPS hoặc localhost) — NV kho mô thường mở
-// trang này qua IP LAN bằng HTTP thường (điện thoại), nên cần fallback không phụ thuộc secure context.
-// rowKey chỉ dùng làm key nội bộ trong form, không cần độ ngẫu nhiên cấp mật mã.
-const newRowKey = () =>
-  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-
-type BulkRow = { key: string; plantTypeId: string; stageCode: string; quantity: string };
-
-const DEFAULT_ROW_COUNT = 10;
-const makeEmptyRows = () => Array.from({ length: DEFAULT_ROW_COUNT }, () => ({ key: newRowKey(), plantTypeId: "", stageCode: "", quantity: "" }));
-
 type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
 
 // Nhóm các dòng cùng batchCode (cùng 1 lần bấm "Gửi đề xuất") thành 1 "đề xuất" — dòng cũ tạo trước khi
@@ -186,97 +170,72 @@ function BatchTable({ batches, canApprove, canSubmit, processingId, onReview }: 
   );
 }
 
-function BulkEntryTable({
-  title, rows, onChangeRow, onAddRow, onRemoveRow, plantTypes, inventory,
-}: {
-  title: string;
-  rows: BulkRow[];
-  onChangeRow: (key: string, patch: Partial<BulkRow>) => void;
-  onAddRow: () => void;
-  onRemoveRow: (key: string) => void;
-  plantTypes: PlantTypeOption[];
+// Nhập 1 trong 2 ô "Số trồng"/"Số hủy" cho từng dòng tồn Phòng nhiễm, ô còn lại tự tính phần dư
+// (luôn tổng = tồn) — huyByKey là nguồn dữ liệu duy nhất (giá trị "Số trồng" chỉ là suy ra để hiển thị
+// và để gõ ngược lại), tránh 2 state lệch nhau.
+function InventoryEntryTable({ inventory, huyByKey, onChangeHuy, onChangeTrong }: {
   inventory: RoomInventoryItem[];
+  huyByKey: Record<string, string>;
+  onChangeHuy: (key: string, raw: string) => void;
+  onChangeTrong: (key: string, raw: string, total: number) => void;
 }) {
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-primary-light">
-                  <th className="text-left px-2 py-2 text-primary-strong font-bold text-base">Mã cây</th>
-                  <th className="text-left px-2 py-2 text-primary-strong font-bold text-base">Quy cách</th>
-                  <th className="text-right px-2 py-2 text-primary-strong font-bold text-base w-28">Số lượng</th>
-                  <th className="w-8 px-1 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const stageOptions = inventory.filter((i) => i.plantTypeId === row.plantTypeId);
-                  return (
-                    <tr key={row.key} className="border-b border-divider last:border-0">
-                      <td className="px-2 py-1.5">
-                        <Select
-                          items={plantTypes.map((pt) => ({ value: pt.id, label: `${pt.code} — ${pt.name}` }))}
-                          value={row.plantTypeId || null}
-                          onValueChange={(v) => onChangeRow(row.key, { plantTypeId: v as string, stageCode: "" })}
-                        >
-                          <SelectTrigger className="h-9 w-full"><SelectValue placeholder="Chọn mã cây" /></SelectTrigger>
-                          <SelectContent>
-                            {plantTypes.map((pt) => (
-                              <SelectItem key={pt.id} value={pt.id}>{pt.code} — {pt.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <Select
-                          items={stageOptions.map((s) => ({ value: s.stageCode, label: `${s.stageCode} (tồn: ${s.quantity.toLocaleString("vi-VN")})` }))}
-                          value={row.stageCode || null}
-                          onValueChange={(v) => onChangeRow(row.key, { stageCode: v as string })}
-                        >
-                          <SelectTrigger className="h-9 w-full" disabled={!row.plantTypeId}><SelectValue placeholder="Chọn quy cách" /></SelectTrigger>
-                          <SelectContent>
-                            {stageOptions.map((s) => (
-                              <SelectItem key={s.stageCode} value={s.stageCode}>{s.stageCode} (tồn: {s.quantity.toLocaleString("vi-VN")})</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <Input
-                          type="number"
-                          min={1}
-                          className="h-9 text-right"
-                          value={row.quantity}
-                          onChange={(e) => onChangeRow(row.key, { quantity: e.target.value })}
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="px-1 py-1.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => onRemoveRow(row.key)}
-                          className="text-text-muted hover:text-destructive transition-colors"
-                          title="Xoá dòng"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-      <Button type="button" variant="outline" size="sm" onClick={onAddRow}>
-        <Plus className="w-3.5 h-3.5 mr-1" /> Thêm dòng
-      </Button>
-    </div>
+    <Card>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-primary-light">
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã cây</th>
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Tên cây</th>
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Quy cách</th>
+                <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Tồn</th>
+                <th className="text-right px-3 py-2 text-primary-strong font-bold text-base w-28">Số trồng</th>
+                <th className="text-right px-3 py-2 text-primary-strong font-bold text-base w-28">Số hủy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inventory.map((item) => {
+                const key = `${item.plantTypeId}:${item.stageCode}`;
+                const huyRaw = huyByKey[key] ?? "";
+                const huyNum = huyRaw === "" ? null : parseInt(huyRaw, 10) || 0;
+                const trongDisplay = huyNum === null ? "" : String(Math.max(0, item.quantity - huyNum));
+                return (
+                  <tr key={key} className="border-b border-divider last:border-0 even:bg-background">
+                    <td className="px-3 py-1.5 font-mono text-foreground whitespace-nowrap">{item.plantTypeCode}</td>
+                    <td className="px-3 py-1.5 text-foreground">{item.plantTypeName}</td>
+                    <td className="px-3 py-1.5 text-foreground">{item.stageCode}</td>
+                    <td className="px-3 py-1.5 text-right font-medium text-foreground">{item.quantity.toLocaleString("vi-VN")}</td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={item.quantity}
+                        className="h-9 text-right"
+                        value={trongDisplay}
+                        onChange={(e) => onChangeTrong(key, e.target.value, item.quantity)}
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={item.quantity}
+                        className="h-9 text-right"
+                        value={huyRaw}
+                        onChange={(e) => onChangeHuy(key, e.target.value)}
+                        placeholder="0"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -288,8 +247,7 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(canApprove);
 
-  const [huyRows, setHuyRows] = useState<BulkRow[]>(makeEmptyRows);
-  const [trongRows, setTrongRows] = useState<BulkRow[]>(makeEmptyRows);
+  const [huyByKey, setHuyByKey] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,36 +264,27 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
 
   useEffect(() => { load(); }, [load]);
 
-  const plantTypes = useMemo(() => {
-    const map = new Map<string, PlantTypeOption>();
-    for (const item of inventory) {
-      if (!map.has(item.plantTypeId)) map.set(item.plantTypeId, { id: item.plantTypeId, code: item.plantTypeCode, name: item.plantTypeName });
-    }
-    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
-  }, [inventory]);
-
-  const changeRow = (setRows: typeof setHuyRows, key: string, patch: Partial<BulkRow>) =>
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  const addRow = (setRows: typeof setHuyRows) =>
-    setRows((prev) => [...prev, { key: newRowKey(), plantTypeId: "", stageCode: "", quantity: "" }]);
-  const removeRow = (setRows: typeof setHuyRows, key: string) =>
-    setRows((prev) => prev.filter((r) => r.key !== key));
+  // Sửa "Số hủy": lưu thẳng giá trị gõ vào (rỗng = chưa quyết định dòng này, "Số trồng" tự suy ra khi hiển thị).
+  const changeHuy = (key: string, raw: string) =>
+    setHuyByKey((prev) => ({ ...prev, [key]: raw }));
+  // Sửa "Số trồng": quy đổi ngược lại thành "Số hủy" tương ứng (tổng luôn = tồn) rồi lưu vào cùng 1 state.
+  const changeTrong = (key: string, raw: string, total: number) =>
+    setHuyByKey((prev) => ({ ...prev, [key]: raw === "" ? "" : String(Math.max(0, total - (parseInt(raw, 10) || 0))) }));
 
   const submitAll = async () => {
     type Candidate = { type: "HUY" | "TRONG"; plantTypeId: string; stageCode: string; quantity: number };
     const candidates: Candidate[] = [];
-    for (const r of huyRows) {
-      const qty = parseInt(r.quantity, 10) || 0;
-      if (r.plantTypeId && r.stageCode && qty > 0) candidates.push({ type: "HUY", plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: qty });
-    }
-    for (const r of trongRows) {
-      const qty = parseInt(r.quantity, 10) || 0;
-      if (r.plantTypeId && r.stageCode && qty > 0) candidates.push({ type: "TRONG", plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: qty });
+    for (const item of inventory) {
+      const key = `${item.plantTypeId}:${item.stageCode}`;
+      const huyRaw = huyByKey[key];
+      if (huyRaw === undefined || huyRaw === "") continue;
+      const huyQty = Math.max(0, Math.min(item.quantity, parseInt(huyRaw, 10) || 0));
+      const trongQty = item.quantity - huyQty;
+      if (huyQty > 0) candidates.push({ type: "HUY", plantTypeId: item.plantTypeId, stageCode: item.stageCode, quantity: huyQty });
+      if (trongQty > 0) candidates.push({ type: "TRONG", plantTypeId: item.plantTypeId, stageCode: item.stageCode, quantity: trongQty });
     }
     if (candidates.length === 0) { toast.error("Chưa điền dòng đề xuất nào"); return; }
 
-    const remaining = new Map<string, number>();
-    for (const item of inventory) remaining.set(`${item.plantTypeId}:${item.stageCode}`, item.quantity);
     // Các dòng cùng loại (Hủy/Trồng) gửi trong cùng 1 lần bấm được gộp chung 1 "đề xuất" — dòng đầu tiên
     // của mỗi loại quyết định batchCode, các dòng sau truyền lại đúng batchCode đó (xem POST route).
     const batchCodeByType: Record<"HUY" | "TRONG", string | undefined> = { HUY: undefined, TRONG: undefined };
@@ -345,9 +294,6 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
     let failCount = 0;
     try {
       for (const c of candidates) {
-        const key = `${c.plantTypeId}:${c.stageCode}`;
-        const avail = remaining.get(key) ?? 0;
-        if (c.quantity > avail) { failCount++; continue; }
         const res = await fetch("/api/contamination-proposals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -360,14 +306,12 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
           const created = await res.json();
           batchCodeByType[c.type] ??= created.batchCode;
           okCount++;
-          remaining.set(key, avail - c.quantity);
         } else failCount++;
       }
       if (okCount > 0) toast.success(`Đã gửi ${okCount} đề xuất — chờ Admin duyệt`);
       if (failCount > 0) toast.error(`${failCount} dòng không gửi được (vượt tồn Phòng nhiễm hoặc lỗi)`);
       if (okCount > 0) {
-        setHuyRows(makeEmptyRows());
-        setTrongRows(makeEmptyRows());
+        setHuyByKey({});
         load();
       }
     } finally {
@@ -436,31 +380,18 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
         <Card>
           <CardHeader><CardTitle className="text-primary-strong font-bold">Tạo đề xuất Trồng/Hủy mới</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {plantTypes.length === 0 && (
+            {inventory.length === 0 ? (
               <p className="text-sm text-text-muted flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" /> Phòng nhiễm hiện không có hàng nào để đề xuất.
               </p>
+            ) : (
+              <>
+                <p className="text-sm text-text-muted">
+                  Nhập số lượng vào ô &quot;Số trồng&quot; hoặc &quot;Số hủy&quot; cho từng dòng — số còn lại tự động tính bằng phần chênh lệch so với tồn.
+                </p>
+                <InventoryEntryTable inventory={inventory} huyByKey={huyByKey} onChangeHuy={changeHuy} onChangeTrong={changeTrong} />
+              </>
             )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <BulkEntryTable
-                title="Đề xuất Hủy"
-                rows={huyRows}
-                onChangeRow={(key, patch) => changeRow(setHuyRows, key, patch)}
-                onAddRow={() => addRow(setHuyRows)}
-                onRemoveRow={(key) => removeRow(setHuyRows, key)}
-                plantTypes={plantTypes}
-                inventory={inventory}
-              />
-              <BulkEntryTable
-                title="Đề xuất Trồng"
-                rows={trongRows}
-                onChangeRow={(key, patch) => changeRow(setTrongRows, key, patch)}
-                onAddRow={() => addRow(setTrongRows)}
-                onRemoveRow={(key) => removeRow(setTrongRows, key)}
-                plantTypes={plantTypes}
-                inventory={inventory}
-              />
-            </div>
             <div className="flex justify-center pt-2">
               <Button size="lg" className="bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submitAll}>
                 {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
