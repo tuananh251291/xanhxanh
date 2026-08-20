@@ -325,12 +325,30 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const replantTaskVisible = now >= thursdayDeadline && !replantConfirmed && hasOutstandingReplant;
   const replantOverdueDays = replantTaskVisible ? Math.max(0, differenceInCalendarDays(now, replantFridayDeadline)) : 0;
 
+  // Kiểm tra môi trường dư: chỉ hiện việc này đúng Thứ 2/Thứ 3 (xem isMediumSurplusEntryDay), và chỉ khi có
+  // đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) của đúng kho này còn CHƯA bấm "Hoàn thành"
+  // (surplusRecordedAt null) — biến mất khỏi cả 2 ngày ngay khi đã hoàn thành, không đợi hết Thứ 3. Hiện ở
+  // khối "Công việc hàng tuần" (không phải hàng ngày) vì chỉ lặp lại 1 lần/tuần, đúng 2 ngày cố định.
+  let mediumSurplusOrderId: string | null = null;
+  if (isMediumSurplusEntryDay()) {
+    const candidateOrders = await prisma.mediumOrder.findMany({
+      where: {
+        confirmedAt: { not: null },
+        surplusRecordedAt: null,
+        ...(workplaceWarehouseId ? { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } : {}),
+      },
+      include: { days: { select: { handedOverAt: true, confirmedAt: true } } },
+    });
+    mediumSurplusOrderId = candidateOrders.find((o) => isMediumOrderInProgress(o))?.id ?? null;
+  }
+
   return {
     weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
     finishedDone, finishedTotal, finishedPercent,
     contaminationTaskVisible, contaminationOverdueDays,
     replantTaskVisible, replantOverdueDays, replantAwaitingConfirmation: pendingReplantHandover !== null,
+    mediumSurplusOrderId,
   };
 }
 
@@ -371,22 +389,6 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
   const mediumDone = mediumDaysToday.filter((d) => d.confirmedAt !== null).length;
   const mediumPercent = mediumTotal === 0 ? 100 : Math.round((mediumDone / mediumTotal) * 100);
 
-  // Kiểm tra môi trường dư: chỉ hiện việc này đúng Thứ 2/Thứ 3 (xem isMediumSurplusEntryDay), và chỉ khi có
-  // đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) của đúng kho này còn CHƯA bấm "Hoàn thành"
-  // (surplusRecordedAt null) — biến mất khỏi cả 2 ngày ngay khi đã hoàn thành, không đợi hết Thứ 3.
-  let mediumSurplusOrderId: string | null = null;
-  if (isMediumSurplusEntryDay()) {
-    const candidateOrders = await prisma.mediumOrder.findMany({
-      where: {
-        confirmedAt: { not: null },
-        surplusRecordedAt: null,
-        ...(workplaceWarehouseId ? { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } : {}),
-      },
-      include: { days: { select: { handedOverAt: true, confirmedAt: true } } },
-    });
-    mediumSurplusOrderId = candidateOrders.find((o) => isMediumOrderInProgress(o))?.id ?? null;
-  }
-
   // "Kiểm tra kho tối" — 2 nhiệm vụ nhỏ (Kiểm tra kho cá nhân + Kiểm tra kho nhiễm cá nhân), xem
   // src/lib/checklist.ts (ensureTodayChecklist sinh ChecklistItem kind=DARK_ROOM_CHECK từ template Admin
   // soạn trong Settings) và /dark-room-check (trang thao tác 2 nhiệm vụ nhỏ này). Việc này lặp lại MỖI
@@ -405,7 +407,6 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
   return {
     receiveDone, receiveTotal, receivePercent,
     mediumDone, mediumTotal, mediumPercent,
-    mediumSurplusOrderId,
     darkRoomCheckItemId: darkRoomCheckItem?.id ?? null, darkRoomCheckPercent, darkRoomSubTasksDone,
   };
 }
@@ -971,21 +972,11 @@ function KhoMoTaskDashboard({
             percent={dailyStats.mediumPercent}
             countLabel={`${dailyStats.mediumDone}/${dailyStats.mediumTotal} ngày`}
           />
-          {dailyStats.mediumSurplusOrderId && (
-            <WeeklyTaskRow
-              href={`/medium-orders/${dailyStats.mediumSurplusOrderId}`}
-              icon={FlaskConical}
-              title="3. Kiểm tra môi trường dư"
-              deadline="Đối chiếu số dư lý thuyết với số đếm thực tế (chỉ Thứ 2, Thứ 3)"
-              percent={0}
-              countLabel="Chưa nhập"
-            />
-          )}
           {dailyStats.darkRoomCheckItemId && (
             <WeeklyTaskRow
               href="/dark-room-check"
               icon={Moon}
-              title="4. Kiểm tra kho tối"
+              title="3. Kiểm tra kho tối"
               deadline="Kiểm tra kho cá nhân NV cấy mô + xác nhận đã chuyển cây nhiễm cá nhân về kho nhiễm chung"
               percent={dailyStats.darkRoomCheckPercent}
               countLabel={`${dailyStats.darkRoomSubTasksDone}/2 nhiệm vụ`}
@@ -1015,11 +1006,21 @@ function KhoMoTaskDashboard({
             percent={weeklyStats.finishedPercent}
             countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} phiếu`}
           />
+          {weeklyStats.mediumSurplusOrderId && (
+            <WeeklyTaskRow
+              href={`/medium-orders/${weeklyStats.mediumSurplusOrderId}`}
+              icon={FlaskConical}
+              title="3. Kiểm tra môi trường dư"
+              deadline="Đối chiếu số dư lý thuyết với số đếm thực tế (chỉ Thứ 2, Thứ 3)"
+              percent={0}
+              countLabel="Chưa nhập"
+            />
+          )}
           {weeklyStats.contaminationTaskVisible && (
             <WeeklyTaskRow
               href="/contamination-proposals/submit"
               icon={Send}
-              title="3. Gửi đề xuất Trồng/Hủy"
+              title="4. Gửi đề xuất Trồng/Hủy"
               deadline={
                 weeklyStats.contaminationOverdueDays > 0
                   ? `Hạn Thứ 5 — đã trễ ${weeklyStats.contaminationOverdueDays} ngày, tuần này bị tính không hoàn thành nhiệm vụ`
@@ -1034,7 +1035,7 @@ function KhoMoTaskDashboard({
             <WeeklyTaskRow
               href="/replant-handovers"
               icon={Sprout}
-              title="4. Bàn giao cây trồng"
+              title="5. Bàn giao cây trồng"
               deadline={
                 weeklyStats.replantOverdueDays > 0
                   ? `Hạn Thứ 6 — đã trễ ${weeklyStats.replantOverdueDays} ngày, tuần này bị tính không hoàn thành nhiệm vụ`
