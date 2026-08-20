@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
+import WarehouseFilterSelect from "@/components/shared/warehouse-filter-select";
 
 type ViolationRow = {
   id: string;
@@ -28,24 +29,26 @@ type StaffRow = {
 
 const toDateInputValue = (d: Date) => format(d, "yyyy-MM-dd");
 
-export default function ViolationReportBoard() {
+export default function ViolationReportBoard({ canFilterByWarehouse = false }: { canFilterByWarehouse?: boolean }) {
   const [staffList, setStaffList] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [from, setFrom] = useState(toDateInputValue(startOfMonth(new Date())));
   const [to, setTo] = useState(toDateInputValue(endOfMonth(new Date())));
+  const [warehouseId, setWarehouseId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ from, to });
+      if (warehouseId) params.set("warehouseId", warehouseId);
       const res = await fetch(`/api/violation-report?${params}`);
       const data = await res.json();
       setStaffList(Array.isArray(data.staffList) ? data.staffList : []);
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, warehouseId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -61,6 +64,7 @@ export default function ViolationReportBoard() {
             <Label className="text-xs">Đến ngày</Label>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
           </div>
+          {canFilterByWarehouse && <WarehouseFilterSelect value={warehouseId} onChange={setWarehouseId} />}
         </CardContent>
       </Card>
 

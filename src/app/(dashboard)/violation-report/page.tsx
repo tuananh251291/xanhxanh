@@ -45,11 +45,11 @@ export default async function ViolationReportPage() {
         </TabsList>
 
         <TabsContent value="violation-report" className="mt-4">
-          <ViolationReportBoard />
+          <ViolationReportBoard canFilterByWarehouse={isAdminRole(role) || isHr} />
         </TabsContent>
         {!isHr && (
           <TabsContent value="data-corrections" className="mt-4">
-            <DataCorrectionsBoard />
+            <DataCorrectionsBoard canFilterByWarehouse={isAdminRole(role)} />
           </TabsContent>
         )}
         {!isHr && (
@@ -58,7 +58,7 @@ export default async function ViolationReportPage() {
           </TabsContent>
         )}
         <TabsContent value="task-completion" className="mt-4">
-          <TaskCompletionReportBoard isAdmin={isAdminRole(role)} />
+          <TaskCompletionReportBoard isAdmin={isAdminRole(role)} canFilterByWarehouse={isAdminRole(role) || isHr} />
         </TabsContent>
       </Tabs>
     </div>

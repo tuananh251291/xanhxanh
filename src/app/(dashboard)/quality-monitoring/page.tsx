@@ -31,13 +31,13 @@ export default async function QualityMonitoringPage() {
         </TabsList>
 
         <TabsContent value="data-corrections" className="mt-4">
-          <DataCorrectionsBoard />
+          <DataCorrectionsBoard canFilterByWarehouse />
         </TabsContent>
         <TabsContent value="violation-report" className="mt-4">
-          <ViolationReportBoard />
+          <ViolationReportBoard canFilterByWarehouse />
         </TabsContent>
         <TabsContent value="task-completion" className="mt-4">
-          <TaskCompletionReportBoard isAdmin />
+          <TaskCompletionReportBoard isAdmin canFilterByWarehouse />
         </TabsContent>
       </Tabs>
     </div>

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format, startOfWeek, addWeeks, addDays, parseISO } from "date-fns";
 import { vi } from "date-fns/locale";
 import { ROLE_LABELS } from "@/types";
+import WarehouseFilterSelect from "@/components/shared/warehouse-filter-select";
 
 type TaskCompletionDay = {
   date: string;
@@ -31,9 +32,16 @@ type StaffRow = {
 
 const ROLE_FILTERS = ["all", "KY_THUAT", "CAY_MO", "KHO_MO"] as const;
 
-export default function TaskCompletionReportBoard({ isAdmin }: { isAdmin: boolean }) {
+export default function TaskCompletionReportBoard({
+  isAdmin,
+  canFilterByWarehouse = false,
+}: {
+  isAdmin: boolean;
+  canFilterByWarehouse?: boolean;
+}) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [roleFilter, setRoleFilter] = useState<(typeof ROLE_FILTERS)[number]>("all");
+  const [warehouseId, setWarehouseId] = useState("");
   const [staffList, setStaffList] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -45,13 +53,14 @@ export default function TaskCompletionReportBoard({ isAdmin }: { isAdmin: boolea
     setLoading(true);
     try {
       const params = new URLSearchParams({ weekStart: format(weekStart, "yyyy-MM-dd") });
+      if (warehouseId) params.set("warehouseId", warehouseId);
       const res = await fetch(`/api/task-completion-report?${params}`);
       const data = await res.json();
       setStaffList(Array.isArray(data.staff) ? data.staff : []);
     } finally {
       setLoading(false);
     }
-  }, [weekStart]);
+  }, [weekStart, warehouseId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -103,15 +112,19 @@ export default function TaskCompletionReportBoard({ isAdmin }: { isAdmin: boolea
             Tuần này
           </Button>
           <div className="flex-1" />
-          <Select value={roleFilter} onValueChange={(v) => setRoleFilter((v as (typeof ROLE_FILTERS)[number]) ?? "all")}>
-            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Mọi vai trò</SelectItem>
-              <SelectItem value="KY_THUAT">{ROLE_LABELS.KY_THUAT}</SelectItem>
-              <SelectItem value="CAY_MO">{ROLE_LABELS.CAY_MO}</SelectItem>
-              <SelectItem value="KHO_MO">{ROLE_LABELS.KHO_MO}</SelectItem>
-            </SelectContent>
-          </Select>
+          {canFilterByWarehouse && <WarehouseFilterSelect value={warehouseId} onChange={setWarehouseId} />}
+          <div className="space-y-1">
+            <Label className="text-xs">Vai trò</Label>
+            <Select value={roleFilter} onValueChange={(v) => setRoleFilter((v as (typeof ROLE_FILTERS)[number]) ?? "all")}>
+              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Mọi vai trò</SelectItem>
+                <SelectItem value="KY_THUAT">{ROLE_LABELS.KY_THUAT}</SelectItem>
+                <SelectItem value="CAY_MO">{ROLE_LABELS.CAY_MO}</SelectItem>
+                <SelectItem value="KHO_MO">{ROLE_LABELS.KHO_MO}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 

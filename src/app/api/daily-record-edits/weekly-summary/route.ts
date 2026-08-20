@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
@@ -6,9 +6,10 @@ import { startOfWeek, endOfWeek } from "date-fns";
 
 // Bảng theo dõi "số lần Admin/Kho mô đã sửa nhật ký cấy" của từng NV cấy mô trong tuần này — mỗi dòng
 // DailyRecordEdit là 1 lần sửa THỰC SỰ đổi số liệu (xem changed ở PATCH /api/daily-records/[id]), nghĩa
-// là NV đã nhập sai và cần người khác chỉnh lại. Admin/Admin cấp cao xem toàn bộ, Kho mô chỉ xem đúng NV
-// cùng kho sản xuất mình làm việc (khớp phạm vi canManageDailyRecords).
-export async function GET() {
+// là NV đã nhập sai và cần người khác chỉnh lại. Admin/Admin cấp cao xem toàn bộ (lọc thêm được theo 1 cơ
+// sở sản xuất qua ?warehouseId=, xem WarehouseFilterSelect), Kho mô chỉ xem đúng NV cùng kho sản xuất
+// mình làm việc (khớp phạm vi canManageDailyRecords, bỏ qua ?warehouseId= nếu có gửi lên).
+export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!isAdminRole(role) && role !== "KHO_MO") {
@@ -18,13 +19,19 @@ export async function GET() {
     return NextResponse.json({ staffList: [] });
   }
 
+  const warehouseId = isAdminRole(role) ? req.nextUrl.searchParams.get("warehouseId")?.trim() || null : null;
+
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
   const edits = await prisma.dailyRecordEdit.findMany({
     where: {
       createdAt: { gte: weekStart, lte: weekEnd },
-      ...(role === "KHO_MO" ? { staff: { workplaceWarehouseId: session!.user!.workplaceWarehouseId } } : {}),
+      ...(role === "KHO_MO"
+        ? { staff: { workplaceWarehouseId: session!.user!.workplaceWarehouseId } }
+        : warehouseId
+          ? { staff: { workplaceWarehouseId: warehouseId } }
+          : {}),
     },
     include: {
       staff: { select: { id: true, code: true, name: true } },
