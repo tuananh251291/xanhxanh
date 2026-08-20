@@ -352,10 +352,13 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
 
   // "Kiểm tra kho tối" — 2 nhiệm vụ nhỏ (Kiểm tra kho cá nhân + Kiểm tra kho nhiễm cá nhân), xem
   // src/lib/checklist.ts (ensureTodayChecklist sinh ChecklistItem kind=DARK_ROOM_CHECK từ template Admin
-  // soạn trong Settings) và /dark-room-check (trang thao tác 2 nhiệm vụ nhỏ này).
+  // soạn trong Settings) và /dark-room-check (trang thao tác 2 nhiệm vụ nhỏ này). Việc này lặp lại MỖI
+  // NGÀY nên luôn hiện trên dashboard kể cả khi đã hoàn thành hôm nay (không lọc completed: false như
+  // trước — lọc vậy khiến dòng này "biến mất" ngay khi xong, giống các việc chỉ làm 1 lần chứ không phải
+  // việc hàng ngày) — giống cách "1. Nhận bàn giao từ kho tối" vẫn hiện dù đã 100%.
   await ensureTodayChecklist(userId, "KHO_MO");
   const darkRoomCheckItem = await prisma.checklistItem.findFirst({
-    where: { userId, kind: "DARK_ROOM_CHECK", completed: false },
+    where: { userId, kind: "DARK_ROOM_CHECK" },
     orderBy: { createdAt: "desc" },
     select: { id: true, subTask1Done: true, subTask2Done: true },
   });
