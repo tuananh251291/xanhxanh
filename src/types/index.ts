@@ -508,6 +508,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/users", label: "Người dùng", icon: "Users" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/reports/handover-summary", label: "Bàn giao & ghi nhận theo tháng", icon: "PackageCheck" },
+    { href: "/payroll-settings", label: "Cài đặt lương", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };
