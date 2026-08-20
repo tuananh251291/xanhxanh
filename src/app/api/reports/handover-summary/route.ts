@@ -12,7 +12,9 @@ const PERIOD_START_DAY = 7;
 // - Luồng Xanh: không qua Kiểm tra, ghi nhận = đã bàn giao trừ số "không đạt" NV tự khai.
 // - Luồng Đỏ (hoặc chưa cài luồng): ghi nhận = TransferInspectionItem.creditedQuantity (Kho mô xác nhận
 //   sau khi kiểm tra) — phiếu chưa kiểm tra thì phần đó CHƯA cộng vào ghi nhận (hasPending=true để FE báo
-//   "còn phiếu đang chờ kiểm tra", tránh hiểu nhầm số ghi nhận thấp là NV làm kém).
+//   "còn phiếu đang chờ kiểm tra", tránh hiểu nhầm số ghi nhận thấp là NV làm kém). 1 phiếu có thể có
+//   NHIỀU dòng TransferInspectionItem cùng stageCode (mỗi dòng 1 mã cây, xem schema) — báo cáo này gộp
+//   theo stageCode (cộng dồn) vì chỉ cần tổng theo NV, không cần tách mã cây.
 // Cùng "kỳ lương" mùng 7 - trước mùng 7 tháng sau (không phải tháng lịch) — khớp quy ước công ty.
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -67,7 +69,10 @@ export async function GET(req: NextRequest) {
       g.unqualified += item.unqualifiedQuantity;
       groups.set(item.lot.stageCode, g);
     }
-    const creditedByStage = new Map((t.inspection?.items ?? []).map((i) => [i.stageCode, i.creditedQuantity]));
+    const creditedByStage = new Map<string, number>();
+    for (const i of t.inspection?.items ?? []) {
+      creditedByStage.set(i.stageCode, (creditedByStage.get(i.stageCode) ?? 0) + i.creditedQuantity);
+    }
     for (const [stageCode, g] of groups) {
       entry.handedOver += g.handedOver;
       if (isXanh) {

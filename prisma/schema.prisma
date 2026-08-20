@@ -601,6 +601,7 @@ model PlantType {
   repackInstructions   RepackInstruction[]
   motherPhotos         MotherPhoto[]
   kpiRate              PlantTypeKpiRate?
+  transferInspectionItems TransferInspectionItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -1777,6 +1778,12 @@ model TransferInspectionItem {
   id                   String             @id @default(cuid())
   inspectionId         String
   inspection           TransferInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  // Tách riêng theo TỪNG mã cây (không chỉ quy cách) — 1 phiếu bàn giao có thể gộp nhiều mã cây cùng quy
+  // cách, mỗi mã cây cần biết riêng creditedQuantity vì tính lương quy đổi theo đơn giá KHÁC NHAU từng mã
+  // cây (xem PlantTypeKpiRate, src/lib/payroll-calculation.ts). Trước đây gộp chung theo stageCode, làm
+  // mất thông tin mã cây khi 1 phiếu có nhiều mã cây cùng quy cách — đã tách lại đúng theo lô gốc.
+  plantTypeId          String
+  plantType            PlantType          @relation(fields: [plantTypeId], references: [id])
   stageCode            String
   handedOverQuantity   Int
   contaminatedQuantity Int
@@ -1791,7 +1798,7 @@ model TransferInspectionItem {
   // tính lương sau này, KHÔNG dùng để trừ vào số lượng thực tế đem xếp kệ (số đó luôn là passedQuantity).
   creditedQuantity     Int
 
-  @@unique([inspectionId, stageCode])
+  @@unique([inspectionId, plantTypeId, stageCode])
   @@map("transfer_inspection_items")
 }
 

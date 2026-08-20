@@ -114,18 +114,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
     }
   }
 
-  // Gộp input theo từng lô về đúng 1 bản ghi/quy cách (ràng buộc DB, xem TransferItem ở trên) — số lượng
-  // (nhiễm/A) cộng dồn, tỉ lệ đạt lấy trung bình CỘNG đơn giản giữa các lô cùng quy cách (không theo
-  // trọng số số lượng). Riêng SL ghi nhận tính RIÊNG cho từng lô rồi cộng dồn — không tính lại từ tỉ lệ
-  // trung bình đã gộp — để khớp đúng công thức áp cho từng lô, không lệch do gộp trước rồi mới tính.
+  // Gộp input theo từng lô về đúng 1 bản ghi/(mã cây + quy cách) (ràng buộc DB, xem TransferItem ở
+  // trên) — TÁCH RIÊNG theo mã cây (không chỉ quy cách) vì tính lương quy đổi sản lượng theo đơn giá
+  // KHÁC NHAU từng mã cây (xem PlantTypeKpiRate) — 1 phiếu bàn giao gộp nhiều mã cây cùng quy cách vẫn
+  // phải tách rõ creditedQuantity từng mã cây, không được cộng chung. Số lượng (nhiễm/A) cộng dồn, tỉ lệ
+  // đạt lấy trung bình CỘNG đơn giản giữa các lô cùng nhóm (không theo trọng số số lượng). Riêng SL ghi
+  // nhận tính RIÊNG cho từng lô rồi cộng dồn — không tính lại từ tỉ lệ trung bình đã gộp — để khớp đúng
+  // công thức áp cho từng lô, không lệch do gộp trước rồi mới tính.
   const groups = new Map<
     string,
-    { handedOverQuantity: number; contaminatedQuantity: number; unqualifiedQuantity: number; rateSum: number; rateCount: number; creditedQuantity: number }
+    {
+      plantTypeId: string; stageCode: string;
+      handedOverQuantity: number; contaminatedQuantity: number; unqualifiedQuantity: number; rateSum: number; rateCount: number; creditedQuantity: number;
+    }
   >();
   for (const item of parsed.data.items) {
     const transferItem = itemByLotId.get(item.lotId)!;
     const lot = transferItem.lot;
-    const group = groups.get(lot.stageCode) ?? {
+    const key = `${lot.plantTypeId}|${lot.stageCode}`;
+    const group = groups.get(key) ?? {
+      plantTypeId: lot.plantTypeId, stageCode: lot.stageCode,
       handedOverQuantity: 0, contaminatedQuantity: 0, unqualifiedQuantity: 0, rateSum: 0, rateCount: 0, creditedQuantity: 0,
     };
     group.handedOverQuantity += lot.quantity;
@@ -141,7 +149,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
       0,
       Math.round((lot.quantity - Math.max(item.unqualifiedQuantity, transferItem.unqualifiedQuantity)) * ((100 - item.randomCheckPassRate) / 100))
     );
-    groups.set(lot.stageCode, group);
+    groups.set(key, group);
   }
 
   const warehouseId = transfer.fromRoom!.warehouseId;
@@ -153,8 +161,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
         transferId,
         inspectedById: session.user.id,
         items: {
-          create: [...groups.entries()].map(([stageCode, g]) => ({
-            stageCode,
+          create: [...groups.values()].map((g) => ({
+            plantTypeId: g.plantTypeId,
+            stageCode: g.stageCode,
             handedOverQuantity: g.handedOverQuantity,
             contaminatedQuantity: g.contaminatedQuantity,
             passedQuantity: g.handedOverQuantity - g.contaminatedQuantity,

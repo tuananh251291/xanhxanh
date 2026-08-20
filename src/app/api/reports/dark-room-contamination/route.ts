@@ -10,8 +10,9 @@ import { startOfDay, endOfDay, subDays, parseISO, isValid, format } from "date-f
 // 2. Luồng Đỏ phát hiện thêm: Kho mô kiểm tra lại lúc nhận bàn giao, CHỈ áp dụng NV luồng Đỏ/chưa cài
 //    đặt luồng (User.inspectionLane khác "XANH") — TransferInspection/TransferInspectionItem, xem
 //    api/transfers/receive-phong-toi/inspect/[transferId]/route.ts. Khớp với từng LotInspectionItem qua
-//    lotId → TransferItem → Transfer → TransferInspection, so khớp đúng stageCode (1 phiếu bàn giao luôn
-//    đúng 1 mã lô sản phẩm — xem handover-simple-form.tsx nhóm theo code).
+//    lotId → TransferItem → Transfer → TransferInspection, so khớp theo stageCode — CỘNG DỒN mọi dòng
+//    TransferInspectionItem cùng stageCode (1 phiếu có thể có nhiều dòng, mỗi dòng 1 mã cây, xem schema),
+//    không lấy dòng đầu tiên khớp.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!(await isPageAllowed(session?.user?.role ?? null, "/reports"))) {
@@ -95,8 +96,8 @@ export async function GET(req: NextRequest) {
       if (!redFlowApplicable) continue;
       bucket.redFlowApplicableCount += 1;
       const redFlowItems = redFlowItemsByLotId.get(item.lotId);
-      const match = redFlowItems?.find((r) => r.stageCode === item.stageCode);
-      if (match) {
+      const matches = redFlowItems?.filter((r) => r.stageCode === item.stageCode) ?? [];
+      for (const match of matches) {
         bucket.redFlowHandedOver += match.handedOverQuantity;
         bucket.redFlowContaminated += match.contaminatedQuantity;
       }

@@ -84,8 +84,8 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       select: {
         fromUserId: true,
         createdAt: true,
-        items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { stageCode: true, plantTypeId: true } } } },
-        inspection: { select: { items: { select: { stageCode: true, creditedQuantity: true } } } },
+        items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true } } } },
+        inspection: { select: { items: { select: { plantTypeId: true, creditedQuantity: true } } } },
       },
     }),
     prisma.violationRecord.groupBy({
@@ -125,10 +125,9 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   for (const t of transfers) addActiveDay(t.fromUserId, t.createdAt);
 
   // "Sản lượng đủ điều kiện" theo mã cây — luồng Xanh tính trực tiếp từng dòng (đã tách sẵn theo lô/mã
-  // cây); luồng Đỏ chỉ có creditedQuantity gộp theo stageCode (không tách theo mã cây trong dữ liệu gốc)
-  // nên phân bổ TỈ LỆ THUẬN theo tỉ trọng số lượng bàn giao của từng mã cây trong CÙNG stageCode/CÙNG
-  // phiếu — làm tròn từng phần, có thể lệch vài đơn vị so với creditedQuantity gốc khi cộng lại (chấp
-  // nhận được, ảnh hưởng không đáng kể tới số tiền).
+  // cây); luồng Đỏ dùng thẳng TransferInspectionItem.plantTypeId (Kho mô kiểm tra đã tách riêng CREDIT
+  // theo từng mã cây ngay từ lúc lưu, xem POST /api/transfers/receive-phong-toi/inspect/[transferId] —
+  // không cần suy đoán/phân bổ tỉ lệ nữa).
   const recordedByStaffAndPlant = new Map<string, Map<string, number>>();
   const addRecorded = (staffId: string, plantTypeId: string, qty: number) => {
     const m = recordedByStaffAndPlant.get(staffId) ?? new Map<string, number>();
@@ -142,20 +141,8 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
         addRecorded(t.fromUserId, item.lot.plantTypeId, item.quantity - item.unqualifiedQuantity);
       }
     } else if (t.inspection) {
-      const byStage = new Map<string, Map<string, number>>();
-      for (const item of t.items) {
-        const m = byStage.get(item.lot.stageCode) ?? new Map<string, number>();
-        m.set(item.lot.plantTypeId, (m.get(item.lot.plantTypeId) ?? 0) + item.quantity);
-        byStage.set(item.lot.stageCode, m);
-      }
       for (const insItem of t.inspection.items) {
-        const stageMap = byStage.get(insItem.stageCode);
-        if (!stageMap) continue;
-        const totalHanded = [...stageMap.values()].reduce((s, v) => s + v, 0);
-        if (totalHanded <= 0) continue;
-        for (const [plantTypeId, handed] of stageMap) {
-          addRecorded(t.fromUserId, plantTypeId, Math.round((insItem.creditedQuantity * handed) / totalHanded));
-        }
+        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.creditedQuantity);
       }
     }
     // Luồng Đỏ chưa kiểm tra (t.inspection null): chưa ghi nhận được, bỏ qua (khớp handover-summary).

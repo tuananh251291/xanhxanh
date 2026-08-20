@@ -11,8 +11,9 @@ import { addMonths, parse, isValid } from "date-fns";
 // - Luồng Đỏ (hoặc chưa cài đặt luồng): ghi nhận = TransferInspectionItem.creditedQuantity (đã trừ cả
 //   nhiễm lẫn không đạt do Kho mô xác nhận), chỉ có sau khi Kho mô bấm "Kiểm tra" (xem
 //   /api/transfers/receive-phong-toi/inspect/[transferId]) — trước đó trả về null (đang chờ kiểm tra).
-//   creditedQuantity tính theo TỪNG stageCode gộp cả phiếu (có thể gộp nhiều lô khác loại cây cùng
-//   stageCode), nên gom theo stageCode chứ không tách theo từng lô.
+//   1 phiếu có thể có NHIỀU dòng TransferInspectionItem cùng stageCode (mỗi dòng 1 mã cây khác nhau, xem
+//   schema) — hiển thị ở đây vẫn gộp theo stageCode (cộng dồn các dòng cùng stageCode) vì UI này chỉ cần
+//   tổng theo quy cách, không cần tách mã cây (khác payroll-calculation.ts, tách hẳn theo mã cây).
 //
 // Query param "month" (YYYY-MM, tùy chọn) — lọc theo 1 KỲ (không phải tháng lịch), tính theo
 // Transfer.createdAt (thời điểm NV bấm bàn giao): từ ngày 7 của tháng chọn tới TRƯỚC ngày 7 tháng sau
@@ -91,7 +92,10 @@ export async function GET(req: NextRequest) {
       groups.set(key, group);
     }
 
-    const creditedByStageCode = new Map((t.inspection?.items ?? []).map((i) => [i.stageCode, i.creditedQuantity]));
+    const creditedByStageCode = new Map<string, number>();
+    for (const i of t.inspection?.items ?? []) {
+      creditedByStageCode.set(i.stageCode, (creditedByStageCode.get(i.stageCode) ?? 0) + i.creditedQuantity);
+    }
 
     const resultGroups = [...groups.values()].map((g) => {
       const recordedQuantity = isXanh ? g.handedOverQuantity - g.unqualifiedQuantity : (t.inspection ? (creditedByStageCode.get(g.stageCode) ?? null) : null);
