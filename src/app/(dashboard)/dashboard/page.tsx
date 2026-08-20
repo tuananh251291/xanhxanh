@@ -235,7 +235,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
 
-  const [dueInstructions, finishedTransfers, mediumDays, contaminationLots] = await Promise.all([
+  const [dueInstructions, finishedTransfers, mediumDays, contaminationSubmission] = await Promise.all([
     prisma.plantingInstruction.findMany({
       where: {
         createdAt: { lte: thursdayDeadline },
@@ -275,14 +275,16 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
       },
       select: { confirmedAt: true },
     }),
-    // Đề xuất Trồng/Hủy: lô còn tồn trong Phòng nhiễm của kho này — hết tồn nghĩa là đã gửi đề xuất xử lý
-    // hết (xem lib/contamination-room.ts — số lượng bị trừ ngay khỏi Phòng nhiễm lúc gửi đề xuất).
-    prisma.lot.findMany({
+    // Gửi đề xuất Trồng/Hủy: coi là xong nếu đã "Gửi đề xuất trồng/hủy" (tạo đề xuất PENDING thật, không
+    // tính dòng DRAFT còn đang gộp dở) ít nhất 1 lần trong tuần này — xem contaminationTaskVisible bên
+    // dưới cho quy tắc chỉ hiện việc này từ Thứ 6.
+    prisma.contaminationProposal.findFirst({
       where: {
-        status: "ACTIVE",
-        room: { type: "PHONG_NHIEM", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+        status: { not: "DRAFT" },
+        createdAt: { gte: weekStart, lte: weekEnd },
+        ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
       },
-      select: { quantity: true },
+      select: { id: true },
     }),
   ]);
 
@@ -298,15 +300,18 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const mediumDone = mediumDays.filter((d) => d.confirmedAt !== null).length;
   const mediumPercent = mediumTotal === 0 ? 100 : Math.round((mediumDone / mediumTotal) * 100);
 
-  const contaminationOutstanding = contaminationLots.reduce((sum, l) => sum + l.quantity, 0);
-  const contaminationPercent = contaminationOutstanding === 0 ? 100 : 0;
+  // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 6 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
+  // đúng Thứ 6 hay trễ hơn), ẩn hẳn (không tính nợ dồn) nếu tuần đã qua mà vẫn chưa gửi.
+  const fridayDeadline = addDays(weekStart, 4);
+  const contaminationSubmitted = contaminationSubmission !== null;
+  const contaminationTaskVisible = now >= fridayDeadline && !contaminationSubmitted;
 
   return {
     weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
     finishedDone, finishedTotal, finishedPercent,
     mediumDone, mediumTotal, mediumPercent,
-    contaminationOutstanding, contaminationPercent,
+    contaminationTaskVisible,
   };
 }
 
@@ -965,18 +970,17 @@ function KhoMoTaskDashboard({
             percent={weeklyStats.mediumPercent}
             countLabel={`${weeklyStats.mediumDone}/${weeklyStats.mediumTotal} ngày`}
           />
-          <WeeklyTaskRow
-            href="/contamination-proposals/submit"
-            icon={Send}
-            title="4. Gửi đề xuất Trồng/Hủy"
-            deadline="Rà lại phiếu chung đã gộp ở mục Kiểm tra kho nhiễm cá nhân rồi gửi Admin duyệt"
-            percent={weeklyStats.contaminationPercent}
-            countLabel={
-              weeklyStats.contaminationOutstanding === 0
-                ? "Đã xử lý hết"
-                : `${weeklyStats.contaminationOutstanding.toLocaleString("vi-VN")} còn tồn`
-            }
-          />
+          {weeklyStats.contaminationTaskVisible && (
+            <WeeklyTaskRow
+              href="/contamination-proposals/submit"
+              icon={Send}
+              title="4. Gửi đề xuất Trồng/Hủy"
+              deadline="Rà lại phiếu chung đã gộp ở mục Kiểm tra kho nhiễm cá nhân rồi gửi Admin duyệt — hạn Thứ 6"
+              percent={0}
+              badgeState="urgent"
+              countLabel="Chưa gửi"
+            />
+          )}
         </CardContent>
       </Card>
     </div>
