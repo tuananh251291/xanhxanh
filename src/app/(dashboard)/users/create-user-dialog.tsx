@@ -17,13 +17,16 @@ import {
 } from "@/components/ui/select";
 import { UserPlus, Loader2 } from "lucide-react";
 import { ROLE_LABELS } from "@/types";
+import type { UserRole } from "@prisma/client";
 import { toast } from "sonner";
 
 const schema = z.object({
   name: z.string().min(2, "Tên tối thiểu 2 ký tự"),
   email: z.string().email("Email không hợp lệ"),
   password: z.string().min(6, "Mật khẩu tối thiểu 6 ký tự"),
-  role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI"]),
+  // Danh sách đầy đủ vai trò gán được qua UI (trừ SUPER_ADMIN) — dropdown chỉ HIỆN đúng các lựa chọn
+  // trong assignableRoles (xem prop dưới), server (POST /api/users) validate lại đúng theo người tạo.
+  role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),
@@ -34,7 +37,7 @@ type FormData = z.infer<typeof schema>;
 type MarketRoom = { id: string; name: string; warehouseName: string };
 type ThanhPhamWarehouse = { id: string; code: string; name: string; rooms: { id: string; name: string; type: string }[] };
 
-export default function CreateUserDialog() {
+export default function CreateUserDialog({ assignableRoles }: { assignableRoles: UserRole[] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [thanhPhamWarehouses, setThanhPhamWarehouses] = useState<ThanhPhamWarehouse[]>([]);
@@ -135,13 +138,16 @@ export default function CreateUserDialog() {
           </div>
           <div className="space-y-1">
             <Label>Vai trò</Label>
-            <Select items={ROLE_LABELS} onValueChange={(v) => onRoleChange(v as FormData["role"])}>
+            <Select
+              items={Object.fromEntries(assignableRoles.map((r) => [r, ROLE_LABELS[r]]))}
+              onValueChange={(v) => onRoleChange(v as FormData["role"])}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Chọn vai trò" />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(ROLE_LABELS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                {assignableRoles.map((r) => (
+                  <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

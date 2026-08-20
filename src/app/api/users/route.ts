@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { creatableRolesFor } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -9,6 +9,8 @@ const createSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(6),
+  // Vai trò được validate lại theo đúng người tạo (creatableRolesFor) bên dưới — enum ở đây chỉ chặn giá
+  // trị rác, KHÔNG chặn SUPER_ADMIN vì đã tự loại khỏi creatableRolesFor với mọi vai trò người tạo.
   role: z.enum(["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
   // Chỉ áp dụng khi tạo tài khoản SALE — gán sẵn kho thành phẩm làm việc (Phòng đạt tiêu chuẩn xem mặc định)
@@ -34,7 +36,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!isAdminRole(session?.user?.role)) {
+  const allowedRoles = creatableRolesFor(session?.user?.role);
+  if (allowedRoles.length === 0) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
@@ -45,6 +48,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds } = parsed.data;
+
+  // NV Hành chính nhân sự chỉ tạo được tài khoản vị trí nhân viên, không tạo được tài khoản Admin.
+  if (!allowedRoles.includes(role)) {
+    return NextResponse.json({ message: "Không có quyền tạo tài khoản vai trò này" }, { status: 403 });
+  }
 
   if (workplaceWarehouseId !== undefined && role !== "SALE") {
     return NextResponse.json({ message: "Kho thành phẩm làm việc chỉ áp dụng khi tạo tài khoản Sale" }, { status: 400 });
@@ -76,9 +84,15 @@ export async function POST(req: NextRequest) {
   }
 
   const hashed = await bcrypt.hash(password, 10);
+  // NV cấy mô mới tạo luôn bắt đầu ở "Thử việc" + "Cấy học việc" — HR/Admin cấp cao gỡ dần qua PATCH
+  // /api/users/[id] khi NV rời giai đoạn học việc rồi lên chính thức (xem User.employmentType/isTrainee).
+  const isNewCayMo = role === "CAY_MO";
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
-      data: { code, name, email, password: hashed, role, status: "APPROVED", workplaceWarehouseId },
+      data: {
+        code, name, email, password: hashed, role, status: "APPROVED", workplaceWarehouseId,
+        ...(isNewCayMo ? { employmentType: "THU_VIEC", isTrainee: true } : {}),
+      },
       select: { id: true, code: true, name: true, email: true, role: true },
     });
     if (marketRoomIds && marketRoomIds.length > 0) {

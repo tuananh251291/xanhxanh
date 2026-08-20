@@ -439,19 +439,21 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    // "Chỉ định cấy xử lý" gộp vào tab trong hub này (xem instruction-quantity-edit/page.tsx) — route
+    // /repack-instructions vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/instruction-quantity-edit", label: "Chỉ định cấy", icon: "ClipboardList" },
-    { href: "/repack-instructions", label: "Chỉ định cấy xử lý", icon: "RefreshCw" },
     { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },
-    { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
-    { href: "/mother-shelf-assign", label: "Gán mã cây & NV mẫu mẹ", icon: "Users" },
+    // Gộp "Nhập kho thủ công" + "Gán mã cây & NV mẫu mẹ" + "Cài đặt luồng kiểm tra" vào hub này (xem
+    // manual-settings/page.tsx) — 3 route cũ vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
+    { href: "/manual-settings", label: "Cài đặt thủ công", icon: "Settings" },
     { href: "/mother-stock-reshelf", label: "Sắp xếp kho mẫu mẹ", icon: "ArrowLeftRight" },
     { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
-    { href: "/inspection-lane", label: "Cài đặt luồng kiểm tra", icon: "Flag" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
-    { href: "/reports/mother-contamination", label: "Báo cáo tỉ lệ nhiễm", icon: "Leaf" },
+    // "Báo cáo tỉ lệ nhiễm" gộp vào tab trong hub này (xem violation-report/page.tsx) — route
+    // /reports/mother-contamination vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

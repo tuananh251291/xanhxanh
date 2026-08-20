@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { isAdminRole, isKhoThanhPhamRole } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -23,6 +23,8 @@ const patchSchema = z.union([
   z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
   z.object({ plantingCapacity: z.number().int().positive() }),
   z.object({ holdDays: z.number().int().positive().nullable() }),
+  z.object({ employmentType: z.enum(["CHINH_THUC", "THU_VIEC"]).nullable() }),
+  z.object({ isTrainee: z.boolean() }),
   z.object({ unlockAccount: z.literal(true) }),
   z.object({
     name: z.string().min(2),
@@ -142,6 +144,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { holdDays },
       select: { id: true, code: true, name: true, holdDays: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Loại hợp đồng (Chính thức/Thử việc) — chỉ áp dụng NV cấy mô, chỉ Admin cấp cao/NV Hành chính nhân
+  // sự cài đặt được (KHÔNG bao gồm Admin thường, khác plantingCapacity).
+  if ("employmentType" in parsed.data) {
+    if (!canEditEmploymentType(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cấp cao/NV Hành chính nhân sự mới có quyền cài đặt loại hợp đồng" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    }
+    const { employmentType } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      // Lên "Chính thức" thì tự gỡ luôn "Cấy học việc" — 1 NV Chính thức không còn thuộc nhóm học việc
+      // theo đúng trình tự nghiệp vụ (Thử việc + học việc → Thử việc → Chính thức).
+      data: { employmentType, ...(employmentType === "CHINH_THUC" ? { isTrainee: false } : {}) },
+      select: { id: true, code: true, name: true, employmentType: true, isTrainee: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // "Cấy học việc" — chỉ áp dụng NV cấy mô, cùng quyền với Loại hợp đồng (Admin cấp cao/NV Hành chính
+  // nhân sự). NV thường rời nhóm này (tắt) trước khi được chuyển "Chính thức" — không ràng buộc cứng thứ
+  // tự, HR vẫn tự quyết theo thực tế.
+  if ("isTrainee" in parsed.data) {
+    if (!canEditEmploymentType(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cấp cao/NV Hành chính nhân sự mới có quyền cài đặt trạng thái cấy học việc" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    }
+    const { isTrainee } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { isTrainee },
+      select: { id: true, code: true, name: true, isTrainee: true },
     });
     return NextResponse.json(updated);
   }

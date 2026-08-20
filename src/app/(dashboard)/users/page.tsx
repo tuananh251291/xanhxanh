@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { ROLE_LABELS, ROLE_COLORS, isAdminRole } from "@/types";
+import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, creatableRolesFor } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import CreateUserDialog from "./create-user-dialog";
@@ -32,6 +32,8 @@ export default async function UsersPage({
   if (!(await isPageAllowed(session?.user?.role ?? null, "/users"))) redirect("/dashboard");
   const canApprove = session?.user?.role === "SUPER_ADMIN";
   const canEditCapacity = isAdminRole(session?.user?.role);
+  const canEditEmployment = canEditEmploymentType(session?.user?.role);
+  const assignableRoles = creatableRolesFor(session?.user?.role);
 
   const sp = await searchParams;
   const search = sp.q?.trim() ?? "";
@@ -75,7 +77,7 @@ export default async function UsersPage({
           <h1 className="text-2xl font-bold text-foreground">Quản lý người dùng</h1>
           <p className="text-text-secondary text-sm mt-1">{totalAllUsers} tài khoản</p>
         </div>
-        <CreateUserDialog />
+        {assignableRoles.length > 0 && <CreateUserDialog assignableRoles={assignableRoles} />}
       </div>
 
       <Tabs defaultValue="accounts">
@@ -127,10 +129,11 @@ export default async function UsersPage({
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Nhân viên</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vai trò</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Vị trí làm việc</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Loại hợp đồng</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Năng lực cấy</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Giữ đơn (ngày)</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Đăng nhập</th>
-                      {(canApprove || canEditCapacity) && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
+                      {(canApprove || canEditCapacity || canEditEmployment) && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -165,6 +168,9 @@ export default async function UsersPage({
                           }
                           plantingCapacity={user.plantingCapacity}
                           holdDays={user.holdDays}
+                          employmentType={user.employmentType}
+                          isTrainee={user.isTrainee}
+                          canEditEmployment={canEditEmployment}
                           editUser={
                             canApprove && user.role && user.role !== "SUPER_ADMIN"
                               ? {
@@ -186,7 +192,7 @@ export default async function UsersPage({
                     ))}
                     {users.length === 0 && (
                       <tr>
-                        <td colSpan={canApprove || canEditCapacity ? 8 : 7} className="px-4 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={canApprove || canEditCapacity || canEditEmployment ? 9 : 8} className="px-4 py-8 text-center text-sm text-text-muted">
                           Không tìm thấy nhân viên phù hợp
                         </td>
                       </tr>

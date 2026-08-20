@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { isAdminRole, ROLE_LABELS } from "@/types";
+import { ROLE_LABELS, creatableRolesFor } from "@/types";
 import { generateUserCode } from "@/lib/codes";
 import type { UserRole } from "@prisma/client";
 
-// Chỉ dùng để gợi ý (prefill) ô nhập mã lúc duyệt tài khoản — Admin vẫn nhập/sửa tay mã thật.
+// Chỉ dùng để gợi ý (prefill) ô nhập mã lúc tạo/duyệt tài khoản — Admin/NV Hành chính nhân sự vẫn
+// nhập/sửa tay mã thật. Cùng điều kiện quyền với tạo tài khoản (POST /api/users).
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!isAdminRole(session?.user?.role)) {
+  if (creatableRolesFor(session?.user?.role).length === 0) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 

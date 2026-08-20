@@ -6,9 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import type { UserRole } from "@prisma/client";
+import type { UserRole, EmploymentType } from "@prisma/client";
+import { EMPLOYMENT_TYPE_LABELS, EMPLOYMENT_TYPE_COLORS, TRAINEE_LABEL, TRAINEE_BADGE_COLOR } from "@/types";
 import EditUserDialog, { type EditableUser } from "./edit-user-dialog";
 import UnlockAccountCell from "./unlock-account-cell";
 import DeleteUserButton from "./delete-user-button";
@@ -30,6 +32,9 @@ export default function UserEditableFields({
   warehouseOptions,
   plantingCapacity,
   holdDays,
+  employmentType,
+  isTrainee,
+  canEditEmployment,
   editUser,
   sanXuatWarehouses,
   thanhPhamWarehouses,
@@ -45,6 +50,9 @@ export default function UserEditableFields({
   warehouseOptions: WarehouseOption[];
   plantingCapacity: number;
   holdDays: number | null;
+  employmentType: EmploymentType | null;
+  isTrainee: boolean;
+  canEditEmployment: boolean;
   // null = không được sửa tài khoản này (không phải SUPER_ADMIN, hoặc dòng này là SUPER_ADMIN khác) —
   // cũng dùng chung điều kiện này để hiện nút Xóa (server tự chặn thêm trường hợp tự xóa chính mình).
   editUser: EditableUser | null;
@@ -55,10 +63,13 @@ export default function UserEditableFields({
   const canEditWorkplace = isWorkplaceRole && canApprove;
   const canEditThisCapacity = role === "CAY_MO" && canEditCapacity;
   const canEditThisHoldDays = role === "SALE" && canEditCapacity;
+  const canEditThisEmployment = role === "CAY_MO" && canEditEmployment;
 
   const [wp, setWp] = useState(workplaceWarehouseId ?? "NONE");
   const [cap, setCap] = useState(String(plantingCapacity));
   const [hd, setHd] = useState(holdDays != null ? String(holdDays) : "");
+  const [emp, setEmp] = useState(employmentType ?? "NONE");
+  const [trn, setTrn] = useState(isTrainee);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
@@ -81,11 +92,23 @@ export default function UserEditableFields({
     setPrevHoldDays(holdDays);
     setHd(holdDays != null ? String(holdDays) : "");
   }
+  const [prevEmploymentType, setPrevEmploymentType] = useState(employmentType);
+  if (employmentType !== prevEmploymentType) {
+    setPrevEmploymentType(employmentType);
+    setEmp(employmentType ?? "NONE");
+  }
+  const [prevIsTrainee, setPrevIsTrainee] = useState(isTrainee);
+  if (isTrainee !== prevIsTrainee) {
+    setPrevIsTrainee(isTrainee);
+    setTrn(isTrainee);
+  }
 
   const wpDirty = canEditWorkplace && wp !== (workplaceWarehouseId ?? "NONE");
   const capDirty = canEditThisCapacity && cap !== String(plantingCapacity);
   const hdDirty = canEditThisHoldDays && hd !== (holdDays != null ? String(holdDays) : "");
-  const dirty = wpDirty || capDirty || hdDirty;
+  const empDirty = canEditThisEmployment && emp !== (employmentType ?? "NONE");
+  const trnDirty = canEditThisEmployment && trn !== isTrainee;
+  const dirty = wpDirty || capDirty || hdDirty || empDirty || trnDirty;
 
   const patch = (body: Record<string, unknown>) =>
     fetch(`/api/users/${userId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -122,6 +145,14 @@ export default function UserEditableFields({
         const res = await patch({ holdDays: hd.trim() === "" ? null : parsedHd });
         if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       }
+      if (empDirty) {
+        const res = await patch({ employmentType: emp === "NONE" ? null : emp });
+        if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      }
+      if (trnDirty) {
+        const res = await patch({ isTrainee: trn });
+        if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      }
       toast.success("Đã lưu thay đổi");
       router.refresh();
     } finally {
@@ -153,6 +184,42 @@ export default function UserEditableFields({
             <span className="text-xs text-text-secondary">
               {workplaceWarehouse ? `${workplaceWarehouse.name} (${workplaceWarehouse.code})` : "Chưa gán"}
             </span>
+          )
+        ) : (
+          <span className="text-xs text-text-muted">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {role === "CAY_MO" ? (
+          canEditThisEmployment ? (
+            <div className="space-y-1.5">
+              <Select
+                items={[{ value: "NONE", label: "— Chưa cài đặt —" }, ...(Object.entries(EMPLOYMENT_TYPE_LABELS).map(([v, label]) => ({ value: v, label })))]}
+                value={emp}
+                onValueChange={(v) => setEmp(v as EmploymentType | "NONE")}
+              >
+                <SelectTrigger className="w-36 h-8 text-xs" disabled={saving}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">— Chưa cài đặt —</SelectItem>
+                  {(Object.entries(EMPLOYMENT_TYPE_LABELS) as [EmploymentType, string][]).map(([v, label]) => (
+                    <SelectItem key={v} value={v}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                <Checkbox checked={trn} disabled={saving} onCheckedChange={(v) => setTrn(v === true)} />
+                {TRAINEE_LABEL}
+              </label>
+            </div>
+          ) : employmentType || isTrainee ? (
+            <div className="flex flex-wrap gap-1">
+              {employmentType && <Badge className={EMPLOYMENT_TYPE_COLORS[employmentType]}>{EMPLOYMENT_TYPE_LABELS[employmentType]}</Badge>}
+              {isTrainee && <Badge className={TRAINEE_BADGE_COLOR}>{TRAINEE_LABEL}</Badge>}
+            </div>
+          ) : (
+            <span className="text-xs text-text-muted">Chưa cài đặt</span>
           )
         ) : (
           <span className="text-xs text-text-muted">—</span>
@@ -205,14 +272,14 @@ export default function UserEditableFields({
           <span className="text-xs text-text-muted">Bình thường</span>
         )}
       </td>
-      {(canApprove || canEditCapacity) && (
+      {(canApprove || canEditCapacity || canEditEmployment) && (
         <td className="px-4 py-3">
           <div className="flex items-center gap-1.5">
             {editUser && (
               <EditUserDialog user={editUser} sanXuatWarehouses={sanXuatWarehouses} thanhPhamWarehouses={thanhPhamWarehouses} />
             )}
             {editUser && <DeleteUserButton id={editUser.id} code={editUser.code} name={editUser.name} />}
-            {(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays) && (
+            {(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays || canEditThisEmployment) && (
               <Button
                 size="icon-sm"
                 className="bg-primary hover:bg-primary-hover"
@@ -224,7 +291,7 @@ export default function UserEditableFields({
                 <span className="sr-only">Lưu</span>
               </Button>
             )}
-            {!editUser && !(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays) && (
+            {!editUser && !(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays || canEditThisEmployment) && (
               <span className="text-xs text-text-muted">—</span>
             )}
           </div>
