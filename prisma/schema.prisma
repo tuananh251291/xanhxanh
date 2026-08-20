@@ -1600,15 +1600,26 @@ model ContaminationProposal {
   @@map("contamination_proposals")
 }
 
+// Phân loại nguồn gốc số nhiễm trong ContaminationStaffBalance, suy ra từ ContaminationEntryReason (xem
+// addToContaminationRoom) — DANG_THUC_HIEN chỉ áp dụng cho M05 (nhiễm phát hiện lúc NV cấy mô đang nhập
+// nhật ký cho chỉ định đang làm, chưa tạo lô thật để bàn giao); LO_BAN_GIAO áp dụng cho M05/T01/T05 phát
+// hiện trên 1 lô CỤ THỂ đã có ngày nhập/bàn giao thật (NV cấy mô tự kiểm tra trước khi bàn giao, hoặc
+// Kho mô kiểm tra luồng Đỏ lúc nhận bàn giao).
+enum ContaminationBalanceCategory {
+  DANG_THUC_HIEN
+  LO_BAN_GIAO
+}
+
 // Số lượng nhiễm hiện đang "chờ xử lý" (chưa gộp vào dòng nháp Trồng/Hủy nào) của Phòng nhiễm, tách
-// theo NV cấy mô báo nhiễm (staffId) để Kho mô đề xuất riêng từng NV trong "Kiểm tra kho nhiễm cá nhân"
-// (xem GET /api/contamination-staff-balances) — staffId = "" cho phần không xác định được NV cụ thể
-// (tồn cũ từ trước khi có tính năng này, hoặc nhiễm phát hiện không gắn với 1 NV cấy mô cụ thể, vd hoàn
-// lại do đề xuất bị từ chối). Không dùng NULL cho staffId vì Postgres coi nhiều dòng NULL là khác nhau,
-// phá vỡ @@unique bên dưới; cũng không @relation tới User vì "" không phải id thật — tra tên NV thủ công
-// khi hiển thị. Cộng khi có nhiễm mới (xem addToContaminationRoom/creditContaminationStaffBalance), trừ
-// khi "Gộp phiếu" (xem POST /api/contamination-proposal-drafts) — tổng theo (warehouseId, plantTypeId,
-// stageCode) của bảng này luôn khớp đúng Lot.quantity của Phòng nhiễm tương ứng.
+// theo NV cấy mô báo nhiễm (staffId) VÀ theo category để Kho mô đề xuất riêng từng NV/từng loại trong
+// "Kiểm tra kho nhiễm cá nhân" (xem GET /api/contamination-staff-balances) — staffId = "" cho phần không
+// xác định được NV cụ thể (tồn cũ từ trước khi có tính năng này, hoặc nhiễm phát hiện không gắn với 1 NV
+// cấy mô cụ thể, vd hoàn lại do đề xuất bị từ chối). Không dùng NULL cho staffId vì Postgres coi nhiều
+// dòng NULL là khác nhau, phá vỡ @@unique bên dưới; cũng không @relation tới User vì "" không phải id
+// thật — tra tên NV thủ công khi hiển thị. Cộng khi có nhiễm mới (xem
+// addToContaminationRoom/creditContaminationStaffBalance), trừ khi "Gộp phiếu" (xem
+// POST /api/contamination-proposal-drafts) — tổng theo (warehouseId, plantTypeId, stageCode) của bảng
+// này (cộng cả 2 category) luôn khớp đúng Lot.quantity của Phòng nhiễm tương ứng.
 model ContaminationStaffBalance {
   id          String    @id @default(cuid())
   warehouseId String
@@ -1617,10 +1628,11 @@ model ContaminationStaffBalance {
   plantTypeId String
   plantType   PlantType @relation(fields: [plantTypeId], references: [id])
   stageCode   String
+  category    ContaminationBalanceCategory @default(LO_BAN_GIAO)
   quantity    Int       @default(0)
   updatedAt   DateTime  @updatedAt
 
-  @@unique([warehouseId, staffId, plantTypeId, stageCode])
+  @@unique([warehouseId, staffId, plantTypeId, stageCode, category])
   @@map("contamination_staff_balances")
 }
 

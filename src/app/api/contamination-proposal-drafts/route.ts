@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateContaminationProposalCode } from "@/lib/codes";
 import { z } from "zod";
+import type { ContaminationBalanceCategory } from "@prisma/client";
 
 // "Phiếu chung" — các dòng đã "Gộp phiếu" (status DRAFT) nhưng chưa "Gửi đề xuất trồng/hủy" cho Admin,
 // gộp từ nhiều NV cấy mô/nhiều ngày của đúng 1 kho sản xuất (xem POST bên dưới và
@@ -44,6 +45,7 @@ export async function GET() {
 const entrySchema = z.object({
   plantTypeId: z.string(),
   stageCode: z.string(),
+  category: z.enum(["DANG_THUC_HIEN", "LO_BAN_GIAO"]),
   huyQuantity: z.number().int().min(0),
   trongQuantity: z.number().int().min(0),
 });
@@ -77,8 +79,9 @@ export async function POST(req: NextRequest) {
     await prisma.$transaction(async (tx) => {
       for (const e of usable) {
         const total = e.huyQuantity + e.trongQuantity;
+        const category: ContaminationBalanceCategory = e.category;
         const balance = await tx.contaminationStaffBalance.findUnique({
-          where: { warehouseId_staffId_plantTypeId_stageCode: { warehouseId, staffId, plantTypeId: e.plantTypeId, stageCode: e.stageCode } },
+          where: { warehouseId_staffId_plantTypeId_stageCode_category: { warehouseId, staffId, plantTypeId: e.plantTypeId, stageCode: e.stageCode, category } },
         });
         if (!balance || balance.quantity < total) {
           throw new Error(`Số dư không đủ cho 1 dòng (còn ${balance?.quantity ?? 0}, cần ${total})`);

@@ -33,6 +33,7 @@ export async function GET() {
         plantTypeCode: b.plantType.code,
         plantTypeName: b.plantType.name,
         stageCode: b.stageCode,
+        category: b.category,
         quantity: b.quantity,
       }))
       .sort((a, b) => (a.staffName ?? "").localeCompare(b.staffName ?? "") || a.plantTypeCode.localeCompare(b.plantTypeCode))

@@ -261,7 +261,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             reason: "DAILY_RECORD_EDIT",
           });
           await creditContaminationStaffBalance(tx, {
-            warehouseId, staffId: record.staffId, plantTypeId: record.instruction.plantTypeId, stageCode: "M05", quantity: contamDelta,
+            warehouseId, staffId: record.staffId, plantTypeId: record.instruction.plantTypeId, stageCode: "M05", category: "DANG_THUC_HIEN", quantity: contamDelta,
           });
         }
       } else if (contamLotId) {
@@ -274,7 +274,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           reason: "DAILY_RECORD_EDIT",
         });
         await creditContaminationStaffBalance(tx, {
-          warehouseId, staffId: record.staffId, plantTypeId: record.instruction.plantTypeId, stageCode: "M05", quantity: contamDelta,
+          warehouseId, staffId: record.staffId, plantTypeId: record.instruction.plantTypeId, stageCode: "M05", category: "DANG_THUC_HIEN", quantity: contamDelta,
         });
       }
     }

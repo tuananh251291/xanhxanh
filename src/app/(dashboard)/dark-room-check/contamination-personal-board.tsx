@@ -9,18 +9,31 @@ import { Loader2, Layers, User, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import ContaminationDraftSubmit from "@/components/shared/contamination-draft-submit";
 
+type ContaminationCategory = "DANG_THUC_HIEN" | "LO_BAN_GIAO";
 type Balance = {
   staffId: string; staffCode: string | null; staffName: string | null;
-  plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number;
+  plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string;
+  category: ContaminationCategory; quantity: number;
 };
 type StaffCheck = { staffId: string; staffCode: string; staffName: string; checked: boolean };
 // checked = null cho bucket "" (tồn cũ/không rõ NV) — không có khái niệm "kiểm tra kho nhiễm cá nhân" vì
 // không phải 1 NV cấy mô thật.
 type StaffGroup = { staffId: string; label: string; totalQuantity: number; rows: Balance[]; checked: boolean | null };
 
+// DANG_THUC_HIEN chỉ áp dụng cho M05 (đang nhập nhật ký cho chỉ định đang làm, chưa tạo lô thật để bàn
+// giao); LO_BAN_GIAO áp dụng cho M05/T01/T05 phát hiện trên 1 lô cụ thể đã có ngày nhập/bàn giao thật.
+const CATEGORY_LABEL: Record<ContaminationCategory, string> = {
+  DANG_THUC_HIEN: "Chỉ định cấy đang thực hiện",
+  LO_BAN_GIAO: "Lô bàn giao (ngày thực tế)",
+};
+
+const rowKey = (plantTypeId: string, stageCode: string, category: string) => `${plantTypeId}:${stageCode}:${category}`;
+
 // Bảng nhập trồng/hủy cho 1 NV (hoặc bucket "Chưa rõ NV / tồn cũ") đang được chọn — cùng cơ chế nhập 1
 // trong 2 ô (còn lại tự tính phần dư) như trang Đề xuất Trồng/Hủy cũ, nhưng nguồn dữ liệu là số dư
-// "chờ xử lý" của riêng NV đó (ContaminationStaffBalance) thay vì tồn gộp cả Phòng nhiễm.
+// "chờ xử lý" của riêng NV đó (ContaminationStaffBalance) thay vì tồn gộp cả Phòng nhiễm — tách riêng
+// theo nguồn gốc (category) vì cùng 1 mã cây/quy cách có thể vừa nhiễm từ chỉ định đang làm, vừa nhiễm
+// từ lô đã bàn giao, không cộng gộp làm 1 dòng.
 function StaffEntryTable({ group, entryByKey, onChangeHuy, onChangeTrong }: {
   group: StaffGroup;
   entryByKey: Record<string, string>;
@@ -35,6 +48,7 @@ function StaffEntryTable({ group, entryByKey, onChangeHuy, onChangeTrong }: {
             <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã cây</th>
             <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Tên cây</th>
             <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Quy cách</th>
+            <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Nguồn</th>
             <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Đang chờ xử lý</th>
             <th className="text-right px-3 py-2 text-primary-strong font-bold text-base w-28">Số trồng</th>
             <th className="text-right px-3 py-2 text-primary-strong font-bold text-base w-28">Số hủy</th>
@@ -42,7 +56,7 @@ function StaffEntryTable({ group, entryByKey, onChangeHuy, onChangeTrong }: {
         </thead>
         <tbody>
           {group.rows.map((item) => {
-            const key = `${item.plantTypeId}:${item.stageCode}`;
+            const key = rowKey(item.plantTypeId, item.stageCode, item.category);
             const huyRaw = entryByKey[key] ?? "";
             const huyNum = huyRaw === "" ? null : parseInt(huyRaw, 10) || 0;
             const trongDisplay = huyNum === null ? "" : String(Math.max(0, item.quantity - huyNum));
@@ -51,6 +65,7 @@ function StaffEntryTable({ group, entryByKey, onChangeHuy, onChangeTrong }: {
                 <td className="px-3 py-1.5 font-mono text-foreground whitespace-nowrap">{item.plantTypeCode}</td>
                 <td className="px-3 py-1.5 text-foreground">{item.plantTypeName}</td>
                 <td className="px-3 py-1.5 text-foreground">{item.stageCode}</td>
+                <td className="px-3 py-1.5 text-foreground">{CATEGORY_LABEL[item.category]}</td>
                 <td className="px-3 py-1.5 text-right font-medium text-foreground">{item.quantity.toLocaleString("vi-VN")}</td>
                 <td className="px-2 py-1.5">
                   <Input type="number" min={0} max={item.quantity} className="h-9 text-right" value={trongDisplay}
@@ -151,11 +166,11 @@ export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: 
     if (!selectedGroup) return;
     const entries = selectedGroup.rows
       .map((r) => {
-        const key = `${r.plantTypeId}:${r.stageCode}`;
+        const key = rowKey(r.plantTypeId, r.stageCode, r.category);
         const huyRaw = entryByKey[key];
         if (huyRaw === undefined || huyRaw === "") return null;
         const huyQuantity = Math.max(0, Math.min(r.quantity, parseInt(huyRaw, 10) || 0));
-        return { plantTypeId: r.plantTypeId, stageCode: r.stageCode, huyQuantity, trongQuantity: r.quantity - huyQuantity };
+        return { plantTypeId: r.plantTypeId, stageCode: r.stageCode, category: r.category, huyQuantity, trongQuantity: r.quantity - huyQuantity };
       })
       .filter((e): e is NonNullable<typeof e> => e !== null);
     if (entries.length === 0) { toast.error("Chưa nhập số lượng nào"); return; }
@@ -253,8 +268,7 @@ export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: 
                 {selectedGroup.checked !== null && (
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="border-success text-success-foreground hover:bg-success-light"
+                    className="bg-success hover:bg-success/90 text-success-foreground disabled:opacity-80"
                     disabled={checking || selectedGroup.checked}
                     onClick={() => markChecked(selectedGroup.staffId)}
                   >
