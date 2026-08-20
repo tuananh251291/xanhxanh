@@ -15,7 +15,7 @@ import { vi } from "date-fns/locale";
 import TodayChecklist from "@/components/shared/today-checklist";
 import { ensureTodayChecklist } from "@/lib/checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
-import { isMediumOrderInProgress, isMediumSurplusEntryDay } from "@/lib/medium-orders";
+import { isMediumOrderInProgress, isMediumSurplusEntryDay, toVnCalendarDate } from "@/lib/medium-orders";
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
@@ -235,7 +235,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
 
-  const [dueInstructions, finishedTransfers, mediumDays, contaminationSubmission] = await Promise.all([
+  const [dueInstructions, finishedTransfers, contaminationSubmission] = await Promise.all([
     prisma.plantingInstruction.findMany({
       where: {
         createdAt: { lte: thursdayDeadline },
@@ -263,18 +263,6 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
       },
       select: { status: true },
     }),
-    // Nhận môi trường: ngày môi trường đã được NV môi trường bàn giao (handedOverAt) trong tuần này —
-    // Kho mô xác nhận (confirmedAt) coi là xong.
-    prisma.mediumOrderDay.findMany({
-      where: {
-        date: { gte: weekStart, lte: weekEnd },
-        handedOverAt: { not: null },
-        ...(workplaceWarehouseId
-          ? { order: { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } }
-          : {}),
-      },
-      select: { confirmedAt: true },
-    }),
     // Gửi đề xuất Trồng/Hủy: coi là xong nếu đã "Gửi đề xuất trồng/hủy" (tạo đề xuất PENDING thật, không
     // tính dòng DRAFT còn đang gộp dở) ít nhất 1 lần trong tuần này — xem contaminationTaskVisible bên
     // dưới cho quy tắc chỉ hiện việc này từ Thứ 6.
@@ -296,10 +284,6 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const finishedDone = finishedTransfers.filter((t) => t.status === "CONFIRMED").length;
   const finishedPercent = finishedTotal === 0 ? 100 : Math.round((finishedDone / finishedTotal) * 100);
 
-  const mediumTotal = mediumDays.length;
-  const mediumDone = mediumDays.filter((d) => d.confirmedAt !== null).length;
-  const mediumPercent = mediumTotal === 0 ? 100 : Math.round((mediumDone / mediumTotal) * 100);
-
   // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 6 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
   // đúng Thứ 6 hay trễ hơn), ẩn hẳn (không tính nợ dồn) nếu tuần đã qua mà vẫn chưa gửi.
   const fridayDeadline = addDays(weekStart, 4);
@@ -310,7 +294,6 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
     weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
     finishedDone, finishedTotal, finishedPercent,
-    mediumDone, mediumTotal, mediumPercent,
     contaminationTaskVisible,
   };
 }
@@ -333,6 +316,24 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
   const receiveTotal = transfersToday.length;
   const receiveDone = transfersToday.filter((t) => t.status === "CONFIRMED").length;
   const receivePercent = receiveTotal === 0 ? 100 : Math.round((receiveDone / receiveTotal) * 100);
+
+  // Nhận môi trường: ngày môi trường HÔM NAY đã được NV môi trường bàn giao (handedOverAt) — Kho mô xác
+  // nhận (confirmedAt) coi là xong. Chuyển từ việc "hàng tuần" (cộng dồn cả tuần) sang "hàng ngày" (chỉ
+  // tính đúng hôm nay) — MediumOrderDay.date lưu theo lịch VN (xem toVnCalendarDate), không so trực tiếp
+  // bằng startOfDay/endOfDay giờ server như transfersToday ở trên (Transfer.createdAt là timestamp thật).
+  const mediumDaysToday = await prisma.mediumOrderDay.findMany({
+    where: {
+      date: toVnCalendarDate(new Date()),
+      handedOverAt: { not: null },
+      ...(workplaceWarehouseId
+        ? { order: { instructions: { some: { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } } } }
+        : {}),
+    },
+    select: { confirmedAt: true },
+  });
+  const mediumTotal = mediumDaysToday.length;
+  const mediumDone = mediumDaysToday.filter((d) => d.confirmedAt !== null).length;
+  const mediumPercent = mediumTotal === 0 ? 100 : Math.round((mediumDone / mediumTotal) * 100);
 
   // Kiểm tra môi trường dư: chỉ hiện việc này đúng Thứ 2/Thứ 3 (xem isMediumSurplusEntryDay), và chỉ khi có
   // đơn "đang thực hiện" (đã xác nhận, chưa kết thúc) của đúng kho này còn CHƯA bấm "Hoàn thành"
@@ -365,7 +366,12 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
   const darkRoomSubTasksDone = darkRoomCheckItem ? Number(darkRoomCheckItem.subTask1Done) + Number(darkRoomCheckItem.subTask2Done) : 2;
   const darkRoomCheckPercent = Math.round((darkRoomSubTasksDone / 2) * 100);
 
-  return { receiveDone, receiveTotal, receivePercent, mediumSurplusOrderId, darkRoomCheckItemId: darkRoomCheckItem?.id ?? null, darkRoomCheckPercent, darkRoomSubTasksDone };
+  return {
+    receiveDone, receiveTotal, receivePercent,
+    mediumDone, mediumTotal, mediumPercent,
+    mediumSurplusOrderId,
+    darkRoomCheckItemId: darkRoomCheckItem?.id ?? null, darkRoomCheckPercent, darkRoomSubTasksDone,
+  };
 }
 
 // Đơn "đang xử lý" của NV môi trường = đơn do chính họ xác nhận, chưa kết thúc (xem
@@ -921,11 +927,19 @@ function KhoMoTaskDashboard({
             percent={dailyStats.receivePercent}
             countLabel={`${dailyStats.receiveDone}/${dailyStats.receiveTotal} phiếu`}
           />
+          <WeeklyTaskRow
+            href="/medium-orders/receive"
+            icon={FlaskConical}
+            title="2. Nhận môi trường"
+            deadline="Xác nhận các ngày môi trường đã được NV môi trường bàn giao trong hôm nay"
+            percent={dailyStats.mediumPercent}
+            countLabel={`${dailyStats.mediumDone}/${dailyStats.mediumTotal} ngày`}
+          />
           {dailyStats.mediumSurplusOrderId && (
             <WeeklyTaskRow
               href={`/medium-orders/${dailyStats.mediumSurplusOrderId}`}
               icon={FlaskConical}
-              title="2. Kiểm tra môi trường dư"
+              title="3. Kiểm tra môi trường dư"
               deadline="Đối chiếu số dư lý thuyết với số đếm thực tế (chỉ Thứ 2, Thứ 3)"
               percent={0}
               countLabel="Chưa nhập"
@@ -935,7 +949,7 @@ function KhoMoTaskDashboard({
             <WeeklyTaskRow
               href="/dark-room-check"
               icon={Moon}
-              title="3. Kiểm tra kho tối"
+              title="4. Kiểm tra kho tối"
               deadline="Kiểm tra kho cá nhân NV cấy mô + xác nhận đã chuyển cây nhiễm cá nhân về kho nhiễm chung"
               percent={dailyStats.darkRoomCheckPercent}
               countLabel={`${dailyStats.darkRoomSubTasksDone}/2 nhiệm vụ`}
@@ -965,19 +979,11 @@ function KhoMoTaskDashboard({
             percent={weeklyStats.finishedPercent}
             countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} phiếu`}
           />
-          <WeeklyTaskRow
-            href="/medium-orders/receive"
-            icon={FlaskConical}
-            title="3. Nhận môi trường"
-            deadline="Xác nhận các ngày môi trường đã được NV môi trường bàn giao trong tuần"
-            percent={weeklyStats.mediumPercent}
-            countLabel={`${weeklyStats.mediumDone}/${weeklyStats.mediumTotal} ngày`}
-          />
           {weeklyStats.contaminationTaskVisible && (
             <WeeklyTaskRow
               href="/contamination-proposals/submit"
               icon={Send}
-              title="4. Gửi đề xuất Trồng/Hủy"
+              title="3. Gửi đề xuất Trồng/Hủy"
               deadline="Rà lại phiếu chung đã gộp ở mục Kiểm tra kho nhiễm cá nhân rồi gửi Admin duyệt — hạn Thứ 6"
               percent={0}
               badgeState="urgent"
