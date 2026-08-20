@@ -28,7 +28,7 @@ export default async function DashboardBasicPage() {
           <div className="bg-primary text-primary-foreground p-2 rounded-lg">
             <Leaf className="w-5 h-5" />
           </div>
-          <span className="font-bold text-foreground">Xanh Xanh</span>
+          <span className="font-bold text-foreground">HKD Vũ Văn Tuyến</span>
         </div>
         <Link
           href="/dashboard"
