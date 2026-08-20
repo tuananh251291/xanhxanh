@@ -266,6 +266,11 @@ async function buildKhoMoSharedMissedByDay(
         // mô có thể bàn giao bất kỳ lúc nào trong tuần dự phòng đó (xem ensureBackupInstructionsCleaned),
         // nên loại khỏi đánh giá "Giao mẫu mẹ theo chỉ định cấy" thay vì tính thiếu khi chưa bàn giao.
         isBackup: false,
+        // Chỉ tính chỉ định THỰC SỰ dành cho ĐÚNG tuần đang đánh giá (weekStart) — thiếu điều kiện này thì
+        // 1 chỉ định KY_THUAT tạo sớm cho 1 tuần xa hơn (VD tạo hôm nay cho tuần sau nữa, không phải tuần
+        // kế tiếp) sẽ bị tính "đến hạn giao" ở MỌI tuần đứng giữa (chỉ cần qua đủ mốc Thứ 5 tuần trước),
+        // dù chưa thực sự tới tuần thực hiện của nó.
+        weekStart: toStoredWeekStart(weekStart),
         createdAt: { lte: addDays(weekStart, -4) }, // trước Thứ 5 tuần trước (weekStart-4 = Thứ 5 tuần trước)
         items: { some: { shelf: { warehouseId } } },
       },
