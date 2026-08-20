@@ -179,6 +179,23 @@ export async function planShelfAssignments(
     : undefined;
 
   const placements: ShelfPlacement[] = [];
+  // Cache "Nhóm tuần ra rễ này có phiếu bàn giao PENDING (Kho thành phẩm chưa xác nhận) không" theo
+  // rotationGroupId — tránh truy vấn lặp lại khi nhiều lô trong cùng batch rơi vào cùng 1 Nhóm.
+  const pendingHandoverByGroup = new Map<string, boolean>();
+  async function hasPendingHandover(rotationGroupId: string): Promise<boolean> {
+    const cached = pendingHandoverByGroup.get(rotationGroupId);
+    if (cached !== undefined) return cached;
+    const pendingItem = await prisma.transferItem.findFirst({
+      where: {
+        transfer: { status: "PENDING", fromWarehouseId: warehouseId },
+        lot: { shelf: { rotationGroupId } },
+      },
+      select: { id: true },
+    });
+    const result = !!pendingItem;
+    pendingHandoverByGroup.set(rotationGroupId, result);
+    return result;
+  }
 
   for (const { lotId, lot } of transferItems) {
     if (lot.stage === "THANH_PHAM") {
@@ -194,6 +211,15 @@ export async function planShelfAssignments(
         if (!resolvedGroup) {
           throw new ShelfAssignError(
             `Chưa cấu hình Nhóm tuần ra rễ nào — SUPER_ADMIN cần tạo Nhóm ở /settings/shelf-groups`
+          );
+        }
+        // Nhóm này đang có phiếu bàn giao sang Kho thành phẩm CHỜ XÁC NHẬN (lô cũ vẫn còn nằm vật lý trên
+        // kệ của Nhóm cho tới khi Kho thành phẩm xác nhận, xem PATCH /api/transfers/[id]) — không cho xếp
+        // thêm lô MỚI vào chung kệ, tránh lô mới (chưa đủ tuần tuổi) bị gộp lẫn với lô cũ đang chờ xuất,
+        // khiến summarizeRootingWeekGroups báo "đạt xuất" oan cho cả Nhóm (tính theo Nhóm, không theo lô).
+        if (await hasPendingHandover(resolvedGroup.id)) {
+          throw new ShelfAssignError(
+            `Nhóm tuần ra rễ (thứ tự ${resolvedGroup.rotationOrder}) đang có phiếu bàn giao chờ Kho thành phẩm xác nhận — chưa thể xếp thêm cây vào Nhóm này cho tới khi được xác nhận`
           );
         }
         const weekPool = pool.filter((c) => c.rotationGroupId === resolvedGroup.id);
