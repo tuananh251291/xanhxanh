@@ -219,7 +219,7 @@ export default function LoginPage() {
               <Leaf className="w-8 h-8" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-foreground">Xanh Xanh</CardTitle>
+          <CardTitle className="text-2xl font-bold text-foreground">Hộ kinh doanh Vũ Văn Tuyến</CardTitle>
           <CardDescription className="text-text-secondary">
             Hệ thống quản lý nuôi cấy mô – kho – bán hàng
           </CardDescription>
