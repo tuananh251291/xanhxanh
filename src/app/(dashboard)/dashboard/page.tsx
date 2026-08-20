@@ -219,12 +219,13 @@ async function getKyThuatStats(userId: string) {
   };
 }
 
-// Việc "Giao mẫu mẹ theo chỉ định cấy": chỉ định cấy do KY_THUAT tạo trước Thứ 5 tuần này phải được
-// Kho mô bàn giao (handedOverAt) cho NV cấy mô trước Thứ 2 tuần sau. Việc chung của cả phòng kho mô
-// (không phân theo người tạo/người bàn giao) — tính cộng dồn, kể cả chỉ định quá hạn từ tuần trước
-// chưa xử lý (không giới hạn theo tuần hiện tại), giống cách tính việc "Tạo chỉ định cấy" của Kỹ thuật.
-// NV kho mô chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm việc) — công việc chỉ tính trên
-// chỉ định thuộc đúng kho đó.
+// Việc "Giao mẫu mẹ theo chỉ định cấy": mỗi chỉ định cấy có hạn bàn giao (handedOverAt) là ĐÚNG Thứ 2 của
+// tuần thực hiện của chính nó (PlantingInstruction.weekStart) — không phải bàn giao sớm hơn. Việc chung
+// của cả phòng kho mô (không phân theo người tạo/người bàn giao) — tính cộng dồn chỉ định của tuần này
+// CỘNG với chỉ định quá hạn từ các tuần TRƯỚC còn tồn đọng chưa xử lý (weekStart <= tuần này), nhưng
+// KHÔNG tính chỉ định của tuần SAU (chưa tới hạn bàn giao dù đã được tạo sớm) — giống cách tính việc
+// "Tạo chỉ định cấy" của Kỹ thuật. NV kho mô chỉ làm việc 1 kho sản xuất (nếu đã được gán địa điểm làm
+// việc) — công việc chỉ tính trên chỉ định thuộc đúng kho đó.
 // Các công việc "hàng tuần" khác (bàn giao thành phẩm/nhận môi trường/đề xuất nhiễm) không có hạn chót
 // cố định như việc 1 — tạm tính % theo tỉ lệ đã xử lý/tổng phát sinh trong tuần (hoặc lượng tồn còn lại
 // với Phòng nhiễm), có thể cần NV nghiệp vụ mô tả rõ hơn để điều chỉnh sau.
@@ -233,7 +234,6 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
-  const nextMondayDeadline = addWeeks(weekStart, 1);
 
   const [dueInstructions, finishedTransfers, mediumDays, contaminationLots] = await Promise.all([
     prisma.plantingInstruction.findMany({
@@ -246,6 +246,10 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
         // có thể bàn giao bất kỳ lúc nào trong tuần dự phòng đó (xem ensureBackupInstructionsCleaned),
         // nên không tính vào việc "Giao mẫu mẹ theo chỉ định cấy" khi chưa bàn giao.
         isBackup: false,
+        // Chỉ tính chỉ định dành cho ĐÚNG tuần này hoặc các tuần TRƯỚC (quá hạn còn tồn đọng) — chỉ định
+        // KY_THUAT tạo sớm cho 1 tuần SAU chưa tới hạn bàn giao (hạn của nó là Thứ 2 của chính tuần đó,
+        // không phải sớm hơn), không được tính "chưa hoàn thành" ngay từ tuần này.
+        weekStart: { lte: toStoredWeekStart(weekStart) },
         ...(workplaceWarehouseId ? { items: { some: { shelf: { warehouseId: workplaceWarehouseId } } } } : {}),
       },
       select: { handedOverAt: true },
@@ -298,7 +302,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const contaminationPercent = contaminationOutstanding === 0 ? 100 : 0;
 
   return {
-    weekStart, weekEnd, nextMondayDeadline,
+    weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
     finishedDone, finishedTotal, finishedPercent,
     mediumDone, mediumTotal, mediumPercent,
@@ -941,7 +945,7 @@ function KhoMoTaskDashboard({
             href="/instructions"
             icon={Send}
             title="1. Giao mẫu mẹ theo chỉ định cấy"
-            deadline={`Chỉ định tạo trước Thứ 5 tuần này cần bàn giao trước Thứ 2 tuần sau (${format(weeklyStats.nextMondayDeadline, "dd/MM", { locale: vi })})`}
+            deadline={`Chỉ định của tuần này cần bàn giao vào Thứ 2 đầu tuần (${format(weeklyStats.weekStart, "dd/MM", { locale: vi })}) — cộng dồn cả chỉ định quá hạn từ tuần trước, không tính chỉ định của tuần sau`}
             percent={weeklyStats.handoverPercent}
             countLabel={`${weeklyStats.handoverDone}/${weeklyStats.handoverTotal} chỉ định`}
           />
