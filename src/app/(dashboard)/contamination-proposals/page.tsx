@@ -21,7 +21,7 @@ export default async function ContaminationProposalsPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {canSubmit
-            ? "Đề xuất trồng lại hoặc hủy bỏ số lượng đang lưu ở Phòng nhiễm — gửi Admin duyệt"
+            ? "Lịch sử các đề xuất đã gửi Admin duyệt — tạo đề xuất mới ở mục \"Kiểm tra kho nhiễm cá nhân\" trong Nhiệm vụ ngày"
             : "Duyệt các đề xuất Trồng/Hủy hàng nhiễm do Kho mô gửi lên"}
         </p>
       </div>

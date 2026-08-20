@@ -43,6 +43,23 @@ export async function logContaminationRoomEntry(
   });
 }
 
+// Cộng/trừ số dư "chờ xử lý" của 1 NV cấy mô (hoặc "" = tồn cũ/không rõ NV) tại (kho, mã cây, quy cách)
+// — gọi mỗi khi Phòng nhiễm tăng/giảm để giữ đúng bất biến: tổng theo (kho, mã cây, quy cách) của bảng
+// này luôn khớp Lot.quantity hiện tại của Phòng nhiễm tương ứng (xem ContaminationStaffBalance). quantity
+// có thể ÂM; bỏ qua nếu bằng 0.
+export async function creditContaminationStaffBalance(
+  client: Prisma.TransactionClient | typeof prisma,
+  params: { warehouseId: string; staffId: string | null; plantTypeId: string; stageCode: string; quantity: number },
+) {
+  if (params.quantity === 0) return;
+  const staffId = params.staffId ?? "";
+  await client.contaminationStaffBalance.upsert({
+    where: { warehouseId_staffId_plantTypeId_stageCode: { warehouseId: params.warehouseId, staffId, plantTypeId: params.plantTypeId, stageCode: params.stageCode } },
+    create: { warehouseId: params.warehouseId, staffId, plantTypeId: params.plantTypeId, stageCode: params.stageCode, quantity: params.quantity },
+    update: { quantity: { increment: params.quantity } },
+  });
+}
+
 // Cộng dồn số lượng nhiễm vào Phòng nhiễm của đúng kho, gộp theo (mã sản phẩm, quy cách) — không phân
 // biệt lô/NV cấy mô nào báo (xem Lot.code = "NHIEM-{maKho}-{maCay}"). Mã lô gộp nhúng cả mã kho lẫn mã
 // cây vì Lot chỉ unique theo (code, stageCode) trên TOÀN bảng (không scope theo kho), nên phải tự tách
@@ -62,6 +79,11 @@ export async function addToContaminationRoom(
     reason: ContaminationEntryReason;
     sourceLotId?: string | null;
     sourceLotCode?: string | null;
+    // NV cấy mô "chủ" của số nhiễm này (cộng vào ContaminationStaffBalance) — KHÔNG mặc định lấy theo
+    // reportedById vì có luồng reportedById là người phát hiện/xử lý chứ không phải NV cấy mô gốc (vd
+    // Kho mô kiểm tra luồng Đỏ, Admin hoàn lại đề xuất bị từ chối) — bắt buộc truyền tường minh ở mỗi nơi
+    // gọi. null = không rõ NV cụ thể (xem creditContaminationStaffBalance).
+    staffBalanceOwnerId: string | null;
   },
 ) {
   if (params.quantity <= 0) return;
@@ -103,5 +125,13 @@ export async function addToContaminationRoom(
     sourceLotCode: params.sourceLotCode,
     reportedById: params.reportedById,
     reason: params.reason,
+  });
+
+  await creditContaminationStaffBalance(client, {
+    warehouseId: params.warehouseId,
+    staffId: params.staffBalanceOwnerId,
+    plantTypeId: params.plantTypeId,
+    stageCode: params.stageCode,
+    quantity: params.quantity,
   });
 }

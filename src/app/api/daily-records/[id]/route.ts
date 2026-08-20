@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { canManageDailyRecords } from "@/types";
 import { generateProductLotCode } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { logContaminationRoomEntry } from "@/lib/contamination-room";
+import { logContaminationRoomEntry, creditContaminationStaffBalance } from "@/lib/contamination-room";
 import { addWeeks } from "date-fns";
 import { z } from "zod";
 
@@ -260,6 +260,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             reportedById: session!.user!.id,
             reason: "DAILY_RECORD_EDIT",
           });
+          await creditContaminationStaffBalance(tx, {
+            warehouseId, staffId: record.staffId, plantTypeId: record.instruction.plantTypeId, stageCode: "M05", quantity: contamDelta,
+          });
         }
       } else if (contamLotId) {
         await tx.lot.update({ where: { id: contamLotId }, data: { quantity: { decrement: -contamDelta }, initialQuantity: { decrement: -contamDelta } } });
@@ -269,6 +272,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           sourceLotCode: m05LotCode,
           reportedById: session!.user!.id,
           reason: "DAILY_RECORD_EDIT",
+        });
+        await creditContaminationStaffBalance(tx, {
+          warehouseId, staffId: record.staffId, plantTypeId: record.instruction.plantTypeId, stageCode: "M05", quantity: contamDelta,
         });
       }
     }

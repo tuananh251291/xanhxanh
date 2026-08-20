@@ -148,6 +148,7 @@ export async function applyDailyRecordDay(tx: Prisma.TransactionClient, p: Apply
     stageCode: "M05",
     quantity: p.numbers.motherContaminatedM05,
     reportedById: p.assignedToId,
+    staffBalanceOwnerId: p.assignedToId,
     reason: "EXCEL_IMPORT",
     sourceLotCode: productLotCode,
   });

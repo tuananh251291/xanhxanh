@@ -291,6 +291,7 @@ export async function POST(req: NextRequest) {
     stageCode: "M05",
     quantity: motherContaminatedM05,
     reportedById: staffId,
+    staffBalanceOwnerId: staffId,
     reason: "DAILY_RECORD",
     sourceLotCode: productLotCode,
   });

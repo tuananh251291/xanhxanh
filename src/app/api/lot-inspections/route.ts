@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
             stageCode: lot.stageCode,
             quantity: contaminatedQuantity,
             reportedById: session.user.id,
+            staffBalanceOwnerId: session.user.id,
             reason: "DARK_ROOM_SELF_CHECK",
             sourceLotId: lot.id,
             sourceLotCode: lot.code,

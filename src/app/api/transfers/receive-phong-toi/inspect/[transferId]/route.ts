@@ -190,6 +190,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
         stageCode: lot.stageCode,
         quantity: item.contaminatedQuantity,
         reportedById: session.user.id,
+        staffBalanceOwnerId: transfer.fromUserId,
         reason: "RED_LANE_INSPECTION",
         sourceLotId: lot.id,
         sourceLotCode: lot.code,

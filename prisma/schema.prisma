@@ -212,6 +212,10 @@ enum ContaminationProposalType {
 }
 
 enum ContaminationProposalStatus {
+  // Dòng nháp đã "Gộp phiếu" từ 1 NV/1 lượt — chưa gửi Admin, chỉ Kho mô cùng kho thấy được, có thể còn
+  // bị gộp tiếp với dòng khác cùng loại/mã cây/quy cách khi bấm "Gửi đề xuất trồng/hủy" (xem
+  // POST /api/contamination-proposal-drafts/submit).
+  DRAFT
   PENDING
   APPROVED
   REJECTED
@@ -601,6 +605,7 @@ model PlantType {
   plantingInstructions PlantingInstruction[]
   shelves              Shelf[]
   contaminationProposals ContaminationProposal[]
+  contaminationStaffBalances ContaminationStaffBalance[]
   processingTickets    ProcessingTicket[]
   orderProcessingRequests OrderProcessingRequest[]
   goodsReceiptItems    GoodsReceiptItem[]
@@ -852,6 +857,7 @@ model Warehouse {
   transfersOut Transfer[] @relation("TransferFrom")
   staff        User[]
   contaminationProposals ContaminationProposal[]
+  contaminationStaffBalances ContaminationStaffBalance[]
 
   @@map("warehouses")
 }
@@ -1575,6 +1581,10 @@ model ContaminationProposal {
   stageCode     String
   quantity      Int
   status        ContaminationProposalStatus  @default(PENDING)
+  // Chỉ có giá trị khi status = DRAFT — NV cấy mô nguồn của dòng nháp này (xem ContaminationStaffBalance),
+  // "" = tồn cũ/không rõ NV. Sau khi gộp thành đề xuất PENDING thật (nhiều dòng DRAFT khác NV có thể gộp
+  // chung 1 dòng PENDING) thì để "" vì không còn đại diện cho 1 NV cụ thể nữa.
+  staffId       String                       @default("")
   notes         String?
   requestedById String
   requestedBy   User                         @relation("ContaminationProposalRequestedBy", fields: [requestedById], references: [id])
@@ -1585,6 +1595,30 @@ model ContaminationProposal {
   updatedAt     DateTime                     @updatedAt
 
   @@map("contamination_proposals")
+}
+
+// Số lượng nhiễm hiện đang "chờ xử lý" (chưa gộp vào dòng nháp Trồng/Hủy nào) của Phòng nhiễm, tách
+// theo NV cấy mô báo nhiễm (staffId) để Kho mô đề xuất riêng từng NV trong "Kiểm tra kho nhiễm cá nhân"
+// (xem GET /api/contamination-staff-balances) — staffId = "" cho phần không xác định được NV cụ thể
+// (tồn cũ từ trước khi có tính năng này, hoặc nhiễm phát hiện không gắn với 1 NV cấy mô cụ thể, vd hoàn
+// lại do đề xuất bị từ chối). Không dùng NULL cho staffId vì Postgres coi nhiều dòng NULL là khác nhau,
+// phá vỡ @@unique bên dưới; cũng không @relation tới User vì "" không phải id thật — tra tên NV thủ công
+// khi hiển thị. Cộng khi có nhiễm mới (xem addToContaminationRoom/creditContaminationStaffBalance), trừ
+// khi "Gộp phiếu" (xem POST /api/contamination-proposal-drafts) — tổng theo (warehouseId, plantTypeId,
+// stageCode) của bảng này luôn khớp đúng Lot.quantity của Phòng nhiễm tương ứng.
+model ContaminationStaffBalance {
+  id          String    @id @default(cuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  staffId     String    @default("")
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+  quantity    Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([warehouseId, staffId, plantTypeId, stageCode])
+  @@map("contamination_staff_balances")
 }
 
 // Lịch sử TỪNG LẦN cộng nhiễm vào Phòng nhiễm — Phòng nhiễm (Lot code "NHIEM-{khoCode}-{maCay}") chỉ

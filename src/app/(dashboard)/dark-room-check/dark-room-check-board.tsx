@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, CheckCircle2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import DarkRoomInspectionDialog from "@/components/shared/dark-room-inspection-dialog";
+import ContaminationPersonalBoard from "./contamination-personal-board";
 
 type ChecklistItem = {
   id: string;
@@ -96,7 +97,7 @@ export default function DarkRoomCheckBoard() {
       </Card>
 
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <Checkbox checked={item.subTask2Done} disabled={saving} onCheckedChange={toggleSubTask2} />
             <div>
@@ -105,6 +106,9 @@ export default function DarkRoomCheckBoard() {
             </div>
             {saving && <Loader2 className="w-4 h-4 animate-spin text-text-muted" />}
           </label>
+          <div className="border-t border-divider pt-4">
+            <ContaminationPersonalBoard />
+          </div>
         </CardContent>
       </Card>
     </div>

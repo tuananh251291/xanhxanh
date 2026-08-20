@@ -49,6 +49,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         stageCode: proposal.stageCode,
         quantity: proposal.quantity,
         reportedById: session!.user!.id,
+        staffBalanceOwnerId: null,
         reason: "PROPOSAL_REJECTED_REFUND",
         sourceLotCode: proposal.code,
       });

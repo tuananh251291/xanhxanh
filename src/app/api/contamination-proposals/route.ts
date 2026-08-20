@@ -32,8 +32,9 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status");
   const role = session.user.role;
 
-  const where: Record<string, unknown> = {};
-  if (status) where.status = status;
+  // Dòng nháp (status DRAFT, chưa "Gửi đề xuất trồng/hủy") không hiện ở danh sách chung — xem
+  // GET /api/contamination-proposal-drafts cho phiếu chung đang gộp dở của Kho mô.
+  const where: Record<string, unknown> = status ? { status } : { status: { not: "DRAFT" } };
   // Kho mô chỉ thấy đề xuất của đúng kho sản xuất mình đang làm việc — Admin thấy tất cả để duyệt.
   if (role === "KHO_MO") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
