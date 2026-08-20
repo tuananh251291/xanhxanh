@@ -1,6 +1,6 @@
-import type { UserRole } from "@prisma/client";
+import type { UserRole, EmploymentType } from "@prisma/client";
 
-export type { UserRole };
+export type { UserRole, EmploymentType };
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: "Admin cấp cao",
@@ -44,6 +44,49 @@ export const INSPECTION_LANE_COLORS = {
 // ADMIN và SUPER_ADMIN đều có full quyền trang/tính năng — chỉ khác ở quyền duyệt tài khoản mới (chỉ SUPER_ADMIN).
 export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "ADMIN" || role === "SUPER_ADMIN";
+}
+
+// Loại hợp đồng — chỉ áp dụng cho NV cấy mô (CAY_MO), xem User.employmentType.
+export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
+  CHINH_THUC: "Chính thức",
+  THU_VIEC: "Thử việc",
+};
+
+export const EMPLOYMENT_TYPE_COLORS: Record<EmploymentType, string> = {
+  CHINH_THUC: "bg-success-light text-success-foreground",
+  THU_VIEC: "bg-warning-light text-warning-foreground",
+};
+
+// Ai được cài đặt Loại hợp đồng (Chính thức/Thử việc) của NV cấy mô — Admin cấp cao (SUPER_ADMIN) và
+// NV Hành chính nhân sự, KHÔNG bao gồm Admin thường (khác các field Admin-only khác như plantingCapacity).
+export function canEditEmploymentType(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
+}
+
+// "Cấy học việc" — nhãn/màu badge dùng chung ở bảng Người dùng, xem User.isTrainee.
+export const TRAINEE_LABEL = "Cấy học việc";
+export const TRAINEE_BADGE_COLOR = "bg-info-light text-info-foreground";
+
+// Ai được cài đặt các bảng tham số lương + xem "Bảng lương" (dữ liệu lương nhạy cảm) — cùng phạm vi
+// role với canEditEmploymentType (SUPER_ADMIN + NV Hành chính nhân sự, KHÔNG bao gồm Admin thường/
+// KHO_MO), tách hàm riêng cho rõ nghĩa ở các chỗ gọi liên quan tới lương.
+export function canManagePayroll(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
+}
+
+// Vai trò được phép gán khi tạo tài khoản mới, theo vai trò người tạo — Admin/Admin cấp cao tạo được mọi
+// vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
+// người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
+export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
+  "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
+  "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU",
+];
+export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN");
+
+export function creatableRolesFor(actorRole: UserRole | null | undefined): UserRole[] {
+  if (isAdminRole(actorRole)) return ALL_ASSIGNABLE_ROLES;
+  if (actorRole === "HANH_CHINH_NHAN_SU") return STAFF_ONLY_ROLES;
+  return [];
 }
 
 // QUAN_LY_KHO_THANH_PHAM (Quản lý kho thành phẩm) hiện có ĐÚNG quyền/tính năng như KHO_THANH_PHAM (NV
@@ -462,6 +505,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   HANH_CHINH_NHAN_SU: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/users", label: "Người dùng", icon: "Users" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/reports/handover-summary", label: "Bàn giao & ghi nhận theo tháng", icon: "PackageCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

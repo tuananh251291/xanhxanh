@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, CheckCircle2, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
+import { toast } from "sonner";
 import WarehouseFilterSelect from "@/components/shared/warehouse-filter-select";
 
 type ViolationRow = {
@@ -29,7 +30,13 @@ type StaffRow = {
 
 const toDateInputValue = (d: Date) => format(d, "yyyy-MM-dd");
 
-export default function ViolationReportBoard({ canFilterByWarehouse = false }: { canFilterByWarehouse?: boolean }) {
+export default function ViolationReportBoard({
+  canFilterByWarehouse = false,
+  canManage = false,
+}: {
+  canFilterByWarehouse?: boolean;
+  canManage?: boolean;
+}) {
   const [staffList, setStaffList] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -51,6 +58,14 @@ export default function ViolationReportBoard({ canFilterByWarehouse = false }: {
   }, [from, to, warehouseId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const deleteRecord = async (id: string) => {
+    if (!window.confirm("Xoá lỗi vi phạm này? Không thể hoàn tác.")) return;
+    const res = await fetch(`/api/violation-records/${id}`, { method: "DELETE" });
+    if (!res.ok) { toast.error("Có lỗi xảy ra"); return; }
+    toast.success("Đã xoá");
+    load();
+  };
 
   return (
     <div className="space-y-4">
@@ -119,6 +134,11 @@ export default function ViolationReportBoard({ canFilterByWarehouse = false }: {
                                   <span className="text-foreground">
                                     Ghi nhận bởi {r.checkedByName} <span className="font-mono text-text-muted">({r.checkedByCode})</span>
                                   </span>
+                                  {canManage && (
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => deleteRecord(r.id)}>
+                                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                    </Button>
+                                  )}
                                 </div>
                               ))}
                             </div>

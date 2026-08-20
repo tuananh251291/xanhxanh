@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { isPageAllowed } from "@/lib/permissions";
-import { isAdminRole } from "@/types";
+import { isAdminRole, canManagePayroll } from "@/types";
 import ViolationReportBoard from "./violation-report-board";
 import DataCorrectionsBoard from "../data-corrections/data-corrections-board";
 import ViolationTypesBoard from "../violation-types/violation-types-board";
@@ -13,10 +13,10 @@ import TaskCompletionReportBoard from "../task-completion-report/task-completion
 // nhiệm vụ" gộp làm tab tại đây cho menu dọc gọn hơn (xem ROLE_NAV.KHO_MO, src/types/index.ts). 3 URL cũ
 // (/data-corrections, /violation-types, /task-completion-report) vẫn hoạt động độc lập như cũ, dùng
 // thẳng lại các Board đã tự fetch, không cần tách gì thêm.
-// NV Hành chính nhân sự (chỉ xem, không thao tác nghiệp vụ) chỉ thấy đúng 2 tab được giao: "Báo cáo vi
-// phạm" + "Số ngày không hoàn thành nhiệm vụ" — ẩn "Theo dõi nhập sai dữ liệu cấy" (không thuộc phạm vi
-// được giao) và "Danh sách lỗi vi phạm" (board này luôn hiện nút "Thêm mới" bất kể role xem, không tự ẩn
-// theo quyền — API POST chỉ Admin/KHO_MO nên NV HCNS bấm sẽ chỉ gặp lỗi 403, không nên cho thấy nút đó).
+// NV Hành chính nhân sự (chủ yếu chỉ xem — riêng vi phạm được ghi trực tiếp/sửa/xoá vì phục vụ tính
+// lương, xem canManagePayroll) thấy 3/4 tab: "Báo cáo vi phạm", "Danh sách lỗi vi phạm" (dùng để ghi
+// nhận vi phạm trực tiếp cho NV cấy mô — xem record-violation-dialog.tsx), "Số ngày không hoàn thành
+// nhiệm vụ" — ẩn riêng "Theo dõi nhập sai dữ liệu cấy" (không thuộc phạm vi được giao).
 export default async function ViolationReportPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -40,23 +40,21 @@ export default async function ViolationReportPage() {
         <TabsList>
           <TabsTrigger value="violation-report">Báo cáo vi phạm</TabsTrigger>
           {!isHr && <TabsTrigger value="data-corrections">Theo dõi nhập sai dữ liệu cấy</TabsTrigger>}
-          {!isHr && <TabsTrigger value="violation-types">Danh sách lỗi vi phạm</TabsTrigger>}
+          <TabsTrigger value="violation-types">Danh sách lỗi vi phạm</TabsTrigger>
           <TabsTrigger value="task-completion">Số ngày không hoàn thành nhiệm vụ</TabsTrigger>
         </TabsList>
 
         <TabsContent value="violation-report" className="mt-4">
-          <ViolationReportBoard canFilterByWarehouse={isAdminRole(role) || isHr} />
+          <ViolationReportBoard canFilterByWarehouse={isAdminRole(role) || isHr} canManage={canManagePayroll(role)} />
         </TabsContent>
         {!isHr && (
           <TabsContent value="data-corrections" className="mt-4">
             <DataCorrectionsBoard canFilterByWarehouse={isAdminRole(role)} />
           </TabsContent>
         )}
-        {!isHr && (
-          <TabsContent value="violation-types" className="mt-4">
-            <ViolationTypesBoard />
-          </TabsContent>
-        )}
+        <TabsContent value="violation-types" className="mt-4">
+          <ViolationTypesBoard />
+        </TabsContent>
         <TabsContent value="task-completion" className="mt-4">
           <TaskCompletionReportBoard isAdmin={isAdminRole(role)} canFilterByWarehouse={isAdminRole(role) || isHr} />
         </TabsContent>

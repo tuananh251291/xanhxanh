@@ -231,6 +231,13 @@ enum UserStatus {
   REJECTED
 }
 
+// Loại hợp đồng — chỉ áp dụng cho NV cấy mô (CAY_MO), do SUPER_ADMIN/HANH_CHINH_NHAN_SU cài đặt (xem
+// User.employmentType, /api/users/[id] PATCH).
+enum EmploymentType {
+  CHINH_THUC
+  THU_VIEC
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -271,6 +278,14 @@ model User {
   // Năng lực cấy — chỉ áp dụng cho NV cấy mô (CAY_MO): số cụm mẫu mẹ NV đó dùng hết trong 1 tuần
   // (thể hiện tốc độ cấy), chỉ ADMIN/SUPER_ADMIN cài đặt được (xem /api/users/[id] PATCH).
   plantingCapacity Int @default(1920)
+  // Loại hợp đồng ("Chính thức"/"Thử việc") — chỉ áp dụng cho NV cấy mô (CAY_MO), chỉ SUPER_ADMIN/
+  // HANH_CHINH_NHAN_SU cài đặt được (xem /api/users/[id] PATCH). Null = chưa cài đặt.
+  employmentType EmploymentType?
+  // "Cấy học việc" — chỉ áp dụng cho NV cấy mô (CAY_MO), độc lập với employmentType (1 NV Thử việc có
+  // thể đang hoặc đã rời giai đoạn học việc). Tài khoản CAY_MO mới tạo tự động true + employmentType
+  // THU_VIEC (xem POST /api/users); SUPER_ADMIN/HANH_CHINH_NHAN_SU tắt lại khi NV rời nhóm học việc (xem
+  // /api/users/[id] PATCH).
+  isTrainee Boolean @default(false)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -326,6 +341,16 @@ model User {
   motherPhotos                       MotherPhoto[]
   taskCompletionExemptions           TaskCompletionExemption[] @relation("TaskExemptionStaff")
   taskCompletionExemptionsCreated    TaskCompletionExemption[] @relation("TaskExemptionCreatedBy")
+  violationRecordsAsStaff            ViolationRecord[]         @relation("ViolationRecordStaff")
+  violationRecordsCreated            ViolationRecord[]         @relation("ViolationRecordCreatedBy")
+  staffBaseSalary                    StaffBaseSalary?
+  staffKpiDailyRate                  StaffKpiDailyRate?
+  kpiBonusRatesCreated                KpiBonusRate[]
+  publicHolidaysCreated               PublicHoliday[]
+  payrollOtherBonusesAsStaff          PayrollOtherBonus[]       @relation("PayrollOtherBonusStaff")
+  payrollOtherBonusesCreated          PayrollOtherBonus[]       @relation("PayrollOtherBonusCreatedBy")
+  complianceRecoveryPointsAsStaff     ComplianceRecoveryPoint[] @relation("ComplianceRecoveryPointStaff")
+  complianceRecoveryPointsCreated     ComplianceRecoveryPoint[] @relation("ComplianceRecoveryPointCreatedBy")
 
   @@map("users")
 }
@@ -482,22 +507,40 @@ model ViolationType {
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+  // Điểm trừ CƠ BẢN khi 1 NV cấy mô mắc lỗi này (dùng tính điểm tuân thủ cho lương — xem
+  // src/lib/payroll-calculation.ts). Lần đầu trong kỳ lương = điểm này, từ lần 2 trở đi (cùng NV, cùng
+  // loại lỗi, cùng kỳ) = điểm này × 1.5, xem ViolationRecord.pointsApplied.
+  points      Int      @default(5)
 
   records ViolationRecord[]
 
   @@map("violation_types")
 }
 
-// 1 dòng = 1 lỗi vi phạm cụ thể ghi nhận trong 1 lượt kiểm tra (DarkRoomInspectionCheck) — 1 lượt có thể
-// có 0 (NV đạt), 1, hoặc nhiều dòng.
+// 1 dòng = 1 lỗi vi phạm cụ thể của 1 NV cấy mô. 2 nguồn tạo: (a) qua 1 lượt "Kiểm tra kho cá nhân"
+// (inspectionCheckId có giá trị — luồng cũ, staffId/createdById lúc này = inspectionCheck.staffId/
+// checkedById), hoặc (b) ghi trực tiếp không qua lượt kiểm tra nào (inspectionCheckId null — KHO_MO/
+// KY_THUAT/HANH_CHINH_NHAN_SU/Admin/SUPER_ADMIN chọn thẳng 1 NV cấy mô, xem
+// src/app/(dashboard)/violation-types/record-violation-dialog.tsx). staffId/createdById luôn có giá trị
+// ở CẢ 2 nguồn (không còn suy qua inspectionCheck.staff nữa) để /api/violation-report không phải phân
+// biệt 2 luồng khi gộp báo cáo.
 model ViolationRecord {
-  id                String                  @id @default(cuid())
-  inspectionCheckId String
-  inspectionCheck   DarkRoomInspectionCheck @relation(fields: [inspectionCheckId], references: [id])
+  id                String                   @id @default(cuid())
+  inspectionCheckId String?
+  inspectionCheck   DarkRoomInspectionCheck? @relation(fields: [inspectionCheckId], references: [id])
+  staffId           String
+  staff             User                     @relation("ViolationRecordStaff", fields: [staffId], references: [id])
+  createdById       String
+  createdBy         User                     @relation("ViolationRecordCreatedBy", fields: [createdById], references: [id])
   violationTypeId   String
-  violationType     ViolationType           @relation(fields: [violationTypeId], references: [id])
-  createdAt         DateTime                @default(now())
+  violationType     ViolationType            @relation(fields: [violationTypeId], references: [id])
+  // Điểm THỰC TẾ áp dụng — snapshot lúc tạo dòng này (ViolationType.points, nhân 1.5 nếu là lần lặp lại
+  // thứ 2+ của CÙNG loại lỗi, CÙNG NV, trong CÙNG kỳ lương — xem payroll-calculation.ts). Không tính lại
+  // sống mỗi lần xem lương, để sửa điểm cơ bản của 1 loại lỗi sau này không làm trôi số liệu lương cũ.
+  pointsApplied     Int
+  createdAt         DateTime                 @default(now())
 
+  @@index([staffId])
   @@map("violation_records")
 }
 
@@ -557,6 +600,7 @@ model PlantType {
   goodsReceiptItems    GoodsReceiptItem[]
   repackInstructions   RepackInstruction[]
   motherPhotos         MotherPhoto[]
+  kpiRate              PlantTypeKpiRate?
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -2034,4 +2078,110 @@ model SalesManagerAssignment {
 
   @@unique([salesUserId, marketId])
   @@map("sales_manager_assignments")
+}
+
+// ============================================================
+// PAYROLL — tính lương NV cấy mô, dùng bởi NV Hành chính nhân sự (xem src/lib/payroll-calculation.ts,
+// src/app/(dashboard)/payroll-settings, src/app/(dashboard)/reports/payroll). Mọi bảng tham số dưới đây
+// đều chỉ giữ giá trị HIỆN TẠI (không lưu lịch sử theo thời gian, trừ KpiBonusRate/PublicHoliday vốn đã
+// tự nhiên gắn 1 mốc thời gian) — Bảng lương tính SỐNG mỗi lần xem bằng giá trị NGAY LÚC XEM, không chốt
+// sổ/đóng băng theo kỳ.
+// ============================================================
+
+// "Quy đổi sản lượng – KPI" — đơn giá VNĐ/đơn vị theo từng mã cây, dùng quy đổi số lượng thành phẩm
+// NV cấy mô bàn giao (đã được Kho mô xác nhận) sang giá trị VNĐ để so với Sản lượng chỉ tiêu.
+model PlantTypeKpiRate {
+  id          String    @id @default(cuid())
+  plantTypeId String    @unique
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  vndPerUnit  Int
+  updatedAt   DateTime  @updatedAt
+
+  @@map("plant_type_kpi_rates")
+}
+
+// "Lương công việc theo NV" — mức lương thoả thuận/tháng của 1 NV cấy mô (VNĐ), dùng tính "Lương công
+// việc" = mức này × Ngày công hưởng lương / Ngày công tiêu chuẩn. Xem theo cơ sở sản xuất qua
+// User.workplaceWarehouseId có sẵn, không cần field riêng ở đây.
+model StaffBaseSalary {
+  id            String   @id @default(cuid())
+  staffId       String   @unique
+  staff         User     @relation(fields: [staffId], references: [id])
+  monthlyAmount Int
+  updatedAt     DateTime @updatedAt
+
+  @@map("staff_base_salaries")
+}
+
+// "KPI của nhân viên" — KPI/ngày (VNĐ) của 1 NV cấy mô, dùng tính Sản lượng chỉ tiêu = KPI/ngày × Ngày
+// công được tính KPI.
+model StaffKpiDailyRate {
+  id        String   @id @default(cuid())
+  staffId   String   @unique
+  staff     User     @relation(fields: [staffId], references: [id])
+  vndPerDay Int
+  updatedAt DateTime @updatedAt
+
+  @@map("staff_kpi_daily_rates")
+}
+
+// "Mức thưởng KPI" — mức thưởng KPI tuân thủ TỐI ĐA, áp dụng từ đúng kỳ lương periodMonth trở đi (tới
+// khi có dòng periodMonth mới hơn) — HR đặt 1 lần, không cần nhập lại mỗi kỳ nếu không đổi. Đọc bằng
+// cách lấy dòng periodMonth ≤ kỳ đang xem, mới nhất.
+model KpiBonusRate {
+  id          String   @id @default(cuid())
+  periodMonth String   @unique // "yyyy-MM"
+  maxAmount   Int
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("kpi_bonus_rates")
+}
+
+// "Danh sách ngày nghỉ lễ" — trừ khỏi Ngày công tiêu chuẩn (mọi ngày trong danh sách, không phân biệt
+// isPaid); isPaid=true thì CỘNG thêm vào Ngày công hưởng lương (nghỉ nhưng vẫn được tính lương).
+model PublicHoliday {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  description String
+  isPaid      Boolean
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("public_holidays")
+}
+
+// "Khoản thưởng khác" — HR tự nhập cho 1 NV cấy mô, 1 kỳ lương cụ thể, cộng thẳng vào Tổng thu nhập.
+model PayrollOtherBonus {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       User     @relation("PayrollOtherBonusStaff", fields: [staffId], references: [id])
+  periodMonth String   // "yyyy-MM"
+  amount      Int
+  reason      String
+  createdById String
+  createdBy   User     @relation("PayrollOtherBonusCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([staffId, periodMonth])
+  @@map("payroll_other_bonuses")
+}
+
+// Điểm phục hồi — HR tự nhập tay cho 1 NV cấy mô, 1 kỳ lương cụ thể, CỘNG vào điểm tuân thủ cuối kỳ
+// (100 − điểm vi phạm + điểm phục hồi, tối đa 100). Không có cơ chế tự sinh — hoàn toàn do HR quyết định.
+model ComplianceRecoveryPoint {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       User     @relation("ComplianceRecoveryPointStaff", fields: [staffId], references: [id])
+  periodMonth String   // "yyyy-MM"
+  points      Int
+  reason      String
+  createdById String
+  createdBy   User     @relation("ComplianceRecoveryPointCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([staffId, periodMonth])
+  @@map("compliance_recovery_points")
 }

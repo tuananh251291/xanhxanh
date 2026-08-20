@@ -4,7 +4,12 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
 
-const createSchema = z.object({ label: z.string().min(1, "Cần nhập tên lỗi vi phạm") });
+const createSchema = z.object({
+  label: z.string().min(1, "Cần nhập tên lỗi vi phạm"),
+  // Điểm trừ CƠ BẢN khi mắc lỗi này (dùng tính điểm tuân thủ cho lương — xem
+  // src/lib/violation-points.ts). Mặc định 5 nếu không truyền, khớp default ở schema.prisma.
+  points: z.number().int().min(0).max(100).optional(),
+});
 
 // Danh mục loại lỗi vi phạm dùng khi ghi nhận "Kiểm tra kho cá nhân" — Admin soạn sẵn (Settings), NV kho
 // mô cũng tự thêm được ngay lúc ghi nhận (đã chốt với chủ dự án, không chỉ Admin quản lý).
@@ -40,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const type = await prisma.violationType.create({
-    data: { label: parsed.data.label, createdById: session!.user!.id },
+    data: { label: parsed.data.label, points: parsed.data.points ?? 5, createdById: session!.user!.id },
   });
   return NextResponse.json(type, { status: 201 });
 }

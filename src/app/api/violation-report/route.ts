@@ -32,20 +32,15 @@ export async function GET(req: NextRequest) {
     where: {
       createdAt: { gte: from, lte: to },
       ...(role === "KHO_MO"
-        ? { inspectionCheck: { staff: { workplaceWarehouseId: session!.user!.workplaceWarehouseId } } }
+        ? { staff: { workplaceWarehouseId: session!.user!.workplaceWarehouseId } }
         : warehouseId
-          ? { inspectionCheck: { staff: { workplaceWarehouseId: warehouseId } } }
+          ? { staff: { workplaceWarehouseId: warehouseId } }
           : {}),
     },
     include: {
       violationType: { select: { label: true } },
-      inspectionCheck: {
-        select: {
-          checkedAt: true,
-          staff: { select: { id: true, code: true, name: true } },
-          checkedBy: { select: { code: true, name: true } },
-        },
-      },
+      staff: { select: { id: true, code: true, name: true } },
+      createdBy: { select: { code: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -61,13 +56,13 @@ export async function GET(req: NextRequest) {
     }
   >();
   for (const r of records) {
-    const staff = r.inspectionCheck.staff;
+    const staff = r.staff;
     const row = {
       id: r.id,
       createdAt: r.createdAt.toISOString(),
       violationLabel: r.violationType.label,
-      checkedByCode: r.inspectionCheck.checkedBy.code,
-      checkedByName: r.inspectionCheck.checkedBy.name,
+      checkedByCode: r.createdBy.code,
+      checkedByName: r.createdBy.name,
     };
     const existing = byStaff.get(staff.id);
     if (existing) {

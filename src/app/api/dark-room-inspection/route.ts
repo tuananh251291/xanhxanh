@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
+import { computeViolationPointsApplied } from "@/lib/violation-points";
 import { z } from "zod";
 
 const schema = z.object({
@@ -64,12 +65,27 @@ export async function POST(req: NextRequest) {
   // cần bật subTask1Done).
   let check: { id: string } | null = null;
   if (staffId) {
+    // Điểm áp dụng snapshot tại đây (không tính lại sống lúc xem lương sau này) — xem
+    // computeViolationPointsApplied (x1.5 nếu là lần 2+ trong kỳ, cùng NV, cùng loại lỗi).
+    const now = new Date();
+    const violationTypes = violationTypeIds.length
+      ? await prisma.violationType.findMany({ where: { id: { in: violationTypeIds } }, select: { id: true, points: true } })
+      : [];
+    const violationsCreate = await Promise.all(
+      violationTypes.map(async (vt) => ({
+        violationTypeId: vt.id,
+        staffId,
+        createdById: session.user.id,
+        pointsApplied: await computeViolationPointsApplied(staffId, vt.id, vt.points, now),
+        createdAt: now,
+      }))
+    );
     const checkCreate = prisma.darkRoomInspectionCheck.create({
       data: {
         checklistItemId,
         staffId,
         checkedById: session.user.id,
-        violations: { create: violationTypeIds.map((violationTypeId) => ({ violationTypeId })) },
+        violations: { create: violationsCreate },
       },
     });
     const results = shouldLogTransition
