@@ -990,30 +990,22 @@ function KhoMoTaskDashboard({
           <CardTitle className="text-base">Công việc hàng tuần</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Cả 5 việc trong khối này đều ẩn HẲN ngay khi xong (không giữ lại kèm badge "Đã hoàn thành"
-              như khối "Công việc hàng ngày") — đây là việc phát sinh/xử lý 1 lần trong tuần, xong rồi thì
-              không cần nhắc lại nữa cho tới tuần sau (tự phát sinh lại qua truy vấn LIVE mỗi lần tải
-              trang, không lưu trạng thái "đã ẩn"). */}
-          {weeklyStats.handoverPercent < 100 && (
-            <WeeklyTaskRow
-              href="/instructions"
-              icon={Send}
-              title="1. Giao mẫu mẹ theo chỉ định cấy"
-              deadline={`Chỉ định của tuần này cần bàn giao vào Thứ 2 đầu tuần (${format(weeklyStats.weekStart, "dd/MM", { locale: vi })}) — cộng dồn cả chỉ định quá hạn từ tuần trước, không tính chỉ định của tuần sau`}
-              percent={weeklyStats.handoverPercent}
-              countLabel={`${weeklyStats.handoverDone}/${weeklyStats.handoverTotal} chỉ định`}
-            />
-          )}
-          {weeklyStats.finishedPercent < 100 && (
-            <WeeklyTaskRow
-              href="/transfers/finished"
-              icon={Package}
-              title="2. Bàn giao thành phẩm"
-              deadline="Xác nhận Kho thành phẩm đã nhận các phiếu bàn giao từ Phòng ra rễ trong tuần"
-              percent={weeklyStats.finishedPercent}
-              countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} phiếu`}
-            />
-          )}
+          <WeeklyTaskRow
+            href="/instructions"
+            icon={Send}
+            title="1. Giao mẫu mẹ theo chỉ định cấy"
+            deadline={`Chỉ định của tuần này cần bàn giao vào Thứ 2 đầu tuần (${format(weeklyStats.weekStart, "dd/MM", { locale: vi })}) — cộng dồn cả chỉ định quá hạn từ tuần trước, không tính chỉ định của tuần sau`}
+            percent={weeklyStats.handoverPercent}
+            countLabel={`${weeklyStats.handoverDone}/${weeklyStats.handoverTotal} chỉ định`}
+          />
+          <WeeklyTaskRow
+            href="/transfers/finished"
+            icon={Package}
+            title="2. Bàn giao thành phẩm"
+            deadline="Xác nhận Kho thành phẩm đã nhận các phiếu bàn giao từ Phòng ra rễ trong tuần"
+            percent={weeklyStats.finishedPercent}
+            countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} phiếu`}
+          />
           {weeklyStats.mediumSurplusOrderId && (
             <WeeklyTaskRow
               href={`/medium-orders/${weeklyStats.mediumSurplusOrderId}`}
@@ -1056,13 +1048,6 @@ function KhoMoTaskDashboard({
               countLabel={weeklyStats.replantAwaitingConfirmation ? "Chờ xác nhận" : "Chưa bàn giao"}
             />
           )}
-          {weeklyStats.handoverPercent >= 100 &&
-            weeklyStats.finishedPercent >= 100 &&
-            !weeklyStats.mediumSurplusOrderId &&
-            !weeklyStats.contaminationTaskVisible &&
-            !weeklyStats.replantTaskVisible && (
-              <p className="text-sm text-text-muted text-center py-4">Đã hoàn thành hết công việc tuần này</p>
-            )}
         </CardContent>
       </Card>
     </div>
