@@ -306,6 +306,7 @@ model User {
   assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
   assignedRooms        Room[]                 @relation("RoomAssignedStaff")
   mediumOrdersConfirmed    MediumOrder[]      @relation("MediumOrderConfirmedBy")
+  mediumOrdersEndedEarly   MediumOrder[]      @relation("MediumOrderEndedBy")
   mediumOrderDaysConfirmed MediumOrderDay[]   @relation("MediumOrderDayConfirmedBy")
   checklistItems       ChecklistItem[]
   lotInspections       LotInspection[]
@@ -1368,6 +1369,16 @@ model MediumOrder {
   confirmedAt   DateTime?
   confirmedById String?
   confirmedBy   User?     @relation("MediumOrderConfirmedBy", fields: [confirmedById], references: [id])
+
+  // NV môi trường bấm "Kết thúc đơn sớm" khi không bàn giao hết 8 ngày (VD nghỉ đột xuất, hoặc tuần đó
+  // không cần pha tiếp) — coi đơn là đã kết thúc dù còn ngày chưa bàn giao (khác isMediumOrderFinished
+  // mặc định đòi hỏi CẢ 8 ngày). Trước khi có field này, đơn không bàn giao đủ 8 ngày sẽ kẹt "Đang thực
+  // hiện" vĩnh viễn (không có tiến trình nền tự đóng như ensureInstructionsEnded), chặn cứng NV môi
+  // trường không xác nhận được đơn tuần kế tiếp (xem PATCH /api/medium-orders/[id] nhánh endEarly, và
+  // isMediumOrderInProgress/isMediumOrderFinished ở src/lib/medium-orders.ts).
+  endedAt   DateTime?
+  endedById String?
+  endedBy   User?     @relation("MediumOrderEndedBy", fields: [endedById], references: [id])
 
   createdAt DateTime @default(now())
 

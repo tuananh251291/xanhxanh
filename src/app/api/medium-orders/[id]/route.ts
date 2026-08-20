@@ -61,7 +61,12 @@ const recordSurplusSchema = z.object({
 // surplusRecordedAt, khoá không sửa surplusQuantity được nữa và làm việc này biến mất khỏi danh sách
 // công việc cần làm (xem getKhoMoDailyStats).
 const finishSurplusEntrySchema = z.object({ action: z.literal("finishSurplusEntry") });
-const patchSchema = z.discriminatedUnion("action", [confirmSchema, recordSurplusSchema, finishSurplusEntrySchema]);
+// NV môi trường "Kết thúc đơn sớm" khi không bàn giao hết 8 ngày (nghỉ đột xuất, hoặc tuần đó không cần
+// pha tiếp) — coi đơn là đã kết thúc, mở khoá xác nhận đơn tuần kế tiếp. Không có field này thì đơn
+// không bàn giao đủ 8 ngày sẽ kẹt "Đang thực hiện" vĩnh viễn, chặn cứng NV môi trường (xem
+// isMediumOrderInProgress ở src/lib/medium-orders.ts).
+const endEarlySchema = z.object({ action: z.literal("endEarly") });
+const patchSchema = z.discriminatedUnion("action", [confirmSchema, recordSurplusSchema, finishSurplusEntrySchema, endEarlySchema]);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -106,6 +111,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const updated = await prisma.mediumOrderItem.update({
       where: { id: item.id },
       data: { surplusQuantity },
+    });
+    return NextResponse.json(updated);
+  }
+
+  if (parsed.data.action === "endEarly") {
+    if (session.user.role !== "MOI_TRUONG") {
+      return NextResponse.json({ message: "Chỉ NV môi trường mới kết thúc được đơn" }, { status: 403 });
+    }
+    const order = await prisma.mediumOrder.findUnique({
+      where: { id },
+      include: { days: { select: { handedOverAt: true, confirmedAt: true } } },
+    });
+    if (!order) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    if (order.confirmedById !== session.user.id) {
+      return NextResponse.json({ message: "Bạn không phải người đang xử lý đơn này" }, { status: 403 });
+    }
+    if (!isMediumOrderInProgress(order)) {
+      return NextResponse.json({ message: "Đơn này không ở trạng thái đang thực hiện" }, { status: 400 });
+    }
+    const updated = await prisma.mediumOrder.update({
+      where: { id },
+      data: { endedAt: new Date(), endedById: session.user.id },
     });
     return NextResponse.json(updated);
   }

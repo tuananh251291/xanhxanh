@@ -19,6 +19,7 @@ type MediumOrder = {
   weekEnd: string;
   confirmedAt: string | null;
   confirmedById: string | null;
+  endedAt: string | null;
   days: MediumOrderDayLike[];
 };
 
@@ -101,8 +102,20 @@ export default function MediumOrdersList({ canConfirm, currentUserId }: { canCon
                         {format(start, "dd/MM", { locale: vi })} – {format(end, "dd/MM/yyyy", { locale: vi })}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge className={o.confirmedAt ? "bg-info-light text-info-foreground" : "bg-warning-light text-warning-foreground"}>
-                          {o.confirmedAt ? MEDIUM_ORDER_STATUS_LABELS.IN_PROGRESS : MEDIUM_ORDER_STATUS_LABELS.UNCONFIRMED}
+                        <Badge
+                          className={
+                            o.endedAt
+                              ? "bg-danger-light text-destructive"
+                              : o.confirmedAt
+                                ? "bg-info-light text-info-foreground"
+                                : "bg-warning-light text-warning-foreground"
+                          }
+                        >
+                          {o.endedAt
+                            ? MEDIUM_ORDER_STATUS_LABELS.ENDED
+                            : o.confirmedAt
+                              ? MEDIUM_ORDER_STATUS_LABELS.IN_PROGRESS
+                              : MEDIUM_ORDER_STATUS_LABELS.UNCONFIRMED}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">

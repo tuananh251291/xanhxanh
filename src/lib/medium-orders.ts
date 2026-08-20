@@ -126,8 +126,12 @@ export function isMediumOrderFinished(days: MediumOrderDayLike[]): boolean {
   return days.length > 0 && days.every((d) => d.handedOverAt != null);
 }
 
-export function isMediumOrderInProgress(order: { confirmedAt: Date | string | null; days: MediumOrderDayLike[] }): boolean {
-  return !!order.confirmedAt && !isMediumOrderFinished(order.days);
+export function isMediumOrderInProgress(order: {
+  confirmedAt: Date | string | null;
+  endedAt?: Date | string | null;
+  days: MediumOrderDayLike[];
+}): boolean {
+  return !!order.confirmedAt && !order.endedAt && !isMediumOrderFinished(order.days);
 }
 
 // 1 đơn coi là "đã nhận" (từ góc nhìn Kho mô) khi cả 8 ngày đều đã được Kho mô xác nhận nhận

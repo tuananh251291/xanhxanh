@@ -350,10 +350,11 @@ export const CONTAMINATION_ENTRY_REASON_LABELS = {
   DARK_ROOM_SELF_CHECK_UNDONE: "Hoàn lại (Kho mô hoàn tác bàn giao)",
 } as const;
 
-// Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt (null/có giá trị).
+// Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt/endedAt (null/có giá trị).
 export const MEDIUM_ORDER_STATUS_LABELS = {
   UNCONFIRMED: "Chưa xác nhận",
   IN_PROGRESS: "Đang thực hiện",
+  ENDED: "Đã kết thúc",
 } as const;
 
 // Nhãn trạng thái từng dòng-ngày (MediumOrderDay) — dựa trên handedOverAt/confirmedAt.

@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { MEDIUM_ORDER_DAY_STATUS_LABELS, isAdminRole, type UserRole } from "@/types";
 import { isMediumOrderInProgress, isMediumSurplusEntryDay, quantityToBags, netBagsNeeded, getExecutionWeek, isSameVnCalendarDay } from "@/lib/medium-orders";
+import EndMediumOrderEarlyButton from "./end-medium-order-early-button";
 
 type OrderItem = { id: string; stageCode: string; quantity: number; surplusQuantity: number; mediumType: { code: string; name: string } };
 type OrderDay = {
@@ -30,6 +31,7 @@ type Order = {
   weekStart: string;
   weekEnd: string;
   confirmedAt: string | null;
+  endedAt: string | null;
   surplusRecordedAt: string | null;
   items: OrderItem[];
   days: OrderDay[];
@@ -196,11 +198,17 @@ export default function MediumOrderDetail({ orderId, role }: { orderId: string; 
       <div className="flex items-center gap-3">
         <Link href="/medium-orders"><Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button></Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground font-mono">{order.code}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-foreground font-mono">{order.code}</h1>
+            {order.endedAt && <Badge className="bg-danger-light text-destructive">Đã kết thúc sớm</Badge>}
+          </div>
           <p className="text-text-secondary text-sm">
             Tuần thực hiện: {format(executionWeek.start, "dd/MM", { locale: vi })} – {format(executionWeek.end, "dd/MM/yyyy", { locale: vi })}
           </p>
         </div>
+        {isMoiTruong && isMediumOrderInProgress(order) && (
+          <EndMediumOrderEarlyButton orderId={order.id} orderCode={order.code} onEnded={load} />
+        )}
       </div>
 
       <Card>
