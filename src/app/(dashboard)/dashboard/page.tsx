@@ -966,10 +966,10 @@ function KhoMoTaskDashboard({
             countLabel={`${weeklyStats.mediumDone}/${weeklyStats.mediumTotal} ngày`}
           />
           <WeeklyTaskRow
-            href="/contamination-proposals"
-            icon={AlertTriangle}
-            title="4. Đề xuất Trồng/Hủy"
-            deadline="Gửi đề xuất xử lý hết số lượng đang tồn trong Phòng nhiễm"
+            href="/contamination-proposals/submit"
+            icon={Send}
+            title="4. Gửi đề xuất Trồng/Hủy"
+            deadline="Rà lại phiếu chung đã gộp ở mục Kiểm tra kho nhiễm cá nhân rồi gửi Admin duyệt"
             percent={weeklyStats.contaminationPercent}
             countLabel={
               weeklyStats.contaminationOutstanding === 0

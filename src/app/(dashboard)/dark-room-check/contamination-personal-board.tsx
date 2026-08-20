@@ -5,16 +5,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Send, Layers, User, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Layers, User } from "lucide-react";
 import { toast } from "sonner";
+import ContaminationDraftSubmit from "@/components/shared/contamination-draft-submit";
 
 type Balance = {
   staffId: string; staffCode: string | null; staffName: string | null;
   plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number;
-};
-type DraftLine = {
-  id: string; staffId: string; staffName: string | null; type: "HUY" | "TRONG";
-  plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number;
 };
 type StaffGroup = { staffId: string; label: string; totalQuantity: number; rows: Balance[] };
 
@@ -71,23 +68,17 @@ function StaffEntryTable({ group, entryByKey, onChangeHuy, onChangeTrong }: {
 
 export default function ContaminationPersonalBoard() {
   const [balances, setBalances] = useState<Balance[]>([]);
-  const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [entryByKey, setEntryByKey] = useState<Record<string, string>>({});
   const [merging, setMerging] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [showDraft, setShowDraft] = useState(false);
+  const [draftKey, setDraftKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [b, d] = await Promise.all([
-        fetch("/api/contamination-staff-balances").then((r) => r.json()),
-        fetch("/api/contamination-proposal-drafts").then((r) => r.json()),
-      ]);
+      const b = await fetch("/api/contamination-staff-balances").then((r) => r.json());
       setBalances(Array.isArray(b) ? b : []);
-      setDraftLines(Array.isArray(d) ? d : []);
     } finally {
       setLoading(false);
     }
@@ -151,22 +142,10 @@ export default function ContaminationPersonalBoard() {
       toast.success("Đã gộp vào phiếu chung");
       setEntryByKey({});
       setSelectedStaffId(null);
+      setDraftKey((k) => k + 1);
       load();
     } finally {
       setMerging(false);
-    }
-  };
-
-  const submitDraft = async () => {
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/contamination-proposal-drafts/submit", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã gửi ${json.count} đề xuất — chờ Admin duyệt`);
-      load();
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -216,55 +195,7 @@ export default function ContaminationPersonalBoard() {
         </div>
       )}
 
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <p className="font-medium text-foreground">Phiếu chung đang gộp</p>
-              <p className="text-sm text-text-secondary">
-                {draftLines.length === 0 ? "Chưa có dòng nào" : `${draftLines.length} dòng — bấm "Gửi đề xuất trồng/hủy" để gửi Admin duyệt`}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {draftLines.length > 0 && (
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowDraft((v) => !v)}>
-                  {showDraft ? <><ChevronUp className="w-3.5 h-3.5 mr-1" /> Ẩn</> : <><ChevronDown className="w-3.5 h-3.5 mr-1" /> Xem</>}
-                </Button>
-              )}
-              <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={submitting || draftLines.length === 0} onClick={submitDraft}>
-                {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
-                Gửi đề xuất trồng/hủy
-              </Button>
-            </div>
-          </div>
-          {showDraft && draftLines.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-divider">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-primary-light">
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">NV nguồn</th>
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Loại</th>
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã cây</th>
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Quy cách</th>
-                    <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Số lượng</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {draftLines.map((l) => (
-                    <tr key={l.id} className="border-b border-divider last:border-0 even:bg-background">
-                      <td className="px-3 py-1.5 text-foreground">{l.staffName ?? "Chưa rõ NV / tồn cũ"}</td>
-                      <td className="px-3 py-1.5 text-foreground">{l.type === "HUY" ? "Hủy" : "Trồng"}</td>
-                      <td className="px-3 py-1.5 font-mono text-foreground whitespace-nowrap">{l.plantTypeCode}</td>
-                      <td className="px-3 py-1.5 text-foreground">{l.stageCode}</td>
-                      <td className="px-3 py-1.5 text-right font-medium text-foreground">{l.quantity.toLocaleString("vi-VN")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ContaminationDraftSubmit key={draftKey} />
     </div>
   );
 }
