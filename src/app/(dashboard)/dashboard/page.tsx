@@ -19,6 +19,8 @@ import { isMediumOrderInProgress, isMediumSurplusEntryDay, toVnCalendarDate } fr
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
+import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
+import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -504,12 +506,13 @@ export default async function DashboardPage() {
   }
 
   if (isKhoThanhPhamRole(role)) {
-    const [stats, dailyStats, weeklyStats] = await Promise.all([
+    const [stats, dailyStats, weeklyStats, myTasks] = await Promise.all([
       getKhoMoStats(),
       getKhoThanhPhamDailyStats(),
       getKhoThanhPhamWeeklyStats(),
+      getMyPendingTasks(userId),
     ]);
-    return <KhoDashboard stats={stats} dailyStats={dailyStats} weeklyStats={weeklyStats} role={role} />;
+    return <KhoDashboard stats={stats} dailyStats={dailyStats} weeklyStats={weeklyStats} role={role} myTasks={myTasks} />;
   }
 
   if (role === "CAY_MO") {
@@ -1110,12 +1113,13 @@ function MoiTruongDashboard({
 }
 
 function KhoDashboard({
-  stats, dailyStats, weeklyStats, role,
+  stats, dailyStats, weeklyStats, role, myTasks,
 }: {
   stats: Awaited<ReturnType<typeof getKhoMoStats>>;
   dailyStats: Awaited<ReturnType<typeof getKhoThanhPhamDailyStats>>;
   weeklyStats: Awaited<ReturnType<typeof getKhoThanhPhamWeeklyStats>>;
   role: UserRole;
+  myTasks: MyTask[];
 }) {
   const mauMe = stats.activeLots.find((l) => l.stage === "MAU_ME");
   const thanhPham = stats.activeLots.find((l) => l.stage === "THANH_PHAM");
@@ -1131,6 +1135,39 @@ function KhoDashboard({
         <StatCard title="Lô mẫu mẹ đang lưu" value={mauMe?._count ?? 0} icon={Sun} color="green" subtitle={`${mauMe?._sum?.quantity ?? 0} bình`} />
         <StatCard title="Lô thành phẩm đang lưu" value={thanhPham?._count ?? 0} icon={Package} color="blue" subtitle={`${thanhPham?._sum?.quantity ?? 0} bình`} />
       </div>
+
+      {myTasks.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Công việc hôm nay của tôi</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {myTasks.map((t) =>
+              t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
+                <div key={t.key} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  </div>
+                  <DailyTaskCompleteDialog taskId={t.dailyTaskId} code={t.dailyTaskCode} type={t.dailyTaskType} subtitle={t.description} />
+                </div>
+              ) : (
+                <Link
+                  key={t.key}
+                  href={t.href}
+                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  </div>
+                  <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
+                </Link>
+              )
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">

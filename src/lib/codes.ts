@@ -256,6 +256,20 @@ export async function generateGoodsReceiptCode(client: Prisma.TransactionClient 
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
 
+// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD tạo nhiều DailyTask cùng lúc khi Quản lý
+// chọn nhiều Loại cây 1 lượt) để đọc thấy cả các dòng vừa tạo trước đó trong CÙNG transaction
+// (read-your-own-writes), giống hệt generateTransferCode/generateOrderCode.
+export async function generateDailyTaskCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `CV-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.dailyTask.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
 // Mã đề xuất Trồng/Hủy hàng nhiễm = 1 ký tự loại ("H" Hủy / "T" Trồng) + ngày tháng năm tạo "ddMMyy"
 // (VD 07/07/2026 → "H070726"). Nhiều đề xuất cùng loại, cùng ngày → thêm hậu tố "-2", "-3"... để tránh
 // trùng (giống generateInstructionCode/generateLotCode). client tuỳ chọn — LUÔN truyền tx khi gọi hàm

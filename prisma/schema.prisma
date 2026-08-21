@@ -351,6 +351,8 @@ model User {
   goodsReceiptsAssignedBy   GoodsReceipt[]    @relation("GoodsReceiptAssignedBy")
   ordersAssignedTo          Order[]           @relation("OrderAssignedTo")
   ordersAssignedBy          Order[]           @relation("OrderAssignedBy")
+  dailyTasksAssignedTo      DailyTask[]       @relation("DailyTaskAssignedTo")
+  dailyTasksAssignedBy      DailyTask[]       @relation("DailyTaskAssignedBy")
   darkRoomInspectionChecksAsStaff     DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated              ViolationType[]
@@ -633,6 +635,7 @@ model PlantType {
   motherPhotos         MotherPhoto[]
   kpiRate              PlantTypeKpiRate?
   transferInspectionItems TransferInspectionItem[]
+  dailyTasks           DailyTask[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -914,6 +917,7 @@ model Room {
   orderProcessingRequests OrderProcessingRequest[]
   orderProcessingRequestsAsTarget OrderProcessingRequest[] @relation("OrderProcessingRequestTarget")
   goodsReceipts     GoodsReceipt[]
+  dailyTasks        DailyTask[]
 
   @@map("rooms")
 }
@@ -2154,6 +2158,52 @@ model Alert {
   readAt      DateTime?
 
   @@map("alerts")
+}
+
+// ============================================================
+// PHÂN CÔNG NHIỆM VỤ NGÀY — KHO THÀNH PHẨM
+// ============================================================
+
+enum DailyTaskType {
+  KIEM_TRA_CAY
+  DE_XUAT_TRONG_HUY
+}
+
+enum DailyTaskStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+// Nhiệm vụ tự do do Quản lý kho thành phẩm tạo mỗi ngày, gán cho 1 NV kho thành phẩm (hoặc chính mình)
+// — dùng cho 2 loại việc chưa có bản ghi nghiệp vụ gốc nào khác trong hệ thống (Kiểm tra cây, Đề xuất
+// trồng/hủy). Khác 3 việc còn lại của trang "Phân công nhiệm vụ ngày" (GoodsReceipt/Transfer/Order, vốn
+// đã có sẵn assignedToId/assignedById riêng) — 2 việc này KHÔNG có bản ghi gốc nên cần model riêng. NV
+// hoàn thành = nhập resultNotes tự do (không bắt buộc chọn Lot cụ thể); với DE_XUAT_TRONG_HUY NV chọn
+// thêm proposedAction — chỉ là ghi nhận cho Quản lý biết, KHÔNG tự động đổi tồn kho/Lot và KHÔNG có luồng
+// duyệt riêng (khác hẳn ContaminationProposal, vốn dùng cho Phòng nhiễm của kho sản xuất và cần Admin
+// cấp cao duyệt).
+model DailyTask {
+  id             String                     @id @default(cuid())
+  code           String                     @unique
+  type           DailyTaskType
+  assignedDate   DateTime                   @default(now()) @db.Date
+  plantTypeId    String?
+  plantType      PlantType?                 @relation(fields: [plantTypeId], references: [id])
+  roomId         String?
+  room           Room?                      @relation(fields: [roomId], references: [id])
+  notes          String?
+  status         DailyTaskStatus            @default(PENDING)
+  assignedToId   String
+  assignedTo     User                       @relation("DailyTaskAssignedTo", fields: [assignedToId], references: [id])
+  assignedById   String
+  assignedBy     User                       @relation("DailyTaskAssignedBy", fields: [assignedById], references: [id])
+  proposedAction ContaminationProposalType?
+  resultNotes    String?
+  completedAt    DateTime?
+  createdAt      DateTime                   @default(now())
+
+  @@map("daily_tasks")
 }
 
 // ============================================================

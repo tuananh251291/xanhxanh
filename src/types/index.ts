@@ -99,6 +99,15 @@ export function isKhoThanhPhamRole(role: UserRole | null | undefined): boolean {
   return role === "KHO_THANH_PHAM" || role === "QUAN_LY_KHO_THANH_PHAM";
 }
 
+// Quản lý kho thành phẩm được thao tác Check/Tạm giữ/Xác nhận/Hủy đơn hàng THAY cho NV bán hàng (chưa
+// có tài khoản riêng cho từng NV bán hàng ngoài công ty) — luôn gán saleId của đơn = customer.assignedToId
+// (NV bán hàng thật đang phụ trách khách đó), KHÔNG phải id của người quản lý đang thao tác hộ, để dữ
+// liệu giống hệt như khi sau này NV bán hàng tự nhập (xem POST /api/orders). Dùng ở MỌI API đơn hàng vốn
+// trước đây chỉ check role === "SALE".
+export function canActAsSale(role: string | null | undefined): boolean {
+  return role === "SALE" || role === "QUAN_LY_KHO_THANH_PHAM";
+}
+
 // Alert.targetRole so khớp CHÍNH XÁC 1 giá trị (xem prisma/schema.prisma) — mọi nơi tạo cảnh báo nhắm
 // "KHO_THANH_PHAM" (VD đơn hàng cần đóng gói) đều phải tới được CẢ Quản lý kho thành phẩm, không chỉ NV
 // thường. Dùng hàm này ở nơi TRUY VẤN cảnh báo (không phải nơi tạo — tạo vẫn giữ đúng "KHO_THANH_PHAM"
@@ -280,6 +289,18 @@ export const TRANSFER_STATUS_LABELS = {
   PENDING: "Chờ xác nhận",
   CONFIRMED: "Đã xác nhận",
   REJECTED: "Từ chối",
+} as const;
+
+// "Phân công nhiệm vụ ngày" — 2 loại việc không có bản ghi nghiệp vụ gốc (khác Transfer/GoodsReceipt/Order).
+export const DAILY_TASK_TYPE_LABELS = {
+  KIEM_TRA_CAY: "Kiểm tra cây",
+  DE_XUAT_TRONG_HUY: "Đề xuất trồng/hủy",
+} as const;
+
+export const DAILY_TASK_STATUS_LABELS = {
+  PENDING: "Chưa hoàn thành",
+  COMPLETED: "Đã hoàn thành",
+  CANCELLED: "Đã hủy",
 } as const;
 
 export const ALERT_TYPE_LABELS = {
@@ -488,16 +509,18 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
-    { href: "/inventory/kho-sang", label: "Phòng ra rễ (mọi cơ sở)", icon: "Sun" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
-  // Hiện giống HỆT menu KHO_THANH_PHAM — role riêng để sau này thêm mục quản lý mà không ảnh hưởng NV
-  // kho thành phẩm thường (xem isKhoThanhPhamRole).
+  // Khác KHO_THANH_PHAM: được xem thêm "Phòng ra rễ (mọi cơ sở)" (xem redirect riêng role ===
+  // "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công nhiệm vụ ngày" (chỉ Quản lý mới
+  // giao việc/theo dõi tiến độ, xem isKhoThanhPhamRole, /task-assignment), và tạo/xác nhận đơn hàng HỘ NV
+  // bán hàng (xem canActAsSale, /orders + /orders/list) — còn lại giống hệt.
   QUAN_LY_KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
@@ -505,6 +528,10 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/kho-sang", label: "Phòng ra rễ (mọi cơ sở)", icon: "Sun" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
+    // Tạo/xác nhận đơn hàng THAY NV bán hàng — xem canActAsSale, chỉ Quản lý kho thành phẩm có (không có
+    // ở menu KHO_THANH_PHAM thường).
+    { href: "/orders", label: "Tạo đơn hàng (hộ Sale)", icon: "ShoppingCart" },
+    { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },
     { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
