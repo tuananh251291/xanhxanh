@@ -28,10 +28,17 @@ export default function WarehouseFilterSelect({
       });
   }, []);
 
+  const items = [
+    { value: ALL_VALUE, label: "Mọi cơ sở sản xuất" },
+    ...warehouses.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` })),
+  ];
+
   return (
     <div className="space-y-1">
       <Label className="text-xs">Cơ sở sản xuất</Label>
-      <Select value={value || ALL_VALUE} onValueChange={(v) => onChange(v === ALL_VALUE ? "" : (v as string))}>
+      {/* items cần truyền để <Select.Value> hiện đúng tên kho — thiếu prop này base-ui sẽ hiện thẳng
+          value thô (warehouseId dạng cuid) thay vì nhãn, xem SelectRoot.d.mts. */}
+      <Select items={items} value={value || ALL_VALUE} onValueChange={(v) => onChange(v === ALL_VALUE ? "" : (v as string))}>
         <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>Mọi cơ sở sản xuất</SelectItem>
