@@ -309,6 +309,12 @@ export const ALERT_TYPE_LABELS = {
   INSTRUCTION_RETURNED_UNHANDED: "Chỉ định cấy được hoàn lại",
 } as const;
 
+// Nhiệm vụ nhỏ "Kiểm tra kho cá nhân" (thuộc checklist "Kiểm tra kho tối" của Kho mô) chỉ cho chọn lỗi vi
+// phạm thuộc 2 nhóm này — đúng phạm vi kiểm tra thực tế lúc đi kiểm tra kho tối (tem nhãn + sắp xếp sản
+// phẩm), tránh danh sách dài lẫn cả lỗi không liên quan (an toàn lao động, phần mềm...). Dùng chung ở cả
+// client (DarkRoomInspectionDialog) và server (POST /api/dark-room-inspection) để validate khớp nhau.
+export const DARK_ROOM_CHECK_VIOLATION_GROUPS = ["Tem nhãn và truy xuất", "Kho, khay và sắp xếp sản phẩm"] as const;
+
 export const EXTRA_WORK_REQUEST_TYPE_LABELS = {
   EARLY_COMPLETION: "Hoàn thành sớm chỉ định được giao",
   OVERTIME: "Đăng ký làm thêm ngoài giờ",

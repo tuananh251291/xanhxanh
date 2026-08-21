@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
 import { computeViolationPointsApplied } from "@/lib/violation-points";
+import { DARK_ROOM_CHECK_VIOLATION_GROUPS } from "@/types";
 import { z } from "zod";
 
 const schema = z.object({
@@ -48,7 +49,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (violationTypeIds.length > 0) {
-    const validCount = await prisma.violationType.count({ where: { id: { in: violationTypeIds }, isActive: true } });
+    // Nhiệm vụ nhỏ này chỉ ghi nhận được lỗi thuộc 2 nhóm liên quan tới kiểm tra kho tối — khớp danh
+    // sách đã lọc sẵn ở client (DarkRoomInspectionDialog), chặn luôn cả trường hợp gọi thẳng API.
+    const validCount = await prisma.violationType.count({
+      where: { id: { in: violationTypeIds }, isActive: true, groupName: { in: [...DARK_ROOM_CHECK_VIOLATION_GROUPS] } },
+    });
     if (validCount !== violationTypeIds.length) {
       return NextResponse.json({ message: "Có loại lỗi vi phạm không hợp lệ" }, { status: 400 });
     }
