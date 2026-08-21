@@ -86,6 +86,12 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
         </CardContent>
       </Card>
 
+      {selectedWarehouse && (
+        <p className="text-sm text-text-secondary">
+          Bạn đang xem bảng lương của cơ sở <strong className="text-foreground">{selectedWarehouse.name} ({selectedWarehouse.code})</strong>.
+        </p>
+      )}
+
       {!loading && rows.length > 0 && (
         <p className="text-sm text-text-secondary">
           {rows.length} NV cấy mô · Tổng thu nhập kỳ này: <strong className="text-primary-strong">{money(totalIncomeSum)}</strong>
@@ -108,7 +114,6 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base"></th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã NV</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên NV</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Cơ sở</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Lương công việc</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Thưởng KPI tuân thủ</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Thưởng vượt KPI SL</th>
@@ -138,7 +143,6 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                               {r.isTrainee && <Badge className={TRAINEE_BADGE_COLOR}>{TRAINEE_LABEL}</Badge>}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-text-secondary">{r.warehouseName ?? "—"}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{money(r.workSalary)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{money(r.complianceBonus)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{money(r.productionOverBonus)}</td>
@@ -147,7 +151,7 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                         </tr>
                         {isOpen && (
                           <tr className="bg-background border-b">
-                            <td colSpan={9} className="px-6 py-4">
+                            <td colSpan={8} className="px-6 py-4">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-sm">
                                 <div>
                                   <p className="text-text-muted text-xs">Ngày công tiêu chuẩn</p>
