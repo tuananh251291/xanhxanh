@@ -9,6 +9,8 @@ const createSchema = z.object({
   // Điểm trừ CƠ BẢN khi mắc lỗi này (dùng tính điểm tuân thủ cho lương — xem
   // src/lib/violation-points.ts). Mặc định 5 nếu không truyền, khớp default ở schema.prisma.
   points: z.number().int().min(0).max(100).optional(),
+  // Nhóm lỗi — chỉ để gộp hiển thị, nhập tự do (xem ViolationType.groupName). "" coi như không chọn.
+  groupName: z.string().trim().max(100).optional(),
 });
 
 // Danh mục loại lỗi vi phạm dùng khi ghi nhận "Kiểm tra kho cá nhân" — Admin soạn sẵn (Settings), NV kho
@@ -45,7 +47,12 @@ export async function POST(req: NextRequest) {
   }
 
   const type = await prisma.violationType.create({
-    data: { label: parsed.data.label, points: parsed.data.points ?? 5, createdById: session!.user!.id },
+    data: {
+      label: parsed.data.label,
+      points: parsed.data.points ?? 5,
+      groupName: parsed.data.groupName || null,
+      createdById: session!.user!.id,
+    },
   });
   return NextResponse.json(type, { status: 201 });
 }

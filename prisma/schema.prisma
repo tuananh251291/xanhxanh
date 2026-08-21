@@ -530,6 +530,10 @@ model ViolationType {
   // src/lib/payroll-calculation.ts). Lần đầu trong kỳ lương = điểm này, từ lần 2 trở đi (cùng NV, cùng
   // loại lỗi, cùng kỳ) = điểm này × 1.5, xem ViolationRecord.pointsApplied.
   points      Int      @default(5)
+  // Nhóm lỗi — chỉ để GOM HIỂN THỊ danh sách loại lỗi vi phạm cho dễ theo dõi (VD "An toàn lao động",
+  // "Kỹ thuật cấy", "Vệ sinh kho"), không ràng buộc danh mục cố định — nhập tự do, gõ đúng tên nhóm đã
+  // có để gộp chung. Null = "Chưa phân nhóm" (áp dụng cho lỗi tạo trước khi có tính năng này).
+  groupName   String?
 
   records ViolationRecord[]
 
