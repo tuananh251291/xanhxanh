@@ -34,6 +34,9 @@ export default async function UsersPage({
   const canEditCapacity = isAdminRole(session?.user?.role);
   const canEditEmployment = canEditEmploymentType(session?.user?.role);
   const assignableRoles = creatableRolesFor(session?.user?.role);
+  // "Phân quyền truy cập trang theo vai trò" chỉ Admin/Admin cấp cao — NV Hành chính nhân sự KHÔNG được
+  // xem/sửa (chỉ /api/permissions PATCH chặn ghi, ẩn hẳn tab này khỏi HR để tránh hiểu nhầm là dùng được).
+  const canManagePermissions = isAdminRole(session?.user?.role);
 
   const sp = await searchParams;
   const search = sp.q?.trim() ?? "";
@@ -63,7 +66,7 @@ export default async function UsersPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    prisma.rolePermission.findMany(),
+    canManagePermissions ? prisma.rolePermission.findMany() : Promise.resolve([]),
     prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.warehouse.findMany({ where: { type: "THANH_PHAM", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
@@ -89,7 +92,7 @@ export default async function UsersPage({
       <Tabs defaultValue="accounts">
         <TabsList>
           <TabsTrigger value="accounts">Tài khoản</TabsTrigger>
-          <TabsTrigger value="permissions">Phân quyền</TabsTrigger>
+          {canManagePermissions && <TabsTrigger value="permissions">Phân quyền</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="accounts" className="space-y-4 mt-4">
@@ -232,9 +235,11 @@ export default async function UsersPage({
           )}
         </TabsContent>
 
-        <TabsContent value="permissions" className="mt-4">
-          <PermissionMatrix permissions={permissions} />
-        </TabsContent>
+        {canManagePermissions && (
+          <TabsContent value="permissions" className="mt-4">
+            <PermissionMatrix permissions={permissions} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
