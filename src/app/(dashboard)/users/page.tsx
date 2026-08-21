@@ -39,12 +39,18 @@ export default async function UsersPage({
   const search = sp.q?.trim() ?? "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const where: Prisma.UserWhereInput = search
-    ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { code: { contains: search, mode: "insensitive" } }] }
-    : {};
+  // NV Hành chính nhân sự chỉ xem thông tin nội bộ nhân viên, KHÔNG được xem tài khoản Admin/Admin cấp
+  // cao (cũng khớp creatableRolesFor — HR không tạo được tài khoản Admin) — ẩn hẳn khỏi danh sách, không
+  // chỉ ẩn nút thao tác.
+  const isHrRole = session?.user?.role === "HANH_CHINH_NHAN_SU";
+  const adminExclusion: Prisma.UserWhereInput = isHrRole ? { role: { notIn: ["ADMIN", "SUPER_ADMIN"] } } : {};
+  const where: Prisma.UserWhereInput = {
+    ...adminExclusion,
+    ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { code: { contains: search, mode: "insensitive" } }] } : {}),
+  };
 
   const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses] = await Promise.all([
-    prisma.user.count(),
+    prisma.user.count({ where: adminExclusion }),
     prisma.user.findMany({
       where: { status: "PENDING" },
       select: { id: true, code: true, name: true, email: true },
