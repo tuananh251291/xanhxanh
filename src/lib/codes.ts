@@ -244,16 +244,22 @@ export async function generateGoodsReceiptCode(client: Prisma.TransactionClient 
 
 // Mã đề xuất Trồng/Hủy hàng nhiễm = 1 ký tự loại ("H" Hủy / "T" Trồng) + ngày tháng năm tạo "ddMMyy"
 // (VD 07/07/2026 → "H070726"). Nhiều đề xuất cùng loại, cùng ngày → thêm hậu tố "-2", "-3"... để tránh
-// trùng (giống generateInstructionCode/generateLotCode).
+// trùng (giống generateInstructionCode/generateLotCode). client tuỳ chọn — LUÔN truyền tx khi gọi hàm
+// này NHIỀU LẦN cùng loại trong CÙNG 1 transaction (VD "Gộp phiếu" tạo nhiều đề xuất Hủy khác mã cây/quy
+// cách 1 lượt) để đọc thấy cả các dòng vừa tạo trước đó trong CÙNG transaction (read-your-own-writes) —
+// thiếu bước này từng gây lỗi P2002 "Unique constraint failed on (code)" thật: 2 đề xuất cùng loại, cùng
+// ngày, tạo trong cùng 1 transaction đều tính ra cùng 1 candidate (do prisma singleton chỉ đọc committed)
+// rồi cùng insert.
 export async function generateContaminationProposalCode(
   type: "TRONG" | "HUY",
-  date: Date = new Date()
+  date: Date = new Date(),
+  client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<string> {
   const base = `${type === "HUY" ? "H" : "T"}${format(date, "ddMMyy")}`;
 
   let candidate = base;
   let n = 1;
-  while (await prisma.contaminationProposal.findFirst({ where: { code: candidate } })) {
+  while (await client.contaminationProposal.findFirst({ where: { code: candidate } })) {
     n += 1;
     candidate = `${base}-${n}`;
   }

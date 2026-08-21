@@ -32,7 +32,7 @@ export async function POST() {
   await prisma.$transaction(async (tx) => {
     await tx.contaminationProposal.deleteMany({ where: { warehouseId, status: "DRAFT" } });
     for (const g of groups.values()) {
-      const code = await generateContaminationProposalCode(g.type);
+      const code = await generateContaminationProposalCode(g.type, new Date(), tx);
       batchCodeByType[g.type] ??= code;
       const created = await tx.contaminationProposal.create({
         data: {

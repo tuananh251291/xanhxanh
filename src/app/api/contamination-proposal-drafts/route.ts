@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: total } } });
 
         if (e.huyQuantity > 0) {
-          const code = await generateContaminationProposalCode("HUY");
+          const code = await generateContaminationProposalCode("HUY", new Date(), tx);
           await tx.contaminationProposal.create({
             data: {
               code, type: "HUY", status: "DRAFT", warehouseId, plantTypeId: e.plantTypeId, stageCode: e.stageCode,
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
           created.push({ type: "HUY", plantTypeId: e.plantTypeId, stageCode: e.stageCode, quantity: e.huyQuantity });
         }
         if (e.trongQuantity > 0) {
-          const code = await generateContaminationProposalCode("TRONG");
+          const code = await generateContaminationProposalCode("TRONG", new Date(), tx);
           await tx.contaminationProposal.create({
             data: {
               code, type: "TRONG", status: "DRAFT", warehouseId, plantTypeId: e.plantTypeId, stageCode: e.stageCode,
