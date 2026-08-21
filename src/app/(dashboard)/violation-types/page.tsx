@@ -13,6 +13,9 @@ export default async function ViolationTypesPage() {
   if (!(await isPageAllowed(role, "/violation-types")) || !(isAdminRole(role) || ALLOWED_ROLES.includes(role as (typeof ALLOWED_ROLES)[number]))) {
     redirect("/dashboard");
   }
+  // Chỉ Admin/Admin cấp cao thêm được loại lỗi mới — NV kho mô/kỹ thuật/hành chính nhân sự chỉ xem/chọn
+  // để ghi nhận, không còn tự thêm mới (danh mục lỗi quản lý tập trung), xem POST /api/violation-types.
+  const canCreate = isAdminRole(role);
 
   return (
     <div className="space-y-6">
@@ -22,11 +25,10 @@ export default async function ViolationTypesPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           Các loại lỗi vi phạm dùng để chọn khi ghi nhận trong nhiệm vụ &quot;Kiểm tra kho tối&quot;, hoặc
-          ghi trực tiếp cho 1 NV cấy mô bất kỳ — NV kho mô/kỹ thuật/hành chính nhân sự có thể tự thêm loại
-          mới ngay tại đây.
+          ghi trực tiếp cho 1 NV cấy mô bất kỳ.
         </p>
       </div>
-      <ViolationTypesBoard />
+      <ViolationTypesBoard canCreate={canCreate} />
     </div>
   );
 }

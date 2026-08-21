@@ -13,8 +13,9 @@ const createSchema = z.object({
   groupName: z.string().trim().max(100).optional(),
 });
 
-// Danh mục loại lỗi vi phạm dùng khi ghi nhận "Kiểm tra kho cá nhân" — Admin soạn sẵn (Settings), NV kho
-// mô cũng tự thêm được ngay lúc ghi nhận (đã chốt với chủ dự án, không chỉ Admin quản lý).
+// Danh mục loại lỗi vi phạm dùng khi ghi nhận "Kiểm tra kho cá nhân" — chỉ Admin/Admin cấp cao soạn được
+// (NV kho mô trước đây tự thêm được ngay lúc ghi nhận, nay bỏ quyền này — danh mục lỗi quản lý tập
+// trung, xem /violation-types).
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,7 +30,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
-  if (!isAdminRole(role) && role !== "KHO_MO") {
+  if (!isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 

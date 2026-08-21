@@ -26,7 +26,7 @@ function groupByName(types: ViolationType[]): { groupName: string; items: Violat
     .map(([groupName, items]) => ({ groupName, items }));
 }
 
-export default function ViolationTypesBoard() {
+export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean }) {
   const [types, setTypes] = useState<ViolationType[]>([]);
   const [loading, setLoading] = useState(true);
   const [newLabel, setNewLabel] = useState("");
@@ -123,35 +123,37 @@ export default function ViolationTypesBoard() {
 
       <Card>
         <CardContent className="p-4 space-y-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Input
-              placeholder="Nhập tên loại lỗi vi phạm mới…"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addType(); }}
-              className="flex-1 min-w-[200px]"
-            />
-            <Input
-              placeholder="Nhóm lỗi (tuỳ chọn)"
-              list={GROUP_SUGGESTIONS_ID}
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addType(); }}
-              className="w-44"
-            />
-            <Input
-              type="number"
-              min={0}
-              placeholder="Điểm trừ"
-              value={newPoints}
-              onChange={(e) => setNewPoints(e.target.value)}
-              className="w-24"
-            />
-            <Button onClick={addType} disabled={adding || !newLabel.trim()} className="bg-primary hover:bg-primary-hover shrink-0">
-              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
-              Thêm
-            </Button>
-          </div>
+          {canCreate && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                placeholder="Nhập tên loại lỗi vi phạm mới…"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addType(); }}
+                className="flex-1 min-w-[200px]"
+              />
+              <Input
+                placeholder="Nhóm lỗi (tuỳ chọn)"
+                list={GROUP_SUGGESTIONS_ID}
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addType(); }}
+                className="w-44"
+              />
+              <Input
+                type="number"
+                min={0}
+                placeholder="Điểm trừ"
+                value={newPoints}
+                onChange={(e) => setNewPoints(e.target.value)}
+                className="w-24"
+              />
+              <Button onClick={addType} disabled={adding || !newLabel.trim()} className="bg-primary hover:bg-primary-hover shrink-0">
+                {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+                Thêm
+              </Button>
+            </div>
+          )}
 
           {types.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-8">Chưa có loại lỗi vi phạm nào</p>

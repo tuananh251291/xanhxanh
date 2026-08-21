@@ -59,7 +59,7 @@ export default async function ViolationReportPage() {
           </TabsContent>
         )}
         <TabsContent value="violation-types" className="mt-4">
-          <ViolationTypesBoard />
+          <ViolationTypesBoard canCreate={isAdminRole(role)} />
         </TabsContent>
         <TabsContent value="task-completion" className="mt-4">
           <TaskCompletionReportBoard isAdmin={isAdminRole(role)} canFilterByWarehouse={isAdminRole(role) || isHr} />
