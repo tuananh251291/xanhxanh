@@ -14,6 +14,7 @@ import { format } from "date-fns";
 type Staff = { id: string; code: string; name: string; role: string };
 type ComboOption = { value: string; label: string };
 type Row = { id: string; periodMonth: string; points: number; reason: string; staff: { code: string; name: string } };
+type BehaviorType = { id: string; label: string; points: number };
 
 // Điểm phục hồi — HR tự nhập tay cho 1 NV cấy mô, 1 kỳ lương cụ thể, CỘNG vào điểm tuân thủ cuối kỳ.
 // Không có cơ chế tự sinh — hoàn toàn do HR quyết định khi nào thưởng phục hồi điểm.
@@ -26,6 +27,8 @@ export default function ComplianceRecoveryBoard() {
   const [points, setPoints] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [behaviorTypes, setBehaviorTypes] = useState<BehaviorType[]>([]);
+  const [behaviorOption, setBehaviorOption] = useState<ComboOption | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,9 +44,24 @@ export default function ComplianceRecoveryBoard() {
   useEffect(() => {
     load();
     fetch("/api/users").then((r) => r.json()).then((d) => setStaffList(Array.isArray(d) ? d.filter((u: Staff) => u.role === "CAY_MO") : []));
+    fetch("/api/recovery-behavior-types").then((r) => r.json()).then((d) => setBehaviorTypes(Array.isArray(d) ? d : []));
   }, [load]);
 
   const staffOptions = useMemo(() => staffList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })), [staffList]);
+  const behaviorOptions = useMemo(() => behaviorTypes.map((t) => ({ value: t.id, label: t.label })), [behaviorTypes]);
+
+  // Chọn 1 hành vi từ danh mục tự điền sẵn điểm + lý do (label của hành vi) — HR vẫn sửa lại được trước
+  // khi lưu, không bắt buộc chọn (bỏ trống vẫn nhập tay tự do như trước).
+  const selectBehavior = (opt: ComboOption | null) => {
+    setBehaviorOption(opt);
+    if (opt) {
+      const t = behaviorTypes.find((bt) => bt.id === opt.value);
+      if (t) {
+        setPoints(String(t.points));
+        setReason(t.label);
+      }
+    }
+  };
 
   const add = async () => {
     const value = Number(points);
@@ -56,11 +74,15 @@ export default function ComplianceRecoveryBoard() {
       const res = await fetch("/api/payroll/recovery-points", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId: staffOption.value, periodMonth, points: value, reason: reason.trim() }),
+        body: JSON.stringify({
+          staffId: staffOption.value, periodMonth, points: value, reason: reason.trim(),
+          behaviorTypeId: behaviorOption?.value,
+        }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       toast.success(`Đã thêm điểm phục hồi cho ${staffOption.label}`);
       setStaffOption(null);
+      setBehaviorOption(null);
       setPoints("");
       setReason("");
       load();
@@ -82,6 +104,26 @@ export default function ComplianceRecoveryBoard() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-end gap-2 flex-wrap">
+            <div className="space-y-1 w-56">
+              <label className="text-xs text-text-secondary">Hành vi (tuỳ chọn)</label>
+              <Combobox
+                items={behaviorOptions}
+                value={behaviorOption}
+                isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                onValueChange={selectBehavior}
+              >
+                <ComboboxInputGroup className="h-9">
+                  <ComboboxInput placeholder="Chọn hành vi có sẵn…" />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Chưa có hành vi nào — xem tab &quot;Cài đặt điểm phục hồi&quot;</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
             <div className="space-y-1 w-56">
               <label className="text-xs text-text-secondary">NV cấy mô</label>
               <Combobox

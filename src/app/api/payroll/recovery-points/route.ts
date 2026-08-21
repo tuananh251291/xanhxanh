@@ -9,6 +9,9 @@ const createSchema = z.object({
   periodMonth: z.string().regex(/^\d{4}-\d{2}$/, "Kỳ phải theo dạng yyyy-MM"),
   points: z.number().int(),
   reason: z.string().trim().min(1, "Cần nhập lý do"),
+  // Hành vi chọn từ danh mục lúc thêm (tuỳ chọn, xem RecoveryBehaviorType) — chỉ để truy vết, không bắt
+  // buộc (vẫn nhập tay tự do được).
+  behaviorTypeId: z.string().optional(),
 });
 
 // "Điểm phục hồi" — HR tự nhập tay cho 1 NV cấy mô, 1 kỳ lương cụ thể, CỘNG vào điểm tuân thủ cuối kỳ

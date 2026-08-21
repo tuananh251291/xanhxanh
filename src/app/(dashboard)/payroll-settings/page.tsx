@@ -9,6 +9,7 @@ import KpiBonusRateBoard from "./kpi-bonus-rate-board";
 import PlantTypeKpiRateBoard from "./plant-type-kpi-rate-board";
 import StaffKpiDailyRateBoard from "./staff-kpi-daily-rate-board";
 import PayrollOtherBonusBoard from "./payroll-other-bonus-board";
+import RecoveryBehaviorTypesBoard from "./recovery-behavior-types-board";
 import ComplianceRecoveryBoard from "./compliance-recovery-board";
 
 // Hub nhập liệu cho tính năng tính lương NV cấy mô — chỉ SUPER_ADMIN/NV Hành chính nhân sự (xem
@@ -40,6 +41,7 @@ export default async function PayrollSettingsPage() {
             <TabsTrigger value="plant-kpi" className="whitespace-nowrap">Quy đổi sản lượng-KPI</TabsTrigger>
             <TabsTrigger value="staff-kpi" className="whitespace-nowrap">KPI của nhân viên</TabsTrigger>
             <TabsTrigger value="other-bonus" className="whitespace-nowrap">Khoản thưởng khác</TabsTrigger>
+            <TabsTrigger value="recovery-behaviors" className="whitespace-nowrap">Cài đặt điểm phục hồi</TabsTrigger>
             <TabsTrigger value="recovery" className="whitespace-nowrap">Điểm phục hồi</TabsTrigger>
           </TabsList>
         </div>
@@ -50,6 +52,7 @@ export default async function PayrollSettingsPage() {
         <TabsContent value="plant-kpi" className="mt-4"><PlantTypeKpiRateBoard /></TabsContent>
         <TabsContent value="staff-kpi" className="mt-4"><StaffKpiDailyRateBoard /></TabsContent>
         <TabsContent value="other-bonus" className="mt-4"><PayrollOtherBonusBoard /></TabsContent>
+        <TabsContent value="recovery-behaviors" className="mt-4"><RecoveryBehaviorTypesBoard /></TabsContent>
         <TabsContent value="recovery" className="mt-4"><ComplianceRecoveryBoard /></TabsContent>
       </Tabs>
     </div>

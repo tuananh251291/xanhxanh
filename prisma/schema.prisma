@@ -370,6 +370,7 @@ model User {
   payrollOtherBonusesCreated          PayrollOtherBonus[]       @relation("PayrollOtherBonusCreatedBy")
   complianceRecoveryPointsAsStaff     ComplianceRecoveryPoint[] @relation("ComplianceRecoveryPointStaff")
   complianceRecoveryPointsCreated     ComplianceRecoveryPoint[] @relation("ComplianceRecoveryPointCreatedBy")
+  recoveryBehaviorTypesCreated        RecoveryBehaviorType[]
 
   @@map("users")
 }
@@ -2313,6 +2314,25 @@ model PayrollOtherBonus {
   @@map("payroll_other_bonuses")
 }
 
+// Danh mục hành vi được cộng điểm phục hồi — HR soạn sẵn (tab "Cài đặt điểm phục hồi" trong Cài đặt
+// lương), dùng làm gợi ý khi thêm điểm phục hồi cho 1 NV/1 kỳ (xem ComplianceRecoveryPoint.behaviorTypeId)
+// — chọn 1 hành vi sẽ tự điền sẵn số điểm + lý do, HR vẫn sửa lại được trước khi lưu, không bắt buộc
+// chọn (vẫn nhập tay tự do được như trước). Cùng hình dạng với ViolationType (điểm trừ vi phạm) nhưng
+// tách model riêng vì ngữ nghĩa ngược nhau (cộng điểm, không phải trừ) và không dùng qua lượt kiểm tra.
+model RecoveryBehaviorType {
+  id          String   @id @default(cuid())
+  label       String   @unique
+  points      Int      @default(5)
+  isActive    Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  recoveryPoints ComplianceRecoveryPoint[]
+
+  @@map("recovery_behavior_types")
+}
+
 // Điểm phục hồi — HR tự nhập tay cho 1 NV cấy mô, 1 kỳ lương cụ thể, CỘNG vào điểm tuân thủ cuối kỳ
 // (100 − điểm vi phạm + điểm phục hồi, tối đa 100). Không có cơ chế tự sinh — hoàn toàn do HR quyết định.
 model ComplianceRecoveryPoint {
@@ -2322,6 +2342,10 @@ model ComplianceRecoveryPoint {
   periodMonth String   // "yyyy-MM"
   points      Int
   reason      String
+  // Hành vi được chọn từ danh mục lúc thêm (tuỳ chọn) — chỉ để truy vết/gợi ý, KHÔNG snapshot cứng: xoá
+  // hành vi khỏi danh mục sau đó không ảnh hưởng dòng điểm phục hồi đã tạo (points/reason đã lưu riêng).
+  behaviorTypeId String?
+  behaviorType    RecoveryBehaviorType? @relation(fields: [behaviorTypeId], references: [id])
   createdById String
   createdBy   User     @relation("ComplianceRecoveryPointCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
