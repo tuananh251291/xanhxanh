@@ -67,7 +67,11 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Cơ sở sản xuất</Label>
-            <Select value={warehouseId} onValueChange={(v) => setWarehouseId((v as string) ?? ALL_WAREHOUSE)}>
+            <Select
+              items={[{ value: ALL_WAREHOUSE, label: "Tất cả cơ sở" }, ...warehouses.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))]}
+              value={warehouseId}
+              onValueChange={(v) => setWarehouseId((v as string) ?? ALL_WAREHOUSE)}
+            >
               <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_WAREHOUSE}>Tất cả cơ sở</SelectItem>

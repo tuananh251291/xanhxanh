@@ -54,6 +54,7 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
   useEffect(() => { load(); }, [load]);
 
   const totalIncomeSum = rows.reduce((s, r) => s + r.totalIncome, 0);
+  const selectedWarehouse = warehouseId !== ALL_WAREHOUSE ? warehouses.find((w) => w.id === warehouseId) : null;
 
   return (
     <div className="space-y-4">

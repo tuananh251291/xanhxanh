@@ -115,7 +115,16 @@ export default function TaskCompletionReportBoard({
           {canFilterByWarehouse && <WarehouseFilterSelect value={warehouseId} onChange={setWarehouseId} />}
           <div className="space-y-1">
             <Label className="text-xs">Vai trò</Label>
-            <Select value={roleFilter} onValueChange={(v) => setRoleFilter((v as (typeof ROLE_FILTERS)[number]) ?? "all")}>
+            <Select
+              items={[
+                { value: "all", label: "Mọi vai trò" },
+                { value: "KY_THUAT", label: ROLE_LABELS.KY_THUAT },
+                { value: "CAY_MO", label: ROLE_LABELS.CAY_MO },
+                { value: "KHO_MO", label: ROLE_LABELS.KHO_MO },
+              ]}
+              value={roleFilter}
+              onValueChange={(v) => setRoleFilter((v as (typeof ROLE_FILTERS)[number]) ?? "all")}
+            >
               <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi vai trò</SelectItem>
