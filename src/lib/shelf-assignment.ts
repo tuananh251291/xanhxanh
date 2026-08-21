@@ -185,9 +185,15 @@ export async function planShelfAssignments(
   async function hasPendingHandover(rotationGroupId: string): Promise<boolean> {
     const cached = pendingHandoverByGroup.get(rotationGroupId);
     if (cached !== undefined) return cached;
+    // CHỈ tính phiếu "Bàn giao thành phẩm" (Phòng ra rễ → Kho thành phẩm, xem POST /api/transfers) —
+    // trước đây thiếu điều kiện fromRoom nên phiếu "Bàn giao từ Phòng tối" (CAY_MO → Kho mô, luôn PENDING
+    // cho tới khi xếp xong TẤT CẢ lô trong phiếu) cũng bị tính vào, gây 2 lỗi: (1) tự khoá chính nó — 1
+    // phiếu Phòng tối xác nhận từng lô riêng lẻ (xem confirmStage/receive-phong-toi.ts), lô đã xếp trước
+    // đó của CHÍNH phiếu này khiến lô còn lại của cùng phiếu không xác nhận được; (2) thông báo lỗi sai —
+    // ghi "chờ Kho thành phẩm xác nhận" dù thực ra không liên quan gì tới Kho thành phẩm.
     const pendingItem = await prisma.transferItem.findFirst({
       where: {
-        transfer: { status: "PENDING", fromWarehouseId: warehouseId },
+        transfer: { status: "PENDING", fromWarehouseId: warehouseId, fromRoom: { type: "PHONG_RA_RE" } },
         lot: { shelf: { rotationGroupId } },
       },
       select: { id: true },
