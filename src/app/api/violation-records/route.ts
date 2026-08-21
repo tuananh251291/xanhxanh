@@ -3,12 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { computeViolationPointsApplied } from "@/lib/violation-points";
+import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
 const createSchema = z.object({
   staffId: z.string().min(1),
   violationTypeId: z.string().min(1),
+  // Kỳ lương áp dụng (tuỳ chọn, "yyyy-MM") — dùng khi ghi bù/ghi lùi cho 1 kỳ trước, xem
+  // record-violation-recovery-board.tsx. Không truyền = ghi ngay lúc này (hành vi cũ, giữ nguyên).
+  periodMonth: z.string().regex(/^\d{4}-\d{2}$/, "Kỳ phải theo dạng yyyy-MM").optional(),
 });
 
 // Ghi nhận vi phạm TRỰC TIẾP cho 1 NV cấy mô — không cần qua 1 lượt "Kiểm tra kho tối" nào (khác luồng
@@ -24,7 +28,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { staffId, violationTypeId } = parsed.data;
+  const { staffId, violationTypeId, periodMonth } = parsed.data;
 
   const [staff, violationType] = await Promise.all([
     prisma.user.findUnique({ where: { id: staffId }, select: { id: true, role: true, name: true } }),
@@ -37,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Không tìm thấy loại lỗi vi phạm" }, { status: 400 });
   }
 
-  const now = new Date();
+  const now = periodMonth ? resolvePayrollPeriod(periodMonth).rangeStart : new Date();
   const pointsApplied = await computeViolationPointsApplied(staffId, violationTypeId, violationType.points, now);
 
   const record = await prisma.violationRecord.create({

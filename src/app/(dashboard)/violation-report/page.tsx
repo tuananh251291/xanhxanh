@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole, canManagePayroll } from "@/types";
 import ViolationReportBoard from "./violation-report-board";
+import RecordViolationRecoveryBoard from "./record-violation-recovery-board";
 import DataCorrectionsBoard from "../data-corrections/data-corrections-board";
 import ViolationTypesBoard from "../violation-types/violation-types-board";
 import TaskCompletionReportBoard from "../task-completion-report/task-completion-report-board";
@@ -18,9 +19,11 @@ import DarkRoomContaminationByInstructionSection from "../reports/overview/dark-
 // Riêng tab "Báo cáo tỉ lệ nhiễm" (nhúng thẳng 2 component đã có sẵn của /reports/mother-contamination,
 // route đó vẫn hoạt động độc lập như cũ) CHỈ hiện cho KHO_MO — không thuộc phạm vi Admin/HR ở trang này.
 // NV Hành chính nhân sự (chủ yếu chỉ xem — riêng vi phạm được ghi trực tiếp/sửa/xoá vì phục vụ tính
-// lương, xem canManagePayroll) thấy 3/4 tab: "Báo cáo vi phạm", "Danh sách lỗi vi phạm" (dùng để ghi
-// nhận vi phạm trực tiếp cho NV cấy mô — xem record-violation-dialog.tsx), "Số ngày không hoàn thành
-// nhiệm vụ" — ẩn riêng "Theo dõi nhập sai dữ liệu cấy" (không thuộc phạm vi được giao).
+// lương, xem canManagePayroll) thấy 4/5 tab: "Báo cáo vi phạm", "Ghi nhận vi phạm & tích cực" (gộp ghi
+// vi phạm + điểm phục hồi vào 1 chỗ, xem record-violation-recovery-board.tsx — thay cho nút "Ghi nhận vi
+// phạm" cũ đã gỡ khỏi tab "Danh sách lỗi vi phạm"), "Danh sách lỗi vi phạm" (nay chỉ còn quản lý danh
+// mục loại lỗi), "Số ngày không hoàn thành nhiệm vụ" — ẩn riêng "Theo dõi nhập sai dữ liệu cấy" (không
+// thuộc phạm vi được giao).
 export default async function ViolationReportPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -44,6 +47,7 @@ export default async function ViolationReportPage() {
       <Tabs defaultValue="violation-report">
         <TabsList>
           <TabsTrigger value="violation-report">Báo cáo vi phạm</TabsTrigger>
+          <TabsTrigger value="record">Ghi nhận vi phạm & tích cực</TabsTrigger>
           {!isHr && <TabsTrigger value="data-corrections">Theo dõi nhập sai dữ liệu cấy</TabsTrigger>}
           <TabsTrigger value="violation-types">Danh sách lỗi vi phạm</TabsTrigger>
           <TabsTrigger value="task-completion">Số ngày không hoàn thành nhiệm vụ</TabsTrigger>
@@ -52,6 +56,9 @@ export default async function ViolationReportPage() {
 
         <TabsContent value="violation-report" className="mt-4">
           <ViolationReportBoard canFilterByWarehouse={isAdminRole(role) || isHr} canManage={canManagePayroll(role)} />
+        </TabsContent>
+        <TabsContent value="record" className="mt-4">
+          <RecordViolationRecoveryBoard canRecordPositive={canManagePayroll(role)} />
         </TabsContent>
         {!isHr && (
           <TabsContent value="data-corrections" className="mt-4">

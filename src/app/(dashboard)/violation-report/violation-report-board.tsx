@@ -18,6 +18,7 @@ type ViolationRow = {
   violationLabel: string;
   checkedByCode: string;
   checkedByName: string;
+  disqualifiesKpi: boolean;
 };
 
 type StaffRow = {
@@ -131,6 +132,9 @@ export default function ViolationReportBoard({
                                     {format(new Date(r.createdAt), "HH:mm dd/MM/yyyy", { locale: vi })}
                                   </span>
                                   <span className="font-mono text-destructive">{r.violationLabel}</span>
+                                  {r.disqualifiesKpi && (
+                                    <Badge className="bg-warning-light text-warning-foreground">Không tính KPI kỳ này</Badge>
+                                  )}
                                   <span className="text-foreground">
                                     Ghi nhận bởi {r.checkedByName} <span className="font-mono text-text-muted">({r.checkedByCode})</span>
                                   </span>

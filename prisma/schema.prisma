@@ -535,6 +535,12 @@ model ViolationType {
   // "Kỹ thuật cấy", "Vệ sinh kho"), không ràng buộc danh mục cố định — nhập tự do, gõ đúng tên nhóm đã
   // có để gộp chung. Null = "Chưa phân nhóm" (áp dụng cho lỗi tạo trước khi có tính năng này).
   groupName   String?
+  // Nhóm "Trung thực, gian lận và hành vi trọng yếu" KHÔNG trừ điểm tuân thủ (points nên để 0) — thay vào
+  // đó 1 ViolationRecord dùng loại lỗi có cờ true ở đây khiến TOÀN BỘ Thưởng KPI tuân thủ và/hoặc Thưởng
+  // vượt KPI sản lượng của NV đó = 0 cho TRỌN kỳ lương chứa bản ghi, bất kể compliancePoints — xem
+  // computePayrollForPeriod (src/lib/payroll-calculation.ts).
+  disqualifiesComplianceKpi Boolean @default(false)
+  disqualifiesProductionKpi Boolean @default(false)
 
   records ViolationRecord[]
 

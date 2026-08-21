@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, ShieldAlert, Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
-import RecordViolationDialog from "./record-violation-dialog";
 
 type ViolationType = { id: string; label: string; points: number; groupName: string | null; createdAt: string };
 
@@ -111,15 +110,6 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
       <datalist id={GROUP_SUGGESTIONS_ID}>
         {groupSuggestions.map((g) => <option key={g} value={g} />)}
       </datalist>
-
-      <Card>
-        <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-sm text-text-secondary">
-            Ghi nhận trực tiếp 1 lỗi vi phạm cho NV cấy mô, không cần qua lượt kiểm tra nào.
-          </p>
-          <RecordViolationDialog violationTypes={types} onSaved={load} />
-        </CardContent>
-      </Card>
 
       <Card>
         <CardContent className="p-4 space-y-4">

@@ -23,12 +23,19 @@ export type PayrollBreakdown = {
 
   kpiBonusMaxAmount: number | null;
   complianceBonus: number; // Thưởng KPI tuân thủ
+  // true nếu NV có ViolationRecord (nhóm "Trung thực, gian lận và hành vi trọng yếu") trong kỳ khiến
+  // complianceBonus bị ép về 0 — xem ViolationType.disqualifiesComplianceKpi.
+  complianceKpiDisqualified: boolean;
 
   kpiDailyRate: number | null;
   kpiTargetAmount: number; // Sản lượng chỉ tiêu (VNĐ)
   eligibleProductionAmount: number; // Sản lượng đủ điều kiện (VNĐ)
   contaminationRatePct: number; // Tỉ lệ nhiễm trong kỳ
   productionOverBonus: number; // Thưởng vượt KPI sản lượng
+  // true nếu NV có ViolationRecord (disqualifiesProductionKpi=true) trong kỳ khiến productionOverBonus bị
+  // ép về 0 — TÁCH BIỆT với lý do tỉ lệ nhiễm >5% (contaminationRatePct đã hiển thị riêng, tự zero-out
+  // không cần ghi ViolationRecord nào), dù có thể trùng nếu HR cũng ghi tay dòng "Tỷ lệ nhiễm > 5%".
+  productionKpiDisqualified: boolean;
 
   otherBonusAmount: number; // Các khoản khác
 
@@ -70,7 +77,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   const laneByStaff = new Map(staffList.map((s) => [s.id, s.inspectionLane]));
 
   const [
-    dailyRecords, transfers, violationSums, recoverySums, otherBonusSums,
+    dailyRecords, transfers, violationSums, disqualifyingViolations, recoverySums, otherBonusSums,
     kpiBonusRate, holidays, instructions, plantRates,
   ] = await Promise.all([
     prisma.dailyRecord.findMany({
@@ -90,6 +97,17 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     }),
     prisma.violationRecord.groupBy({
       by: ["staffId"], where: { staffId: { in: staffIds }, createdAt: { gte: rangeStart, lt: rangeEnd } }, _sum: { pointsApplied: true },
+    }),
+    // Nhóm "Trung thực, gian lận và hành vi trọng yếu" (ViolationType.disqualifiesComplianceKpi/
+    // disqualifiesProductionKpi) — có ít nhất 1 bản ghi trong kỳ là ép thẳng bonus tương ứng về 0, tách
+    // biệt hoàn toàn khỏi violationSums/pointsApplied ở trên (nhóm này luôn points=0, không trừ điểm).
+    prisma.violationRecord.findMany({
+      where: {
+        staffId: { in: staffIds },
+        createdAt: { gte: rangeStart, lt: rangeEnd },
+        violationType: { OR: [{ disqualifiesComplianceKpi: true }, { disqualifiesProductionKpi: true }] },
+      },
+      select: { staffId: true, violationType: { select: { disqualifiesComplianceKpi: true, disqualifiesProductionKpi: true } } },
     }),
     prisma.complianceRecoveryPoint.groupBy({
       by: ["staffId"], where: { staffId: { in: staffIds }, periodMonth }, _sum: { points: true },
@@ -162,6 +180,12 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   }
 
   const violationByStaff = new Map(violationSums.map((v) => [v.staffId, v._sum.pointsApplied ?? 0]));
+  const complianceKpiDisqualifiedStaffIds = new Set(
+    disqualifyingViolations.filter((v) => v.violationType.disqualifiesComplianceKpi).map((v) => v.staffId)
+  );
+  const productionKpiDisqualifiedStaffIds = new Set(
+    disqualifyingViolations.filter((v) => v.violationType.disqualifiesProductionKpi).map((v) => v.staffId)
+  );
   const recoveryByStaff = new Map(recoverySums.map((v) => [v.staffId, v._sum.points ?? 0]));
   const otherBonusByStaff = new Map(otherBonusSums.map((v) => [v.staffId, v._sum.amount ?? 0]));
 
@@ -178,8 +202,11 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     const recoveryPoints = recoveryByStaff.get(s.id) ?? 0;
     const compliancePoints = Math.min(100, Math.max(0, 100 - violationPoints + recoveryPoints));
 
+    const complianceKpiDisqualified = complianceKpiDisqualifiedStaffIds.has(s.id);
     const kpiBonusMaxAmount = kpiBonusRate?.maxAmount ?? null;
-    const complianceBonus = kpiBonusMaxAmount != null && standardWorkDays > 0
+    const complianceBonus = complianceKpiDisqualified
+      ? 0
+      : kpiBonusMaxAmount != null && standardWorkDays > 0
       ? Math.round(kpiBonusMaxAmount * (paidWorkDays / standardWorkDays) * (compliancePoints / 100))
       : 0;
 
@@ -194,10 +221,12 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     const contam = contaminationByStaff.get(s.id);
     const contaminationRatePct = contam && contam.input > 0 ? (contam.contaminated / contam.input) * 100 : 0;
 
-    const productionOverBonus =
-      eligibleProductionAmount > kpiTargetAmount && contaminationRatePct <= CONTAMINATION_THRESHOLD_PCT && !s.isTrainee
-        ? Math.round((eligibleProductionAmount - kpiTargetAmount) * (compliancePoints / 100))
-        : 0;
+    const productionKpiDisqualified = productionKpiDisqualifiedStaffIds.has(s.id);
+    const productionOverBonus = productionKpiDisqualified
+      ? 0
+      : eligibleProductionAmount > kpiTargetAmount && contaminationRatePct <= CONTAMINATION_THRESHOLD_PCT && !s.isTrainee
+      ? Math.round((eligibleProductionAmount - kpiTargetAmount) * (compliancePoints / 100))
+      : 0;
 
     const otherBonusAmount = otherBonusByStaff.get(s.id) ?? 0;
 
@@ -220,11 +249,13 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       compliancePoints,
       kpiBonusMaxAmount,
       complianceBonus,
+      complianceKpiDisqualified,
       kpiDailyRate,
       kpiTargetAmount,
       eligibleProductionAmount,
       contaminationRatePct: Math.round(contaminationRatePct * 10) / 10,
       productionOverBonus,
+      productionKpiDisqualified,
       otherBonusAmount,
       totalIncome,
     };

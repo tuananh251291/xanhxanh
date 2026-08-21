@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
           : {}),
     },
     include: {
-      violationType: { select: { label: true } },
+      violationType: { select: { label: true, disqualifiesComplianceKpi: true, disqualifiesProductionKpi: true } },
       staff: { select: { id: true, code: true, name: true } },
       createdBy: { select: { code: true, name: true } },
     },
@@ -52,7 +52,10 @@ export async function GET(req: NextRequest) {
       staffCode: string;
       staffName: string;
       count: number;
-      records: { id: string; createdAt: string; violationLabel: string; checkedByCode: string; checkedByName: string }[];
+      records: {
+        id: string; createdAt: string; violationLabel: string; checkedByCode: string; checkedByName: string;
+        disqualifiesKpi: boolean;
+      }[];
     }
   >();
   for (const r of records) {
@@ -63,6 +66,9 @@ export async function GET(req: NextRequest) {
       violationLabel: r.violationType.label,
       checkedByCode: r.createdBy.code,
       checkedByName: r.createdBy.name,
+      // "Trung thực, gian lận và hành vi trọng yếu" — không trừ điểm, chỉ ép Thưởng KPI tuân thủ/vượt sản
+      // lượng của kỳ về 0 (xem computePayrollForPeriod) — badge riêng ở violation-report-board.tsx.
+      disqualifiesKpi: r.violationType.disqualifiesComplianceKpi || r.violationType.disqualifiesProductionKpi,
     };
     const existing = byStaff.get(staff.id);
     if (existing) {

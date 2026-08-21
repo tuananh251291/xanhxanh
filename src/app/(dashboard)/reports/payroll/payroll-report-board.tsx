@@ -17,9 +17,9 @@ type Row = {
   standardWorkDays: number; paidWorkDays: number; kpiWorkDays: number;
   baseSalaryMonthly: number | null; workSalary: number;
   violationPoints: number; recoveryPoints: number; compliancePoints: number;
-  kpiBonusMaxAmount: number | null; complianceBonus: number;
+  kpiBonusMaxAmount: number | null; complianceBonus: number; complianceKpiDisqualified: boolean;
   kpiDailyRate: number | null; kpiTargetAmount: number; eligibleProductionAmount: number;
-  contaminationRatePct: number; productionOverBonus: number;
+  contaminationRatePct: number; productionOverBonus: number; productionKpiDisqualified: boolean;
   otherBonusAmount: number; totalIncome: number;
 };
 
@@ -144,8 +144,18 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums">{money(r.workSalary)}</td>
-                          <td className="px-4 py-3 text-right tabular-nums">{money(r.complianceBonus)}</td>
-                          <td className="px-4 py-3 text-right tabular-nums">{money(r.productionOverBonus)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">
+                            {money(r.complianceBonus)}
+                            {r.complianceKpiDisqualified && (
+                              <Badge className="bg-warning-light text-warning-foreground ml-1.5 align-middle">Không tính KPI</Badge>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums">
+                            {money(r.productionOverBonus)}
+                            {r.productionKpiDisqualified && (
+                              <Badge className="bg-warning-light text-warning-foreground ml-1.5 align-middle">Không tính KPI</Badge>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right tabular-nums">{money(r.otherBonusAmount)}</td>
                           <td className="px-4 py-3 text-right font-bold tabular-nums text-primary-strong">{money(r.totalIncome)}</td>
                         </tr>
