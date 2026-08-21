@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
+import { generateCustomerCode } from "@/lib/codes";
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
@@ -11,6 +12,7 @@ const createSchema = z.object({
   email: z.string().trim().email("Email không hợp lệ"),
   phone: z.string().trim().min(1, "Nhập số điện thoại"),
   status: z.enum(["CHUA_PHAN_CONG", "DA_PHAN_CONG", "MAC_DINH"]),
+  customerGroup: z.enum(["KHACH_SI_NHO", "KHACH_CONG_TY", "KHACH_CONG_TY_LON"]).optional().nullable(),
   firstContactAt: z.string().min(1, "Chọn ngày đầu tiếp cận"),
   lastOrderAt: z.string().optional().nullable(),
   lastOrderCode: z.string().trim().optional().nullable(),
@@ -19,6 +21,7 @@ const createSchema = z.object({
 
 const CUSTOMER_LIST_SELECT = {
   id: true,
+  code: true,
   name: true,
   website: true,
   marketId: true,
@@ -26,6 +29,7 @@ const CUSTOMER_LIST_SELECT = {
   email: true,
   phone: true,
   status: true,
+  customerGroup: true,
   firstContactAt: true,
   lastOrderAt: true,
   lastOrderCode: true,
@@ -42,12 +46,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const marketId = searchParams.get("marketId") || undefined;
   const status = searchParams.get("status") || undefined;
+  const customerGroup = searchParams.get("customerGroup") || undefined;
   const q = searchParams.get("q")?.trim();
 
   const customers = await prisma.customer.findMany({
     where: {
       ...(marketId ? { marketId } : {}),
       ...(status ? { status: status as "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH" } : {}),
+      ...(customerGroup ? { customerGroup: customerGroup as "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KHACH_CONG_TY_LON" } : {}),
       ...(q ? { nameNormalized: { contains: normalizeCustomerName(q) } } : {}),
     },
     select: CUSTOMER_LIST_SELECT,
@@ -107,21 +113,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Đã có khách hàng trùng Tên công ty hoặc Website trong hệ thống" }, { status: 409 });
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      name: data.name,
-      nameNormalized,
-      website: data.website,
-      websiteNormalized,
-      marketId: data.marketId,
-      email: data.email,
-      phone: data.phone,
-      status: data.status,
-      firstContactAt: new Date(data.firstContactAt),
-      lastOrderAt: data.lastOrderAt ? new Date(data.lastOrderAt) : null,
-      lastOrderCode: data.lastOrderCode || null,
-      assignedToId: data.status === "CHUA_PHAN_CONG" ? null : data.assignedToId,
-    },
+  const customer = await prisma.$transaction(async (tx) => {
+    const code = await generateCustomerCode(tx);
+    return tx.customer.create({
+      data: {
+        code,
+        name: data.name,
+        nameNormalized,
+        website: data.website,
+        websiteNormalized,
+        marketId: data.marketId,
+        email: data.email,
+        phone: data.phone,
+        status: data.status,
+        customerGroup: data.customerGroup || null,
+        firstContactAt: new Date(data.firstContactAt),
+        lastOrderAt: data.lastOrderAt ? new Date(data.lastOrderAt) : null,
+        lastOrderCode: data.lastOrderCode || null,
+        assignedToId: data.status === "CHUA_PHAN_CONG" ? null : data.assignedToId,
+      },
+    });
   });
   return NextResponse.json(customer, { status: 201 });
 }

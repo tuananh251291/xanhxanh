@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
+import { generateCustomerCode } from "@/lib/codes";
 
 type RowError = { row: number; label: string; message: string };
 
@@ -11,6 +12,12 @@ const STATUS_TEXT: Record<string, "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH"
   "đã phân công": "DA_PHAN_CONG",
   "chưa phân công": "CHUA_PHAN_CONG",
   "mặc định": "MAC_DINH",
+};
+
+const CUSTOMER_GROUP_TEXT: Record<string, "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KHACH_CONG_TY_LON"> = {
+  "khách sỉ nhỏ": "KHACH_SI_NHO",
+  "khách công ty": "KHACH_CONG_TY",
+  "khách công ty lớn": "KHACH_CONG_TY_LON",
 };
 
 // Nhập hàng loạt/cập nhật danh sách khách hàng — cập nhật thay thế theo khoá tự nhiên là Website
@@ -44,6 +51,7 @@ export async function GET() {
     { header: "Mã đơn gần nhất", key: "lastOrderCode", width: 18 },
     { header: "Mã NV phụ trách", key: "assignedToCode", width: 18 },
     { header: "Mã NV quản lý", key: "managerCode", width: 18 },
+    { header: "Nhóm khách hàng (Khách sỉ nhỏ / Khách công ty / Khách công ty lớn)", key: "customerGroup", width: 34 },
   ];
   sheet.getRow(1).font = { bold: true };
   markRequiredHeaders(sheet, [1, 2, 3, 4]);
@@ -59,6 +67,7 @@ export async function GET() {
     lastOrderCode: "",
     assignedToCode: "",
     managerCode: "",
+    customerGroup: "",
   });
   styleExampleRow(sheet.getRow(2));
 
@@ -91,6 +100,7 @@ export async function GET() {
     { column: "Mã đơn gần nhất", required: false, description: "Để trống nếu chưa có đơn." },
     { column: "Mã NV phụ trách", required: false, description: `Bắt buộc khi Trạng thái = "Đã phân công" hoặc "Mặc định" (xem sheet Danh mục để lấy đúng mã). Để trống khi "Chưa phân công".` },
     { column: "Mã NV quản lý", required: false, description: "Tự gán/cập nhật người quản lý cho cặp (NV phụ trách, Thị trường) của dòng này — cần điền kèm Mã NV phụ trách." },
+    { column: "Nhóm khách hàng", required: false, description: `Chỉ nhận "Khách sỉ nhỏ", "Khách công ty" hoặc "Khách công ty lớn" — để trống: khách mới thành chưa phân loại, khách đã có giữ nguyên nhóm cũ. Khách công ty lớn được giữ đơn 5 tháng thay vì theo Năng lực giữ đơn của NV Sale.` },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -138,6 +148,7 @@ export async function POST(req: NextRequest) {
     lastOrderCode: string;
     assignedToCode: string;
     managerCode: string;
+    customerGroupText: string;
   };
   const parsedRows: ParsedRow[] = [];
   sheet.eachRow((row, rowNumber) => {
@@ -157,6 +168,7 @@ export async function POST(req: NextRequest) {
       lastOrderCode: cellText(row.getCell(9).value),
       assignedToCode: cellText(row.getCell(10).value).toUpperCase(),
       managerCode: cellText(row.getCell(11).value).toUpperCase(),
+      customerGroupText: cellText(row.getCell(12).value),
     });
   });
 
@@ -193,6 +205,7 @@ export async function POST(req: NextRequest) {
     lastOrderAt: Date | null | undefined;
     lastOrderCode: string | null | undefined;
     assignedToId: string | null;
+    customerGroup: "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KHACH_CONG_TY_LON" | null | undefined;
   };
   const errors: RowError[] = [];
   const validRows: ValidRow[] = [];
@@ -254,6 +267,16 @@ export async function POST(req: NextRequest) {
       if (!claimed) managerAssignments.set(key, { managerId, managerCode: parsed.managerCode, row: parsed.row });
     }
 
+    let customerGroup: "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KHACH_CONG_TY_LON" | null | undefined;
+    if (parsed.customerGroupText.trim()) {
+      const matched = CUSTOMER_GROUP_TEXT[parsed.customerGroupText.trim().toLowerCase()];
+      if (!matched) {
+        errors.push({ row: parsed.row, label, message: `Nhóm khách hàng phải là "Khách sỉ nhỏ", "Khách công ty" hoặc "Khách công ty lớn"` });
+        continue;
+      }
+      customerGroup = matched;
+    }
+
     // Để trống Ngày đầu tiếp cận: khách MỚI lấy hôm nay, khách ĐÃ CÓ (khớp Website) giữ nguyên ngày cũ.
     const existing = existingByWebsite.get(websiteNormalized);
     const firstContactAt = parsed.firstContactAtRaw ?? (existing ? undefined : new Date());
@@ -274,6 +297,7 @@ export async function POST(req: NextRequest) {
       lastOrderAt: parsed.lastOrderAtRaw ?? (existing ? undefined : null),
       lastOrderCode: parsed.lastOrderCode || (existing ? undefined : null),
       assignedToId,
+      customerGroup: customerGroup ?? (existing ? undefined : null),
     });
   }
 
@@ -304,17 +328,21 @@ export async function POST(req: NextRequest) {
               ...(vr.phone !== undefined ? { phone: vr.phone } : {}),
               ...(vr.lastOrderAt !== undefined ? { lastOrderAt: vr.lastOrderAt } : {}),
               ...(vr.lastOrderCode !== undefined ? { lastOrderCode: vr.lastOrderCode } : {}),
+              ...(vr.customerGroup !== undefined ? { customerGroup: vr.customerGroup } : {}),
             },
           });
         } else {
+          const code = await generateCustomerCode(tx);
           await tx.customer.create({
             data: {
               ...baseData,
+              code,
               firstContactAt: vr.firstContactAt!,
               email: vr.email ?? null,
               phone: vr.phone ?? null,
               lastOrderAt: vr.lastOrderAt ?? null,
               lastOrderCode: vr.lastOrderCode ?? null,
+              customerGroup: vr.customerGroup ?? null,
             },
           });
         }

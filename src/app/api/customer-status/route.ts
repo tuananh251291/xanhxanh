@@ -12,7 +12,7 @@ export async function GET() {
   const customers = await prisma.customer.findMany({
     where: { assignedToId: session.user.id },
     select: {
-      id: true, name: true, website: true, status: true,
+      id: true, code: true, name: true, website: true, status: true, customerGroup: true,
       market: { select: { code: true, name: true } },
       firstContactAt: true, lastOrderAt: true, lastOrderCode: true,
     },

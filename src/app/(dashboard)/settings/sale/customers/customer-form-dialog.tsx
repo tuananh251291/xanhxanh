@@ -9,14 +9,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { CUSTOMER_STATUS_LABELS } from "@/types";
+import { CUSTOMER_STATUS_LABELS, CUSTOMER_GROUP_LABELS } from "@/types";
 
 type Market = { id: string; code: string; name: string };
 type User = { id: string; code: string; name: string; role: string };
 type CustomerStatus = "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
+type CustomerGroup = "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KHACH_CONG_TY_LON";
+const CUSTOMER_GROUP_NONE = "NONE";
 type Customer = {
-  id: string; name: string; website: string; marketId: string; email: string | null; phone: string | null;
+  id: string; code: string; name: string; website: string; marketId: string; email: string | null; phone: string | null;
   status: CustomerStatus;
+  customerGroup: CustomerGroup | null;
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null; assignedToId: string | null;
 };
 
@@ -37,6 +40,7 @@ export default function CustomerFormDialog({
   const [form, setForm] = useState({
     name: "", website: "", marketId: "", email: "", phone: "",
     status: "CHUA_PHAN_CONG" as CustomerStatus,
+    customerGroup: CUSTOMER_GROUP_NONE as CustomerGroup | typeof CUSTOMER_GROUP_NONE,
     firstContactAt: format(new Date(), "yyyy-MM-dd"),
     lastOrderAt: "", lastOrderCode: "", assignedToId: "",
   });
@@ -47,6 +51,7 @@ export default function CustomerFormDialog({
       setForm({
         name: customer.name, website: customer.website, marketId: customer.marketId,
         email: customer.email ?? "", phone: customer.phone ?? "", status: customer.status,
+        customerGroup: customer.customerGroup ?? CUSTOMER_GROUP_NONE,
         firstContactAt: format(new Date(customer.firstContactAt), "yyyy-MM-dd"),
         lastOrderAt: customer.lastOrderAt ? format(new Date(customer.lastOrderAt), "yyyy-MM-dd") : "",
         lastOrderCode: customer.lastOrderCode ?? "",
@@ -55,7 +60,8 @@ export default function CustomerFormDialog({
     } else {
       setForm({
         name: "", website: "", marketId: markets[0]?.id ?? "", email: "", phone: "",
-        status: "CHUA_PHAN_CONG", firstContactAt: format(new Date(), "yyyy-MM-dd"),
+        status: "CHUA_PHAN_CONG", customerGroup: CUSTOMER_GROUP_NONE,
+        firstContactAt: format(new Date(), "yyyy-MM-dd"),
         lastOrderAt: "", lastOrderCode: "", assignedToId: "",
       });
     }
@@ -83,6 +89,7 @@ export default function CustomerFormDialog({
           email: form.email.trim(),
           phone: form.phone.trim(),
           status: form.status,
+          customerGroup: form.customerGroup === CUSTOMER_GROUP_NONE ? null : form.customerGroup,
           firstContactAt: form.firstContactAt,
           lastOrderAt: form.lastOrderAt || null,
           lastOrderCode: form.lastOrderCode.trim() || null,
@@ -140,6 +147,22 @@ export default function CustomerFormDialog({
                   <SelectItem value="MAC_DINH">{CUSTOMER_STATUS_LABELS.MAC_DINH}</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Nhóm khách hàng</Label>
+              <Select
+                value={form.customerGroup}
+                onValueChange={(v) => setForm((p) => ({ ...p, customerGroup: v as CustomerGroup | typeof CUSTOMER_GROUP_NONE }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={CUSTOMER_GROUP_NONE}>Chưa phân loại</SelectItem>
+                  <SelectItem value="KHACH_SI_NHO">{CUSTOMER_GROUP_LABELS.KHACH_SI_NHO}</SelectItem>
+                  <SelectItem value="KHACH_CONG_TY">{CUSTOMER_GROUP_LABELS.KHACH_CONG_TY}</SelectItem>
+                  <SelectItem value="KHACH_CONG_TY_LON">{CUSTOMER_GROUP_LABELS.KHACH_CONG_TY_LON}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-text-muted">Khách công ty lớn được giữ đơn 5 tháng thay vì theo Năng lực giữ đơn của NV Sale.</p>
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Email *</Label>

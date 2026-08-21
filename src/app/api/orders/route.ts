@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { addDays } from "date-fns";
+import { addDays, addMonths } from "date-fns";
 import { generateOrderCode } from "@/lib/codes";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
@@ -10,8 +10,12 @@ import { z } from "zod";
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
 const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
 
+// Nhóm khách hàng "Khách công ty lớn" được giữ đơn 5 THÁNG kể từ lúc Tạm giữ, thay vì theo Năng lực giữ
+// đơn (ngày) mặc định của NV Sale — xem CustomerGroup, prisma/schema.prisma.
+const LARGE_COMPANY_HOLD_MONTHS = 5;
+
 const createSchema = z.object({
-  customerCode: z.string().min(1, "Cần nhập mã khách hàng"),
+  customerId: z.string().min(1, "Cần chọn khách hàng"),
   market: z.enum(["NOI_DIA", "DONG_NAM_A", "EU", "US", "AUS", "NHAT", "HAN_QUOC"], { message: "Cần chọn thị trường" }),
   // Bắt buộc — quyết định lô "ảo" nào (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts)
   // được tính vào khả dụng lúc giữ đơn, không chỉ để tham khảo như trước.
@@ -62,11 +66,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { customerCode, market, expectedShipAt, notes, items } = parsed.data;
+  const { customerId, market, expectedShipAt, notes, items } = parsed.data;
   const shipDate = new Date(expectedShipAt);
   if (Number.isNaN(shipDate.getTime())) {
     return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
   }
+
+  // Chỉ giữ đơn được cho khách hàng ĐÚNG mình đang phụ trách (assignedToId) — khớp đúng phạm vi khách NV
+  // Sale thấy được ở /customer-status (GET /api/customer-status), tránh giữ nhầm/giữ hộ khách người khác.
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { id: true, code: true, customerGroup: true, assignedToId: true },
+  });
+  if (!customer) return NextResponse.json({ message: "Không tìm thấy khách hàng" }, { status: 400 });
+  if (customer.assignedToId !== session.user.id) {
+    return NextResponse.json({ message: "Bạn không phụ trách khách hàng này" }, { status: 403 });
+  }
+
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
   const inProgressRoomIds = await getInProgressRoomIds(session.user.workplaceWarehouseId);
 
@@ -74,13 +90,17 @@ export async function POST(req: NextRequest) {
     const order = await prisma.$transaction(
       async (tx) => {
         const code = await generateOrderCode(tx);
-        const holdUntil = addDays(new Date(), holdDays);
+        // Khách công ty lớn: giữ đơn 5 tháng, không phụ thuộc Năng lực giữ đơn (ngày) của NV Sale.
+        const holdUntil = customer.customerGroup === "KHACH_CONG_TY_LON"
+          ? addMonths(new Date(), LARGE_COMPANY_HOLD_MONTHS)
+          : addDays(new Date(), holdDays);
 
         const created = await tx.order.create({
           data: {
             code,
             saleId: session.user.id,
-            customerCode,
+            customerCode: customer.code,
+            customerId: customer.id,
             market,
             expectedShipAt: shipDate,
             notes,

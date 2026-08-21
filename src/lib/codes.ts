@@ -203,6 +203,20 @@ export async function generateOrderCode(client: Prisma.TransactionClient | typeo
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
 
+// Mã khách hàng = "KH" + số thứ tự 5 chữ số, tự sinh lúc tạo (không cho nhập/sửa tay, khác generateUserCode
+// vốn chỉ gợi ý). client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD nhập Excel hàng loạt) để
+// tính mã kế tiếp dựa trên đúng state đang thấy trong transaction đó, tránh trùng mã khi tạo nhiều khách
+// cùng lúc trong 1 transaction (xem generateLotCode ở trên).
+export async function generateCustomerCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const prefix = "KH";
+  const last = await client.customer.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(prefix.length), 10) + 1 : 1;
+  return `${prefix}${String(seq).padStart(5, "0")}`;
+}
+
 // client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD POST /api/processing-tickets) để tính mã
 // kế tiếp dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
 export async function generateProcessingTicketCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {

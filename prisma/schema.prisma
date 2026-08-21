@@ -1977,7 +1977,12 @@ model Order {
   code            String      @unique
   saleId          String
   sale            User        @relation(fields: [saleId], references: [id])
+  // Snapshot Customer.code lúc Tạm giữ (giữ nguyên tên field/kiểu dữ liệu cho mọi nơi hiển thị hiện có) —
+  // customerId bên dưới mới là liên kết THẬT tới danh sách Khách hàng, dùng để đọc CustomerGroup quyết
+  // định hạn giữ đơn (xem POST /api/orders). Nullable — đơn tạo TRƯỚC khi có tính năng này không có.
   customerCode    String
+  customerId      String?
+  customer        Customer?   @relation(fields: [customerId], references: [id])
   market          OrderMarket
   status          OrderStatus @default(DRAFT)
   holdUntil       DateTime?
@@ -2003,6 +2008,7 @@ model Order {
   items OrderItem[]
   processingRequests OrderProcessingRequest[]
 
+  @@index([customerId])
   @@map("orders")
 }
 
@@ -2165,6 +2171,15 @@ enum CustomerStatus {
   MAC_DINH
 }
 
+// "Nhóm khách hàng" — Admin cấp cao phân loại tay qua /settings/sale/customers, ảnh hưởng hạn giữ đơn:
+// KHACH_CONG_TY_LON được giữ đơn 5 THÁNG kể từ lúc Tạm giữ (thay vì theo Năng lực giữ đơn (ngày) mặc định
+// của NV Sale), 2 nhóm còn lại giữ nguyên hành vi cũ — xem POST /api/orders.
+enum CustomerGroup {
+  KHACH_SI_NHO
+  KHACH_CONG_TY
+  KHACH_CONG_TY_LON
+}
+
 // Danh sách thị trường do Admin cấp cao (SUPER_ADMIN) quản lý, dùng riêng cho CRM khách hàng Sale —
 // KHÔNG liên quan đến OrderMarket (thị trường xuất hàng của đơn) hay RoomType.PHONG_THI_TRUONG (phòng
 // kho thành phẩm theo khu vực) — 2 khái niệm "thị trường" khác đã có sẵn trong hệ thống, xem
@@ -2184,6 +2199,9 @@ model Market {
 
 model Customer {
   id                String         @id @default(cuid())
+  // Mã khách hàng — hệ thống TỰ SINH lúc tạo (KH00001, KH00002...), không cho nhập/sửa tay (xem
+  // generateCustomerCode, src/lib/codes.ts). Đơn hàng (Order.customerCode) copy đúng mã này lúc Tạm giữ.
+  code              String         @unique
   name              String
   nameNormalized    String
   website           String
@@ -2196,6 +2214,9 @@ model Customer {
   email             String?
   phone             String?
   status            CustomerStatus @default(CHUA_PHAN_CONG)
+  // "Nhóm khách hàng" — chỉ Admin cấp cao phân loại tay, null = chưa phân loại (không ảnh hưởng hạn giữ
+  // đơn, xử lý như mọi khách thường). Xem CustomerGroup.
+  customerGroup     CustomerGroup?
   firstContactAt    DateTime
   lastOrderAt       DateTime?
   lastOrderCode     String?
@@ -2206,6 +2227,8 @@ model Customer {
   assignedTo        User?          @relation("CustomerAssignedTo", fields: [assignedToId], references: [id])
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+
+  orders Order[]
 
   @@index([marketId])
   @@index([assignedToId])

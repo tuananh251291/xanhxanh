@@ -1,6 +1,6 @@
-import type { UserRole, EmploymentType } from "@prisma/client";
+import type { UserRole, EmploymentType, CustomerGroup } from "@prisma/client";
 
-export type { UserRole, EmploymentType };
+export type { UserRole, EmploymentType, CustomerGroup };
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: "Admin cấp cao",
@@ -393,6 +393,20 @@ export const CUSTOMER_STATUS_BADGE_VARIANT = {
   CHUA_PHAN_CONG: "in-progress",
   DA_PHAN_CONG: "completed",
   MAC_DINH: "info",
+} as const;
+
+// "Nhóm khách hàng" (Customer.customerGroup) — chỉ Admin cấp cao phân loại. KHACH_CONG_TY_LON được giữ
+// đơn 5 tháng thay vì theo Năng lực giữ đơn mặc định của NV Sale (xem CustomerGroup, prisma/schema.prisma).
+export const CUSTOMER_GROUP_LABELS = {
+  KHACH_SI_NHO: "Khách sỉ nhỏ",
+  KHACH_CONG_TY: "Khách công ty",
+  KHACH_CONG_TY_LON: "Khách công ty lớn",
+} as const;
+
+export const CUSTOMER_GROUP_BADGE_VARIANT = {
+  KHACH_SI_NHO: "outline",
+  KHACH_CONG_TY: "info",
+  KHACH_CONG_TY_LON: "completed",
 } as const;
 
 // Nav items per role

@@ -15,8 +15,13 @@ export default async function OrdersPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders"))) redirect("/dashboard");
 
-  const [plantTypes, recentOrders] = await Promise.all([
+  const [plantTypes, customers, recentOrders] = await Promise.all([
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.customer.findMany({
+      where: { assignedToId: session?.user?.id ?? "" },
+      select: { id: true, code: true, name: true, customerGroup: true },
+      orderBy: { name: "asc" },
+    }),
     prisma.order.findMany({
       where: { saleId: session?.user?.id ?? "" },
       orderBy: { createdAt: "desc" },
@@ -39,7 +44,7 @@ export default async function OrdersPage() {
         </p>
       </div>
 
-      <OrderCheckForm plantTypes={plantTypes} holdDays={session?.user?.holdDays ?? null} />
+      <OrderCheckForm plantTypes={plantTypes} customers={customers} holdDays={session?.user?.holdDays ?? null} />
 
       {recentOrders.length > 0 && (
         <Card>

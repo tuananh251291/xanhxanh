@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
+import { generateCustomerCode } from "@/lib/codes";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
@@ -41,19 +42,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Khách này vừa được tạo/đăng ký bởi người khác, vui lòng kiểm tra lại" }, { status: 409 });
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      name: data.name,
-      nameNormalized,
-      website: data.website,
-      websiteNormalized,
-      marketId: data.marketId,
-      email: data.email,
-      phone: data.phone,
-      status: "DA_PHAN_CONG",
-      firstContactAt: new Date(),
-      assignedToId: session.user.id,
-    },
+  const customer = await prisma.$transaction(async (tx) => {
+    const code = await generateCustomerCode(tx);
+    return tx.customer.create({
+      data: {
+        code,
+        name: data.name,
+        nameNormalized,
+        website: data.website,
+        websiteNormalized,
+        marketId: data.marketId,
+        email: data.email,
+        phone: data.phone,
+        status: "DA_PHAN_CONG",
+        firstContactAt: new Date(),
+        assignedToId: session.user.id,
+      },
+    });
   });
   return NextResponse.json(customer, { status: 201 });
 }

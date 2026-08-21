@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/combobox";
 import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { MARKET_LABELS } from "@/types";
+import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, type CustomerGroup } from "@/types";
 
 const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -106,14 +106,22 @@ const DEFAULT_ROW_COUNT = 8;
 
 const availabilityKey = (plantTypeId: string, stageCode: string) => `${plantTypeId}::${stageCode}`;
 
-export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: PlantType[]; holdDays: number | null }) {
+type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null };
+
+export default function OrderCheckForm({
+  plantTypes, customers, holdDays,
+}: { plantTypes: PlantType[]; customers: Customer[]; holdDays: number | null }) {
   const [rows, setRows] = useState<DemandRow[]>(() => Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
   // Nhãn "Mã sản phẩm - Tên cây" (VD "AL001 - Alocasia Red Secret") để gõ tìm theo cả mã lẫn tên.
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
+  // Nhãn "Mã KH - Tên khách" để gõ tìm theo cả mã lẫn tên — chỉ liệt kê khách hàng NV Sale đang phụ trách
+  // (khớp đúng phạm vi /customer-status).
+  const customerOptions: ComboOption[] = customers.map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }));
   const [results, setResults] = useState<CheckResult[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [holding, setHolding] = useState(false);
-  const [customerCode, setCustomerCode] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
   const [market, setMarket] = useState("");
   const [expectedShipAt, setExpectedShipAt] = useState("");
   // Tồn đạt tiêu chuẩn theo từng tổ hợp loại cây + quy cách — cache theo key để 2 dòng cùng tổ hợp không tra
@@ -191,8 +199,8 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
 
   const onHold = async () => {
     if (!results) return;
-    if (!customerCode.trim()) {
-      toast.error("Cần nhập mã khách hàng");
+    if (!customerId) {
+      toast.error("Cần chọn khách hàng");
       return;
     }
     if (!market) {
@@ -228,7 +236,7 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerCode: customerCode.trim(),
+          customerId,
           market,
           expectedShipAt,
           items,
@@ -236,10 +244,11 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã tạo đơn ${json.code} — giữ trong ${holdDays} ngày`);
+      const holdLabel = selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`;
+      toast.success(`Đã tạo đơn ${json.code} — giữ trong ${holdLabel}`);
       setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
       setResults(null);
-      setCustomerCode("");
+      setCustomerId("");
       setMarket("");
       setExpectedShipAt("");
     } finally {
@@ -460,12 +469,35 @@ export default function OrderCheckForm({ plantTypes, holdDays }: { plantTypes: P
               </div>
             )}
             {holdDays && (
-              <p className="text-xs text-text-secondary">Đơn sẽ được giữ trong {holdDays} ngày kể từ lúc tạo.</p>
+              <p className="text-xs text-text-secondary">
+                {selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON"
+                  ? "Khách công ty lớn — đơn sẽ được giữ trong 5 tháng kể từ lúc tạo."
+                  : `Đơn sẽ được giữ trong ${holdDays} ngày kể từ lúc tạo.`}
+              </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Mã khách hàng *</Label>
-                <Input value={customerCode} onChange={(e) => setCustomerCode(e.target.value)} placeholder="VD: KH00123" />
+                <Label>Khách hàng *</Label>
+                <Combobox
+                  items={customerOptions}
+                  value={customerOptions.find((o) => o.value === customerId) ?? null}
+                  isItemEqualToValue={(a, b) => a.value === b.value}
+                  onValueChange={(v) => setCustomerId(v?.value ?? "")}
+                >
+                  <ComboboxInputGroup>
+                    <ComboboxInput placeholder="Gõ mã hoặc tên khách hàng…" />
+                    <ComboboxTrigger />
+                  </ComboboxInputGroup>
+                  <ComboboxContent>
+                    <ComboboxEmpty>Không tìm thấy khách hàng bạn phụ trách</ComboboxEmpty>
+                    <ComboboxList>
+                      {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+                {selectedCustomer?.customerGroup && (
+                  <p className="text-xs text-text-muted">{CUSTOMER_GROUP_LABELS[selectedCustomer.customerGroup]}</p>
+                )}
               </div>
               <div className="space-y-1">
                 <Label>Thị trường *</Label>
