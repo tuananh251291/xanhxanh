@@ -5,6 +5,7 @@ import { addDays, addMonths } from "date-fns";
 import { generateOrderCode } from "@/lib/codes";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
+import { canActAsSale } from "@/types";
 import { z } from "zod";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
@@ -45,15 +46,8 @@ const createSchema = z.object({
 // trong 2 transaction đụng nhau bằng lỗi write conflict — bắt lỗi đó bên dưới để trả 409 rõ ràng.
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "SALE") {
+  if (!session?.user || !canActAsSale(session.user.role)) {
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
-  }
-  const holdDays = session.user.holdDays;
-  if (!holdDays) {
-    return NextResponse.json(
-      { message: "Bạn chưa được Admin cài đặt Năng lực giữ đơn — liên hệ Admin trước khi tạm giữ đơn hàng" },
-      { status: 400 }
-    );
   }
 
   const body = await req.json();
@@ -74,13 +68,30 @@ export async function POST(req: NextRequest) {
 
   // Chỉ giữ đơn được cho khách hàng ĐÚNG mình đang phụ trách (assignedToId) — khớp đúng phạm vi khách NV
   // Sale thấy được ở /customer-status (GET /api/customer-status), tránh giữ nhầm/giữ hộ khách người khác.
+  // Quản lý kho thành phẩm thao tác HỘ (xem canActAsSale) không bị giới hạn theo khách mình phụ trách —
+  // chỉ cần khách đã có NV bán hàng phụ trách, vì đơn LUÔN được gán saleId = customer.assignedToId (NV
+  // bán hàng thật đang phụ trách), không phải id người quản lý đang bấm hộ — giống hệt dữ liệu sẽ có khi
+  // sau này NV bán hàng tự nhập bằng tài khoản riêng.
   const customer = await prisma.customer.findUnique({
     where: { id: customerId },
     select: { id: true, code: true, customerGroup: true, assignedToId: true },
   });
   if (!customer) return NextResponse.json({ message: "Không tìm thấy khách hàng" }, { status: 400 });
-  if (customer.assignedToId !== session.user.id) {
+  if (session.user.role === "SALE" && customer.assignedToId !== session.user.id) {
     return NextResponse.json({ message: "Bạn không phụ trách khách hàng này" }, { status: 403 });
+  }
+  if (!customer.assignedToId) {
+    return NextResponse.json({ message: "Khách hàng chưa có NV bán hàng phụ trách — không tạo được đơn hộ" }, { status: 400 });
+  }
+
+  const holdDays = session.user.role === "SALE"
+    ? session.user.holdDays
+    : (await prisma.user.findUnique({ where: { id: customer.assignedToId }, select: { holdDays: true } }))?.holdDays;
+  if (!holdDays) {
+    return NextResponse.json(
+      { message: "NV bán hàng phụ trách khách này chưa được Admin cài đặt Năng lực giữ đơn — liên hệ Admin trước khi tạm giữ đơn hàng" },
+      { status: 400 }
+    );
   }
 
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
@@ -98,7 +109,7 @@ export async function POST(req: NextRequest) {
         const created = await tx.order.create({
           data: {
             code,
-            saleId: session.user.id,
+            saleId: customer.assignedToId!,
             customerCode: customer.code,
             customerId: customer.id,
             market,

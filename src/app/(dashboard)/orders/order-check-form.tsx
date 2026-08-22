@@ -106,22 +106,27 @@ const DEFAULT_ROW_COUNT = 8;
 
 const availabilityKey = (plantTypeId: string, stageCode: string) => `${plantTypeId}::${stageCode}`;
 
-type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null };
+// holdDays theo TỪNG khách — với NV bán hàng là "Năng lực giữ đơn" của chính họ (giống nhau ở mọi khách);
+// với Quản lý kho thành phẩm tạo hộ (xem canActAsSale) là của ĐÚNG NV bán hàng đang phụ trách khách đó
+// (có thể khác nhau giữa các khách) — xem src/app/(dashboard)/orders/page.tsx.
+type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; holdDays: number | null };
 
 export default function OrderCheckForm({
-  plantTypes, customers, holdDays,
-}: { plantTypes: PlantType[]; customers: Customer[]; holdDays: number | null }) {
+  plantTypes, customers,
+}: { plantTypes: PlantType[]; customers: Customer[] }) {
   const [rows, setRows] = useState<DemandRow[]>(() => Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
   // Nhãn "Mã sản phẩm - Tên cây" (VD "AL001 - Alocasia Red Secret") để gõ tìm theo cả mã lẫn tên.
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
-  // Nhãn "Mã KH - Tên khách" để gõ tìm theo cả mã lẫn tên — chỉ liệt kê khách hàng NV Sale đang phụ trách
-  // (khớp đúng phạm vi /customer-status).
+  // Nhãn "Mã KH - Tên khách" để gõ tìm theo cả mã lẫn tên — với NV Sale chỉ liệt kê khách họ đang phụ
+  // trách (khớp đúng phạm vi /customer-status); với Quản lý kho thành phẩm tạo hộ (canActAsSale) là mọi
+  // khách đã có NV bán hàng phụ trách, xem src/app/(dashboard)/orders/page.tsx.
   const customerOptions: ComboOption[] = customers.map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }));
   const [results, setResults] = useState<CheckResult[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [holding, setHolding] = useState(false);
   const [customerId, setCustomerId] = useState("");
   const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
+  const holdDays = selectedCustomer?.holdDays ?? null;
   const [market, setMarket] = useState("");
   const [expectedShipAt, setExpectedShipAt] = useState("");
   // Tồn đạt tiêu chuẩn theo từng tổ hợp loại cây + quy cách — cache theo key để 2 dòng cùng tổ hợp không tra
@@ -462,10 +467,10 @@ export default function OrderCheckForm({
         <Card>
           <CardHeader><CardTitle className="text-base">Thông tin khách hàng</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {!holdDays && (
+            {customerId && !holdDays && (
               <div className="flex items-center gap-2 text-sm font-medium text-destructive bg-danger-light rounded-lg p-3">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
-                Bạn chưa được Admin cài đặt &quot;Năng lực giữ đơn&quot; — liên hệ Admin trước khi tạm giữ đơn hàng.
+                Chưa xác định được &quot;Năng lực giữ đơn&quot; cho khách này — liên hệ Admin trước khi tạm giữ đơn hàng.
               </div>
             )}
             {holdDays && (

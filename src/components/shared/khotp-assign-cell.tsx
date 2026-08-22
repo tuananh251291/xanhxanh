@@ -12,9 +12,11 @@ const NONE = "NONE";
 type StaffOption = { id: string; code: string; name: string };
 
 // Ô "Giao cho" dùng chung cho 3 khu vực Quản lý kho thành phẩm gán việc (Nhận bàn giao thành phẩm/Nhập
-// hàng/Sắp đơn hàng) — NV kho thành phẩm thường vẫn thấy MỌI phiếu/đơn như trước (không giới hạn), ô
-// này chỉ hiện dropdown chọn NV cho Quản lý (canAssign), người khác chỉ thấy badge "Đã giao: ..." tham
-// khảo. endpoint nhận PATCH { action: "assign", assignedToId }, 3 route đều cùng hình dạng này.
+// hàng/Sắp xếp đơn hàng) — NV kho thành phẩm thường vẫn thấy MỌI phiếu Nhận bàn giao/Nhập hàng như trước
+// (không giới hạn), riêng đơn hàng ở /orders/pack đã lọc chỉ còn đơn được gán cho đúng mình (xem
+// onlyMyAssigned ở page.tsx) nên ô này với NV thường lúc đó chỉ còn tác dụng hiển thị tham khảo. Ô này
+// chỉ hiện dropdown chọn NV cho Quản lý (canAssign), người khác chỉ thấy badge "Đã giao: ..." tham khảo.
+// endpoint nhận PATCH { action: "assign", assignedToId }, 3 route đều cùng hình dạng này.
 export default function KhoTpAssignCell({
   endpoint,
   assignedTo,

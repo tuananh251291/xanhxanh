@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots, parseBagSize } from "@/lib/order-availability";
+import { canActAsSale } from "@/types";
 import { z } from "zod";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực
@@ -136,7 +137,7 @@ function applyConversionBuffer(alternatives: Alternative[]): void {
 // Xem src/lib/order-availability.ts.
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "SALE") {
+  if (!session?.user || !canActAsSale(session.user.role)) {
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
 

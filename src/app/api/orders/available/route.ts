@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getAccessibleRoomIds, getQualifiedLots } from "@/lib/order-availability";
+import { canActAsSale } from "@/types";
 
 const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
 
 // Tra nhanh tồn đạt tiêu chuẩn cho 1 tổ hợp loại cây + quy cách — dùng để hiện "Số lượng đạt tiêu chuẩn" ngay khi
-// Sale chọn loại cây/quy cách trên form Check, không cần đợi nhập số lượng nhu cầu rồi bấm "Check"
-// (khác POST /api/orders/check, vốn cần cả số lượng để tính đề xuất thay thế quy cách khác).
+// Sale (hoặc Quản lý kho thành phẩm thao tác hộ, xem canActAsSale) chọn loại cây/quy cách trên form
+// Check, không cần đợi nhập số lượng nhu cầu rồi bấm "Check" (khác POST /api/orders/check, vốn cần cả số
+// lượng để tính đề xuất thay thế quy cách khác).
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "SALE") {
+  if (!session?.user || !canActAsSale(session.user.role)) {
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
 

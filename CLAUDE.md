@@ -114,7 +114,7 @@ alerts
 - Kho thành phẩm "Hoàn thành xử lý" (trang Xử lý cây): trừ tồn thực ở quy cách nguồn theo nguyên túi đã
   mở (deductQuantity), cộng phần dư (surplusQuantity) vào quy cách T01 — đây là lúc tồn thực đổi cho
   dòng cần tách túi
-- Kho thành phẩm "Xuất kho" (trang Sắp đơn hàng, đơn chuyển CONFIRMED → SHIPPED): trừ tồn thực đúng số
+- Kho thành phẩm "Xuất kho" (trang Sắp xếp đơn hàng, đơn chuyển CONFIRMED → SHIPPED): trừ tồn thực đúng số
   lượng đơn cho các dòng KHÔNG cần xử lý (dòng đã xử lý xong thì không trừ lại). Chặn xuất kho nếu đơn
   còn Yêu cầu xử lý PENDING
 - Đơn HELD quá hạn holdUntil: tự động CANCELLED, hoàn tồn đạt tiêu chuẩn (đơn đã CONFIRMED thì không tự huỷ

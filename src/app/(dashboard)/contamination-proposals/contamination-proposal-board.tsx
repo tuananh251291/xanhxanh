@@ -21,6 +21,7 @@ type Proposal = {
   createdAt: string;
   plantType: { code: string; name: string };
   warehouse: { name: string; code: string };
+  room: { name: string } | null;
   requestedBy: { name: string };
   approvedBy: { name: string } | null;
 };
@@ -76,7 +77,11 @@ function ProposalItemsTable({ items, canApprove, canSubmit, processingId, onRevi
           {items.map((p) => (
             <tr key={p.id} className="border-b border-divider last:border-0 even:bg-background">
               <td className="px-3 py-2 font-mono text-foreground whitespace-nowrap">{p.plantType.code}</td>
-              <td className="px-3 py-2 text-foreground">{p.plantType.name}{!canSubmit ? ` · ${p.warehouse.name}` : ""}</td>
+              <td className="px-3 py-2 text-foreground">
+                {p.plantType.name}
+                {!canSubmit ? ` · ${p.warehouse.name}` : ""}
+                {p.room ? ` · ${p.room.name}` : ""}
+              </td>
               <td className="px-3 py-2 text-foreground">{p.stageCode}</td>
               <td className="px-3 py-2 text-right font-medium text-foreground">{p.quantity.toLocaleString("vi-VN")}</td>
               {canApprove && (

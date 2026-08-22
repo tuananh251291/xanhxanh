@@ -27,11 +27,14 @@ function expiryClass(expectedMoveAt: Date | null): string {
 export default async function KhoSangPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plantTypeId?: string; enteredWeekFrom?: string; enteredWeekTo?: string }>;
+  searchParams: Promise<{ plantTypeId?: string; enteredWeekFrom?: string; enteredWeekTo?: string; warehouseId?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/kho-sang"))) redirect("/dashboard");
+  // Chỉ Quản lý kho thành phẩm được xem Phòng ra rễ mọi cơ sở — NV kho thành phẩm thường bỏ quyền này
+  // (isKhoThanhPhamRole gộp chung 2 role nên phải chặn riêng ở đây, không sửa lại helper dùng chung).
+  if (role === "KHO_THANH_PHAM") redirect("/dashboard");
 
   const sp = await searchParams;
   const rawPlantTypeId = sp.plantTypeId?.trim() || null;
@@ -48,6 +51,9 @@ export default async function KhoSangPage({
   const enteredWeekToMonday = enteredWeekToParam ? isoWeekStringToMonday(enteredWeekToParam) : null;
   // Mốc "đến" là CUỐI tuần đó — cộng thêm 1 tuần vào Thứ 2 để làm biên trên loại trừ (lt).
   const enteredWeekToExclusiveEnd = enteredWeekToMonday ? addWeeks(enteredWeekToMonday, 1) : null;
+  // Kho sản xuất được Quản lý kho thành phẩm chọn để xem Phòng ra rễ (RootingPlantSearch, ?warehouseId=)
+  // — chỉ có ý nghĩa với onlyRootingRoom bên dưới, để trống = giữ hành vi cũ gộp mọi cơ sở.
+  const rawWarehouseId = sp.warehouseId?.trim() || null;
   const enteredAtFilter =
     enteredWeekFromMonday || enteredWeekToExclusiveEnd
       ? {
@@ -64,8 +70,12 @@ export default async function KhoSangPage({
   const onlyRootingRoom = isKhoThanhPhamRole(role);
   // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật và NV/Quản
   // lý Kho thành phẩm không bị giới hạn theo 1 kho sản xuất (isKhoThanhPhamRole vốn chỉ gán 1 kho THÀNH
-  // PHẨM, không phải kho sản xuất, nên phải xem hết mọi kho sản xuất mới có ý nghĩa).
-  const workplaceWarehouseId = role !== "KY_THUAT" && !isKhoThanhPhamRole(role) ? session?.user?.workplaceWarehouseId : null;
+  // PHẨM, không phải kho sản xuất, nên phải xem hết mọi kho sản xuất mới có ý nghĩa) — trừ khi Quản lý
+  // kho thành phẩm chủ động chọn đúng 1 kho qua rawWarehouseId, lúc đó lọc y như đang làm việc tại kho đó
+  // (cùng cơ chế viewOnly ShelfTable với NV kho mô, xem nhánh render bên dưới).
+  const workplaceWarehouseId = onlyRootingRoom
+    ? rawWarehouseId
+    : role !== "KY_THUAT" && !isKhoThanhPhamRole(role) ? session?.user?.workplaceWarehouseId : null;
 
   const roomTypeFilter: RoomType | { in: RoomType[] } = onlyMotherRoom
     ? "PHONG_MAU_ME"
@@ -123,6 +133,18 @@ export default async function KhoSangPage({
   const rootingPlantTypeOptions = plantTypeNames
     .map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))
     .sort((a, b) => a.label.localeCompare(b.label));
+
+  // Danh sách kho sản xuất cho ô chọn của Quản lý kho thành phẩm (RootingPlantSearch) — chỉ cần tải khi
+  // onlyRootingRoom, NV kho mô/kỹ thuật không thấy ô chọn này nên khỏi tốn truy vấn.
+  const rootingWarehouseOptions = onlyRootingRoom
+    ? (
+        await prisma.warehouse.findMany({
+          where: { type: "SAN_XUAT", isActive: true, rooms: { some: { type: "PHONG_RA_RE", isActive: true } } },
+          select: { id: true, code: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      ).map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` }))
+    : [];
 
   // Phòng ra rễ (chỉ KHO_MO xem, KY_THUAT không có) vẫn hiển thị dạng thẻ theo kệ như cũ, ít kệ hơn nhiều
   // so với Phòng mẫu mẹ nên chưa cần phân trang — tải riêng, không dính vào query rooms ở trên nữa.
@@ -217,7 +239,13 @@ export default async function KhoSangPage({
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Sun className="w-6 h-6 text-warning-foreground" />
-          {onlyMotherRoom ? "Phòng mẫu mẹ" : onlyRootingRoom ? "Phòng ra rễ — tất cả cơ sở sản xuất" : "Phòng sáng"}
+          {onlyMotherRoom
+            ? "Phòng mẫu mẹ"
+            : onlyRootingRoom
+              ? rawWarehouseId
+                ? `Phòng ra rễ — ${rooms[0]?.warehouse.name ?? ""}`
+                : "Phòng ra rễ — tất cả cơ sở sản xuất"
+              : "Phòng sáng"}
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {onlyMotherRoom
@@ -228,14 +256,18 @@ export default async function KhoSangPage({
         </p>
       </div>
 
-      {/* Summary by plant type */}
-      <SummaryByType entries={summaryByTypeEntries} />
+      {/* Summary by plant type — Kho thành phẩm xem Phòng ra rễ mọi cơ sở đã có bảng "Tổng hợp cây ra
+          rễ tại kho sáng" chi tiết hơn (theo mã cây + quy cách) ngay bên dưới, nên bỏ khối này ở đây. */}
+      {!onlyRootingRoom && <SummaryByType entries={summaryByTypeEntries} />}
 
       {/* Tìm nhanh 1 mã cây + lọc theo tuần nhập lên kho sáng trong Phòng ra rễ — không có ý nghĩa gì ở
           chế độ chỉ xem Phòng mẫu mẹ. */}
       {!onlyMotherRoom && (
         <div className="space-y-3">
-          <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />
+          <RootingPlantSearch
+            plantTypeOptions={rootingPlantTypeOptions}
+            warehouseOptions={onlyRootingRoom ? rootingWarehouseOptions : undefined}
+          />
           {!isAllRooting && hasRootingFilter && (
             <Card>
               <CardHeader className="pb-2">
@@ -339,10 +371,12 @@ export default async function KhoSangPage({
             )
           ) : (raReShelvesByRoom.get(room.id) ?? []).length === 0 ? (
             <p className="text-sm text-text-muted pl-2">Chưa có kệ</p>
-          ) : role === "KHO_MO" ? (
+          ) : role === "KHO_MO" || (onlyRootingRoom && !!rawWarehouseId) ? (
             // Kho mô xem Phòng ra rễ theo đúng dạng bảng Admin đang dùng (xem ShelfTable, dùng chung với
             // /warehouses/rooms/[roomId]) thay vì dạng thẻ — nhưng viewOnly nên không có ô sửa sức chứa,
             // không đổi Nhóm tuần, không chuyển phòng, không xóa kệ; chỉ xem được chi tiết lô cây (nút mắt).
+            // Quản lý kho thành phẩm cũng thấy dạng bảng này khi đã chọn đúng 1 kho sản xuất qua bộ lọc ở
+            // trên (rawWarehouseId) — chưa chọn thì vẫn giữ dạng thẻ gộp mọi cơ sở như cũ (nhánh else).
             <ShelfTable
               shelves={raReShelvesByRoom.get(room.id) ?? []}
               currentRoomId={room.id}

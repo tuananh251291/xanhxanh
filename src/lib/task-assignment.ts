@@ -4,7 +4,7 @@ import type { DailyTaskType } from "@prisma/client";
 
 // Dùng chung cho trang "Phân công nhiệm vụ ngày" (bảng tiến độ) và khối "Công việc hôm nay của tôi" ở
 // Dashboard NV kho thành phẩm — tổng hợp 4 nguồn việc có thể gán đích danh: GoodsReceipt (Nhận hàng NCC),
-// Transfer (Nhận bàn giao từ kho sản xuất), Order (Sắp đơn hàng), DailyTask (Kiểm tra cây/Đề xuất trồng-hủy).
+// Transfer (Nhận bàn giao từ kho sản xuất), Order (Sắp xếp đơn hàng), DailyTask (Kiểm tra cây/Đề xuất trồng-hủy).
 
 // Tiến độ hôm nay của từng NV kho thành phẩm — "Đang chờ" = còn ở trạng thái pending bất kể gán từ ngày
 // nào (Transfer/GoodsReceipt/Order có thể tồn từ hôm trước); "Đã hoàn thành hôm nay" = mốc hoàn thành rơi
@@ -109,7 +109,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     });
   }
   for (const o of orders) {
-    tasks.push({ key: `or-${o.id}`, href: "/orders/pack", title: `Sắp đơn hàng — ${o.code}`, description: `Khách hàng ${o.customerCode}` });
+    tasks.push({ key: `or-${o.id}`, href: `/orders/pack/${o.id}`, title: `Sắp xếp đơn hàng — ${o.code}`, description: `Khách hàng ${o.customerCode}` });
   }
   for (const d of dailyTasks) {
     tasks.push({

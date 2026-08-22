@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateOrderProcessingRequestCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
-import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole } from "@/types";
+import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -14,7 +14,7 @@ const patchSchema = z.object({
 });
 
 // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đơn này — chỉ có ý nghĩa với đơn
-// đã CONFIRMED (đang chờ xuất, xem trang "Sắp đơn hàng").
+// đã CONFIRMED (đang chờ xuất, xem trang "Sắp xếp đơn hàng").
 async function assignOrder(orderId: string, user: { id: string; role: string | null }, assignedToId: string | null | undefined) {
   if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN" && user.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được việc này" }, { status: 403 });
@@ -43,7 +43,7 @@ async function assignOrder(orderId: string, user: { id: string; role: string | n
 // báo cho Kho thành phẩm — trước khi xác nhận, Kho thành phẩm chưa biết/chưa cần biết gì về đơn này.
 // KHÔNG trừ tồn thực ở bước này (tồn thực chỉ đổi khi Kho thành phẩm "Hoàn thành xử lý" và "Xuất kho").
 async function confirmOrder(orderId: string, user: { id: string; role: string | null }) {
-  if (user.role !== "SALE") {
+  if (!canActAsSale(user.role)) {
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
 
@@ -63,7 +63,9 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     },
   });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
-  if (order.saleId !== user.id) {
+  // Quản lý kho thành phẩm xác nhận HỘ được mọi đơn (không chỉ đơn saleId trùng chính mình) — vì đơn được
+  // tạo hộ luôn gán saleId = NV bán hàng thật (xem POST /api/orders), không phải người quản lý đang bấm.
+  if (user.role === "SALE" && order.saleId !== user.id) {
     return NextResponse.json({ message: "Chỉ được xác nhận đơn hàng của chính mình" }, { status: 403 });
   }
   if (order.status !== "HELD") {
@@ -147,13 +149,14 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
 // tiêu chuẩn chỉ trừ đơn đang HELD/CONFIRMED, chuyển sang CANCELLED là tự động "hoàn tồn đạt tiêu chuẩn" ngay.
 // Đơn HELD chưa từng phát sinh Yêu cầu xử lý cây (chỉ tạo lúc "Xác nhận") nên không cần huỷ theo.
 async function cancelOrder(orderId: string, user: { id: string; role: string | null }) {
-  if (user.role !== "SALE") {
+  if (!canActAsSale(user.role)) {
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
 
   const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, saleId: true, status: true } });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
-  if (order.saleId !== user.id) {
+  // Quản lý kho thành phẩm hủy HỘ được mọi đơn — cùng lý do với confirmOrder ở trên.
+  if (user.role === "SALE" && order.saleId !== user.id) {
     return NextResponse.json({ message: "Chỉ được xóa đơn hàng của chính mình" }, { status: 403 });
   }
   if (order.status !== "HELD") {

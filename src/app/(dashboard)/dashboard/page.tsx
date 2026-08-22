@@ -465,19 +465,23 @@ async function getKhoThanhPhamDailyStats() {
   };
 }
 
-// Công việc hàng tuần của Kho thành phẩm. "Đề xuất Trồng/Hủy" và "Trả hàng nhà cung cấp" chưa có trang
-// nghiệp vụ riêng cho Kho thành phẩm (xem TODO.md) — tạm hiện dạng "Sắp ra mắt", không có href.
+// Công việc hàng tuần của Kho thành phẩm. "Trả hàng nhà cung cấp" chưa có trang nghiệp vụ riêng cho Kho
+// thành phẩm (xem TODO.md) — tạm hiện dạng "Sắp ra mắt", không có href. "Đề xuất Trồng/Hủy" đã có trang
+// riêng ở /contamination-proposals (xem finished-goods-proposal-submit.tsx) — đếm số đề xuất đang chờ
+// duyệt do Kho thành phẩm gửi (roomId khác null phân biệt với đề xuất cũ của Kho mô, luôn roomId null).
 async function getKhoThanhPhamWeeklyStats() {
-  const [contaminationPendingCount, theoDoiLots] = await Promise.all([
+  const [contaminationPendingCount, theoDoiLots, proposalPendingCount] = await Promise.all([
     prisma.contaminationRecord.count({ where: { confirmedAt: null, lot: { stage: "THANH_PHAM" } } }),
     prisma.lot.findMany({
       where: { status: "ACTIVE", room: { type: "PHONG_THEO_DOI" } },
       select: { quantity: true },
     }),
+    prisma.contaminationProposal.count({ where: { status: "PENDING", roomId: { not: null } } }),
   ]);
   return {
     contaminationPendingCount,
     theoDoiQuantity: theoDoiLots.reduce((s, l) => s + l.quantity, 0),
+    proposalPendingCount,
   };
 }
 
@@ -1177,7 +1181,7 @@ function KhoDashboard({
           <QueueTaskRow
             href="/orders/pack"
             icon={PackageOpen}
-            title="1. Sắp đơn hàng"
+            title="1. Sắp xếp đơn hàng"
             description="Đơn đã xác nhận, chờ đóng gói/xuất kho"
             count={dailyStats.packOrdersCount}
             unit="đơn"
@@ -1215,9 +1219,12 @@ function KhoDashboard({
             unit="báo cáo"
           />
           <QueueTaskRow
+            href="/contamination-proposals"
             icon={AlertTriangle}
             title="2. Đề xuất Trồng/Hủy"
-            description="Đề xuất xử lý lô thành phẩm nhiễm — trang riêng cho Kho thành phẩm chưa ra mắt"
+            description="Đề xuất xử lý lô thành phẩm — chọn phòng, chọn lô, gửi Admin duyệt"
+            count={weeklyStats.proposalPendingCount}
+            unit="đề xuất"
           />
           <QueueTaskRow
             href="/inventory/thanh-pham"

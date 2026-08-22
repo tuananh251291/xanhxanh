@@ -511,7 +511,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
-    { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
+    { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
+    { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Khác KHO_THANH_PHAM: được xem thêm "Phòng ra rễ (mọi cơ sở)" (xem redirect riêng role ===
@@ -532,7 +533,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // ở menu KHO_THANH_PHAM thường).
     { href: "/orders", label: "Tạo đơn hàng (hộ Sale)", icon: "ShoppingCart" },
     { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },
-    { href: "/orders/pack", label: "Sắp đơn hàng", icon: "PackageOpen" },
+    { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
+    { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   SALE: [

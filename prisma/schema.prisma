@@ -190,7 +190,7 @@ enum AlertType {
   // tra lại kệ trước khi gán lại — xem RepackInstruction.quantityIssueReportedAt.
   REPACK_QUANTITY_MISMATCH
   // NV kho thành phẩm vừa hoàn thành 1 việc được Quản lý kho thành phẩm gán đích danh (Nhận bàn giao
-  // thành phẩm/Nhập hàng/Sắp đơn hàng) — báo cho đúng người đã gán (userId), không phải mọi Quản lý.
+  // thành phẩm/Nhập hàng/Sắp xếp đơn hàng) — báo cho đúng người đã gán (userId), không phải mọi Quản lý.
   ASSIGNED_TASK_COMPLETED
   // Kho mô đích xác nhận "Bàn giao mẫu mẹ" liên kho sản xuất (xem MOTHER_WAREHOUSE_TRANSFER_TAG) với số
   // lượng thực tế nhận THẤP HƠN số đã gửi — báo cho đúng NV kho mô đã gửi (userId) + toàn bộ Admin/Admin
@@ -918,6 +918,7 @@ model Room {
   orderProcessingRequestsAsTarget OrderProcessingRequest[] @relation("OrderProcessingRequestTarget")
   goodsReceipts     GoodsReceipt[]
   dailyTasks        DailyTask[]
+  contaminationProposals ContaminationProposal[]
 
   @@map("rooms")
 }
@@ -1607,6 +1608,12 @@ model ContaminationProposal {
   stageCode     String
   quantity      Int
   status        ContaminationProposalStatus  @default(PENDING)
+  // Chỉ có giá trị với đề xuất do Kho thành phẩm gửi (xem isKhoThanhPhamRole) — đúng phòng (Đạt tiêu
+  // chuẩn/Theo dõi/Hàn túi/Thị trường) đã trừ lô lúc gửi, cần nhớ lại để hoàn đúng chỗ khi Admin từ
+  // chối (khác Phòng nhiễm của Kho mô — chỉ 1 phòng/kho nên dò thẳng theo warehouseId được — 1 kho
+  // thành phẩm có tới 4 loại phòng nên không dò ngược được nếu không lưu). NULL = luồng cũ Kho mô.
+  roomId        String?
+  room          Room?                        @relation(fields: [roomId], references: [id])
   // Chỉ có giá trị khi status = DRAFT — NV cấy mô nguồn của dòng nháp này (xem ContaminationStaffBalance),
   // "" = tồn cũ/không rõ NV. Sau khi gộp thành đề xuất PENDING thật (nhiều dòng DRAFT khác NV có thể gộp
   // chung 1 dòng PENDING) thì để "" vì không còn đại diện cho 1 NV cụ thể nữa.
@@ -2001,7 +2008,7 @@ model Order {
   updatedAt       DateTime    @updatedAt
 
   // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất đơn này (chỉ có ý
-  // nghĩa với đơn đã CONFIRMED, chờ xuất — xem trang "Sắp đơn hàng") — không giới hạn ai được XEM/xuất
+  // nghĩa với đơn đã CONFIRMED, chờ xuất — xem trang "Sắp xếp đơn hàng") — không giới hạn ai được XEM/xuất
   // đơn, chỉ mang tính phân công/theo dõi + báo cho đúng người đã gán khi NV được gán bấm xuất kho xong
   // (xem PATCH /api/orders/[id] action=ship).
   assignedToId String?
@@ -2031,6 +2038,18 @@ model OrderItem {
   quantity  Int
   unitPrice Float?
   notes     String?
+
+  // Trang "Sắp xếp đơn hàng" (/orders/pack) — NV/QL kho thành phẩm tự ghi số lượng thực tế đã nhặt được
+  // cho dòng này qua từng lần đi lấy hàng (có thể rải nhiều vị trí/thời điểm nên tách 3 lần, không cộng
+  // dồn tự động vào 1 ô). Không liên quan gì tới neededQuantity/processingRequest (tách túi) hay việc trừ
+  // tồn thực khi Xuất kho — chỉ để NV theo dõi tiến độ nhặt hàng, KHÔNG ảnh hưởng nghiệp vụ tồn kho.
+  pickedQuantity1 Int     @default(0)
+  pickedQuantity2 Int     @default(0)
+  pickedQuantity3 Int     @default(0)
+  // Ghi chú riêng của Kho thành phẩm lúc nhặt hàng (VD "thiếu do lô bị nhiễm") — TÁCH RIÊNG khỏi `notes`
+  // ở trên (vốn hiển thị cho Sale ở trang chi tiết đơn, xem order-detail-dialog.tsx) để không lẫn ghi chú
+  // nội bộ kho vào màn hình Sale xem.
+  pickNotes       String?
 
   processingRequest OrderProcessingRequest?
 

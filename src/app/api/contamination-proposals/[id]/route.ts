@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { addToContaminationRoom } from "@/lib/contamination-room";
+import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
 
 const schema = z.object({ action: z.enum(["approve", "reject"]) });
@@ -20,7 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const proposal = await prisma.contaminationProposal.findUnique({
     where: { id },
-    include: { plantType: { select: { code: true } }, warehouse: { select: { code: true } } },
+    include: { plantType: { select: { code: true } }, warehouse: { select: { code: true } }, requestedBy: { select: { code: true } } },
   });
   if (!proposal) return NextResponse.json({ message: "Không tìm thấy đề xuất" }, { status: 404 });
   if (proposal.status !== "PENDING") return NextResponse.json({ message: "Đề xuất đã được xử lý" }, { status: 400 });
@@ -37,22 +38,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    // Từ chối — hoàn lại số lượng về Phòng nhiễm vì lúc gửi đề xuất đã trừ ngay.
+    // Từ chối — hoàn lại số lượng vì lúc gửi đề xuất đã trừ ngay.
     if (action === "reject") {
-      const stage = proposal.stageCode.startsWith("T") ? "THANH_PHAM" : "MAU_ME";
-      await addToContaminationRoom(tx, {
-        warehouseId: proposal.warehouseId,
-        warehouseCode: proposal.warehouse.code,
-        plantTypeId: proposal.plantTypeId,
-        plantTypeCode: proposal.plantType.code,
-        stage,
-        stageCode: proposal.stageCode,
-        quantity: proposal.quantity,
-        reportedById: session!.user!.id,
-        staffBalanceOwnerId: null,
-        reason: "PROPOSAL_REJECTED_REFUND",
-        sourceLotCode: proposal.code,
-      });
+      if (proposal.roomId) {
+        // Đề xuất từ Kho thành phẩm — hoàn lại đúng phòng đã trừ (không phải Phòng nhiễm).
+        await upsertLot(tx, proposal.roomId, proposal.plantTypeId, proposal.plantType.code, proposal.stageCode, proposal.quantity, proposal.requestedBy.code);
+      } else {
+        const stage = proposal.stageCode.startsWith("T") ? "THANH_PHAM" : "MAU_ME";
+        await addToContaminationRoom(tx, {
+          warehouseId: proposal.warehouseId,
+          warehouseCode: proposal.warehouse.code,
+          plantTypeId: proposal.plantTypeId,
+          plantTypeCode: proposal.plantType.code,
+          stage,
+          stageCode: proposal.stageCode,
+          quantity: proposal.quantity,
+          reportedById: session!.user!.id,
+          staffBalanceOwnerId: null,
+          reason: "PROPOSAL_REJECTED_REFUND",
+          sourceLotCode: proposal.code,
+        });
+      }
     }
   });
 

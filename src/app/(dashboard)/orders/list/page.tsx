@@ -110,8 +110,12 @@ export default async function OrdersListPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
 
+  // Quản lý kho thành phẩm xem/quản lý HỘ mọi đơn (không chỉ đơn saleId trùng chính mình) — đơn tạo hộ
+  // luôn gán saleId = NV bán hàng thật đang phụ trách khách, không phải người quản lý (xem canActAsSale,
+  // POST /api/orders), nên lọc theo saleId sẽ không thấy được đơn mình vừa tạo hộ.
+  const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
   const orders = await prisma.order.findMany({
-    where: { saleId: session?.user?.id ?? "", status: { in: ["HELD", "CONFIRMED"] } },
+    where: { status: { in: ["HELD", "CONFIRMED"] }, ...(isActingForSale ? {} : { saleId: session?.user?.id ?? "" }) },
     orderBy: { createdAt: "desc" },
     select: {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
@@ -136,7 +140,9 @@ export default async function OrdersListPage() {
           <ClipboardList className="w-6 h-6 text-primary-strong" /> Danh sách đơn hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Đơn hàng bạn đã tạo — bấm &quot;Xác nhận&quot; khi khách hàng đã đồng ý mua, không thể chuyển ngược lại trạng thái Đang giữ.
+          {isActingForSale
+            ? 'Mọi đơn hàng đang giữ/đã xác nhận (mọi NV bán hàng) — bấm "Xác nhận" khi khách hàng đã đồng ý mua, không thể chuyển ngược lại trạng thái Đang giữ.'
+            : 'Đơn hàng bạn đã tạo — bấm "Xác nhận" khi khách hàng đã đồng ý mua, không thể chuyển ngược lại trạng thái Đang giữ.'}
         </p>
       </div>
 

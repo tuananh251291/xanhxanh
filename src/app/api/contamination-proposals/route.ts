@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { generateContaminationProposalCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
+
+const FINISHED_GOODS_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
 
 const createSchema = z.object({
   type: z.enum(["TRONG", "HUY"]),
@@ -12,6 +14,10 @@ const createSchema = z.object({
   stageCode: z.string(),
   quantity: z.number().int().positive(),
   notes: z.string().optional(),
+  // Bắt buộc khi người gửi là Kho thành phẩm (xem isKhoThanhPhamRole) — phòng thật đã chọn lô để trừ,
+  // 1 trong 4 loại phòng thành phẩm của đúng kho làm việc. Kho mô không dùng field này (vẫn dò Phòng
+  // nhiễm như cũ theo warehouseId).
+  roomId: z.string().optional(),
   // Mã đề xuất gộp — client truyền lại code của dòng đầu tiên trong cùng 1 lần bấm "Gửi đề xuất" (nhiều
   // dòng cây) để nhóm chung 1 "đề xuất" khi hiển thị. Bỏ trống với dòng đầu tiên của mỗi lần gửi.
   batchCode: z.string().optional(),
@@ -20,6 +26,7 @@ const createSchema = z.object({
 const include = {
   plantType: { select: { code: true, name: true } },
   warehouse: { select: { code: true, name: true } },
+  room: { select: { name: true } },
   requestedBy: { select: { name: true } },
   approvedBy: { select: { name: true } },
 } as const;
@@ -35,8 +42,8 @@ export async function GET(req: NextRequest) {
   // Dòng nháp (status DRAFT, chưa "Gửi đề xuất trồng/hủy") không hiện ở danh sách chung — xem
   // GET /api/contamination-proposal-drafts cho phiếu chung đang gộp dở của Kho mô.
   const where: Record<string, unknown> = status ? { status } : { status: { not: "DRAFT" } };
-  // Kho mô chỉ thấy đề xuất của đúng kho sản xuất mình đang làm việc — Admin thấy tất cả để duyệt.
-  if (role === "KHO_MO") {
+  // Kho mô/Kho thành phẩm chỉ thấy đề xuất của đúng kho mình đang làm việc — Admin thấy tất cả để duyệt.
+  if (role === "KHO_MO" || isKhoThanhPhamRole(role)) {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
     where.warehouseId = session.user.workplaceWarehouseId;
   } else if (!isAdminRole(role)) {
@@ -55,10 +62,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "KHO_MO") {
-    return NextResponse.json({ message: "Chỉ NV kho mô mới có quyền gửi đề xuất" }, { status: 403 });
+  const role = session?.user?.role ?? null;
+  const isFinishedGoods = isKhoThanhPhamRole(role);
+  if (role !== "KHO_MO" && !isFinishedGoods) {
+    return NextResponse.json({ message: "Chỉ NV kho mô hoặc Kho thành phẩm mới có quyền gửi đề xuất" }, { status: 403 });
   }
-  if (!session.user.workplaceWarehouseId) {
+  if (!session!.user.workplaceWarehouseId) {
     return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc — không thể gửi đề xuất" }, { status: 403 });
   }
 
@@ -66,18 +75,41 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const { type, plantTypeId, stageCode, quantity, notes, batchCode: requestedBatchCode } = parsed.data;
-  const warehouseId = session.user.workplaceWarehouseId;
+  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode } = parsed.data;
+  const warehouseId = session!.user.workplaceWarehouseId;
 
-  const room = await prisma.room.findFirst({ where: { warehouseId, type: "PHONG_NHIEM" } });
-  const lot = room
-    ? await prisma.lot.findFirst({ where: { roomId: room.id, plantTypeId, stageCode, status: "ACTIVE" } })
-    : null;
-  if (!lot || lot.quantity < quantity) {
-    return NextResponse.json(
-      { message: `Phòng nhiễm không có đủ số lượng cho mã cây/quy cách này (còn ${lot?.quantity ?? 0})` },
-      { status: 400 }
-    );
+  let lotId: string;
+  let sourceRoomId: string | null = null;
+  let sourceRoomName: string | null = null;
+
+  if (isFinishedGoods) {
+    if (!roomId) return NextResponse.json({ message: "Chưa chọn phòng" }, { status: 400 });
+    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    if (!room || room.warehouseId !== warehouseId || !(FINISHED_GOODS_ROOM_TYPES as readonly string[]).includes(room.type)) {
+      return NextResponse.json({ message: "Phòng không hợp lệ" }, { status: 400 });
+    }
+    const lot = await prisma.lot.findFirst({ where: { roomId, plantTypeId, stageCode, status: "ACTIVE" } });
+    if (!lot || lot.quantity < quantity) {
+      return NextResponse.json(
+        { message: `${room.name} không có đủ số lượng cho mã cây/quy cách này (còn ${lot?.quantity ?? 0})` },
+        { status: 400 }
+      );
+    }
+    lotId = lot.id;
+    sourceRoomId = room.id;
+    sourceRoomName = room.name;
+  } else {
+    const room = await prisma.room.findFirst({ where: { warehouseId, type: "PHONG_NHIEM" } });
+    const lot = room
+      ? await prisma.lot.findFirst({ where: { roomId: room.id, plantTypeId, stageCode, status: "ACTIVE" } })
+      : null;
+    if (!lot || lot.quantity < quantity) {
+      return NextResponse.json(
+        { message: `Phòng nhiễm không có đủ số lượng cho mã cây/quy cách này (còn ${lot?.quantity ?? 0})` },
+        { status: 400 }
+      );
+    }
+    lotId = lot.id;
   }
 
   const code = await generateContaminationProposalCode(type);
@@ -87,35 +119,37 @@ export async function POST(req: NextRequest) {
   let batchCode = code;
   if (requestedBatchCode) {
     const head = await prisma.contaminationProposal.findFirst({
-      where: { code: requestedBatchCode, requestedById: session.user.id, warehouseId, type },
+      where: { code: requestedBatchCode, requestedById: session!.user.id, warehouseId, type },
     });
     if (head) batchCode = head.batchCode ?? head.code;
   }
 
   const proposal = await prisma.$transaction(async (tx) => {
-    await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: quantity } } });
+    await tx.lot.update({ where: { id: lotId }, data: { quantity: { decrement: quantity } } });
     return tx.contaminationProposal.create({
       data: {
         code,
         batchCode,
         type,
         warehouseId,
+        roomId: sourceRoomId,
         plantTypeId,
         stageCode,
         quantity,
         notes,
-        requestedById: session.user.id,
+        requestedById: session!.user.id,
       },
       include,
     });
   });
 
   const typeLabel = type === "TRONG" ? "Trồng lại" : "Hủy bỏ";
+  const locationSuffix = sourceRoomName ? ` tại ${sourceRoomName}` : "";
   for (const targetRole of ["ADMIN", "SUPER_ADMIN"] as const) {
     await createAlert({
       type: "CONTAMINATION_PROPOSAL",
-      title: "Có đề xuất Trồng/Hủy hàng nhiễm mới",
-      message: `${session.user.name} đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${stageCode}) — phiếu ${code}`,
+      title: "Có đề xuất Trồng/Hủy mới",
+      message: `${session!.user.name} đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${stageCode})${locationSuffix} — phiếu ${code}`,
       targetRole,
       relatedId: proposal.id,
       relatedType: "ContaminationProposal",
