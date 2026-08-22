@@ -244,7 +244,7 @@ export default async function KhoSangPage({
             : onlyRootingRoom
               ? rawWarehouseId
                 ? `Phòng ra rễ — ${rooms[0]?.warehouse.name ?? ""}`
-                : "Phòng ra rễ — tất cả cơ sở sản xuất"
+                : "Xem tồn của Khu sản xuất"
               : "Phòng sáng"}
         </h1>
         <p className="text-text-secondary text-sm mt-1">

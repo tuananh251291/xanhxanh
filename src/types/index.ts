@@ -515,20 +515,19 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
-  // Khác KHO_THANH_PHAM: được xem thêm "Phòng ra rễ (mọi cơ sở)" (xem redirect riêng role ===
-  // "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công nhiệm vụ ngày" + "Theo dõi tiến
-  // độ hôm nay" (chỉ Quản lý mới giao việc/xem tiến độ, xem isKhoThanhPhamRole, /task-assignment,
-  // /task-progress), và tạo/xác nhận đơn hàng HỘ NV bán hàng (xem canActAsSale, /orders + /orders/list)
-  // — còn lại giống hệt.
+  // Khác KHO_THANH_PHAM: 3 mục xem tồn (Xem tồn của Khu sản xuất/Xem tồn đạt tiêu chuẩn/Xem tồn thực tế)
+  // gộp chung 1 mục "Xem tồn kho" (xem /inventory, KHÔNG áp dụng "Phòng ra rễ" cho NV kho thành phẩm
+  // thường — redirect riêng role === "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công
+  // nhiệm vụ ngày" + "Theo dõi tiến độ hôm nay" (chỉ Quản lý mới giao việc/xem tiến độ, xem
+  // isKhoThanhPhamRole, /task-assignment, /task-progress), và tạo/xác nhận đơn hàng HỘ NV bán hàng (xem
+  // canActAsSale, /orders + /orders/list) — còn lại giống hệt.
   QUAN_LY_KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/task-progress", label: "Theo dõi tiến độ hôm nay", icon: "Gauge" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
-    { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
-    { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
-    { href: "/inventory/kho-sang", label: "Phòng ra rễ (mọi cơ sở)", icon: "Sun" },
+    { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     // Tạo/xác nhận đơn hàng THAY NV bán hàng — xem canActAsSale, chỉ Quản lý kho thành phẩm có (không có
