@@ -1,11 +1,11 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle, Gauge } from "lucide-react";
+import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
-import { getStaffTaskProgressToday } from "@/lib/task-assignment";
 import { DAILY_TASK_TYPE_LABELS, CONTAMINATION_PROPOSAL_TYPE_LABELS } from "@/types";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import DailyTaskCreateDialog from "./daily-task-create-dialog";
@@ -31,7 +31,6 @@ export default async function TaskAssignmentPage() {
     rooms,
     kiemTraCayTasks,
     deXuatTasks,
-    progress,
   ] = await Promise.all([
     prisma.goodsReceipt.findMany({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
@@ -100,7 +99,6 @@ export default async function TaskAssignmentPage() {
         assignedTo: { select: { id: true, code: true, name: true } },
       },
     }),
-    getStaffTaskProgressToday(workplaceWarehouseId),
   ]);
 
   return (
@@ -110,7 +108,8 @@ export default async function TaskAssignmentPage() {
           <ClipboardList className="w-6 h-6 text-primary-strong" /> Phân công nhiệm vụ ngày
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Giao việc trong ngày cho NV kho thành phẩm và theo dõi tiến độ hoàn thành.
+          Giao việc trong ngày cho NV kho thành phẩm — xem tiến độ hoàn thành tại{" "}
+          <Link href="/task-progress" className="text-primary-strong underline underline-offset-2">Theo dõi tiến độ hôm nay</Link>.
         </p>
       </div>
 
@@ -236,38 +235,6 @@ export default async function TaskAssignmentPage() {
               </div>
             ))
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Gauge className="w-4 h-4" /> Theo dõi tiến độ hôm nay</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-primary-light">
-                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Đang chờ</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Đã hoàn thành hôm nay</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Tỉ lệ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {progress.map((p) => (
-                  <tr key={p.id} className="border-b last:border-0 even:bg-primary-light/30">
-                    <td className="px-4 py-3 text-foreground">{p.name} <span className="font-mono text-xs text-text-muted">({p.code})</span></td>
-                    <td className="px-4 py-3 text-right">
-                      {p.pending > 0 ? <Badge className="bg-warning-light text-warning-foreground">{p.pending}</Badge> : <span className="text-text-muted">0</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {p.completedToday > 0 ? <Badge variant="completed">{p.completedToday}</Badge> : <span className="text-text-muted">0</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right text-text-secondary">{p.percent === null ? "—" : `${p.percent}%`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </CardContent>
       </Card>
     </div>

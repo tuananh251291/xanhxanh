@@ -516,12 +516,14 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Khác KHO_THANH_PHAM: được xem thêm "Phòng ra rễ (mọi cơ sở)" (xem redirect riêng role ===
-  // "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công nhiệm vụ ngày" (chỉ Quản lý mới
-  // giao việc/theo dõi tiến độ, xem isKhoThanhPhamRole, /task-assignment), và tạo/xác nhận đơn hàng HỘ NV
-  // bán hàng (xem canActAsSale, /orders + /orders/list) — còn lại giống hệt.
+  // "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công nhiệm vụ ngày" + "Theo dõi tiến
+  // độ hôm nay" (chỉ Quản lý mới giao việc/xem tiến độ, xem isKhoThanhPhamRole, /task-assignment,
+  // /task-progress), và tạo/xác nhận đơn hàng HỘ NV bán hàng (xem canActAsSale, /orders + /orders/list)
+  // — còn lại giống hệt.
   QUAN_LY_KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
+    { href: "/task-progress", label: "Theo dõi tiến độ hôm nay", icon: "Gauge" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
