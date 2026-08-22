@@ -278,32 +278,42 @@ export async function generateDailyTaskCode(client: Prisma.TransactionClient | t
 // thiếu bước này từng gây lỗi P2002 "Unique constraint failed on (code)" thật: 2 đề xuất cùng loại, cùng
 // ngày, tạo trong cùng 1 transaction đều tính ra cùng 1 candidate (do prisma singleton chỉ đọc committed)
 // rồi cùng insert.
+//
+// 1 QUERY duy nhất (findMany startsWith + tính max hậu tố) thay vì dò tuần tự "-2", "-3"... từng số 1 —
+// bản cũ mỗi lần gọi tốn N query (N = số đề xuất CÙNG loại/CÙNG ngày đã có), "Gộp phiếu" nhiều dòng mã
+// cây trong 1 transaction dồn lại dễ vượt timeout mặc định 5s của Prisma interactive transaction (lỗi
+// thật: "A query cannot be executed on an expired transaction" khi kho đã có sẵn nhiều phiếu trong ngày).
 export async function generateContaminationProposalCode(
   type: "TRONG" | "HUY",
   date: Date = new Date(),
   client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<string> {
   const base = `${type === "HUY" ? "H" : "T"}${format(date, "ddMMyy")}`;
+  const existing = await client.contaminationProposal.findMany({ where: { code: { startsWith: base } }, select: { code: true } });
+  return nextCodeWithSuffix(base, existing.map((e) => e.code));
+}
 
-  let candidate = base;
-  let n = 1;
-  while (await client.contaminationProposal.findFirst({ where: { code: candidate } })) {
-    n += 1;
-    candidate = `${base}-${n}`;
+// Từ danh sách mã ĐÃ có cùng tiền tố `base` (VD "H070726"), tính mã tiếp theo — hậu tố lớn nhất hiện có
+// ("-2", "-3"...) + 1, hoặc chính `base` nếu chưa có mã nào. Dùng chung cho mọi hàm sinh mã kiểu
+// "base" + "-n" (contamination proposal, bàn giao cây trồng...) — thay vòng lặp dò tuần tự bằng đúng 1
+// query truy vấn danh sách mã đã có rồi tính hậu tố tại chỗ.
+function nextCodeWithSuffix(base: string, existingCodes: string[]): string {
+  let maxN = 0;
+  for (const code of existingCodes) {
+    if (code === base) maxN = Math.max(maxN, 1);
+    else {
+      const match = code.startsWith(`${base}-`) ? code.slice(base.length + 1).match(/^\d+$/) : null;
+      if (match) maxN = Math.max(maxN, parseInt(match[0], 10));
+    }
   }
-  return candidate;
+  return maxN === 0 ? base : `${base}-${maxN + 1}`;
 }
 
 // Mã phiếu "Bàn giao cây trồng" = "BGCT" + ngày tháng năm tạo "ddMMyy" — nhiều phiếu cùng ngày → thêm
-// hậu tố "-2", "-3"... để tránh trùng (giống generateContaminationProposalCode).
+// hậu tố "-2", "-3"... để tránh trùng (giống generateContaminationProposalCode, dùng chung
+// nextCodeWithSuffix — 1 query thay vì dò tuần tự từng số).
 export async function generateReplantHandoverCode(date: Date = new Date()): Promise<string> {
   const base = `BGCT${format(date, "ddMMyy")}`;
-
-  let candidate = base;
-  let n = 1;
-  while (await prisma.replantHandover.findFirst({ where: { code: candidate } })) {
-    n += 1;
-    candidate = `${base}-${n}`;
-  }
-  return candidate;
+  const existing = await prisma.replantHandover.findMany({ where: { code: { startsWith: base } }, select: { code: true } });
+  return nextCodeWithSuffix(base, existing.map((e) => e.code));
 }
