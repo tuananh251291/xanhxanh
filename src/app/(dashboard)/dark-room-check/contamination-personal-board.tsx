@@ -226,7 +226,7 @@ export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: 
           <p className="text-sm text-text-secondary">
             Đã kiểm tra {checkedCount}/{staffList.length} NV hôm nay — chọn 1 NV để xem/nhập đề xuất trồng/hủy rồi bấm &quot;Kiểm tra xong&quot;:
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
             {staffGroups.map((g) => (
               <button
                 key={g.staffId || "unattributed"}
@@ -240,9 +240,9 @@ export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: 
                     : "bg-card border-divider text-foreground hover:border-primary"
                 }`}
               >
-                {g.checked ? <CheckCircle2 className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
-                {g.label}
-                {g.totalQuantity > 0 && <Badge variant="in-progress">{g.totalQuantity.toLocaleString("vi-VN")}</Badge>}
+                {g.checked ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <User className="w-3.5 h-3.5 shrink-0" />}
+                <span className="truncate">{g.label}</span>
+                {g.totalQuantity > 0 && <Badge variant="in-progress" className="ml-auto shrink-0">{g.totalQuantity.toLocaleString("vi-VN")}</Badge>}
               </button>
             ))}
           </div>
