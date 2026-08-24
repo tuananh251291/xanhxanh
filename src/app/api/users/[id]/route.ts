@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -20,6 +20,11 @@ const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
   z.object({ status: z.literal("REJECTED") }),
   z.object({ workplaceWarehouseId: z.string().nullable() }),
+  // true = đánh dấu "Nghỉ việc" (khoá đăng nhập ngay, giữ dữ liệu lịch sử), false = khôi phục "Đang làm
+  // việc" — dùng chung 1 field isActive có sẵn (đã đúng ý nghĩa "khoá đăng nhập, không xoá dữ liệu",
+  // xem DELETE bên dưới) nhưng tách hẳn khỏi nhánh "name" (sửa tài khoản đầy đủ, chỉ SUPER_ADMIN) để
+  // NV Hành chính nhân sự thao tác được qua đúng 1 hành động rõ nghĩa, có xác nhận riêng ở client.
+  z.object({ resign: z.boolean() }),
   z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
   z.object({ plantingCapacity: z.number().int().positive() }),
   z.object({ holdDays: z.number().int().positive().nullable() }),
@@ -81,6 +86,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await getOrCreatePersonalDarkRoom(id, workplaceWarehouseId);
     }
 
+    return NextResponse.json(updated);
+  }
+
+  // "Nghỉ việc" — Admin cao nhất/NV Hành chính nhân sự đánh dấu (xem canManageEmploymentStatus). Chặn
+  // đăng nhập NGAY qua isActive=false (auth.ts đã check ở cả authorize() lẫn JWT callback — có hiệu lực
+  // cả với phiên đang đăng nhập, không cần đợi hết hạn token) nhưng KHÔNG xoá bất kỳ dữ liệu liên quan
+  // nào (chỉ định cấy, nhật ký, đơn hàng... vẫn nguyên vẹn) — resign=false để khôi phục lại nếu cần.
+  if ("resign" in parsed.data) {
+    if (!canManageEmploymentStatus(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất/NV Hành chính nhân sự mới có quyền đổi trạng thái nghỉ việc" }, { status: 403 });
+    }
+    if (id === session?.user?.id) {
+      return NextResponse.json({ message: "Không thể tự đổi trạng thái của chính mình" }, { status: 400 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role === "SUPER_ADMIN") {
+      return NextResponse.json({ message: "Không thể đổi trạng thái của tài khoản Admin cao nhất" }, { status: 403 });
+    }
+    const { resign } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { isActive: !resign },
+      select: { id: true, code: true, name: true, isActive: true },
+    });
     return NextResponse.json(updated);
   }
 

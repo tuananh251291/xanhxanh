@@ -84,6 +84,13 @@ export function canManagePayroll(role: UserRole | null | undefined): boolean {
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Ai được đánh dấu 1 NV "Nghỉ việc" (khoá đăng nhập ngay, giữ nguyên dữ liệu lịch sử — xem
+// User.isActive, PATCH /api/users/[id] nhánh "resign") — cùng phạm vi role với canAssignWorkplace/
+// canEditEmploymentType (SUPER_ADMIN + NV Hành chính nhân sự).
+export function canManageEmploymentStatus(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
+}
+
 // Vai trò được phép gán khi tạo tài khoản mới, theo vai trò người tạo — Admin/Admin cấp cao tạo được mọi
 // vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
