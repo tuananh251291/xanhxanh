@@ -1,0 +1,169 @@
+/* Phiếu đơn hàng — layout in khổ A4, tối ưu mực đen/xám */
+
+.po-page-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 20px 12px;
+  background: #eef0f2;
+  border-radius: 8px;
+}
+
+.po-sheet {
+  width: 100%;
+  max-width: 190mm;
+  background: #ffffff;
+  color: #1a1a1a;
+  padding: 14mm 12mm;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+  font-family: "Times New Roman", Times, serif;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+
+/* Header */
+.po-header {
+  text-align: center;
+  border-bottom: 1.5px solid #1a1a1a;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+.po-title {
+  font-size: 19pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+/* Header fields — 2 cột nhãn/giá trị */
+.po-section {
+  margin-top: 12px;
+}
+.po-section-title {
+  font-size: 12.5pt;
+  font-weight: 700;
+  margin: 0 0 6px;
+  padding-bottom: 3px;
+  border-bottom: 0.75px solid #999;
+}
+.po-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+.po-field {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  min-width: 0;
+}
+.po-field .po-label {
+  color: #444;
+  white-space: nowrap;
+}
+.po-field .po-value {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+/* Bảng thông tin */
+.po-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10pt;
+  table-layout: fixed;
+}
+.po-table th,
+.po-table td {
+  border: 0.75px solid #999;
+  padding: 6px 5px;
+  text-align: center;
+  word-break: break-word;
+}
+.po-table th {
+  background: #f4f4f5;
+  font-weight: 700;
+  font-size: 12pt;
+}
+.po-table td.po-left {
+  text-align: left;
+  font-weight: 500;
+}
+.po-table tr.po-total td {
+  font-weight: 700;
+}
+
+/* Ký xác nhận */
+.po-sign-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  text-align: center;
+}
+.po-sign-col .po-role {
+  font-weight: 700;
+  font-size: 11pt;
+  margin: 0;
+}
+.po-sign-space {
+  height: 25mm;
+}
+.po-sign-col .po-hint {
+  font-size: 9pt;
+  font-style: italic;
+  color: #555;
+  margin: 2px 0 0;
+}
+
+/* Responsive: mobile thu nhỏ nhưng giữ tỉ lệ A4 */
+@media (max-width: 480px) {
+  .po-page-wrap {
+    padding: 12px 6px;
+  }
+  .po-sheet {
+    padding: 8mm 6mm;
+    font-size: 10pt;
+  }
+  .po-title {
+    font-size: 16pt;
+  }
+  .po-section-title {
+    font-size: 11pt;
+  }
+  .po-grid2 {
+    grid-template-columns: 1fr;
+    gap: 5px 8px;
+  }
+}
+
+/* Print — khổ A4 */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .po-page-wrap {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    display: block;
+  }
+  .po-sheet {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+    font-size: 11pt;
+  }
+  .po-table,
+  .po-field {
+    break-inside: avoid;
+  }
+}

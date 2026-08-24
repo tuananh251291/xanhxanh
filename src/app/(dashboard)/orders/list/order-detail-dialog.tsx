@@ -1,12 +1,13 @@
 "use client";
 
 import { Fragment } from "react";
+import Link from "next/link";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Eye } from "lucide-react";
+import { Eye, Printer } from "lucide-react";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, MARKET_LABELS } from "@/types";
 
 type OrderDetailItem = {
@@ -98,8 +99,9 @@ function StageRow({
 }
 
 export default function OrderDetailDialog({
-  code, customerCode, market, status, holdUntilLabel, createdAtLabel, notes, items,
+  id, code, customerCode, market, status, holdUntilLabel, createdAtLabel, notes, items,
 }: {
+  id: string;
   code: string;
   customerCode: string;
   market: keyof typeof MARKET_LABELS;
@@ -119,7 +121,14 @@ export default function OrderDetailDialog({
       </DialogTrigger>
       <DialogContent className="w-fit sm:max-w-none max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-mono">{code}</DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle className="font-mono">{code}</DialogTitle>
+            <Link href={`/orders/${id}`} target="_blank">
+              <Button size="sm" variant="outline" className="h-8">
+                <Printer className="w-3.5 h-3.5 mr-1.5" /> In phiếu
+              </Button>
+            </Link>
+          </div>
         </DialogHeader>
 
         <div className="space-y-4">

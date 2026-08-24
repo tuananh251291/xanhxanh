@@ -22,6 +22,8 @@ const createSchema = z.object({
   // được tính vào khả dụng lúc giữ đơn, không chỉ để tham khảo như trước.
   expectedShipAt: z.string().min(1, "Cần chọn ngày xuất dự kiến"),
   notes: z.string().optional(),
+  // "Mã đơn xuất khẩu" — nhập tay, tách khỏi mã đơn nội bộ (Order.code) tự sinh, dùng cho phiếu in.
+  exportCode: z.string().optional(),
   items: z
     .array(
       z.object({
@@ -32,6 +34,9 @@ const createSchema = z.object({
         // 25), `neededQuantity` là phần thật cần cho đơn (VD 21); phần dư (quantity - neededQuantity)
         // chỉ quy đổi sang T01 lúc Xác nhận đơn (xem PATCH /api/orders/[id]).
         neededQuantity: z.number().int().min(0).optional(),
+        // "Yêu cầu đặc biệt" — hiện dòng nhập tay (order-check-form.tsx) chưa có UI nhập field này, chỉ
+        // luồng tải Excel (POST /api/orders/import-items) set giá trị; dùng ở phiếu in (xem /orders/[id]).
+        notes: z.string().optional(),
       })
     )
     .min(1, "Cần ít nhất 1 dòng để giữ đơn"),
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { customerId, market, expectedShipAt, notes, items } = parsed.data;
+  const { customerId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
   const shipDate = new Date(expectedShipAt);
   if (Number.isNaN(shipDate.getTime())) {
     return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
@@ -109,6 +114,7 @@ export async function POST(req: NextRequest) {
         const created = await tx.order.create({
           data: {
             code,
+            exportCode,
             saleId: customer.assignedToId!,
             customerCode: customer.code,
             customerId: customer.id,
@@ -143,7 +149,7 @@ export async function POST(req: NextRequest) {
               );
             }
             await tx.orderItem.create({
-              data: { orderId: created.id, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity },
+              data: { orderId: created.id, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, notes: item.notes },
             });
             continue;
           }
@@ -159,7 +165,7 @@ export async function POST(req: NextRequest) {
             const take = Math.min(lot.available, remaining);
             if (take <= 0) continue;
             await tx.orderItem.create({
-              data: { orderId: created.id, lotId: lot.id, quantity: take },
+              data: { orderId: created.id, lotId: lot.id, quantity: take, notes: item.notes },
             });
             remaining -= take;
           }

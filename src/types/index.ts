@@ -519,8 +519,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // gộp chung 1 mục "Xem tồn kho" (xem /inventory, KHÔNG áp dụng "Phòng ra rễ" cho NV kho thành phẩm
   // thường — redirect riêng role === "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công
   // nhiệm vụ ngày" + "Theo dõi tiến độ hôm nay" (chỉ Quản lý mới giao việc/xem tiến độ, xem
-  // isKhoThanhPhamRole, /task-assignment, /task-progress), và tạo/xác nhận đơn hàng HỘ NV bán hàng (xem
-  // canActAsSale, /orders + /orders/list) — còn lại giống hệt.
+  // isKhoThanhPhamRole, /task-assignment, /task-progress). 3 mục đơn hàng (Tạo đơn hàng hộ Sale/Danh
+  // sách đơn hàng/Sắp xếp đơn hàng) cũng gộp chung 1 mục "Xử lý đơn hàng" (xem /orders — hub y hệt
+  // /inventory, trang tạo đơn thật đã dời sang /orders/create) — còn lại giống hệt KHO_THANH_PHAM.
   QUAN_LY_KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
@@ -530,11 +531,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
-    // Tạo/xác nhận đơn hàng THAY NV bán hàng — xem canActAsSale, chỉ Quản lý kho thành phẩm có (không có
-    // ở menu KHO_THANH_PHAM thường).
-    { href: "/orders", label: "Tạo đơn hàng (hộ Sale)", icon: "ShoppingCart" },
-    { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },
-    { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
+    { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
@@ -543,8 +540,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/customer-check", label: "Kiểm tra trùng khách", icon: "Search" },
     { href: "/customer-status", label: "Cập nhật tình trạng khách hàng", icon: "RefreshCw" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "Package" },
-    { href: "/orders", label: "Kiểm tra đáp ứng", icon: "ShoppingCart" },
-    { href: "/orders/list", label: "Danh sách đơn hàng", icon: "ClipboardList" },
+    // "Kiểm tra đáp ứng" + "Danh sách đơn hàng" gộp chung 1 mục "Xử lý đơn hàng" (xem /orders, hub y
+    // hệt /inventory — trang check/tạo đơn thật đã dời sang /orders/create).
+    { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   MOI_TRUONG: [

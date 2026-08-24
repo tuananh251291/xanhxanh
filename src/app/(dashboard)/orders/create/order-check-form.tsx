@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert } from "lucide-react";
+import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert, Download, Upload, PenLine, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, type CustomerGroup } from "@/types";
 
@@ -27,6 +28,8 @@ const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ 
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
 type DemandRow = { key: string; plantTypeId: string; stageCode: "T01" | "T05" | "T10"; quantity: string };
+type ExcelItem = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; notes?: string };
+type ExcelRowError = { row: number; label: string; message: string };
 type Alternative = {
   stageCode: string; available: number; suggestedQty: number; surplusQuantity: number; accepted: boolean;
   requiresProcessing: boolean; source: "DAT_TIEU_CHUAN" | "HAN_TUI_THEO_DOI";
@@ -129,6 +132,15 @@ export default function OrderCheckForm({
   const holdDays = selectedCustomer?.holdDays ?? null;
   const [market, setMarket] = useState("");
   const [expectedShipAt, setExpectedShipAt] = useState("");
+  const [exportCode, setExportCode] = useState("");
+  // "Nhập tay" = luồng Check/alternatives có sẵn (giữ nguyên 100%). "Tải Excel" = bỏ qua bước Check —
+  // items lấy thẳng từ file, không thay thế quy cách/làm tròn túi vì số liệu Excel đã chính xác theo
+  // yêu cầu khách (xem POST /api/orders/import-items).
+  const [mode, setMode] = useState<"manual" | "excel">("manual");
+  const [excelItems, setExcelItems] = useState<ExcelItem[]>([]);
+  const [excelErrors, setExcelErrors] = useState<ExcelRowError[]>([]);
+  const [excelUploading, setExcelUploading] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   // Tồn đạt tiêu chuẩn theo từng tổ hợp loại cây + quy cách — cache theo key để 2 dòng cùng tổ hợp không tra
   // lại 2 lần, tự tra ngay khi có đủ loại cây + quy cách (không cần đợi nhập số lượng/bấm "Check").
   const [availability, setAvailability] = useState<Record<string, number>>({});
@@ -202,16 +214,40 @@ export default function OrderCheckForm({
   const acceptedTotalFor = (r: CheckResult) =>
     r.fulfilledAtStage + r.alternatives.filter((a) => a.accepted).reduce((s, a) => s + a.suggestedQty, 0);
 
-  const onHold = async () => {
+  // Gọi chung cho cả 2 chế độ (nhập tay/Excel) — giữ nguyên contract POST /api/orders (đã tự kiểm tra
+  // tồn kho real-time trong transaction Serializable), chỉ khác cách `items` được dựng.
+  const submitHold = async (items: { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string }[]) => {
+    if (!customerId) { toast.error("Cần chọn khách hàng"); return; }
+    if (!market) { toast.error("Cần chọn thị trường"); return; }
+    if (!expectedShipAt) { toast.error("Cần chọn thời gian dự kiến xuất"); return; }
+    if (items.length === 0) { toast.error("Không có dòng nào để giữ đơn"); return; }
+
+    setHolding(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId, market, expectedShipAt, exportCode: exportCode || undefined, items }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      const holdLabel = selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`;
+      toast.success(`Đã tạo đơn ${json.code} — giữ trong ${holdLabel}`);
+      setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
+      setResults(null);
+      setExcelItems([]);
+      setExcelErrors([]);
+      setCustomerId("");
+      setMarket("");
+      setExpectedShipAt("");
+      setExportCode("");
+    } finally {
+      setHolding(false);
+    }
+  };
+
+  const onHoldManual = () => {
     if (!results) return;
-    if (!customerId) {
-      toast.error("Cần chọn khách hàng");
-      return;
-    }
-    if (!market) {
-      toast.error("Cần chọn thị trường");
-      return;
-    }
     const items: { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number }[] = [];
     for (const r of results) {
       if (r.fulfilledAtStage > 0) items.push({ plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: r.fulfilledAtStage });
@@ -230,39 +266,53 @@ export default function OrderCheckForm({
         });
       }
     }
-    if (items.length === 0) {
-      toast.error("Không có dòng nào đáp ứng được để giữ đơn");
-      return;
-    }
+    submitHold(items);
+  };
 
-    setHolding(true);
+  // Bỏ qua bước Check/alternatives hoàn toàn — items lấy nguyên từ Excel (đã validate mã cây/quy
+  // cách/số lượng ở POST /api/orders/import-items), không thay thế quy cách/làm tròn túi.
+  const onHoldExcel = () => {
+    submitHold(excelItems.map((i) => ({ plantTypeId: i.plantTypeId, stageCode: i.stageCode, quantity: i.quantity, notes: i.notes })));
+  };
+
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setExcelUploading(true);
+    setExcelItems([]);
+    setExcelErrors([]);
     try {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId,
-          market,
-          expectedShipAt,
-          items,
-        }),
-      });
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/orders/import-items", { method: "POST", body: formData });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      const holdLabel = selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`;
-      toast.success(`Đã tạo đơn ${json.code} — giữ trong ${holdLabel}`);
-      setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
-      setResults(null);
-      setCustomerId("");
-      setMarket("");
-      setExpectedShipAt("");
+      if (json.errors.length > 0) {
+        setExcelErrors(json.errors);
+        toast.error(`Chưa nhập được gì — file có ${json.errors.length} dòng lỗi, xem chi tiết bên dưới rồi sửa lại và tải lên lại`);
+      } else {
+        setExcelItems(json.items);
+        toast.success(`Đã đọc ${json.items.length} dòng từ file`);
+      }
     } finally {
-      setHolding(false);
+      setExcelUploading(false);
     }
   };
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button type="button" size="sm" variant={mode === "manual" ? "default" : "outline"} className={mode === "manual" ? "bg-primary hover:bg-primary-hover" : ""} onClick={() => setMode("manual")}>
+          <PenLine className="w-3.5 h-3.5 mr-1.5" /> Nhập tay
+        </Button>
+        <Button type="button" size="sm" variant={mode === "excel" ? "default" : "outline"} className={mode === "excel" ? "bg-primary hover:bg-primary-hover" : ""} onClick={() => setMode("excel")}>
+          <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" /> Tải Excel
+        </Button>
+      </div>
+
+      {mode === "manual" && (
       <Card>
         <CardHeader><CardTitle className="text-base">Nhu cầu khách hàng</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -355,8 +405,80 @@ export default function OrderCheckForm({
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {results && (
+      {mode === "excel" && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Tải Excel bảng dòng hàng</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-text-secondary">
+              Số liệu trong file được giữ nguyên (không thay thế quy cách/làm tròn túi như Check) — tạm
+              giữ đơn thẳng luôn, hệ thống vẫn tự kiểm tra tồn kho thực tế lúc bấm &quot;Tạm giữ đơn hàng&quot;.
+            </p>
+            <div className="space-y-1 max-w-xs">
+              <Label>Thời gian dự kiến xuất *</Label>
+              <Input type="datetime-local" value={expectedShipAt} onChange={(e) => setExpectedShipAt(e.target.value)} />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Link href="/api/orders/import-items" className="flex-1">
+                <Button type="button" variant="outline" className="w-full">
+                  <Download className="w-4 h-4 mr-1.5" /> Tải mẫu Excel
+                </Button>
+              </Link>
+              <input ref={excelInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleExcelUpload} disabled={excelUploading} />
+              <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={excelUploading} onClick={() => excelInputRef.current?.click()}>
+                {excelUploading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Upload className="w-4 h-4 mr-1.5" />}
+                Tải lên file đã điền
+              </Button>
+            </div>
+
+            {excelErrors.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium text-destructive">
+                  Chưa nhập được gì — file có {excelErrors.length} dòng lỗi, sửa lại rồi tải lên lại
+                </p>
+                <div className="max-h-56 overflow-y-auto border border-divider rounded-lg divide-y divide-divider">
+                  {excelErrors.map((err, i) => (
+                    <div key={i} className="px-3 py-2 text-xs">
+                      <span className="font-mono font-medium text-destructive">Dòng {err.row} · {err.label}</span>
+                      <p className="text-text-secondary mt-0.5">{err.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {excelItems.length > 0 && (
+              <div className="overflow-x-auto border border-divider rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Mã cây</th>
+                      <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Tên cây</th>
+                      <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Quy cách</th>
+                      <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Số lượng</th>
+                      <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Yêu cầu đặc biệt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {excelItems.map((it, i) => (
+                      <tr key={i} className="border-b last:border-0 even:bg-primary-light/30">
+                        <td className="px-3 py-1.5 font-mono">{it.plantTypeCode}</td>
+                        <td className="px-3 py-1.5">{it.plantTypeName}</td>
+                        <td className="px-3 py-1.5">{it.stageCode}</td>
+                        <td className="px-3 py-1.5 text-right font-medium">{it.quantity.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-1.5 text-text-secondary">{it.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {mode === "manual" && results && (
         <Card>
           <CardHeader><CardTitle className="text-base">Kết quả kiểm tra đáp ứng</CardTitle></CardHeader>
           <CardContent className="space-y-4">
@@ -463,7 +585,7 @@ export default function OrderCheckForm({
         </Card>
       )}
 
-      {results && (
+      {(mode === "manual" ? !!results : excelItems.length > 0) && (
         <Card>
           <CardHeader><CardTitle className="text-base">Thông tin khách hàng</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -519,8 +641,12 @@ export default function OrderCheckForm({
                   {new Date(expectedShipAt).toLocaleString("vi-VN")}
                 </p>
               </div>
+              <div className="space-y-1">
+                <Label>Mã đơn xuất khẩu</Label>
+                <Input value={exportCode} onChange={(e) => setExportCode(e.target.value)} placeholder="Tuỳ chọn — hiện trên phiếu in" />
+              </div>
             </div>
-            <Button className="w-full bg-primary hover:bg-primary-hover" disabled={holding || !holdDays} onClick={onHold}>
+            <Button className="w-full bg-primary hover:bg-primary-hover" disabled={holding || !holdDays} onClick={mode === "manual" ? onHoldManual : onHoldExcel}>
               {holding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-2" />}
               Tạm giữ đơn hàng
             </Button>

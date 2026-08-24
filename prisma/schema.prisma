@@ -1986,6 +1986,9 @@ model TransferItem {
 model Order {
   id              String      @id @default(cuid())
   code            String      @unique
+  // "Mã đơn xuất khẩu" — mã riêng NV bán hàng tự nhập (VD mã tờ khai hải quan), KHÁC hoàn toàn `code`
+  // nội bộ hệ thống (DHKT-...) ở trên. Không unique — có thể để trống hoặc trùng giữa nhiều đơn.
+  exportCode      String?
   saleId          String
   sale            User        @relation(fields: [saleId], references: [id])
   // Snapshot Customer.code lúc Tạm giữ (giữ nguyên tên field/kiểu dữ liệu cho mọi nơi hiển thị hiện có) —
