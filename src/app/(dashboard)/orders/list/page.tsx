@@ -7,13 +7,16 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
+import { Badge } from "@/components/ui/badge";
+import { getOrderPackStatus } from "@/lib/order-pack-status";
 import ConfirmOrderButton from "./confirm-order-button";
 import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
-import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest } from "@prisma/client";
+import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } from "@prisma/client";
 
-type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "notes" | "createdAt"> & {
-  items: (Pick<OrderItem, "id" | "quantity" | "notes"> & {
+type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
+  assignedTo: Pick<User, "id" | "name"> | null;
+  items: (Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
     lot: Pick<Lot, "stageCode" | "plantTypeId"> & { plantType: Pick<PlantType, "name" | "code"> };
     processingRequest: Pick<OrderProcessingRequest, "status"> | null;
   })[];
@@ -24,12 +27,18 @@ function OrdersTable({
   description,
   orders,
   showHoldUntil,
+  showQuantity,
+  showExpectedShipAt,
+  showStatus,
   showActions,
 }: {
   title: string;
   description: string;
   orders: OrderRow[];
   showHoldUntil: boolean;
+  showQuantity: boolean;
+  showExpectedShipAt: boolean;
+  showStatus: boolean;
   showActions: boolean;
 }) {
   return (
@@ -45,8 +54,10 @@ function OrdersTable({
               <tr className="bg-primary-light">
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã đơn</th>
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Khách hàng</th>
-                <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Số lượng</th>
+                {showQuantity && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Số lượng</th>}
                 {showHoldUntil && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày hết hạn tạm giữ</th>}
+                {showExpectedShipAt && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày dự kiến xuất</th>}
+                {showStatus && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>}
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>
               </tr>
             </thead>
@@ -55,10 +66,25 @@ function OrdersTable({
                 <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
                   <td className="px-4 py-3 text-sm font-mono text-text-secondary">{o.code}</td>
                   <td className="px-4 py-3 text-sm text-foreground">{o.customerCode} · {MARKET_LABELS[o.market]}</td>
-                  <td className="px-4 py-3 text-sm text-foreground">{o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây</td>
+                  {showQuantity && (
+                    <td className="px-4 py-3 text-sm text-foreground">{o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây</td>
+                  )}
                   {showHoldUntil && (
                     <td className="px-4 py-3 text-sm text-text-secondary">
                       {o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
+                    </td>
+                  )}
+                  {showExpectedShipAt && (
+                    <td className="px-4 py-3 text-sm text-text-secondary">
+                      {o.expectedShipAt ? format(o.expectedShipAt, "dd/MM/yyyy", { locale: vi }) : "—"}
+                    </td>
+                  )}
+                  {showStatus && (
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const s = getOrderPackStatus(o);
+                        return <Badge variant={s.variant}>{s.label}</Badge>;
+                      })()}
                     </td>
                   )}
                   <td className="px-4 py-3">
@@ -95,7 +121,12 @@ function OrdersTable({
               ))}
               {orders.length === 0 && (
                 <tr>
-                  <td colSpan={showHoldUntil ? 5 : 4} className="px-4 py-8 text-center text-sm text-text-muted">Chưa có đơn hàng nào</td>
+                  <td
+                    colSpan={2 + [showQuantity, showHoldUntil, showExpectedShipAt, showStatus].filter(Boolean).length + 1}
+                    className="px-4 py-8 text-center text-sm text-text-muted"
+                  >
+                    Chưa có đơn hàng nào
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -120,10 +151,12 @@ export default async function OrdersListPage() {
     orderBy: { createdAt: "desc" },
     select: {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
-      notes: true, createdAt: true,
+      expectedShipAt: true, notes: true, createdAt: true,
+      assignedTo: { select: { id: true, name: true } },
       items: {
         select: {
           id: true, quantity: true, notes: true,
+          pickedQuantity1: true, pickedQuantity2: true, pickedQuantity3: true,
           lot: { select: { stageCode: true, plantTypeId: true, plantType: { select: { name: true, code: true } } } },
           processingRequest: { select: { status: true } },
         },
@@ -152,6 +185,9 @@ export default async function OrdersListPage() {
         description="Đang giữ chỗ tồn kho — xác nhận khi khách đồng ý mua, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
         orders={heldOrders}
         showHoldUntil
+        showQuantity
+        showExpectedShipAt={false}
+        showStatus={false}
         showActions
       />
 
@@ -160,6 +196,9 @@ export default async function OrdersListPage() {
         description="Đã chốt với khách, chờ Kho thành phẩm xuất kho — không thể tự xóa/sửa ở bước này."
         orders={confirmedOrders}
         showHoldUntil={false}
+        showQuantity={false}
+        showExpectedShipAt
+        showStatus
         showActions={false}
       />
     </div>

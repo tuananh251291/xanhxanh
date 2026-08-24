@@ -10,6 +10,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
 import ShipOrderButton from "./ship-order-button";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
+import { getOrderPackStatus } from "@/lib/order-pack-status";
 
 export default async function OrdersPackPage() {
   const session = await auth();
@@ -70,12 +71,16 @@ export default async function OrdersPackPage() {
           {orders.map((order) => {
             const pendingCount = order.items.filter((i) => i.processingRequest?.status === "PENDING").length;
             const totalQuantity = order.items.reduce((s, i) => s + i.quantity, 0);
+            const packStatus = getOrderPackStatus(order);
             return (
               <Card key={order.id}>
                 <CardContent className="py-4 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-foreground font-mono">{order.code}</p>
+                      <p className="text-sm font-medium text-foreground font-mono flex items-center gap-2">
+                        {order.code}
+                        <Badge variant={packStatus.variant}>{packStatus.label}</Badge>
+                      </p>
                       <p className="text-xs text-text-secondary">
                         {order.customerCode} · {MARKET_LABELS[order.market]} · NV {order.sale.name} ·{" "}
                         {totalQuantity.toLocaleString("vi-VN")} cây
