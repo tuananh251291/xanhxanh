@@ -116,7 +116,11 @@ export default function DailyTaskCreateDialog({
           ) : (
             <div>
               <Label className="mb-1.5 block">Phòng/kho cần kiểm tra</Label>
-              <Select value={roomId ?? NONE} onValueChange={(v) => setRoomId(v === NONE ? null : (v as string))}>
+              <Select
+                items={[{ value: NONE, label: "— Chọn phòng —" }, ...rooms.map((r) => ({ value: r.id, label: `${r.name} (${r.code})` }))]}
+                value={roomId ?? NONE}
+                onValueChange={(v) => setRoomId(v === NONE ? null : (v as string))}
+              >
                 <SelectTrigger className="w-full"><SelectValue placeholder="Chọn phòng" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>— Chọn phòng —</SelectItem>
@@ -130,7 +134,11 @@ export default function DailyTaskCreateDialog({
 
           <div>
             <Label className="mb-1.5 block">Người phụ trách</Label>
-            <Select value={assignedToId ?? NONE} onValueChange={(v) => setAssignedToId(v === NONE ? null : (v as string))}>
+            <Select
+              items={[{ value: NONE, label: "— Chọn NV phụ trách —" }, ...staffOptions.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))]}
+              value={assignedToId ?? NONE}
+              onValueChange={(v) => setAssignedToId(v === NONE ? null : (v as string))}
+            >
               <SelectTrigger className="w-full"><SelectValue placeholder="Chọn NV phụ trách" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>— Chọn NV phụ trách —</SelectItem>

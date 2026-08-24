@@ -284,7 +284,8 @@ function AddLotForm({
       </div>
       <div className="space-y-1">
         <Label className="text-xs">Quy cách</Label>
-        <Select value={stageCode} onValueChange={(v) => setStageCode(v as string)}>
+        {/* items cần truyền vì label khác value (VD "T01 — túi 1 cây") — xem warehouse-filter-select.tsx */}
+        <Select items={stageOptions} value={stageCode} onValueChange={(v) => setStageCode(v as string)}>
           <SelectTrigger className="w-28 h-8 text-xs" disabled={submitting}><SelectValue /></SelectTrigger>
           <SelectContent>
             {stageOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}

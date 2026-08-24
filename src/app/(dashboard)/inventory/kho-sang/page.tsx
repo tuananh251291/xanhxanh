@@ -14,6 +14,7 @@ import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
 import MotherShelfTable from "./mother-shelf-table";
 import RootingPlantSearch from "./rooting-plant-search";
+import WarehouseSelect from "./warehouse-select";
 import ShelfTable from "../../warehouses/shelf-table";
 
 function expiryClass(expectedMoveAt: Date | null): string {
@@ -264,10 +265,8 @@ export default async function KhoSangPage({
           chế độ chỉ xem Phòng mẫu mẹ. */}
       {!onlyMotherRoom && (
         <div className="space-y-3">
-          <RootingPlantSearch
-            plantTypeOptions={rootingPlantTypeOptions}
-            warehouseOptions={onlyRootingRoom ? rootingWarehouseOptions : undefined}
-          />
+          {onlyRootingRoom && <WarehouseSelect warehouseOptions={rootingWarehouseOptions} />}
+          <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />
           {!isAllRooting && hasRootingFilter && (
             <Card>
               <CardHeader className="pb-2">

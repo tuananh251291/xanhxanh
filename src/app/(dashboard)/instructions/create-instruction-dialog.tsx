@@ -654,7 +654,11 @@ export default function CreateInstructionDialog({
           <div className="space-y-1">
             <Label>Tuần thực hiện</Label>
             {backupMode ? (
-              <Select value={weekStart} onValueChange={(v) => setWeekStart(v as string)}>
+              <Select
+                items={[{ value: currentWeekStartStr(), label: "Tuần này" }, { value: nextWeekStart(), label: "Tuần sau" }]}
+                value={weekStart}
+                onValueChange={(v) => setWeekStart(v as string)}
+              >
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={currentWeekStartStr()}>Tuần này</SelectItem>

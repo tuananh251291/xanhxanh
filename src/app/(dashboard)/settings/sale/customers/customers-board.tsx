@@ -76,14 +76,22 @@ export default function CustomersBoard() {
       <Card>
         <CardContent className="pt-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={marketFilter} onValueChange={(v) => setMarketFilter(v ?? "all")}>
+            <Select
+              items={[{ value: "all", label: "Mọi thị trường" }, ...markets.map((m) => ({ value: m.id, label: `${m.name} (${m.code})` }))]}
+              value={marketFilter}
+              onValueChange={(v) => setMarketFilter(v ?? "all")}
+            >
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi thị trường</SelectItem>
                 {markets.map((m) => <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
+            <Select
+              items={[{ value: "all", label: "Mọi trạng thái" }, ...Object.entries(CUSTOMER_STATUS_LABELS).map(([v, label]) => ({ value: v, label }))]}
+              value={statusFilter}
+              onValueChange={(v) => setStatusFilter(v ?? "all")}
+            >
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi trạng thái</SelectItem>
@@ -92,7 +100,11 @@ export default function CustomersBoard() {
                 <SelectItem value="MAC_DINH">{CUSTOMER_STATUS_LABELS.MAC_DINH}</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v ?? "all")}>
+            <Select
+              items={[{ value: "all", label: "Mọi nhóm khách hàng" }, ...Object.entries(CUSTOMER_GROUP_LABELS).map(([v, label]) => ({ value: v, label }))]}
+              value={groupFilter}
+              onValueChange={(v) => setGroupFilter(v ?? "all")}
+            >
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Mọi nhóm khách hàng</SelectItem>

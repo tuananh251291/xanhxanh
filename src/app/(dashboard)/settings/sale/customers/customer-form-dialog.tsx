@@ -130,7 +130,11 @@ export default function CustomerFormDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Thị trường *</Label>
-              <Select value={form.marketId} onValueChange={(v) => setForm((p) => ({ ...p, marketId: v as string }))}>
+              <Select
+                items={markets.map((m) => ({ value: m.id, label: `${m.name} (${m.code})` }))}
+                value={form.marketId}
+                onValueChange={(v) => setForm((p) => ({ ...p, marketId: v as string }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Chọn thị trường" /></SelectTrigger>
                 <SelectContent>
                   {markets.map((m) => <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>)}
@@ -139,7 +143,11 @@ export default function CustomerFormDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Trạng thái *</Label>
-              <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v as CustomerStatus }))}>
+              <Select
+                items={Object.entries(CUSTOMER_STATUS_LABELS).map(([v, label]) => ({ value: v, label }))}
+                value={form.status}
+                onValueChange={(v) => setForm((p) => ({ ...p, status: v as CustomerStatus }))}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="CHUA_PHAN_CONG">{CUSTOMER_STATUS_LABELS.CHUA_PHAN_CONG}</SelectItem>
@@ -151,6 +159,7 @@ export default function CustomerFormDialog({
             <div className="space-y-1">
               <Label className="text-sm">Nhóm khách hàng</Label>
               <Select
+                items={[{ value: CUSTOMER_GROUP_NONE, label: "Chưa phân loại" }, ...Object.entries(CUSTOMER_GROUP_LABELS).map(([v, label]) => ({ value: v, label }))]}
                 value={form.customerGroup}
                 onValueChange={(v) => setForm((p) => ({ ...p, customerGroup: v as CustomerGroup | typeof CUSTOMER_GROUP_NONE }))}
               >
@@ -175,7 +184,11 @@ export default function CustomerFormDialog({
             {REQUIRES_ASSIGNEE.has(form.status) && (
               <div className="space-y-1 col-span-2">
                 <Label className="text-sm">Nhân viên phụ trách *</Label>
-                <Select value={form.assignedToId} onValueChange={(v) => setForm((p) => ({ ...p, assignedToId: v as string }))}>
+                <Select
+                  items={saleUsers.map((u) => ({ value: u.id, label: `${u.name} (${u.code})` }))}
+                  value={form.assignedToId}
+                  onValueChange={(v) => setForm((p) => ({ ...p, assignedToId: v as string }))}
+                >
                   <SelectTrigger><SelectValue placeholder="Chọn NV bán hàng" /></SelectTrigger>
                   <SelectContent>
                     {saleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name} ({u.code})</SelectItem>)}

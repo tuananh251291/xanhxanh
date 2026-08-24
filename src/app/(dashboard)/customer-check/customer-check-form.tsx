@@ -201,7 +201,11 @@ export default function CustomerCheckForm() {
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Thị trường *</Label>
-              <Select value={createForm.marketId} onValueChange={(v) => setCreateForm((p) => ({ ...p, marketId: v as string }))}>
+              <Select
+                items={markets.map((m) => ({ value: m.id, label: `${m.name} (${m.code})` }))}
+                value={createForm.marketId}
+                onValueChange={(v) => setCreateForm((p) => ({ ...p, marketId: v as string }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Chọn thị trường" /></SelectTrigger>
                 <SelectContent>
                   {markets.map((m) => <SelectItem key={m.id} value={m.id}>{m.name} ({m.code})</SelectItem>)}

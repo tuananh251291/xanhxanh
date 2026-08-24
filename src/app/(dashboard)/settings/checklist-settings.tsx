@@ -195,7 +195,15 @@ export default function ChecklistSettings() {
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addTemplate(); }}
           />
-          <Select value={newKind} onValueChange={(v) => setNewKind(v as ChecklistItemKind)}>
+          {/* items bắt buộc để <Select.Value> hiện đúng nhãn — base-ui không tự đọc text con của SelectItem */}
+          <Select
+            items={[
+              { value: "SIMPLE", label: "Đơn giản" },
+              { value: "DARK_ROOM_CHECK", label: "Kiểm tra kho tối (2 nhiệm vụ)" },
+            ]}
+            value={newKind}
+            onValueChange={(v) => setNewKind(v as ChecklistItemKind)}
+          >
             <SelectTrigger className="w-44 shrink-0"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="SIMPLE">Đơn giản</SelectItem>

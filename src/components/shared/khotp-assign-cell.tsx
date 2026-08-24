@@ -57,8 +57,14 @@ export default function KhoTpAssignCell({
     );
   }
 
+  // items cần truyền để <Select.Value> hiện đúng "Tên (mã)" thay vì raw id — xem warehouse-filter-select.tsx.
+  const items = [
+    { value: NONE, label: "— Chưa giao —" },
+    ...staffOptions.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })),
+  ];
+
   return (
-    <Select value={assignedTo?.id ?? NONE} onValueChange={(v) => assign(v as string)} disabled={saving}>
+    <Select items={items} value={assignedTo?.id ?? NONE} onValueChange={(v) => assign(v as string)} disabled={saving}>
       <SelectTrigger className="h-8 text-xs w-48">
         {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <SelectValue placeholder="Chưa giao" />}
       </SelectTrigger>
