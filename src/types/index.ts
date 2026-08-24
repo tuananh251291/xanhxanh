@@ -514,7 +514,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
-    { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
+    { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
@@ -535,7 +535,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/task-progress", label: "Theo dõi tiến độ hôm nay", icon: "Gauge" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
-    { href: "/transfers/send", label: "Luân chuyển giữa các phòng", icon: "PackageOpen" },
+    { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },

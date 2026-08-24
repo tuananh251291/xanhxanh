@@ -104,7 +104,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <PackageOpen className="w-6 h-6 text-primary-strong" />
-          {isKhoThanhPham ? "Luân chuyển giữa các phòng" : "Bàn giao mẫu mẹ"}
+          {isKhoThanhPham ? "Trả hàng Kho Sản xuất" : "Bàn giao mẫu mẹ"}
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {isKhoThanhPham
@@ -124,7 +124,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
                 value={fromRoomId || null}
                 onValueChange={(v) => { setFromRoomId(v as string); setSelectedItems([]); }}
               >
-                <SelectTrigger><SelectValue placeholder="Chọn phòng nguồn" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Chọn phòng nguồn" /></SelectTrigger>
                 <SelectContent>
                   {sourceRooms.map((r) => (
                     <SelectItem key={r.id} value={r.id}>{roomLabel(r)}</SelectItem>
@@ -140,7 +140,7 @@ export default function TransferSendForm({ role }: { role: UserRole }) {
               value={toRoomId || null}
               onValueChange={(v) => setToRoomId(v as string)}
             >
-              <SelectTrigger><SelectValue placeholder="Chọn phòng đích" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Chọn phòng đích" /></SelectTrigger>
               <SelectContent>
                 {destRooms.filter((r) => r.id !== fromRoomId).map((r) => (
                   <SelectItem key={r.id} value={r.id}>{roomLabel(r)}</SelectItem>
