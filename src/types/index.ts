@@ -15,6 +15,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   DIEU_PHOI: "NV Điều phối",
   HANH_CHINH_NHAN_SU: "NV Hành chính nhân sự",
   NHAN_VIEN_SAN_XUAT: "NV Sản xuất",
+  NHAN_VIEN_QUAN_LY_VUON: "NV Quản lý vườn",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -30,6 +31,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   DIEU_PHOI: "bg-orange-100 text-orange-800",
   HANH_CHINH_NHAN_SU: "bg-indigo-100 text-indigo-800",
   NHAN_VIEN_SAN_XUAT: "bg-lime-100 text-lime-800",
+  NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem /inspection-lane).
@@ -96,7 +98,7 @@ export function canManageEmploymentStatus(role: UserRole | null | undefined): bo
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
   "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
-  "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT",
+  "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
 ];
 export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN");
 
@@ -343,6 +345,7 @@ export const ALERT_TYPE_LABELS = {
   NV_VIOLATION: "Vi phạm kiểm tra kho tối",
   CUSTOMER_STATUS_UPDATE_DUE: "Cần cập nhật tình trạng khách hàng",
   INSTRUCTION_RETURNED_UNHANDED: "Chỉ định cấy được hoàn lại",
+  DE_XUAT_TRONG_HUY_WEEKLY_DUE: "Nhắc hạn Đề xuất trồng/hủy tuần",
 } as const;
 
 // Nhiệm vụ nhỏ "Kiểm tra kho cá nhân" (thuộc checklist "Kiểm tra kho tối" của Kho mô) chỉ cho chọn lỗi vi
@@ -453,6 +456,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
+    { href: "/production-gardens", label: "Vườn sản xuất", icon: "Sprout" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/instructions/edit", label: "Sửa chỉ định cấy", icon: "PenLine" },
@@ -585,6 +589,12 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   NHAN_VIEN_SAN_XUAT: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/replant-handovers", label: "Nhận bàn giao cây trồng", icon: "PackageCheck" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  // Chưa có trang nghiệp vụ riêng (xem Vườn sản xuất được gán ở /production-gardens, chỉ SUPER_ADMIN
+  // sửa) — menu tối thiểu, mở rộng sau nếu NVQLV cần tự thao tác trên Vườn của mình.
+  NHAN_VIEN_QUAN_LY_VUON: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

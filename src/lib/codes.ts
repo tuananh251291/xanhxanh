@@ -17,6 +17,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   DIEU_PHOI: { prefix: "NVDP", pad: 2 },
   HANH_CHINH_NHAN_SU: { prefix: "NVHC", pad: 2 },
   NHAN_VIEN_SAN_XUAT: { prefix: "NVSX", pad: 2 },
+  NHAN_VIEN_QUAN_LY_VUON: { prefix: "NVQLV", pad: 2 },
 };
 
 // Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,
@@ -177,6 +178,17 @@ export async function generateSupplierCode(): Promise<string> {
     if (!existing) return candidate;
   }
   throw new Error("Đã đạt giới hạn 99 nhà cung cấp (NCC01-NCC99)");
+}
+
+// Mã Vườn sản xuất = "VSX" + số thứ tự 2 chữ số, chạy VSX01-VSX99 — tìm ô trống nhỏ nhất, giống hệt
+// generateSupplierCode.
+export async function generateProductionGardenCode(): Promise<string> {
+  for (let n = 1; n <= 99; n++) {
+    const candidate = `VSX${String(n).padStart(2, "0")}`;
+    const existing = await prisma.productionGarden.findUnique({ where: { code: candidate } });
+    if (!existing) return candidate;
+  }
+  throw new Error("Đã đạt giới hạn 99 Vườn sản xuất (VSX01-VSX99)");
 }
 
 export async function generateMediumOrderCode(): Promise<string> {

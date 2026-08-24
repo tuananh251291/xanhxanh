@@ -34,6 +34,9 @@ enum UserRole {
   // WarehouseType.SAN_XUAT — 2 khái niệm khác nhau, tránh nhầm lẫn khi đọc code cùng lúc check cả role
   // lẫn warehouse.type.
   NHAN_VIEN_SAN_XUAT
+  // NVQLV — quản lý 1 (hoặc nhiều) Vườn sản xuất (xem ProductionGarden.managerId). Không dùng
+  // User.workplaceWarehouseId (field đó gắn với Warehouse, không áp dụng cho Vườn).
+  NHAN_VIEN_QUAN_LY_VUON
 }
 
 enum WarehouseType {
@@ -208,6 +211,10 @@ enum AlertType {
   // đúng NV kỹ thuật đã tạo chỉ định đó (userId) biết để vào chọn lại tuần thực hiện (xem
   // PlantingInstruction.returnedAt, PATCH /api/instructions/[id] nhánh returnToStaff).
   INSTRUCTION_RETURNED_UNHANDED
+  // Nhắc "Đề xuất trồng/hủy" tuần này (DailyTask type=DE_XUAT_TRONG_HUY tự sinh, xem
+  // ensureWeeklyDeXuatTask) chưa hoàn thành, tới hạn nhắc thứ 5 — báo đúng NV đã được gán (userId) nếu
+  // có, hoặc toàn bộ Quản lý kho thành phẩm (targetRole) nếu chưa ai nhận việc.
+  DE_XUAT_TRONG_HUY_WEEKLY_DUE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -353,6 +360,7 @@ model User {
   ordersAssignedBy          Order[]           @relation("OrderAssignedBy")
   dailyTasksAssignedTo      DailyTask[]       @relation("DailyTaskAssignedTo")
   dailyTasksAssignedBy      DailyTask[]       @relation("DailyTaskAssignedBy")
+  managedGardens            ProductionGarden[] @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff     DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated              ViolationType[]
@@ -887,6 +895,7 @@ model Warehouse {
   contaminationStaffBalances ContaminationStaffBalance[]
   personalContaminationChecks PersonalContaminationCheck[]
   replantHandovers ReplantHandover[]
+  dailyTasks   DailyTask[]
 
   @@map("warehouses")
 }
@@ -1632,10 +1641,39 @@ model ContaminationProposal {
   // Nhân viên sản xuất chưa (xem ReplantHandover). NULL = chưa gộp, còn chờ Kho mô bấm "Bàn giao".
   replantHandoverId String?
   replantHandover   ReplantHandover?          @relation(fields: [replantHandoverId], references: [id])
+  // Chỉ có giá trị/bắt buộc với dòng type=TRONG do Kho thành phẩm gửi (roomId khác null) — Vườn sản xuất
+  // sẽ nhận cây trồng lại. Kho mô không dùng field này (Trồng lại của Kho mô đi qua ReplantHandover →
+  // NHAN_VIEN_SAN_XUAT như cũ, không có khái niệm Vườn).
+  productionGardenId String?
+  productionGarden   ProductionGarden?         @relation(fields: [productionGardenId], references: [id])
+  // Đề xuất này được tạo từ "Thực hiện" 1 DailyTask (type=DE_XUAT_TRONG_HUY) — dùng để tính nhiệm vụ đó
+  // đã hoàn thành hay chưa (xem ensureDeXuatTaskCompletion, src/lib/daily-task-weekly.ts). NULL = tạo từ
+  // form tự do (FinishedGoodsProposalSubmit) hoặc luồng Kho mô, không gắn với nhiệm vụ ngày nào.
+  dailyTaskId   String?
+  dailyTask     DailyTask?                   @relation(fields: [dailyTaskId], references: [id])
   createdAt     DateTime                     @default(now())
   updatedAt     DateTime                     @updatedAt
 
   @@map("contamination_proposals")
+}
+
+// "Vườn sản xuất" — nơi tiếp nhận cây được đề xuất Trồng lại từ Kho thành phẩm (khác ReplantHandover/
+// NHAN_VIEN_SAN_XUAT — luồng đó là của Kho mô, đưa mẫu mẹ trồng lại về kho sản xuất). Do SUPER_ADMIN
+// tạo/quản lý (xem /production-gardens).
+model ProductionGarden {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String
+  managerId String?
+  manager   User?    @relation("ProductionGardenManager", fields: [managerId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposals ContaminationProposal[]
+
+  @@map("production_gardens")
 }
 
 enum ReplantHandoverStatus {
@@ -2201,14 +2239,17 @@ enum DailyTaskStatus {
   CANCELLED
 }
 
-// Nhiệm vụ tự do do Quản lý kho thành phẩm tạo mỗi ngày, gán cho 1 NV kho thành phẩm (hoặc chính mình)
-// — dùng cho 2 loại việc chưa có bản ghi nghiệp vụ gốc nào khác trong hệ thống (Kiểm tra cây, Đề xuất
-// trồng/hủy). Khác 3 việc còn lại của trang "Phân công nhiệm vụ ngày" (GoodsReceipt/Transfer/Order, vốn
-// đã có sẵn assignedToId/assignedById riêng) — 2 việc này KHÔNG có bản ghi gốc nên cần model riêng. NV
-// hoàn thành = nhập resultNotes tự do (không bắt buộc chọn Lot cụ thể); với DE_XUAT_TRONG_HUY NV chọn
-// thêm proposedAction — chỉ là ghi nhận cho Quản lý biết, KHÔNG tự động đổi tồn kho/Lot và KHÔNG có luồng
-// duyệt riêng (khác hẳn ContaminationProposal, vốn dùng cho Phòng nhiễm của kho sản xuất và cần Admin
-// cấp cao duyệt).
+// Nhiệm vụ do Quản lý kho thành phẩm tạo (hoặc hệ thống tự sinh hàng tuần — xem weekStart), gán cho 1 NV
+// kho thành phẩm (hoặc chính mình) — dùng cho 2 loại việc chưa có bản ghi nghiệp vụ gốc nào khác trong hệ
+// thống (Kiểm tra cây, Đề xuất trồng/hủy). Khác 3 việc còn lại của trang "Phân công nhiệm vụ ngày"
+// (GoodsReceipt/Transfer/Order, vốn đã có sẵn assignedToId/assignedById riêng) — 2 việc này KHÔNG có bản
+// ghi gốc nên cần model riêng.
+// - KIEM_TRA_CAY: NV hoàn thành = nhập resultNotes tự do ngay (không đổi, xem DailyTaskCompleteDialog).
+// - DE_XUAT_TRONG_HUY: NV "Thực hiện" đi qua luồng ContaminationProposal có sẵn (chọn phòng → bảng tồn
+//   kho → gửi Admin duyệt, xem /task-assignment/de-xuat/[taskId]) — nhiệm vụ CHỈ hoàn thành khi toàn bộ
+//   ContaminationProposal liên kết (xem quan hệ `proposals` dưới) được Admin Duyệt (không phải lúc gửi),
+//   tính lazy bởi ensureDeXuatTaskCompletion (src/lib/daily-task-weekly.ts) — không dùng resultNotes/
+//   proposedAction cho loại này nữa (2 field đó chỉ còn ý nghĩa với dữ liệu cũ tạo trước khi có luồng này).
 model DailyTask {
   id             String                     @id @default(cuid())
   code           String                     @unique
@@ -2220,14 +2261,22 @@ model DailyTask {
   room           Room?                      @relation(fields: [roomId], references: [id])
   notes          String?
   status         DailyTaskStatus            @default(PENDING)
-  assignedToId   String
-  assignedTo     User                       @relation("DailyTaskAssignedTo", fields: [assignedToId], references: [id])
-  assignedById   String
-  assignedBy     User                       @relation("DailyTaskAssignedBy", fields: [assignedById], references: [id])
+  // NULL = việc tự sinh hàng tuần chưa được Quản lý gán cho ai (xem ensureWeeklyDeXuatTask) — mọi việc
+  // tạo thủ công qua DailyTaskCreateDialog vẫn luôn có giá trị ngay từ lúc tạo như trước.
+  assignedToId   String?
+  assignedTo     User?                      @relation("DailyTaskAssignedTo", fields: [assignedToId], references: [id])
+  assignedById   String?
+  assignedBy     User?                      @relation("DailyTaskAssignedBy", fields: [assignedById], references: [id])
   proposedAction ContaminationProposalType?
   resultNotes    String?
   completedAt    DateTime?
   createdAt      DateTime                   @default(now())
+  // 2 field dưới chỉ có giá trị với việc DE_XUAT_TRONG_HUY tự sinh hàng tuần (ensureWeeklyDeXuatTask) —
+  // NULL với mọi việc tạo thủ công (không đổi hành vi cũ).
+  warehouseId    String?
+  warehouse      Warehouse?                 @relation(fields: [warehouseId], references: [id])
+  weekStart      DateTime?                  @db.Date
+  proposals      ContaminationProposal[]
 
   @@map("daily_tasks")
 }

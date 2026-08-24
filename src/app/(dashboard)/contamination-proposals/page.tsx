@@ -6,9 +6,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import ContaminationProposalBoard from "./contamination-proposal-board";
 import FinishedGoodsProposalSubmit from "@/components/shared/finished-goods-proposal-submit";
-import type { RoomType } from "@prisma/client";
-
-const FINISHED_GOODS_ROOM_TYPES: RoomType[] = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"];
+import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
 
 export default async function ContaminationProposalsPage() {
   const session = await auth();
@@ -19,13 +17,18 @@ export default async function ContaminationProposalsPage() {
   const canSubmit = role === "KHO_MO" || isKhoThanhPhamRole(role);
   const isFinishedGoods = isKhoThanhPhamRole(role);
 
-  const rooms = isFinishedGoods && session?.user?.workplaceWarehouseId
-    ? await prisma.room.findMany({
-        where: { warehouseId: session.user.workplaceWarehouseId, type: { in: FINISHED_GOODS_ROOM_TYPES }, isActive: true },
-        select: { id: true, name: true, type: true },
-        orderBy: { type: "asc" },
-      })
-    : [];
+  const [rooms, gardens] = await Promise.all([
+    isFinishedGoods && session?.user?.workplaceWarehouseId
+      ? prisma.room.findMany({
+          where: { warehouseId: session.user.workplaceWarehouseId, type: { in: FINISHED_GOODS_ROOM_TYPES }, isActive: true },
+          select: { id: true, name: true, type: true },
+          orderBy: { type: "asc" },
+        })
+      : Promise.resolve([]),
+    isFinishedGoods
+      ? prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } })
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -42,7 +45,7 @@ export default async function ContaminationProposalsPage() {
         </p>
       </div>
 
-      {isFinishedGoods && <FinishedGoodsProposalSubmit rooms={rooms} />}
+      {isFinishedGoods && <FinishedGoodsProposalSubmit rooms={rooms} gardens={gardens} />}
 
       <ContaminationProposalBoard canSubmit={canSubmit} canApprove={isAdminRole(role)} />
     </div>

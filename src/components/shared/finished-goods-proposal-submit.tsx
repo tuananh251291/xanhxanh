@@ -10,15 +10,16 @@ import { Send, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Room = { id: string; name: string; type: string };
+type Garden = { id: string; code: string; name: string };
 type Lot = { id: string; plantTypeId: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
-type Line = { roomId: string; lotId: string; quantity: number; type: "HUY" | "TRONG" };
+type Line = { roomId: string; lotId: string; quantity: number; type: "HUY" | "TRONG"; productionGardenId: string };
 
-const emptyLine: Line = { roomId: "", lotId: "", quantity: 0, type: "HUY" };
+const emptyLine: Line = { roomId: "", lotId: "", quantity: 0, type: "HUY", productionGardenId: "" };
 
 // Gửi đề xuất Trồng/Hủy cho cây thành phẩm thật đang có trong kho — khác luồng Kho mô (dark-room
 // contamination, xem contamination-draft-submit.tsx): không có bước "Gộp phiếu"/số dư theo NV vì NV
 // Kho thành phẩm chọn thẳng lô ACTIVE đang thấy thật trong phòng, gửi thẳng lên PENDING cho Admin duyệt.
-export default function FinishedGoodsProposalSubmit({ rooms }: { rooms: Room[] }) {
+export default function FinishedGoodsProposalSubmit({ rooms, gardens }: { rooms: Room[]; gardens: Garden[] }) {
   const [lines, setLines] = useState<Line[]>([{ ...emptyLine }]);
   const [lotsByRoom, setLotsByRoom] = useState<Record<string, Lot[]>>({});
   const [loadingRoomId, setLoadingRoomId] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export default function FinishedGoodsProposalSubmit({ rooms }: { rooms: Room[] }
     for (const l of validLines) {
       const lot = getLot(l);
       if (!lot || l.quantity > lot.quantity) { toast.error("Có dòng vượt quá số lượng tồn của lô"); return; }
+      if (l.type === "TRONG" && !l.productionGardenId) { toast.error("Dòng Trồng cần chọn Vườn sản xuất"); return; }
     }
 
     setSubmitting(true);
@@ -76,6 +78,7 @@ export default function FinishedGoodsProposalSubmit({ rooms }: { rooms: Room[] }
             stageCode: lot.stageCode,
             quantity: l.quantity,
             batchCode,
+            productionGardenId: l.type === "TRONG" ? l.productionGardenId : undefined,
           }),
         });
         if (!res.ok) { toast.error((await res.json()).message ?? "Có dòng gửi thất bại"); continue; }
@@ -161,6 +164,23 @@ export default function FinishedGoodsProposalSubmit({ rooms }: { rooms: Room[] }
                   </SelectContent>
                 </Select>
               </div>
+              {line.type === "TRONG" && (
+                <div className="min-w-0 flex-1 basis-full sm:basis-56 space-y-1">
+                  <Label className="text-xs">Vườn sản xuất</Label>
+                  <Select
+                    items={gardens.map((g) => ({ value: g.id, label: `${g.name} (${g.code})` }))}
+                    value={line.productionGardenId || null}
+                    onValueChange={(v) => updateLine(idx, { productionGardenId: v as string })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Chọn vườn" /></SelectTrigger>
+                    <SelectContent>
+                      {gardens.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>{g.name} ({g.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(idx)} disabled={lines.length === 1}>
                 <Trash2 className="w-4 h-4 text-destructive" />
               </Button>

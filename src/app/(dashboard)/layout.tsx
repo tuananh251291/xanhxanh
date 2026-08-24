@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import Sidebar from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import AuthSessionProvider from "@/components/providers/session-provider";
-import { ROLE_NAV, isAdminRole, alertTargetRolesFor } from "@/types";
+import { ROLE_NAV, isAdminRole, isKhoThanhPhamRole, alertTargetRolesFor } from "@/types";
 import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
 import { ensureMotherReadyAlerts } from "@/lib/mother-ready";
@@ -13,6 +13,7 @@ import { ensureInstructionsEnded, ensureBackupInstructionsCleaned } from "@/lib/
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { ensureMediumOrdersSent } from "@/lib/medium-order-lifecycle";
 import { ensureCustomerAutoExpire, ensureCustomerStatusReminders } from "@/lib/customer-lifecycle";
+import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-task-weekly";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -32,6 +33,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (role === "KY_THUAT") await ensureMotherReadyAlerts();
   if (role === "KHO_MO") await ensureRootingReadyAlerts();
   if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);
+  if (isKhoThanhPhamRole(role)) {
+    await ensureWeeklyDeXuatTask(session.user.workplaceWarehouseId);
+    await ensureDeXuatTaskCompletion(session.user.workplaceWarehouseId);
+  }
 
   const alertCount = await prisma.alert.count({
     where: {

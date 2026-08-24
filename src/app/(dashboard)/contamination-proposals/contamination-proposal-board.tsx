@@ -22,6 +22,7 @@ type Proposal = {
   plantType: { code: string; name: string };
   warehouse: { name: string; code: string };
   room: { name: string } | null;
+  productionGarden: { code: string; name: string } | null;
   requestedBy: { name: string };
   approvedBy: { name: string } | null;
 };
@@ -81,6 +82,7 @@ function ProposalItemsTable({ items, canApprove, canSubmit, processingId, onRevi
                 {p.plantType.name}
                 {!canSubmit ? ` · ${p.warehouse.name}` : ""}
                 {p.room ? ` · ${p.room.name}` : ""}
+                {p.productionGarden ? ` · Vườn: ${p.productionGarden.name} (${p.productionGarden.code})` : ""}
               </td>
               <td className="px-3 py-2 text-foreground">{p.stageCode}</td>
               <td className="px-3 py-2 text-right font-medium text-foreground">{p.quantity.toLocaleString("vi-VN")}</td>

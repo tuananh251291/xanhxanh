@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 
 const completeSchema = z.object({
@@ -11,11 +11,14 @@ const completeSchema = z.object({
   proposedAction: z.enum(["TRONG", "HUY"]).optional(),
 });
 const cancelSchema = z.object({ action: z.literal("cancel") });
-const patchSchema = z.discriminatedUnion("action", [completeSchema, cancelSchema]);
+// Quản lý kho thành phẩm gán/bỏ gán 1 NV cho nhiệm vụ (chủ yếu dùng cho việc DE_XUAT_TRONG_HUY tự sinh
+// hàng tuần, chưa có ai lúc tạo — xem ensureWeeklyDeXuatTask). null = bỏ gán.
+const assignSchema = z.object({ action: z.literal("assign"), assignedToId: z.string().nullable() });
+const patchSchema = z.discriminatedUnion("action", [completeSchema, cancelSchema, assignSchema]);
 
-// Hoàn thành/hủy 1 "Nhiệm vụ ngày" (Kiểm tra cây / Đề xuất trồng-hủy) — action=complete do đúng NV được
-// gán hoặc Quản lý/Admin thực hiện; action=cancel chỉ Quản lý/Admin. Hoàn thành xong báo lại đúng người
-// đã gán (assignedById) qua alert ASSIGNED_TASK_COMPLETED — giống hệt pattern ở
+// Hoàn thành/hủy/gán 1 "Nhiệm vụ ngày" (Kiểm tra cây / Đề xuất trồng-hủy) — action=complete do đúng NV
+// được gán hoặc Quản lý/Admin thực hiện; action=cancel/assign chỉ Quản lý/Admin. Hoàn thành xong báo lại
+// đúng người đã gán (assignedById) qua alert ASSIGNED_TASK_COMPLETED — giống hệt pattern ở
 // /api/transfers/[id], /api/goods-receipts/[id], /api/orders/[id].
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -40,11 +43,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ success: true });
   }
 
+  if (parsed.data.action === "assign") {
+    if (!isManager) return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được nhiệm vụ" }, { status: 403 });
+    const { assignedToId } = parsed.data;
+    if (assignedToId) {
+      const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
+      if (!staff || !isKhoThanhPhamRole(staff.role)) {
+        return NextResponse.json({ message: "Chỉ gán được cho NV/Quản lý kho thành phẩm" }, { status: 400 });
+      }
+    }
+    const updated = await prisma.dailyTask.update({
+      where: { id },
+      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null },
+      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // action === "complete" — DE_XUAT_TRONG_HUY giờ hoàn thành tự động khi Admin duyệt hết đề xuất liên
+  // kết (xem ensureDeXuatTaskCompletion), không còn hoàn thành bằng ghi chú tự do nữa.
+  if (task.type === "DE_XUAT_TRONG_HUY") {
+    return NextResponse.json(
+      { message: "Việc này hoàn thành tự động khi Admin duyệt xong đề xuất — vào \"Thực hiện\" để gửi đề xuất." },
+      { status: 400 }
+    );
+  }
+
   if (task.assignedToId !== session.user.id && !isManager) {
     return NextResponse.json({ message: "Bạn không được giao nhiệm vụ này" }, { status: 403 });
-  }
-  if (task.type === "DE_XUAT_TRONG_HUY" && !parsed.data.proposedAction) {
-    return NextResponse.json({ message: "Cần chọn đề xuất Trồng lại hoặc Hủy bỏ" }, { status: 400 });
   }
 
   const updated = await prisma.dailyTask.update({
@@ -57,14 +83,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   });
 
-  await createAlert({
-    type: "ASSIGNED_TASK_COMPLETED",
-    title: "NV đã hoàn thành việc được giao",
-    message: `Đã hoàn thành nhiệm vụ ${task.code}`,
-    userId: task.assignedById,
-    relatedId: task.id,
-    relatedType: "DailyTask",
-  });
+  if (task.assignedById) {
+    await createAlert({
+      type: "ASSIGNED_TASK_COMPLETED",
+      title: "NV đã hoàn thành việc được giao",
+      message: `Đã hoàn thành nhiệm vụ ${task.code}`,
+      userId: task.assignedById,
+      relatedId: task.id,
+      relatedType: "DailyTask",
+    });
+  }
 
   return NextResponse.json(updated);
 }

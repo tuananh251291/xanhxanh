@@ -4,10 +4,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle, RotateCcw, ClipboardCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { DAILY_TASK_TYPE_LABELS, CONTAMINATION_PROPOSAL_TYPE_LABELS } from "@/types";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
+import { toStoredWeekStart } from "@/lib/week-rotation";
+import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import DailyTaskCreateDialog from "./daily-task-create-dialog";
@@ -98,12 +101,18 @@ export default async function TaskAssignmentPage() {
       take: 30,
       select: {
         id: true, code: true, status: true, notes: true, resultNotes: true, proposedAction: true, createdAt: true,
+        weekStart: true,
         plantType: { select: { code: true, name: true } },
         room: { select: { name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
+        proposals: { select: { status: true } },
       },
     }),
   ]);
+
+  const currentWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const thisWeekTask = deXuatTasks.find((d) => d.weekStart?.getTime() === currentWeekStart.getTime());
+  const otherDeXuatTasks = deXuatTasks.filter((d) => d.id !== thisWeekTask?.id);
 
   return (
     <div className="space-y-6">
@@ -192,7 +201,8 @@ export default async function TaskAssignmentPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground font-mono">{d.code}</p>
                   <p className="text-xs text-text-secondary">
-                    {d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room?.name} · Giao {d.assignedTo.name} ({d.assignedTo.code})
+                    {d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room?.name}
+                    {d.assignedTo ? ` · Giao ${d.assignedTo.name} (${d.assignedTo.code})` : ""}
                   </p>
                   {d.status === "COMPLETED" && d.resultNotes && (
                     <p className="text-xs text-primary-strong mt-1">Kết quả: {d.resultNotes}</p>
@@ -214,30 +224,23 @@ export default async function TaskAssignmentPage() {
           <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 5. Đề xuất trồng/hủy</CardTitle>
           <DailyTaskCreateDialog type="DE_XUAT_TRONG_HUY" label={DAILY_TASK_TYPE_LABELS.DE_XUAT_TRONG_HUY} plantTypes={plantTypes} rooms={rooms} staffOptions={staffAll} />
         </CardHeader>
-        <CardContent className="space-y-2">
-          {deXuatTasks.length === 0 ? (
-            <p className="text-sm text-text-muted py-2">Chưa có nhiệm vụ đề xuất nào</p>
+        <CardContent className="space-y-3">
+          {thisWeekTask ? (
+            <div>
+              <p className="text-xs font-semibold text-text-secondary mb-1.5">Việc tuần này (tự sinh — cần hoàn thành trước Chủ nhật, nhắc từ thứ 5)</p>
+              <DeXuatTaskRow d={thisWeekTask} canAssign={canAssign} staffOptions={staffAll} highlight />
+            </div>
           ) : (
-            deXuatTasks.map((d) => (
-              <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground font-mono">{d.code}</p>
-                  <p className="text-xs text-text-secondary">
-                    {d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room?.name} · Giao {d.assignedTo.name} ({d.assignedTo.code})
-                  </p>
-                  {d.status === "COMPLETED" && (
-                    <p className="text-xs text-primary-strong mt-1">
-                      Đề xuất: {d.proposedAction ? CONTAMINATION_PROPOSAL_TYPE_LABELS[d.proposedAction] : "—"}{d.resultNotes ? ` — ${d.resultNotes}` : ""}
-                    </p>
-                  )}
-                </div>
-                {d.status === "PENDING" ? (
-                  <DailyTaskCompleteDialog taskId={d.id} code={d.code} type="DE_XUAT_TRONG_HUY" subtitle={d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room?.name ?? ""} />
-                ) : (
-                  <Badge variant="completed">Đã hoàn thành</Badge>
-                )}
-              </div>
-            ))
+            <p className="text-sm text-text-muted py-2">Việc tuần này chưa được tạo — sẽ tự xuất hiện khi có ai vào trang.</p>
+          )}
+
+          {otherDeXuatTasks.length > 0 && (
+            <div className="pt-2 border-t border-divider space-y-2">
+              <p className="text-xs font-semibold text-text-secondary">Lịch sử</p>
+              {otherDeXuatTasks.map((d) => (
+                <DeXuatTaskRow key={d.id} d={d} canAssign={canAssign} staffOptions={staffAll} />
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -250,6 +253,66 @@ export default async function TaskAssignmentPage() {
           <ReturnInspectionTable items={pendingReturnInspections} />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+type DeXuatTask = {
+  id: string;
+  code: string;
+  status: "PENDING" | "COMPLETED" | "CANCELLED";
+  resultNotes: string | null;
+  proposedAction: "TRONG" | "HUY" | null;
+  weekStart: Date | null;
+  plantType: { code: string; name: string } | null;
+  room: { name: string } | null;
+  assignedTo: { id: string; code: string; name: string } | null;
+  proposals: { status: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED" }[];
+};
+
+// Hàng hiển thị 1 nhiệm vụ Đề xuất trồng/hủy — dùng chung cho việc tuần này (highlight) và lịch sử.
+// PENDING luôn có nút "Thực hiện" dẫn sang /task-assignment/de-xuat/[id] (đi qua ContaminationProposal có
+// sẵn) thay vì DailyTaskCompleteDialog cũ — nhiệm vụ chỉ tự chuyển "Đã hoàn thành" khi Admin duyệt hết
+// đề xuất liên kết (xem ensureDeXuatTaskCompletion), không phải lúc bấm nút.
+function DeXuatTaskRow({
+  d, canAssign, staffOptions, highlight,
+}: {
+  d: DeXuatTask;
+  canAssign: boolean;
+  staffOptions: { id: string; code: string; name: string }[];
+  highlight?: boolean;
+}) {
+  const label = d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room?.name ?? "Mọi phòng";
+  const approvedCount = d.proposals.filter((p) => p.status === "APPROVED").length;
+
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border ${highlight ? "bg-warning-light/30 border-warning" : "bg-background border-divider"}`}>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground font-mono">{d.code}</p>
+        <p className="text-xs text-text-secondary">{label}</p>
+        {d.proposals.length > 0 && (
+          <p className="text-xs text-text-muted mt-0.5">{approvedCount}/{d.proposals.length} phiếu đã được Duyệt</p>
+        )}
+        {d.status === "COMPLETED" && d.resultNotes && (
+          <p className="text-xs text-primary-strong mt-1">
+            {d.proposedAction ? `Đề xuất: ${CONTAMINATION_PROPOSAL_TYPE_LABELS[d.proposedAction]} — ` : ""}{d.resultNotes}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {canAssign && d.status === "PENDING" && (
+          <KhoTpAssignCell endpoint={`/api/daily-tasks/${d.id}`} assignedTo={d.assignedTo} staffOptions={staffOptions} canAssign={canAssign} />
+        )}
+        {d.status === "PENDING" ? (
+          <Link href={`/task-assignment/de-xuat/${d.id}`}>
+            <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+              <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện
+            </Button>
+          </Link>
+        ) : (
+          <Badge variant="completed">Đã hoàn thành</Badge>
+        )}
+      </div>
     </div>
   );
 }

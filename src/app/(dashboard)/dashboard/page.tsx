@@ -1151,7 +1151,19 @@ function KhoDashboard({
           </CardHeader>
           <CardContent className="space-y-3">
             {myTasks.map((t) =>
-              t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
+              t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType === "DE_XUAT_TRONG_HUY" ? (
+                <Link
+                  key={t.key}
+                  href={`/task-assignment/de-xuat/${t.dailyTaskId}`}
+                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  </div>
+                  <Badge className="bg-warning-light text-warning-foreground shrink-0">Thực hiện</Badge>
+                </Link>
+              ) : t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
                 <div key={t.key} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{t.title}</p>

@@ -4,9 +4,8 @@ import { auth } from "@/lib/auth";
 import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { generateContaminationProposalCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
+import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
 import { z } from "zod";
-
-const FINISHED_GOODS_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
 
 const createSchema = z.object({
   type: z.enum(["TRONG", "HUY"]),
@@ -21,6 +20,12 @@ const createSchema = z.object({
   // Mã đề xuất gộp — client truyền lại code của dòng đầu tiên trong cùng 1 lần bấm "Gửi đề xuất" (nhiều
   // dòng cây) để nhóm chung 1 "đề xuất" khi hiển thị. Bỏ trống với dòng đầu tiên của mỗi lần gửi.
   batchCode: z.string().optional(),
+  // Bắt buộc khi type=TRONG và người gửi là Kho thành phẩm (roomId có giá trị) — Vườn sản xuất sẽ nhận
+  // cây. Kho mô không dùng field này (Trồng lại đi qua ReplantHandover→NHAN_VIEN_SAN_XUAT như cũ).
+  productionGardenId: z.string().optional(),
+  // Có giá trị khi gửi từ "Thực hiện" 1 DailyTask (type=DE_XUAT_TRONG_HUY, xem
+  // /task-assignment/de-xuat/[taskId]) — dùng để tính nhiệm vụ đó đã hoàn thành hay chưa.
+  dailyTaskId: z.string().optional(),
 });
 
 const include = {
@@ -29,6 +34,7 @@ const include = {
   room: { select: { name: true } },
   requestedBy: { select: { name: true } },
   approvedBy: { select: { name: true } },
+  productionGarden: { select: { code: true, name: true } },
 } as const;
 
 export async function GET(req: NextRequest) {
@@ -75,7 +81,7 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode } = parsed.data;
+  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode, productionGardenId, dailyTaskId } = parsed.data;
   const warehouseId = session!.user.workplaceWarehouseId;
 
   let lotId: string;
@@ -84,6 +90,11 @@ export async function POST(req: NextRequest) {
 
   if (isFinishedGoods) {
     if (!roomId) return NextResponse.json({ message: "Chưa chọn phòng" }, { status: 400 });
+    if (type === "TRONG") {
+      if (!productionGardenId) return NextResponse.json({ message: "Chưa chọn Vườn sản xuất" }, { status: 400 });
+      const garden = await prisma.productionGarden.findUnique({ where: { id: productionGardenId }, select: { isActive: true } });
+      if (!garden || !garden.isActive) return NextResponse.json({ message: "Vườn sản xuất không hợp lệ" }, { status: 400 });
+    }
     const room = await prisma.room.findUnique({ where: { id: roomId } });
     if (!room || room.warehouseId !== warehouseId || !(FINISHED_GOODS_ROOM_TYPES as readonly string[]).includes(room.type)) {
       return NextResponse.json({ message: "Phòng không hợp lệ" }, { status: 400 });
@@ -112,6 +123,14 @@ export async function POST(req: NextRequest) {
     lotId = lot.id;
   }
 
+  if (dailyTaskId) {
+    const task = await prisma.dailyTask.findUnique({ where: { id: dailyTaskId }, select: { type: true, assignedToId: true } });
+    const canUseTask = task?.type === "DE_XUAT_TRONG_HUY" && (
+      task.assignedToId === session!.user.id || session!.user.role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(session!.user.role)
+    );
+    if (!canUseTask) return NextResponse.json({ message: "Nhiệm vụ không hợp lệ" }, { status: 400 });
+  }
+
   const code = await generateContaminationProposalCode(type);
 
   // Chỉ nhận batchCode do client truyền lại nếu đúng là code của 1 dòng đã tạo trước đó, cùng người gửi,
@@ -133,6 +152,8 @@ export async function POST(req: NextRequest) {
         type,
         warehouseId,
         roomId: sourceRoomId,
+        productionGardenId: type === "TRONG" ? productionGardenId : null,
+        dailyTaskId,
         plantTypeId,
         stageCode,
         quantity,
