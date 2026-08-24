@@ -86,7 +86,7 @@ export async function GET() {
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống 1 cột không bắt buộc: khách MỚI để trống thật (riêng Ngày đầu tiếp cận thì lấy ngày hôm nay); khách ĐÃ CÓ (khớp Website) thì GIỮ NGUYÊN giá trị cũ của đúng cột đó, không bị xoá." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Trạng thái Đã phân công/Mặc định bắt buộc kèm Mã NV phụ trách; Chưa phân công thì để trống Mã NV phụ trách." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mặc định = khách VIP/lâu năm gắn cố định với NV phụ trách, không bị nhắc cập nhật hàng tháng và không tự thu hồi về Chưa phân công dù không có đơn." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV quản lý: điền vào sẽ TỰ GÁN/CẬP NHẬT người quản lý cho đúng (NV phụ trách, Thị trường) của dòng đó — chỉ điền khi đã có Mã NV phụ trách, không được trùng chính Mã NV phụ trách." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mã NV quản lý: điền vào sẽ TỰ GÁN/CẬP NHẬT người quản lý cho đúng (NV phụ trách, Thị trường) của dòng đó — chỉ điền khi đã có Mã NV phụ trách. Được phép trùng chính Mã NV phụ trách (NV tự quản lý mình)." });
 
   addGuideSheet(workbook, [
     { column: "Tên công ty", required: true, description: "Tên công ty khách hàng." },
@@ -251,10 +251,6 @@ export async function POST(req: NextRequest) {
       }
       const managerId = staffByCode.get(parsed.managerCode);
       if (!managerId) { errors.push({ row: parsed.row, label, message: `Mã NV quản lý "${parsed.managerCode}" không tồn tại hoặc không phải NV bán hàng` }); continue; }
-      if (managerId === assignedToId) {
-        errors.push({ row: parsed.row, label, message: "Mã NV quản lý không được trùng với Mã NV phụ trách" });
-        continue;
-      }
       const key = `${assignedToId}:${marketId}`;
       const claimed = managerAssignments.get(key);
       if (claimed && claimed.managerId !== managerId) {

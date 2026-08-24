@@ -103,10 +103,6 @@ export default function ManagersBoard() {
       toast.error("Chọn đủ Nhân viên quản lý, Nhân viên bán hàng và Thị trường");
       return;
     }
-    if (row.managerId === row.salesUserId) {
-      toast.error("Nhân viên bán hàng và Nhân viên quản lý không được trùng nhau");
-      return;
-    }
     setSavingKey(row.key);
     try {
       const res = await fetch("/api/sales-manager-assignments", {

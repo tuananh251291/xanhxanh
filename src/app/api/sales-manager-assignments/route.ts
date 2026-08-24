@@ -43,9 +43,6 @@ export async function POST(req: NextRequest) {
   }
   const { salesUserId, managerId, marketId } = parsed.data;
 
-  if (salesUserId === managerId) {
-    return NextResponse.json({ message: "Nhân viên bán hàng và Nhân viên quản lý không được trùng nhau" }, { status: 400 });
-  }
   const [salesUser, manager, market] = await Promise.all([
     prisma.user.findUnique({ where: { id: salesUserId } }),
     prisma.user.findUnique({ where: { id: managerId } }),
