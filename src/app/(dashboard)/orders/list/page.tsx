@@ -2,7 +2,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { ClipboardList } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ClipboardList, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
@@ -31,6 +33,7 @@ function OrdersTable({
   showExpectedShipAt,
   showStatus,
   showActions,
+  linkToDetailPage,
 }: {
   title: string;
   description: string;
@@ -40,6 +43,9 @@ function OrdersTable({
   showExpectedShipAt: boolean;
   showStatus: boolean;
   showActions: boolean;
+  // true = "Xem chi tiết" dẫn sang trang riêng /orders/list/[id] thay vì mở popup (dùng cho "Đơn đã xác
+  // nhận" — nội dung nhiều dòng loại cây/quy cách sau này sẽ dài, không hợp popup nữa).
+  linkToDetailPage: boolean;
 }) {
   return (
     <Card>
@@ -89,26 +95,34 @@ function OrdersTable({
                   )}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <OrderDetailDialog
-                        id={o.id}
-                        code={o.code}
-                        customerCode={o.customerCode}
-                        market={o.market}
-                        status={o.status}
-                        holdUntilLabel={o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
-                        createdAtLabel={format(o.createdAt, "HH:mm dd/MM/yyyy", { locale: vi })}
-                        notes={o.notes}
-                        items={o.items.map((i) => ({
-                          id: i.id,
-                          plantTypeId: i.lot.plantTypeId,
-                          plantTypeName: i.lot.plantType.name,
-                          plantTypeCode: i.lot.plantType.code,
-                          stageCode: i.lot.stageCode,
-                          quantity: i.quantity,
-                          notes: i.notes,
-                          processingStatus: i.processingRequest?.status ?? null,
-                        }))}
-                      />
+                      {linkToDetailPage ? (
+                        <Link href={`/orders/list/${o.id}`}>
+                          <Button size="sm" variant="outline" className="h-8">
+                            <Eye className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết
+                          </Button>
+                        </Link>
+                      ) : (
+                        <OrderDetailDialog
+                          id={o.id}
+                          code={o.code}
+                          customerCode={o.customerCode}
+                          market={o.market}
+                          status={o.status}
+                          holdUntilLabel={o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
+                          createdAtLabel={format(o.createdAt, "HH:mm dd/MM/yyyy", { locale: vi })}
+                          notes={o.notes}
+                          items={o.items.map((i) => ({
+                            id: i.id,
+                            plantTypeId: i.lot.plantTypeId,
+                            plantTypeName: i.lot.plantType.name,
+                            plantTypeCode: i.lot.plantType.code,
+                            stageCode: i.lot.stageCode,
+                            quantity: i.quantity,
+                            notes: i.notes,
+                            processingStatus: i.processingRequest?.status ?? null,
+                          }))}
+                        />
+                      )}
                       {showActions && (
                         <>
                           <ConfirmOrderButton orderId={o.id} />
@@ -189,6 +203,7 @@ export default async function OrdersListPage() {
         showExpectedShipAt={false}
         showStatus={false}
         showActions
+        linkToDetailPage={false}
       />
 
       <OrdersTable
@@ -200,6 +215,7 @@ export default async function OrdersListPage() {
         showExpectedShipAt
         showStatus
         showActions={false}
+        linkToDetailPage
       />
     </div>
   );
