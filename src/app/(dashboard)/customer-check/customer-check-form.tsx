@@ -21,9 +21,15 @@ type MatchResult = {
   manager: { id: string; code: string; name: string } | null;
 };
 
+// Cần đơn giản hoá kiểm tra email — chỉ báo lỗi rõ ràng khi rõ ràng sai định dạng, không chặn hết các
+// trường hợp hợp lệ hiếm gặp (server vẫn validate lại đầy đủ bằng zod .email()).
+const EMAIL_REGEX = /^\S+@\S+\.\S+$/;
+
 export default function CustomerCheckForm() {
   const [name, setName] = useState("");
   const [website, setWebsite] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -43,16 +49,23 @@ export default function CustomerCheckForm() {
   }, [createOpen, markets.length]);
 
   const check = async () => {
-    if (!name.trim() || !website.trim()) { toast.error("Nhập đủ Tên khách hàng - công ty và Website"); return; }
-    const websiteError = validateWebsite(website);
-    if (websiteError) { toast.error(websiteError); return; }
+    if (!name.trim()) { toast.error("Nhập Tên khách hàng - công ty"); return; }
+    if (!website.trim() && !phone.trim() && !email.trim()) {
+      toast.error("Cần nhập ít nhất Website, Số điện thoại hoặc Email");
+      return;
+    }
+    if (website.trim()) {
+      const websiteError = validateWebsite(website);
+      if (websiteError) { toast.error(websiteError); return; }
+    }
+    if (email.trim() && !EMAIL_REGEX.test(email.trim())) { toast.error("Email không hợp lệ"); return; }
     setChecking(true);
     setChecked(false);
     try {
       const res = await fetch("/api/customer-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), website: website.trim() }),
+        body: JSON.stringify({ name: name.trim(), website: website.trim(), phone: phone.trim(), email: email.trim() }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
@@ -78,17 +91,25 @@ export default function CustomerCheckForm() {
       toast.success("Đã đăng ký phụ trách khách hàng này");
       setRegisterOpen(false);
       setChecked(false);
-      setName(""); setWebsite("");
+      setName(""); setWebsite(""); setPhone(""); setEmail("");
     } finally {
       setRegistering(false);
     }
   };
 
-  const openCreate = () => setCreateOpen(true);
+  // Kế thừa Email/SĐT đã nhập ở bước Kiểm tra — NV không phải gõ lại, vẫn sửa được nếu cần.
+  const openCreate = () => {
+    setCreateForm((p) => ({ ...p, email: p.email || email, phone: p.phone || phone }));
+    setCreateOpen(true);
+  };
 
   const submitCreate = async () => {
-    if (!createForm.marketId || !createForm.email.trim() || !createForm.phone.trim()) {
-      toast.error("Điền đầy đủ các trường bắt buộc");
+    if (!createForm.marketId) {
+      toast.error("Chọn Thị trường");
+      return;
+    }
+    if (!website.trim() && !createForm.phone.trim() && !createForm.email.trim()) {
+      toast.error("Cần nhập ít nhất Website, Số điện thoại hoặc Email");
       return;
     }
     setCreating(true);
@@ -103,7 +124,7 @@ export default function CustomerCheckForm() {
       toast.success("Đã tạo khách hàng mới và đăng ký phụ trách");
       setCreateOpen(false);
       setChecked(false);
-      setName(""); setWebsite("");
+      setName(""); setWebsite(""); setPhone(""); setEmail("");
       setCreateForm({ marketId: "", email: "", phone: "" });
     } finally {
       setCreating(false);
@@ -136,7 +157,16 @@ export default function CustomerCheckForm() {
                 </p>
               )}
             </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Số điện thoại</Label>
+              <Input value={phone} onChange={(e) => { setPhone(e.target.value); setChecked(false); }} placeholder="VD: 0901234567" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Email</Label>
+              <Input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setChecked(false); }} placeholder="VD: contact@abc-import.com" />
+            </div>
           </div>
+          <p className="text-xs text-text-muted">Cần nhập ít nhất 1 trong 3: Website, Số điện thoại hoặc Email.</p>
           <Button onClick={check} disabled={checking} className="bg-primary hover:bg-primary-hover">
             {checking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
             Kiểm tra
@@ -197,7 +227,7 @@ export default function CustomerCheckForm() {
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Website</Label>
-              <Input value={website} disabled />
+              <Input value={website || "(chưa có)"} disabled />
             </div>
             <div className="space-y-1">
               <Label className="text-sm">Thị trường *</Label>
@@ -213,13 +243,14 @@ export default function CustomerCheckForm() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-sm">Email *</Label>
+              <Label className="text-sm">Email</Label>
               <Input type="email" value={createForm.email} onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label className="text-sm">Số điện thoại *</Label>
+              <Label className="text-sm">Số điện thoại</Label>
               <Input value={createForm.phone} onChange={(e) => setCreateForm((p) => ({ ...p, phone: e.target.value }))} />
             </div>
+            <p className="text-xs text-text-muted">Cần có ít nhất 1 trong 3: Website, Số điện thoại hoặc Email.</p>
             <div className="flex gap-2 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setCreateOpen(false)}>Hủy</Button>
               <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={creating} onClick={submitCreate}>

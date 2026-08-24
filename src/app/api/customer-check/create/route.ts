@@ -5,16 +5,28 @@ import { z } from "zod";
 import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
 import { generateCustomerCode } from "@/lib/codes";
 
-const schema = z.object({
-  name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
-  website: z.string().trim().min(1, "Nhập website").superRefine((v, ctx) => {
-    const error = validateWebsite(v);
-    if (error) ctx.addIssue({ code: "custom", message: error });
-  }),
-  marketId: z.string().min(1, "Chọn thị trường"),
-  email: z.string().trim().email("Email không hợp lệ"),
-  phone: z.string().trim().min(1, "Nhập số điện thoại"),
-});
+// Website/SĐT/Email đều KHÔNG bắt buộc riêng lẻ — nhưng phải có ÍT NHẤT 1 trong 3 (cùng ràng buộc ở
+// POST /api/customer-check).
+const schema = z
+  .object({
+    name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
+    website: z.string().trim().optional().default("").superRefine((v, ctx) => {
+      if (!v) return;
+      const error = validateWebsite(v);
+      if (error) ctx.addIssue({ code: "custom", message: error });
+    }),
+    marketId: z.string().min(1, "Chọn thị trường"),
+    email: z.string().trim().optional().default("").superRefine((v, ctx) => {
+      if (!v) return;
+      if (!z.string().email().safeParse(v).success) ctx.addIssue({ code: "custom", message: "Email không hợp lệ" });
+    }),
+    phone: z.string().trim().optional().default(""),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.website && !data.phone && !data.email) {
+      ctx.addIssue({ code: "custom", message: "Cần nhập ít nhất Website, Số điện thoại hoặc Email", path: ["website"] });
+    }
+  });
 
 // NV bán hàng tạo mới 1 khách hàng chưa từng có trong hệ thống + tự đăng ký phụ trách luôn — server tự
 // gán NV phụ trách = NV đang đăng nhập, Trạng thái = Đã phân công, Ngày đầu tiếp cận = hôm nay.
@@ -34,10 +46,22 @@ export async function POST(req: NextRequest) {
   if (!market) return NextResponse.json({ message: "Thị trường không tồn tại" }, { status: 400 });
 
   const nameNormalized = normalizeCustomerName(data.name);
-  const websiteNormalized = normalizeWebsite(data.website);
+  const websiteNormalized = data.website ? normalizeWebsite(data.website) : "";
+  const email = data.email.toLowerCase();
   // Race condition: 2 NV cùng bấm "Tiếp tục" cho cùng 1 khách gần như đồng thời — chặn lại ở đây thay
-  // vì chỉ dựa vào bước "Kiểm tra" trước đó (đã có thể lỗi thời tại thời điểm submit).
-  const duplicate = await prisma.customer.findFirst({ where: { OR: [{ nameNormalized }, { websiteNormalized }] } });
+  // vì chỉ dựa vào bước "Kiểm tra" trước đó (đã có thể lỗi thời tại thời điểm submit). Chỉ so khớp theo
+  // các trường THỰC SỰ có giá trị — bỏ trống Website/SĐT/Email không được coi là trùng với khách khác
+  // cũng bỏ trống trường đó.
+  const duplicate = await prisma.customer.findFirst({
+    where: {
+      OR: [
+        { nameNormalized },
+        ...(websiteNormalized ? [{ websiteNormalized }] : []),
+        ...(data.phone ? [{ phone: data.phone }] : []),
+        ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
+      ],
+    },
+  });
   if (duplicate) {
     return NextResponse.json({ message: "Khách này vừa được tạo/đăng ký bởi người khác, vui lòng kiểm tra lại" }, { status: 409 });
   }
@@ -52,8 +76,8 @@ export async function POST(req: NextRequest) {
         website: data.website,
         websiteNormalized,
         marketId: data.marketId,
-        email: data.email,
-        phone: data.phone,
+        email: email || null,
+        phone: data.phone || null,
         status: "DA_PHAN_CONG",
         firstContactAt: new Date(),
         assignedToId: session.user.id,

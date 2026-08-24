@@ -5,16 +5,32 @@ import { z } from "zod";
 import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
 import { getCustomerManager } from "@/lib/customer-manager";
 
-const schema = z.object({
-  name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
-  website: z.string().trim().min(1, "Nhập website").superRefine((v, ctx) => {
-    const error = validateWebsite(v);
-    if (error) ctx.addIssue({ code: "custom", message: error });
-  }),
-});
+// Website/SĐT/Email đều KHÔNG bắt buộc riêng lẻ — nhưng phải có ÍT NHẤT 1 trong 3 (cùng ràng buộc ở
+// POST /api/customer-check/create) để còn cơ sở đối chiếu trùng khách ngoài Tên công ty.
+const schema = z
+  .object({
+    name: z.string().trim().min(1, "Nhập tên khách hàng - công ty"),
+    website: z.string().trim().optional().default("").superRefine((v, ctx) => {
+      if (!v) return;
+      const error = validateWebsite(v);
+      if (error) ctx.addIssue({ code: "custom", message: error });
+    }),
+    phone: z.string().trim().optional().default(""),
+    email: z.string().trim().optional().default("").superRefine((v, ctx) => {
+      if (!v) return;
+      if (!z.string().email().safeParse(v).success) ctx.addIssue({ code: "custom", message: "Email không hợp lệ" });
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.website && !data.phone && !data.email) {
+      ctx.addIssue({ code: "custom", message: "Cần nhập ít nhất Website, Số điện thoại hoặc Email", path: ["website"] });
+    }
+  });
 
-// Kiểm tra trùng khách — báo trùng nếu khớp Tên công ty HOẶC Website (không phân biệt hoa/thường, bỏ
-// khoảng trắng thừa). Nếu có nhiều khách khớp (hiếm), ưu tiên khách khớp CẢ 2 trường trước.
+// Kiểm tra trùng khách — báo trùng nếu khớp Tên công ty HOẶC Website HOẶC Số điện thoại HOẶC Email
+// (không phân biệt hoa/thường, bỏ khoảng trắng thừa) — chỉ so khớp theo các trường NV thực sự nhập, để
+// trống trường nào thì bỏ qua trường đó (tránh 2 khách cùng để trống Website/SĐT/Email bị coi là trùng
+// nhau). Nếu có nhiều khách khớp (hiếm), ưu tiên khách khớp NHIỀU trường nhất trước.
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "SALE") {
@@ -27,12 +43,21 @@ export async function POST(req: NextRequest) {
   }
 
   const nameNormalized = normalizeCustomerName(parsed.data.name);
-  const websiteNormalized = normalizeWebsite(parsed.data.website);
+  const websiteNormalized = parsed.data.website ? normalizeWebsite(parsed.data.website) : "";
+  const phone = parsed.data.phone;
+  const email = parsed.data.email.toLowerCase();
 
   const matches = await prisma.customer.findMany({
-    where: { OR: [{ nameNormalized }, { websiteNormalized }] },
+    where: {
+      OR: [
+        { nameNormalized },
+        ...(websiteNormalized ? [{ websiteNormalized }] : []),
+        ...(phone ? [{ phone }] : []),
+        ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
+      ],
+    },
     select: {
-      id: true, name: true, website: true, marketId: true,
+      id: true, name: true, website: true, phone: true, email: true, marketId: true,
       market: { select: { code: true, name: true } },
       status: true, assignedToId: true,
       assignedTo: { select: { id: true, code: true, name: true } },
@@ -41,9 +66,13 @@ export async function POST(req: NextRequest) {
   });
   if (matches.length === 0) return NextResponse.json({ match: null });
 
-  const bestMatch =
-    matches.find((m) => m.nameNormalized === nameNormalized && m.websiteNormalized === websiteNormalized) ??
-    matches[0];
+  const scoreOf = (m: (typeof matches)[number]) =>
+    (m.nameNormalized === nameNormalized ? 1 : 0) +
+    (websiteNormalized && m.websiteNormalized === websiteNormalized ? 1 : 0) +
+    (phone && m.phone === phone ? 1 : 0) +
+    (email && m.email?.toLowerCase() === email ? 1 : 0);
+
+  const bestMatch = matches.reduce((best, m) => (scoreOf(m) > scoreOf(best) ? m : best), matches[0]);
 
   const manager = await getCustomerManager(bestMatch.assignedToId, bestMatch.marketId);
 
