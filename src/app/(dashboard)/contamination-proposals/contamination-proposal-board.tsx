@@ -4,10 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Check, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Check, X, ChevronDown, ChevronUp, Pencil, Send } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { toast } from "sonner";
 
 type Proposal = {
   id: string;
@@ -18,12 +22,15 @@ type Proposal = {
   quantity: number;
   status: "PENDING" | "APPROVED" | "REJECTED";
   notes: string | null;
+  rejectionReason: string | null;
   createdAt: string;
   plantType: { code: string; name: string };
   warehouse: { name: string; code: string };
+  warehouseId: string;
   room: { name: string } | null;
   productionGarden: { code: string; name: string } | null;
   requestedBy: { name: string };
+  requestedById: string;
   approvedBy: { name: string } | null;
 };
 type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
@@ -55,12 +62,145 @@ function summarizeBatchStatus(items: Proposal[]): { label: string; variant: "in-
   return { label: `Đã xử lý ${approved + rejected}/${total}`, variant: "in-progress" };
 }
 
-function ProposalItemsTable({ items, canApprove, canSubmit, processingId, onReview }: {
+// Admin bấm "Từ chối" — popup xác nhận kèm ô lý do (tuỳ chọn), hiện trong thông báo gửi NV + trên phiếu
+// để NV biết cần sửa gì trước khi "Sửa & gửi lại".
+function RejectDialog({ onConfirm, loading }: { onConfirm: (reason: string) => void; loading: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setReason(""); }}>
+      <DialogTrigger render={<Button size="sm" variant="outline" className="h-7 text-destructive" disabled={loading} />}>
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-destructive">Từ chối đề xuất?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1">
+          <Label className="text-xs">Lý do (tuỳ chọn — NV sẽ thấy lý do này)</Label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="VD: Sai số lượng, ghi nhầm loại..."
+            rows={3}
+            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={loading} onClick={() => setOpen(false)}>Huỷ</Button>
+          <Button
+            className="bg-destructive hover:bg-destructive/90 text-black"
+            disabled={loading}
+            onClick={() => { onConfirm(reason.trim()); setOpen(false); setReason(""); }}
+          >
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <X className="w-4 h-4 mr-2" />}
+            Xác nhận từ chối
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// "Sửa & gửi lại" — chỉ đổi được Số lượng/Loại/Ghi chú (mã cây, quy cách, phòng nguồn giữ nguyên như
+// phiếu gốc, xem PATCH /api/contamination-proposals/[id] nhánh resubmit), hiện cho đề xuất REJECTED mà
+// NV đang xem có quyền sửa (đúng NV đã gửi, hoặc Quản lý kho thành phẩm cùng kho).
+function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [type, setType] = useState<"TRONG" | "HUY">(proposal.type);
+  const [quantity, setQuantity] = useState(String(proposal.quantity));
+  const [notes, setNotes] = useState(proposal.notes ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const resetForm = () => {
+    setType(proposal.type);
+    setQuantity(String(proposal.quantity));
+    setNotes(proposal.notes ?? "");
+  };
+
+  const submit = async () => {
+    const value = Number(quantity);
+    if (!Number.isFinite(value) || value <= 0) { toast.error("Số lượng không hợp lệ"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/contamination-proposals/${proposal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resubmit: true, type, quantity: value, notes: notes.trim() || undefined }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã sửa & gửi lại phiếu ${proposal.code}`);
+      setOpen(false);
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
+      <DialogTrigger render={<Button size="sm" variant="outline" className="h-7" />}>
+        <Pencil className="w-3.5 h-3.5 mr-1" /> Sửa & gửi lại
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Sửa & gửi lại phiếu {proposal.code}</DialogTitle>
+        </DialogHeader>
+        {proposal.rejectionReason && (
+          <p className="text-sm bg-danger-light text-destructive rounded-lg p-3">
+            <strong>Lý do từ chối:</strong> {proposal.rejectionReason}
+          </p>
+        )}
+        <p className="text-xs text-text-muted">
+          {proposal.plantType.code} — {proposal.plantType.name} ({proposal.stageCode}){proposal.room ? ` · ${proposal.room.name}` : ""} — giữ nguyên mã
+          cây/quy cách/phòng, chỉ sửa được số lượng/loại/ghi chú.
+        </p>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Loại</Label>
+            <Select items={[{ value: "HUY", label: "Hủy" }, { value: "TRONG", label: "Trồng" }]} value={type} onValueChange={(v) => setType(v as "TRONG" | "HUY")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="HUY">Hủy</SelectItem>
+                <SelectItem value="TRONG">Trồng</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Số lượng</Label>
+            <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Ghi chú</Label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={saving} onClick={() => setOpen(false)}>Huỷ</Button>
+          <Button className="bg-primary hover:bg-primary-hover" disabled={saving} onClick={submit}>
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+            Gửi lại
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, processingId, onReview, onSaved }: {
   items: Proposal[];
   canApprove: boolean;
   canSubmit: boolean;
+  canResubmit: (p: Proposal) => boolean;
   processingId: string | null;
-  onReview: (id: string, action: "approve" | "reject") => void;
+  onReview: (id: string, action: "approve" | "reject", reason?: string) => void;
+  onSaved: () => void;
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-divider">
@@ -71,7 +211,7 @@ function ProposalItemsTable({ items, canApprove, canSubmit, processingId, onRevi
             <th className="text-left px-3 py-2 text-primary-strong font-bold text-base whitespace-nowrap">Tên cây chi tiết</th>
             <th className="text-left px-3 py-2 text-primary-strong font-bold text-base whitespace-nowrap">Quy cách</th>
             <th className="text-right px-3 py-2 text-primary-strong font-bold text-base whitespace-nowrap">Số lượng</th>
-            {canApprove && <th className="px-3 py-2 font-bold text-base"></th>}
+            {(canApprove || canSubmit) && <th className="px-3 py-2 font-bold text-base"></th>}
           </tr>
         </thead>
         <tbody>
@@ -83,19 +223,25 @@ function ProposalItemsTable({ items, canApprove, canSubmit, processingId, onRevi
                 {!canSubmit ? ` · ${p.warehouse.name}` : ""}
                 {p.room ? ` · ${p.room.name}` : ""}
                 {p.productionGarden ? ` · Vườn: ${p.productionGarden.name} (${p.productionGarden.code})` : ""}
+                {p.status === "REJECTED" && p.rejectionReason && (
+                  <p className="text-xs text-destructive mt-0.5">Lý do: {p.rejectionReason}</p>
+                )}
               </td>
               <td className="px-3 py-2 text-foreground">{p.stageCode}</td>
               <td className="px-3 py-2 text-right font-medium text-foreground">{p.quantity.toLocaleString("vi-VN")}</td>
-              {canApprove && (
+              {(canApprove || canSubmit) && (
                 <td className="px-3 py-2">
-                  {p.status === "PENDING" && (
+                  {canApprove && p.status === "PENDING" && (
                     <div className="flex gap-1 justify-end">
-                      <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={processingId === p.id} onClick={() => onReview(p.id, "reject")}>
-                        {processingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                      </Button>
+                      <RejectDialog loading={processingId === p.id} onConfirm={(reason) => onReview(p.id, "reject", reason)} />
                       <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === p.id} onClick={() => onReview(p.id, "approve")}>
                         {processingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Duyệt</>}
                       </Button>
+                    </div>
+                  )}
+                  {!canApprove && canResubmit(p) && (
+                    <div className="flex justify-end">
+                      <ResubmitDialog proposal={p} onSaved={onSaved} />
                     </div>
                   )}
                 </td>
@@ -108,12 +254,14 @@ function ProposalItemsTable({ items, canApprove, canSubmit, processingId, onRevi
   );
 }
 
-function BatchTable({ batches, canApprove, canSubmit, processingId, onReview }: {
+function BatchTable({ batches, canApprove, canSubmit, canResubmit, processingId, onReview, onSaved }: {
   batches: Batch[];
   canApprove: boolean;
   canSubmit: boolean;
+  canResubmit: (p: Proposal) => boolean;
   processingId: string | null;
-  onReview: (id: string, action: "approve" | "reject") => void;
+  onReview: (id: string, action: "approve" | "reject", reason?: string) => void;
+  onSaved: () => void;
 }) {
   const [openBatchCode, setOpenBatchCode] = useState<string | null>(null);
   // Tra lại từ batches (không giữ snapshot riêng) để nội dung popup luôn khớp trạng thái mới nhất sau
@@ -166,7 +314,10 @@ function BatchTable({ batches, canApprove, canSubmit, processingId, onReview }: 
             <DialogTitle>Chi tiết đề xuất {openBatch?.batchCode}</DialogTitle>
           </DialogHeader>
           {openBatch && (
-            <ProposalItemsTable items={openBatch.items} canApprove={canApprove} canSubmit={canSubmit} processingId={processingId} onReview={onReview} />
+            <ProposalItemsTable
+              items={openBatch.items} canApprove={canApprove} canSubmit={canSubmit} canResubmit={canResubmit}
+              processingId={processingId} onReview={onReview} onSaved={onSaved}
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -177,7 +328,15 @@ function BatchTable({ batches, canApprove, canSubmit, processingId, onReview }: 
 // Chỉ còn hiển thị danh sách đề xuất đã gửi — tạo đề xuất mới đã chuyển sang mục "Kiểm tra kho nhiễm cá
 // nhân" trong nhiệm vụ ngày của Kho mô (xem contamination-personal-board.tsx), gộp nhiều NV/nhiều ngày
 // thành 1 phiếu chung trước khi gửi Admin duyệt.
-export default function ContaminationProposalBoard({ canSubmit, canApprove }: { canSubmit: boolean; canApprove: boolean }) {
+export default function ContaminationProposalBoard({
+  canSubmit, canApprove, currentUserId, currentUserRole, currentUserWarehouseId,
+}: {
+  canSubmit: boolean;
+  canApprove: boolean;
+  currentUserId?: string;
+  currentUserRole?: string | null;
+  currentUserWarehouseId?: string | null;
+}) {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -196,19 +355,27 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
 
   useEffect(() => { load(); }, [load]);
 
-  const review = async (id: string, action: "approve" | "reject") => {
+  const review = async (id: string, action: "approve" | "reject", reason?: string) => {
     setProcessingId(id);
     try {
       const res = await fetch(`/api/contamination-proposals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, reason }),
       });
       if (!res.ok) return;
       load();
     } finally {
       setProcessingId(null);
     }
+  };
+
+  // Đúng NV đã gửi đề xuất này, HOẶC Quản lý kho thành phẩm của đúng kho đó (chỉ áp dụng đề xuất Kho
+  // thành phẩm — có room) — khớp permission server-side ở PATCH /api/contamination-proposals/[id].
+  const canResubmit = (p: Proposal) => {
+    if (p.status !== "REJECTED") return false;
+    if (p.requestedById === currentUserId) return true;
+    return !!p.room && currentUserRole === "QUAN_LY_KHO_THANH_PHAM" && p.warehouseId === currentUserWarehouseId;
   };
 
   const huyProposals = proposals.filter((p) => p.type === "HUY");
@@ -240,11 +407,11 @@ export default function ContaminationProposalBoard({ canSubmit, canApprove }: { 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">Đề xuất Hủy <span className="font-normal text-text-muted">({huyProposals.length})</span></h3>
-              <BatchTable batches={huyBatches} canApprove={canApprove} canSubmit={canSubmit} processingId={processingId} onReview={review} />
+              <BatchTable batches={huyBatches} canApprove={canApprove} canSubmit={canSubmit} canResubmit={canResubmit} processingId={processingId} onReview={review} onSaved={load} />
             </div>
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">Đề xuất Trồng <span className="font-normal text-text-muted">({trongProposals.length})</span></h3>
-              <BatchTable batches={trongBatches} canApprove={canApprove} canSubmit={canSubmit} processingId={processingId} onReview={review} />
+              <BatchTable batches={trongBatches} canApprove={canApprove} canSubmit={canSubmit} canResubmit={canResubmit} processingId={processingId} onReview={review} onSaved={load} />
             </div>
           </div>
         </CardContent>

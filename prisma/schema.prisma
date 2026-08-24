@@ -215,6 +215,10 @@ enum AlertType {
   // ensureWeeklyDeXuatTask) chưa hoàn thành, tới hạn nhắc thứ 5 — báo đúng NV đã được gán (userId) nếu
   // có, hoặc toàn bộ Quản lý kho thành phẩm (targetRole) nếu chưa ai nhận việc.
   DE_XUAT_TRONG_HUY_WEEKLY_DUE
+  // Admin bấm "Từ chối" 1 đề xuất Trồng/Hủy — báo cho đúng NV đã gửi đề xuất đó (userId) biết lý do (nếu
+  // Admin có ghi) để sửa số lượng/loại/ghi chú rồi gửi lại — xem PATCH /api/contamination-proposals/[id]
+  // nhánh reject + nhánh resubmit.
+  CONTAMINATION_PROPOSAL_REJECTED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -1637,6 +1641,10 @@ model ContaminationProposal {
   approvedById  String?
   approvedBy    User?                        @relation("ContaminationProposalApprovedBy", fields: [approvedById], references: [id])
   approvedAt    DateTime?
+  // Lý do Admin từ chối (tuỳ chọn, Admin có thể để trống) — hiện trong thông báo gửi NV + trên phiếu để
+  // NV biết cần sửa gì trước khi "Sửa & gửi lại" (xem PATCH nhánh reject/resubmit). Tự xoá (null) khi
+  // "Sửa & gửi lại" thành công, không giữ lý do cũ cho lần gửi mới.
+  rejectionReason String?
   // Chỉ có giá trị với dòng type=TRONG đã APPROVED — đã được gộp vào 1 phiếu "Bàn giao cây trồng" gửi
   // Nhân viên sản xuất chưa (xem ReplantHandover). NULL = chưa gộp, còn chờ Kho mô bấm "Bàn giao".
   replantHandoverId String?
