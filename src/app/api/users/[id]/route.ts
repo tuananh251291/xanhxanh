@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -45,10 +45,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  // Địa điểm làm việc — chỉ Admin cao nhất được gán, chỉ áp dụng cho 3 vai trò cố định.
+  // Địa điểm làm việc — Admin cao nhất/NV Hành chính nhân sự được gán (xem canAssignWorkplace), chỉ áp
+  // dụng cho các vai trò cố định (WORKPLACE_ROLES).
   if ("workplaceWarehouseId" in parsed.data) {
-    if (session?.user?.role !== "SUPER_ADMIN") {
-      return NextResponse.json({ message: "Chỉ Admin cao nhất mới có quyền gán địa điểm làm việc" }, { status: 403 });
+    if (!canAssignWorkplace(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất/NV Hành chính nhân sự mới có quyền gán địa điểm làm việc" }, { status: 403 });
     }
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
     if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });

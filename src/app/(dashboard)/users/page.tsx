@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, creatableRolesFor } from "@/types";
+import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, canAssignWorkplace, creatableRolesFor } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import CreateUserDialog from "./create-user-dialog";
@@ -33,6 +33,7 @@ export default async function UsersPage({
   const canApprove = session?.user?.role === "SUPER_ADMIN";
   const canEditCapacity = isAdminRole(session?.user?.role);
   const canEditEmployment = canEditEmploymentType(session?.user?.role);
+  const canEditWorkplace = canAssignWorkplace(session?.user?.role);
   const assignableRoles = creatableRolesFor(session?.user?.role);
   // "Phân quyền truy cập trang theo vai trò" chỉ Admin/Admin cấp cao — NV Hành chính nhân sự KHÔNG được
   // xem/sửa (chỉ /api/permissions PATCH chặn ghi, ẩn hẳn tab này khỏi HR để tránh hiểu nhầm là dùng được).
@@ -142,7 +143,7 @@ export default async function UsersPage({
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Năng lực cấy</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Giữ đơn (ngày)</th>
                       <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Đăng nhập</th>
-                      {(canApprove || canEditCapacity || canEditEmployment) && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
+                      {(canApprove || canEditCapacity || canEditEmployment || canEditWorkplace) && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -167,6 +168,7 @@ export default async function UsersPage({
                           role={user.role}
                           canApprove={canApprove}
                           canEditCapacity={canEditCapacity}
+                          canEditWorkplace={canEditWorkplace}
                           isWorkplaceRole={!!user.role && WORKPLACE_ROLES.includes(user.role as (typeof WORKPLACE_ROLES)[number])}
                           workplaceWarehouseId={user.workplaceWarehouseId}
                           workplaceWarehouse={user.workplaceWarehouse}
@@ -201,7 +203,7 @@ export default async function UsersPage({
                     ))}
                     {users.length === 0 && (
                       <tr>
-                        <td colSpan={canApprove || canEditCapacity || canEditEmployment ? 9 : 8} className="px-4 py-8 text-center text-sm text-text-muted">
+                        <td colSpan={canApprove || canEditCapacity || canEditEmployment || canEditWorkplace ? 9 : 8} className="px-4 py-8 text-center text-sm text-text-muted">
                           Không tìm thấy nhân viên phù hợp
                         </td>
                       </tr>

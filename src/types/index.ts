@@ -69,6 +69,14 @@ export function canEditEmploymentType(role: UserRole | null | undefined): boolea
 export const TRAINEE_LABEL = "Cấy học việc";
 export const TRAINEE_BADGE_COLOR = "bg-info-light text-info-foreground";
 
+// Ai được gán "Vị trí làm việc" (khu sản xuất/kho thành phẩm, xem User.workplaceWarehouseId) cho NV —
+// cùng phạm vi role với canEditEmploymentType (SUPER_ADMIN + NV Hành chính nhân sự, KHÔNG bao gồm Admin
+// thường) — trước đây chỉ SUPER_ADMIN, mở thêm cho HR để tự sắp xếp nhân sự theo cơ sở mà không cần nhờ
+// Admin cấp cao.
+export function canAssignWorkplace(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
+}
+
 // Ai được cài đặt các bảng tham số lương + xem "Bảng lương" (dữ liệu lương nhạy cảm) — cùng phạm vi
 // role với canEditEmploymentType (SUPER_ADMIN + NV Hành chính nhân sự, KHÔNG bao gồm Admin thường/
 // KHO_MO), tách hàm riêng cho rõ nghĩa ở các chỗ gọi liên quan tới lương.

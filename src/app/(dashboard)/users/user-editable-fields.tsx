@@ -26,6 +26,7 @@ export default function UserEditableFields({
   role,
   canApprove,
   canEditCapacity,
+  canEditWorkplace: canAssignWorkplace,
   isWorkplaceRole,
   workplaceWarehouseId,
   workplaceWarehouse,
@@ -44,6 +45,7 @@ export default function UserEditableFields({
   role: UserRole | null;
   canApprove: boolean;
   canEditCapacity: boolean;
+  canEditWorkplace: boolean;
   isWorkplaceRole: boolean;
   workplaceWarehouseId: string | null;
   workplaceWarehouse: { code: string; name: string } | null;
@@ -60,7 +62,7 @@ export default function UserEditableFields({
   thanhPhamWarehouses: WarehouseOption[];
   lockedAt: Date | null;
 }) {
-  const canEditWorkplace = isWorkplaceRole && canApprove;
+  const canEditWorkplace = isWorkplaceRole && canAssignWorkplace;
   const canEditThisCapacity = role === "CAY_MO" && canEditCapacity;
   const canEditThisHoldDays = role === "SALE" && canEditCapacity;
   const canEditThisEmployment = role === "CAY_MO" && canEditEmployment;
