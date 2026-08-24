@@ -22,10 +22,12 @@ const CUSTOMER_GROUP_TEXT: Record<string, "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KH
 
 // Nhập hàng loạt/cập nhật danh sách khách hàng — cập nhật thay thế theo khoá tự nhiên là Website
 // (chuẩn hoá qua normalizeWebsite, xem src/lib/customer.ts): khớp Website đã có -> update, chưa có ->
-// tạo mới. CHỈ 4 cột đầu bắt buộc (Tên công ty, Website, Thị trường, Trạng thái) — mọi cột khác để trống
-// vẫn nhập được. "Mã NV quản lý" nhập vào sẽ TỰ GÁN/CẬP NHẬT bảng SalesManagerAssignment cho đúng cặp
-// (NV phụ trách, Thị trường) của dòng đó (khác quyết định trước đây — lúc đó chưa cho nhập cột này qua
-// Excel, chỉ cấu hình tay ở /settings/sale/managers; giờ cho phép cả 2 cách).
+// tạo mới. Website/SĐT/Email đều KHÔNG bắt buộc riêng lẻ — chỉ cần ÍT NHẤT 1 trong 3 (khớp đúng ràng buộc
+// ở /api/customer-check) — CHỈ 3 cột Tên công ty/Thị trường/Trạng thái LUÔN bắt buộc. Để trống Website
+// thì dòng đó LUÔN được TẠO MỚI (không dùng làm khoá cập nhật được vì nhiều dòng cùng để trống Website sẽ
+// không phân biệt được với nhau). "Mã NV quản lý" nhập vào sẽ TỰ GÁN/CẬP NHẬT bảng SalesManagerAssignment
+// cho đúng cặp (NV phụ trách, Thị trường) của dòng đó (khác quyết định trước đây — lúc đó chưa cho nhập
+// cột này qua Excel, chỉ cấu hình tay ở /settings/sale/managers; giờ cho phép cả 2 cách).
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "SUPER_ADMIN") {
@@ -54,7 +56,7 @@ export async function GET() {
     { header: "Nhóm khách hàng (Khách sỉ nhỏ / Khách công ty / Khách công ty lớn)", key: "customerGroup", width: 34 },
   ];
   sheet.getRow(1).font = { bold: true };
-  markRequiredHeaders(sheet, [1, 2, 3, 4]);
+  markRequiredHeaders(sheet, [1, 3, 4]);
   sheet.addRow({
     name: "ABC Import Export Co., Ltd",
     website: "abc-import.com",
@@ -81,8 +83,9 @@ export async function GET() {
   for (const m of markets) helpSheet.addRow({ type: "Mã thị trường", code: m.code, name: m.name });
   for (const s of staff) helpSheet.addRow({ type: "Mã NV bán hàng", code: s.code, name: s.name });
   helpSheet.addRow({});
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Chỉ 4 cột có dấu * (Tên công ty, Website, Thị trường, Trạng thái) là bắt buộc — mọi cột khác để trống vẫn nhập được." });
-  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Khớp Website đã có trong hệ thống thì CẬP NHẬT THAY THẾ dòng đó, chưa có thì TẠO MỚI." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Chỉ 3 cột có dấu * (Tên công ty, Thị trường, Trạng thái) là bắt buộc — mọi cột khác để trống vẫn nhập được." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Website/SĐT/Email không bắt buộc từng cột riêng, nhưng mỗi dòng phải có ÍT NHẤT 1 trong 3 cột này." });
+  helpSheet.addRow({ type: "Ghi chú", code: "", name: "Khớp Website đã có trong hệ thống thì CẬP NHẬT THAY THẾ dòng đó, chưa có thì TẠO MỚI. Để trống Website thì dòng đó LUÔN tạo mới (không dùng làm khoá cập nhật được)." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Để trống 1 cột không bắt buộc: khách MỚI để trống thật (riêng Ngày đầu tiếp cận thì lấy ngày hôm nay); khách ĐÃ CÓ (khớp Website) thì GIỮ NGUYÊN giá trị cũ của đúng cột đó, không bị xoá." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Trạng thái Đã phân công/Mặc định bắt buộc kèm Mã NV phụ trách; Chưa phân công thì để trống Mã NV phụ trách." });
   helpSheet.addRow({ type: "Ghi chú", code: "", name: "Mặc định = khách VIP/lâu năm gắn cố định với NV phụ trách, không bị nhắc cập nhật hàng tháng và không tự thu hồi về Chưa phân công dù không có đơn." });
@@ -90,11 +93,11 @@ export async function GET() {
 
   addGuideSheet(workbook, [
     { column: "Tên công ty", required: true, description: "Tên công ty khách hàng." },
-    { column: "Website", required: true, description: "Dùng để kiểm tra trùng khách và làm khoá cập nhật khi nhập lại file." },
+    { column: "Website", required: false, description: "Dùng để kiểm tra trùng khách và làm khoá cập nhật khi nhập lại file — để trống được nếu đã có SĐT hoặc Email, nhưng để trống thì dòng đó luôn TẠO MỚI (không cập nhật được khách cũ)." },
     { column: "Thị trường (Mã)", required: true, description: "Phải khớp đúng 1 Mã thị trường đã có (xem sheet Danh mục)." },
     { column: "Trạng thái", required: true, description: `Chỉ nhận 1 trong 3 giá trị: "Đã phân công", "Chưa phân công" hoặc "Mặc định" (khách VIP/lâu năm, không bị nhắc cập nhật/không tự thu hồi).` },
-    { column: "SĐT", required: false, description: "Số điện thoại liên hệ — để trống nếu chưa có." },
-    { column: "Email", required: false, description: "Email liên hệ — để trống nếu chưa có." },
+    { column: "SĐT", required: false, description: "Số điện thoại liên hệ — để trống được nếu đã có Website hoặc Email." },
+    { column: "Email", required: false, description: "Email liên hệ — để trống được nếu đã có Website hoặc SĐT." },
     { column: "Ngày đầu tiếp cận", required: false, description: "Định dạng dd/mm/yyyy. Để trống: khách mới lấy ngày hôm nay, khách đã có giữ nguyên ngày cũ." },
     { column: "Ngày ra đơn gần nhất", required: false, description: "Định dạng dd/mm/yyyy, để trống nếu chưa có đơn." },
     { column: "Mã đơn gần nhất", required: false, description: "Để trống nếu chưa có đơn." },
@@ -216,9 +219,14 @@ export async function POST(req: NextRequest) {
 
   for (const parsed of parsedRows) {
     const label = parsed.name;
-    if (!parsed.website) { errors.push({ row: parsed.row, label, message: "Thiếu Website" }); continue; }
-    const websiteNormalized = normalizeWebsite(parsed.website);
-    if (claimedWebsites.has(websiteNormalized)) {
+    if (!parsed.website && !parsed.phone && !parsed.email) {
+      errors.push({ row: parsed.row, label, message: "Cần nhập ít nhất 1 trong 3: Website, SĐT hoặc Email" });
+      continue;
+    }
+    // Để trống Website: không dùng làm khoá so trùng/cập nhật được (nhiều dòng cùng để trống sẽ không
+    // phân biệt được với nhau) — luôn coi là tạo mới, bỏ qua toàn bộ kiểm tra trùng Website bên dưới.
+    const websiteNormalized = parsed.website ? normalizeWebsite(parsed.website) : "";
+    if (websiteNormalized && claimedWebsites.has(websiteNormalized)) {
       errors.push({ row: parsed.row, label, message: "Website trùng với 1 dòng khác trong file" });
       continue;
     }
@@ -274,10 +282,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Để trống Ngày đầu tiếp cận: khách MỚI lấy hôm nay, khách ĐÃ CÓ (khớp Website) giữ nguyên ngày cũ.
-    const existing = existingByWebsite.get(websiteNormalized);
+    // Website rỗng không bao giờ khớp "đã có" — nhiều khách có thể cùng để trống Website, không coi là
+    // cùng 1 khách (khác cách khớp bình thường theo websiteNormalized).
+    const existing = websiteNormalized ? existingByWebsite.get(websiteNormalized) : undefined;
     const firstContactAt = parsed.firstContactAtRaw ?? (existing ? undefined : new Date());
 
-    claimedWebsites.add(websiteNormalized);
+    if (websiteNormalized) claimedWebsites.add(websiteNormalized);
     validRows.push({
       row: parsed.row,
       label,
@@ -301,7 +311,7 @@ export async function POST(req: NextRequest) {
   if (validRows.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
-        const existing = existingByWebsite.get(vr.websiteNormalized);
+        const existing = vr.websiteNormalized ? existingByWebsite.get(vr.websiteNormalized) : undefined;
         const baseData = {
           name: vr.name,
           nameNormalized: vr.nameNormalized,
