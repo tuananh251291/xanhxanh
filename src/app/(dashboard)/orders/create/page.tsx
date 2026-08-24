@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
+import { getSystemConfig } from "@/lib/inventory";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, MARKET_LABELS } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -21,7 +22,7 @@ export default async function OrdersPage() {
   // người quản lý đang thao tác hộ — nhúng thẳng vào từng khách để form khỏi phải tự tra thêm.
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
 
-  const [plantTypes, customersRaw, recentOrders] = await Promise.all([
+  const [plantTypes, customersRaw, recentOrders, defaultHoldDaysStr] = await Promise.all([
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     // Cùng 1 select cho cả 2 vai trò (khác nhau ở where) — luôn kèm holdDays của NV bán hàng phụ trách
     // (assignedTo), kể cả khi role là SALE (bằng đúng holdDays của chính họ), để form chỉ cần 1 nguồn duy
@@ -40,10 +41,14 @@ export default async function OrdersPage() {
         items: { select: { quantity: true } },
       },
     }),
+    getSystemConfig("default_hold_days", "3"),
   ]);
+  // Năng lực giữ đơn riêng từng NV Sale (Admin gõ tay ở /users) là NGOẠI LỆ — chỉ khi chưa cài đặt (null)
+  // mới rơi về "Thời gian giữ đơn mặc định" chung ở /settings, khớp đúng logic ở POST /api/orders.
+  const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
   const customers = customersRaw.map((c) => ({
     id: c.id, code: c.code, name: c.name, customerGroup: c.customerGroup,
-    holdDays: c.assignedTo?.holdDays ?? null,
+    holdDays: c.assignedTo?.holdDays ?? defaultHoldDays,
   }));
 
   return (

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, creatableRolesFor } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
+import { getSystemConfig } from "@/lib/inventory";
 import CreateUserDialog from "./create-user-dialog";
 import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
@@ -55,7 +56,7 @@ export default async function UsersPage({
     ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { code: { contains: search, mode: "insensitive" } }] } : {}),
   };
 
-  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses] = await Promise.all([
+  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses, defaultHoldDaysStr] = await Promise.all([
     prisma.user.count({ where: adminExclusion }),
     prisma.user.findMany({
       where: { status: "PENDING" },
@@ -72,7 +73,9 @@ export default async function UsersPage({
     canManagePermissions ? prisma.rolePermission.findMany() : Promise.resolve([]),
     prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.warehouse.findMany({ where: { type: "THANH_PHAM", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    getSystemConfig("default_hold_days", "3"),
   ]);
+  const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
   const pageHref = (p: number) => {
@@ -189,6 +192,7 @@ export default async function UsersPage({
                           }
                           plantingCapacity={user.plantingCapacity}
                           holdDays={user.holdDays}
+                          defaultHoldDays={defaultHoldDays}
                           employmentType={user.employmentType}
                           isTrainee={user.isTrainee}
                           canEditEmployment={canEditEmployment}

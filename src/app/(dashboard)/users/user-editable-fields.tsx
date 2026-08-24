@@ -33,6 +33,7 @@ export default function UserEditableFields({
   warehouseOptions,
   plantingCapacity,
   holdDays,
+  defaultHoldDays,
   employmentType,
   isTrainee,
   canEditEmployment,
@@ -52,6 +53,10 @@ export default function UserEditableFields({
   warehouseOptions: WarehouseOption[];
   plantingCapacity: number;
   holdDays: number | null;
+  // "Thời gian giữ đơn mặc định" hiện đang cài ở /settings — áp dụng cho NV này khi holdDays (số riêng)
+  // chưa được cài đặt (null), xem POST /api/orders. Chỉ để HIỂN THỊ (chú thích trong ô), không tự ghi vào
+  // holdDays của NV — giữ null nghĩa là "đang dùng mặc định", đổi mặc định ở /settings là áp dụng ngay.
+  defaultHoldDays: number;
   employmentType: EmploymentType | null;
   isTrainee: boolean;
   canEditEmployment: boolean;
@@ -248,17 +253,24 @@ export default function UserEditableFields({
       <td className="px-4 py-3">
         {role === "SALE" ? (
           canEditThisHoldDays ? (
-            <Input
-              type="number"
-              min={1}
-              className="w-20 h-8 text-xs"
-              value={hd}
-              placeholder="—"
-              disabled={saving}
-              onChange={(e) => setHd(e.target.value)}
-            />
+            <div className="space-y-0.5">
+              <Input
+                type="number"
+                min={1}
+                className="w-20 h-8 text-xs"
+                value={hd}
+                placeholder={String(defaultHoldDays)}
+                disabled={saving}
+                onChange={(e) => setHd(e.target.value)}
+              />
+              {hd.trim() === "" && (
+                <p className="text-[10px] text-text-muted">Đang dùng mặc định ({defaultHoldDays})</p>
+              )}
+            </div>
           ) : (
-            <span className="text-xs text-text-secondary">{holdDays != null ? holdDays.toLocaleString("vi-VN") : "—"}</span>
+            <span className="text-xs text-text-secondary">
+              {holdDays != null ? holdDays.toLocaleString("vi-VN") : `Mặc định (${defaultHoldDays})`}
+            </span>
           )
         ) : (
           <span className="text-xs text-text-muted">—</span>

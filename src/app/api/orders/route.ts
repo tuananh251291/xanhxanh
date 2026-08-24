@@ -5,6 +5,7 @@ import { addDays, addMonths } from "date-fns";
 import { generateOrderCode } from "@/lib/codes";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
+import { getSystemConfig } from "@/lib/inventory";
 import { canActAsSale } from "@/types";
 import { z } from "zod";
 
@@ -89,15 +90,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Khách hàng chưa có NV bán hàng phụ trách — không tạo được đơn hộ" }, { status: 400 });
   }
 
-  const holdDays = session.user.role === "SALE"
+  // Năng lực giữ đơn (ngày) riêng từng NV Sale (Admin gõ tay ở /users) là NGOẠI LỆ — chỉ khi chưa cài đặt
+  // (null) mới rơi về "Thời gian giữ đơn mặc định" chung ở /settings (SystemConfig "default_hold_days"),
+  // đọc SỐNG mỗi lần tạo đơn nên Admin sửa số mặc định là áp dụng ngay cho mọi NV chưa có số riêng.
+  const salesUserHoldDays = session.user.role === "SALE"
     ? session.user.holdDays
     : (await prisma.user.findUnique({ where: { id: customer.assignedToId }, select: { holdDays: true } }))?.holdDays;
-  if (!holdDays) {
-    return NextResponse.json(
-      { message: "NV bán hàng phụ trách khách này chưa được Admin cài đặt Năng lực giữ đơn — liên hệ Admin trước khi tạm giữ đơn hàng" },
-      { status: 400 }
-    );
-  }
+  const defaultHoldDays = parseInt(await getSystemConfig("default_hold_days", "3"), 10) || 3;
+  const holdDays = salesUserHoldDays ?? defaultHoldDays;
 
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
   const inProgressRoomIds = await getInProgressRoomIds(session.user.workplaceWarehouseId);
