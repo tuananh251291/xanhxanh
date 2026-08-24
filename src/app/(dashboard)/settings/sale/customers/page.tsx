@@ -13,7 +13,7 @@ export default async function SaleCustomersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Flag className="w-6 h-6 text-primary-strong" /> Cài đặt chung hệ thống CSDL
+          <Flag className="w-6 h-6 text-primary-strong" /> Cài đặt Sale
         </h1>
         <p className="text-text-secondary text-sm mt-1">Danh sách khách hàng, thị trường và phân công nhân viên quản lý cho đội bán hàng.</p>
       </div>

@@ -4,11 +4,11 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, Handshake, ChevronRight } from "lucide-react";
 
-// Hub liên kết nhẹ (KHÔNG dùng Tabs) — Người dùng và Cài đặt chung hệ thống CSDL đều đã tự là hub nhiều
-// tab/phân trang riêng (Người dùng có tab Tài khoản/Phân quyền + phân trang theo URL riêng, Cài đặt
-// chung hệ thống CSDL có 3 tab con) nên gộp thêm 1 lớp Tabs ngoài sẽ thành tab-trong-tab, không đáng —
-// chỉ cần 2 thẻ dẫn sang, không đụng gì file 2 trang gốc. ADMIN không có mục này nên không cần trang hub
-// này (ROLE_NAV.ADMIN trỏ thẳng /users).
+// Hub liên kết nhẹ (KHÔNG dùng Tabs) — Người dùng và Cài đặt Sale đều đã tự là hub nhiều tab/phân trang
+// riêng (Người dùng có tab Tài khoản/Phân quyền + phân trang theo URL riêng, Cài đặt Sale có 3 tab con)
+// nên gộp thêm 1 lớp Tabs ngoài sẽ thành tab-trong-tab, không đáng — chỉ cần 2 thẻ dẫn sang, không đụng
+// gì file 2 trang gốc. ADMIN không có Cài đặt Sale nên không cần trang hub này (ROLE_NAV.ADMIN trỏ thẳng
+// /users).
 export default async function UserManagementPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -16,7 +16,7 @@ export default async function UserManagementPage() {
 
   const cards = [
     { href: "/users", icon: Users, title: "Người dùng", description: "Quản lý tài khoản nhân viên, duyệt tài khoản mới, phân quyền theo trang." },
-    { href: "/settings/sale", icon: Handshake, title: "Cài đặt chung hệ thống CSDL", description: "Danh sách khách hàng, thị trường, phân công nhân viên quản lý cho đội bán hàng." },
+    { href: "/settings/sale", icon: Handshake, title: "Cài đặt Sale", description: "Danh sách khách hàng, thị trường, phân công nhân viên quản lý cho đội bán hàng." },
   ];
 
   return (

@@ -94,7 +94,7 @@ export default function DataImportBoard() {
       <ExcelImportCard
         icon={<Handshake className="w-5 h-5" />}
         title="9. Danh sách khách hàng"
-        description={'Nhập/cập nhật danh sách khách hàng (CRM Sale) — chỉ 4 cột Tên công ty/Website/Thị trường/Trạng thái bắt buộc. CẬP NHẬT THAY THẾ theo Website: khớp Website đã có thì ghi đè, chưa có thì tạo mới. Mã NV phụ trách cần đã có trong hệ thống (mục 1) và Mã thị trường cần tạo sẵn ở Cài đặt chung hệ thống CSDL → Thị trường trước. Có thể điền thêm Mã NV quản lý để tự gán/cập nhật luôn người quản lý cho từng NV phụ trách theo thị trường (thay cho vào tay ở Cài đặt chung hệ thống CSDL → NV quản lý).'}
+        description={'Nhập/cập nhật danh sách khách hàng (CRM Sale) — chỉ 4 cột Tên công ty/Website/Thị trường/Trạng thái bắt buộc. CẬP NHẬT THAY THẾ theo Website: khớp Website đã có thì ghi đè, chưa có thì tạo mới. Mã NV phụ trách cần đã có trong hệ thống (mục 1) và Mã thị trường cần tạo sẵn ở Cài đặt Sale → Thị trường trước. Có thể điền thêm Mã NV quản lý để tự gán/cập nhật luôn người quản lý cho từng NV phụ trách theo thị trường (thay cho vào tay ở Cài đặt Sale → NV quản lý).'}
         templateUrl="/api/data-import/customers"
         uploadUrl="/api/data-import/customers"
         successLabel={(n) => `Đã nhập/cập nhật ${n} khách hàng`}
