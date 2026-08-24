@@ -2233,7 +2233,7 @@ model DailyTask {
 }
 
 // ============================================================
-// SALE — CRM khách hàng (Kiểm tra trùng khách + Cài đặt Sale)
+// SALE — CRM khách hàng (Kiểm tra trùng khách + Cài đặt chung hệ thống CSDL)
 // ============================================================
 
 enum CustomerStatus {
