@@ -4,10 +4,12 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle } from "lucide-react";
+import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle, RotateCcw } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { DAILY_TASK_TYPE_LABELS, CONTAMINATION_PROPOSAL_TYPE_LABELS } from "@/types";
+import { getPendingReturnInspections } from "@/lib/return-inspection";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
+import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import DailyTaskCreateDialog from "./daily-task-create-dialog";
 import DailyTaskCompleteDialog from "./daily-task-complete-dialog";
 
@@ -23,6 +25,7 @@ export default async function TaskAssignmentPage() {
 
   const [
     pendingReceipts,
+    pendingReturnInspections,
     pendingTransfers,
     pendingOrders,
     staffKhoThanhPham,
@@ -41,6 +44,7 @@ export default async function TaskAssignmentPage() {
         assignedTo: { select: { id: true, code: true, name: true } },
       },
     }),
+    getPendingReturnInspections(workplaceWarehouseId ?? ""),
     prisma.transfer.findMany({
       where: { status: "PENDING", toWarehouse: { type: "THANH_PHAM" } },
       orderBy: { transferredAt: "asc" },
@@ -235,6 +239,15 @@ export default async function TaskAssignmentPage() {
               </div>
             ))
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2"><RotateCcw className="w-4 h-4" /> 6. Trả hàng nhà cung cấp</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ReturnInspectionTable items={pendingReturnInspections} />
         </CardContent>
       </Card>
     </div>

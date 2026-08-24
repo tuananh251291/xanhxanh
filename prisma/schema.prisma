@@ -852,6 +852,10 @@ model GoodsReceiptItem {
   // thực tế lẫn tồn đạt tiêu chuẩn vì hàng rời khỏi kho thật — khác phần "không đạt" ban đầu vẫn nằm nguyên
   // trong Phòng theo dõi). returnedAt khác null nghĩa là đã kiểm tra xong (kể cả khi returnQuantity = 0
   // — kiểm tra không phát hiện thêm lỗi vẫn tính là đã xử lý xong).
+  // Tách riêng theo phân loại lỗi (NV chọn khi báo cây không đạt, xem ReturnInspectionTable) —
+  // returnQuantity là TỔNG 2 cột dưới, lưu sẵn để nơi khác (VD dashboard) không phải cộng lại.
+  returnQuantityNhiem    Int?
+  returnQuantityKhongDat Int?
   returnQuantity Int?
   returnedAt     DateTime?
   returnedById   String?

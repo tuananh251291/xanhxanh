@@ -3,14 +3,18 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 
-const schema = z.object({ returnQuantity: z.number().int().min(0) });
+const schema = z.object({
+  returnQuantityNhiem: z.number().int().min(0),
+  returnQuantityKhongDat: z.number().int().min(0),
+});
 
 // "Kiểm tra" + "Trả hàng" — chỉ áp dụng cho dòng nhập hàng của nhà cung cấp cho phép trả hàng
 // (Supplier.allowsReturn). Kho thành phẩm kiểm tra lại trong vòng Supplier.returnWindowDays ngày kể từ
-// ngày nhập, phát hiện thêm cây không đạt trong số đã tính "đạt" lúc nhập — bấm "Trả hàng" sẽ trừ thẳng
-// số đó khỏi lô ĐÚNG QUY CÁCH (item.stageCode) đã cộng ở Phòng đạt tiêu chuẩn lúc nhập hàng (giảm cả tồn
-// thực tế lẫn tồn đạt tiêu chuẩn vì hàng rời kho thật, khác phần "không đạt" ban đầu vẫn nằm nguyên trong
-// Phòng theo dõi). returnQuantity = 0 vẫn hợp lệ — nghĩa là đã kiểm tra, không phát hiện thêm lỗi.
+// ngày nhập, phát hiện thêm cây không đạt trong số đã tính "đạt" lúc nhập, phân loại theo lỗi Nhiễm/Không
+// đạt tiêu chuẩn — bấm "Xác nhận gửi trả NCC" sẽ trừ thẳng TỔNG 2 loại lỗi khỏi lô ĐÚNG QUY CÁCH
+// (item.stageCode) đã cộng ở Phòng đạt tiêu chuẩn lúc nhập hàng (giảm cả tồn thực tế lẫn tồn đạt tiêu
+// chuẩn vì hàng rời kho thật, khác phần "không đạt" ban đầu vẫn nằm nguyên trong Phòng theo dõi). Cả 2 số
+// lượng = 0 vẫn hợp lệ — nghĩa là đã kiểm tra, không phát hiện thêm lỗi.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (session?.user?.role !== "KHO_THANH_PHAM" && session?.user?.role !== "QUAN_LY_KHO_THANH_PHAM") {
@@ -21,7 +25,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { returnQuantity } = parsed.data;
+  const { returnQuantityNhiem, returnQuantityKhongDat } = parsed.data;
+  const returnQuantity = returnQuantityNhiem + returnQuantityKhongDat;
 
   const item = await prisma.goodsReceiptItem.findUnique({
     where: { id },
@@ -42,7 +47,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Dòng này đã được kiểm tra" }, { status: 400 });
   }
   if (returnQuantity > item.quantityPassed) {
-    return NextResponse.json({ message: "Số lượng trả hàng không được lớn hơn số lượng đạt lúc nhập" }, { status: 400 });
+    return NextResponse.json({ message: "Tổng số lượng trả hàng không được lớn hơn số lượng đạt lúc nhập" }, { status: 400 });
   }
 
   try {
@@ -60,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       await tx.goodsReceiptItem.update({
         where: { id },
-        data: { returnQuantity, returnedAt: new Date(), returnedById: session.user.id },
+        data: { returnQuantityNhiem, returnQuantityKhongDat, returnQuantity, returnedAt: new Date(), returnedById: session.user.id },
       });
     });
 

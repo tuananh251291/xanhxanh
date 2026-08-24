@@ -6,10 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Truck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
-import { formatDistanceToNow, addDays, isPast } from "date-fns";
+import { getPendingReturnInspections } from "@/lib/return-inspection";
+import { formatDistanceToNow, isPast } from "date-fns";
 import { vi } from "date-fns/locale";
 import GoodsReceiptForm from "./goods-receipt-form";
-import ReturnInspectionDialog from "./return-inspection-dialog";
+import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import ConfirmPlanDialog from "./confirm-plan-dialog";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 
@@ -37,18 +38,7 @@ export default async function GoodsReceiptsPage() {
         items: { select: { quantityDelivered: true, quantityRejected: true, quantityPassed: true } },
       },
     }),
-    prisma.goodsReceiptItem.findMany({
-      where: {
-        returnedAt: null,
-        receipt: { status: "CONFIRMED", supplier: { allowsReturn: true }, room: { warehouseId: workplaceWarehouseId ?? "" } },
-      },
-      orderBy: { receipt: { createdAt: "asc" } },
-      select: {
-        id: true, quantityPassed: true,
-        plantType: { select: { code: true, name: true } },
-        receipt: { select: { code: true, createdAt: true, supplier: { select: { name: true, returnWindowDays: true } } } },
-      },
-    }),
+    getPendingReturnInspections(workplaceWarehouseId ?? ""),
     prisma.goodsReceipt.findMany({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
       orderBy: { expectedDate: "asc" },
@@ -131,32 +121,9 @@ export default async function GoodsReceiptsPage() {
 
       {pendingInspections.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Cần kiểm tra hàng trả lại</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {pendingInspections.map((item) => {
-              const deadline = addDays(item.receipt.createdAt, item.receipt.supplier.returnWindowDays ?? 0);
-              const overdue = isPast(deadline);
-              return (
-                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
-                  <div>
-                    <p className="text-sm font-medium text-foreground font-mono">
-                      {item.receipt.code} · {item.plantType.name} ({item.plantType.code})
-                    </p>
-                    <p className="text-xs text-text-secondary">
-                      {item.receipt.supplier.name} · Số lượng đạt lúc nhập: {item.quantityPassed.toLocaleString("vi-VN")} cây ·{" "}
-                      <Badge variant={overdue ? "overdue" : "in-progress"}>
-                        Cần kiểm tra trước {deadline.toLocaleDateString("vi-VN")}
-                      </Badge>
-                    </p>
-                  </div>
-                  <ReturnInspectionDialog
-                    itemId={item.id}
-                    plantTypeLabel={`${item.plantType.name} (${item.plantType.code})`}
-                    quantityPassed={item.quantityPassed}
-                  />
-                </div>
-              );
-            })}
+          <CardHeader><CardTitle className="text-base">Trả hàng nhà cung cấp — cần kiểm tra</CardTitle></CardHeader>
+          <CardContent>
+            <ReturnInspectionTable items={pendingInspections} />
           </CardContent>
         </Card>
       )}
