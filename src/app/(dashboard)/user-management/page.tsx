@@ -2,13 +2,12 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, Handshake, ChevronRight } from "lucide-react";
+import { Users, ChevronRight } from "lucide-react";
 
-// Hub liên kết nhẹ (KHÔNG dùng Tabs) — Người dùng và Cài đặt Sale đều đã tự là hub nhiều tab/phân trang
-// riêng (Người dùng có tab Tài khoản/Phân quyền + phân trang theo URL riêng, Cài đặt Sale có 3 tab con)
-// nên gộp thêm 1 lớp Tabs ngoài sẽ thành tab-trong-tab, không đáng — chỉ cần 2 thẻ dẫn sang, không đụng
-// gì file 2 trang gốc. ADMIN không có Cài đặt Sale nên không cần trang hub này (ROLE_NAV.ADMIN trỏ thẳng
-// /users).
+// Hub liên kết nhẹ (KHÔNG dùng Tabs) — trước đây gộp cả "Người dùng" và "Cài đặt Sale" (2 hub tab riêng
+// mỗi cái, xem lịch sử) nhưng Cài đặt Sale đã chuyển thành 1 tab trong /master-data ("Cài đặt CSDL chung
+// hệ thống") nên chỉ còn đúng 1 thẻ ở đây. Vẫn giữ dạng hub link (không redirect thẳng /users) để không
+// phải sửa lại ROLE_NAV.SUPER_ADMIN nếu sau này có thêm mục khác cần gộp vào đây.
 export default async function UserManagementPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -16,7 +15,6 @@ export default async function UserManagementPage() {
 
   const cards = [
     { href: "/users", icon: Users, title: "Người dùng", description: "Quản lý tài khoản nhân viên, duyệt tài khoản mới, phân quyền theo trang." },
-    { href: "/settings/sale", icon: Handshake, title: "Cài đặt Sale", description: "Danh sách khách hàng, thị trường, phân công nhân viên quản lý cho đội bán hàng." },
   ];
 
   return (
@@ -25,10 +23,10 @@ export default async function UserManagementPage() {
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <Users className="w-6 h-6 text-primary-strong" /> Quản lý người dùng
         </h1>
-        <p className="text-text-secondary text-sm mt-1">Tài khoản nhân viên và cài đặt riêng cho đội bán hàng.</p>
+        <p className="text-text-secondary text-sm mt-1">Tài khoản nhân viên.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 max-w-md">
         {cards.map((c) => (
           <Link key={c.href} href={c.href}>
             <Card className="h-full hover:border-primary transition-colors">

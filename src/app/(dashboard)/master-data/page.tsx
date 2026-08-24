@@ -8,10 +8,15 @@ import MediumTypesContent from "../medium-types/medium-types-content";
 import MaterialsContent from "../materials/materials-content";
 import ProductPricesContent from "../product-prices/product-prices-content";
 import SuppliersContent from "../suppliers/suppliers-content";
+import SaleSettingsTabs from "../settings/sale/sale-settings-tabs";
+import CustomersBoard from "../settings/sale/customers/customers-board";
 
 // Gộp menu Admin — mỗi tab tái dùng component đã tách khỏi page.tsx gốc (xem *-content.tsx từng thư
-// mục), tránh trùng lặp logic với route standalone. Vật tư/Bảng giá/Nhà cung cấp giữ đúng phạm vi
-// SUPER_ADMIN-only như ROLE_NAV hiện có của ADMIN (không mở rộng quyền mới ngoài việc gộp menu).
+// mục), tránh trùng lặp logic với route standalone. Vật tư/Bảng giá/Nhà cung cấp/Cài đặt Sale giữ đúng
+// phạm vi SUPER_ADMIN-only như ROLE_NAV hiện có của ADMIN (không mở rộng quyền mới ngoài việc gộp menu).
+// Tab "Cài đặt Sale" chỉ nhúng đúng board mặc định (Khách hàng, khớp redirect gốc của /settings/sale) +
+// thanh SaleSettingsTabs — bấm sang Thị trường/NV quản lý sẽ điều hướng hẳn sang trang standalone tương
+// ứng (KHÔNG nhúng lại toàn bộ 3 board tại đây để tránh tab-trong-tab nhân đôi, xem sale-settings-tabs.tsx).
 export default async function MasterDataPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -24,7 +29,7 @@ export default async function MasterDataPage() {
           <Database className="w-6 h-6 text-primary-strong" /> Cài đặt CSDL chung hệ thống
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Danh sách cây, môi trường{role === "SUPER_ADMIN" ? ", vật tư, bảng giá sản phẩm, nhà cung cấp" : ""}.
+          Danh sách cây, môi trường{role === "SUPER_ADMIN" ? ", vật tư, bảng giá sản phẩm, nhà cung cấp, cài đặt Sale" : ""}.
         </p>
       </div>
 
@@ -37,6 +42,7 @@ export default async function MasterDataPage() {
               <TabsTrigger value="materials">Vật tư</TabsTrigger>
               <TabsTrigger value="product-prices">Bảng giá sản phẩm</TabsTrigger>
               <TabsTrigger value="suppliers">Nhà cung cấp</TabsTrigger>
+              <TabsTrigger value="sale">Cài đặt Sale</TabsTrigger>
             </>
           )}
         </TabsList>
@@ -57,6 +63,10 @@ export default async function MasterDataPage() {
             </TabsContent>
             <TabsContent value="suppliers" className="mt-4">
               <SuppliersContent />
+            </TabsContent>
+            <TabsContent value="sale" className="mt-4 space-y-4">
+              <SaleSettingsTabs active="/settings/sale/customers" />
+              <CustomersBoard />
             </TabsContent>
           </>
         )}
