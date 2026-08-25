@@ -129,7 +129,6 @@ export default async function TaskAssignmentPage() {
               description="Điền nhiều dòng (có thể nhiều NCC/ngày hàng về khác nhau) — mỗi nhóm cùng NCC + ngày hàng về gộp thành 1 đơn."
               templateUrl="/api/goods-receipts/import"
               uploadUrl="/api/goods-receipts/import"
-              successLabel={(count) => `Đã nhập ${count} dòng`}
             />
           </>
         ) : (
