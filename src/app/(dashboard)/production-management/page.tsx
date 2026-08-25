@@ -76,7 +76,7 @@ export default async function ProductionManagementPage({
         </TabsContent>
 
         <TabsContent value="contamination" className="mt-4">
-          <ContaminationProposalBoard canSubmit={false} canApprove={true} />
+          <ContaminationProposalBoard canApprove={true} />
         </TabsContent>
 
         {role === "SUPER_ADMIN" && (

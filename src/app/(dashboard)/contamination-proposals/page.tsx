@@ -47,13 +47,7 @@ export default async function ContaminationProposalsPage() {
 
       {isFinishedGoods && <FinishedGoodsProposalSubmit rooms={rooms} gardens={gardens} />}
 
-      <ContaminationProposalBoard
-        canSubmit={canSubmit}
-        canApprove={isAdminRole(role)}
-        currentUserId={session?.user?.id}
-        currentUserRole={role}
-        currentUserWarehouseId={session?.user?.workplaceWarehouseId}
-      />
+      <ContaminationProposalBoard canApprove={isAdminRole(role)} />
     </div>
   );
 }

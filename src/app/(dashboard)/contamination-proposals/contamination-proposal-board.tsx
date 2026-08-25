@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,12 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Check, X, ChevronDown, ChevronUp, Pencil, Send } from "lucide-react";
+import { Loader2, Check, X, ChevronDown, ChevronUp, Pencil, Send, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { toast } from "sonner";
 
-type Proposal = {
+export type Proposal = {
   id: string;
   code: string;
   batchCode: string | null;
@@ -33,7 +34,7 @@ type Proposal = {
   requestedById: string;
   approvedBy: { name: string } | null;
 };
-type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
+export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
 
 // Nhóm các dòng cùng batchCode (cùng 1 lần bấm "Gửi đề xuất trồng/hủy") thành 1 "đề xuất" — dòng cũ tạo
 // trước khi có tính năng gộp (batchCode null) hiển thị như 1 đề xuất riêng, dùng chính code của nó.
@@ -52,7 +53,7 @@ function groupIntoBatches(rows: Proposal[]): Batch[] {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-function summarizeBatchStatus(items: Proposal[]): { label: string; variant: "in-progress" | "completed" | "overdue" } {
+export function summarizeBatchStatus(items: Proposal[]): { label: string; variant: "in-progress" | "completed" | "overdue" } {
   const total = items.length;
   const approved = items.filter((i) => i.status === "APPROVED").length;
   const rejected = items.filter((i) => i.status === "REJECTED").length;
@@ -193,7 +194,7 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
   );
 }
 
-function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, processingId, onReview, onSaved }: {
+export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, processingId, onReview, onSaved }: {
   items: Proposal[];
   canApprove: boolean;
   canSubmit: boolean;
@@ -254,92 +255,58 @@ function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, process
   );
 }
 
-function BatchTable({ batches, canApprove, canSubmit, canResubmit, processingId, onReview, onSaved }: {
-  batches: Batch[];
-  canApprove: boolean;
-  canSubmit: boolean;
-  canResubmit: (p: Proposal) => boolean;
-  processingId: string | null;
-  onReview: (id: string, action: "approve" | "reject", reason?: string) => void;
-  onSaved: () => void;
-}) {
-  const [openBatchCode, setOpenBatchCode] = useState<string | null>(null);
-  // Tra lại từ batches (không giữ snapshot riêng) để nội dung popup luôn khớp trạng thái mới nhất sau
-  // khi Admin duyệt/từ chối 1 dòng cây ngay trong popup rồi danh sách được load lại.
-  const openBatch = batches.find((b) => b.batchCode === openBatchCode) ?? null;
-
+// Phiếu gộp có thể tới vài chục loại cây — hiện chi tiết ở TRANG RIÊNG (xem [batchCode]/page.tsx) thay
+// vì popup, tránh tràn/cuộn khó chịu trong 1 khung nhỏ.
+function BatchTable({ batches }: { batches: Batch[] }) {
   return (
-    <>
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-primary-light">
-                  <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã đề xuất</th>
-                  <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Thời gian đề xuất</th>
-                  <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
-                  <th className="px-3 py-2 font-bold text-base"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {batches.length === 0 ? (
-                  <tr><td colSpan={4} className="px-3 py-6 text-center text-text-muted">Chưa có đề xuất nào</td></tr>
-                ) : batches.map((batch) => {
-                  const summary = summarizeBatchStatus(batch.items);
-                  return (
-                    <tr key={batch.batchCode} className="border-b border-divider last:border-0 even:bg-primary-light/30">
-                      <td className="px-3 py-2 font-mono text-xs text-info-foreground">{batch.batchCode}</td>
-                      <td className="px-3 py-2 text-foreground">{format(new Date(batch.createdAt), "dd/MM/yyyy", { locale: vi })}</td>
-                      <td className="px-3 py-2">
-                        <Badge variant={summary.variant}>{summary.label}</Badge>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button type="button" size="sm" variant="outline" onClick={() => setOpenBatchCode(batch.batchCode)}>
-                          <ChevronDown className="w-3.5 h-3.5 mr-1" /> Xem thêm
+    <Card>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-primary-light">
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã đề xuất</th>
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Thời gian đề xuất</th>
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
+                <th className="px-3 py-2 font-bold text-base"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {batches.length === 0 ? (
+                <tr><td colSpan={4} className="px-3 py-6 text-center text-text-muted">Chưa có đề xuất nào</td></tr>
+              ) : batches.map((batch) => {
+                const summary = summarizeBatchStatus(batch.items);
+                return (
+                  <tr key={batch.batchCode} className="border-b border-divider last:border-0 even:bg-primary-light/30">
+                    <td className="px-3 py-2 font-mono text-xs text-info-foreground">{batch.batchCode}</td>
+                    <td className="px-3 py-2 text-foreground">{format(new Date(batch.createdAt), "dd/MM/yyyy", { locale: vi })}</td>
+                    <td className="px-3 py-2">
+                      <Badge variant={summary.variant}>{summary.label}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Link href={`/contamination-proposals/${encodeURIComponent(batch.batchCode)}`}>
+                        <Button type="button" size="sm" variant="outline">
+                          Xem thêm <ArrowRight className="w-3.5 h-3.5 ml-1" />
                         </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Dialog open={!!openBatch} onOpenChange={(open) => { if (!open) setOpenBatchCode(null); }}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Chi tiết đề xuất {openBatch?.batchCode}</DialogTitle>
-          </DialogHeader>
-          {openBatch && (
-            <ProposalItemsTable
-              items={openBatch.items} canApprove={canApprove} canSubmit={canSubmit} canResubmit={canResubmit}
-              processingId={processingId} onReview={onReview} onSaved={onSaved}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 // Chỉ còn hiển thị danh sách đề xuất đã gửi — tạo đề xuất mới đã chuyển sang mục "Kiểm tra kho nhiễm cá
 // nhân" trong nhiệm vụ ngày của Kho mô (xem contamination-personal-board.tsx), gộp nhiều NV/nhiều ngày
 // thành 1 phiếu chung trước khi gửi Admin duyệt.
-export default function ContaminationProposalBoard({
-  canSubmit, canApprove, currentUserId, currentUserRole, currentUserWarehouseId,
-}: {
-  canSubmit: boolean;
-  canApprove: boolean;
-  currentUserId?: string;
-  currentUserRole?: string | null;
-  currentUserWarehouseId?: string | null;
-}) {
+export default function ContaminationProposalBoard({ canApprove }: { canApprove: boolean }) {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(canApprove);
 
   const load = useCallback(async () => {
@@ -354,29 +321,6 @@ export default function ContaminationProposalBoard({
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const review = async (id: string, action: "approve" | "reject", reason?: string) => {
-    setProcessingId(id);
-    try {
-      const res = await fetch(`/api/contamination-proposals/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason }),
-      });
-      if (!res.ok) return;
-      load();
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  // Đúng NV đã gửi đề xuất này, HOẶC Quản lý kho thành phẩm của đúng kho đó (chỉ áp dụng đề xuất Kho
-  // thành phẩm — có room) — khớp permission server-side ở PATCH /api/contamination-proposals/[id].
-  const canResubmit = (p: Proposal) => {
-    if (p.status !== "REJECTED") return false;
-    if (p.requestedById === currentUserId) return true;
-    return !!p.room && currentUserRole === "QUAN_LY_KHO_THANH_PHAM" && p.warehouseId === currentUserWarehouseId;
-  };
 
   const huyProposals = proposals.filter((p) => p.type === "HUY");
   const trongProposals = proposals.filter((p) => p.type === "TRONG");
@@ -407,11 +351,11 @@ export default function ContaminationProposalBoard({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">Đề xuất Hủy <span className="font-normal text-text-muted">({huyProposals.length})</span></h3>
-              <BatchTable batches={huyBatches} canApprove={canApprove} canSubmit={canSubmit} canResubmit={canResubmit} processingId={processingId} onReview={review} onSaved={load} />
+              <BatchTable batches={huyBatches} />
             </div>
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">Đề xuất Trồng <span className="font-normal text-text-muted">({trongProposals.length})</span></h3>
-              <BatchTable batches={trongBatches} canApprove={canApprove} canSubmit={canSubmit} canResubmit={canResubmit} processingId={processingId} onReview={review} onSaved={load} />
+              <BatchTable batches={trongBatches} />
             </div>
           </div>
         </CardContent>
