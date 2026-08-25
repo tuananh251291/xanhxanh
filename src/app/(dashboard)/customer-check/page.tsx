@@ -14,7 +14,7 @@ export default async function CustomerCheckPage() {
           <Search className="w-6 h-6 text-primary-strong" /> Kiểm tra trùng khách
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Nhập Tên khách hàng - công ty và Website trước khi tiếp cận khách hàng mới, để tránh trùng với khách đã có người phụ trách.
+          Nhập Tên khách hàng - công ty và Website, Số điện thoại, Email trước khi tiếp cận khách hàng mới, để tránh trùng với khách đã có người phụ trách.
         </p>
       </div>
       <CustomerCheckForm />
