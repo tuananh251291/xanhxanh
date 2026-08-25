@@ -319,6 +319,9 @@ export async function POST(req: NextRequest) {
 
   let successCount = 0;
   if (validRows.length > 0 && errors.length === 0) {
+    // File có thể vài trăm dòng, mỗi dòng TẠO MỚI tốn 2 round-trip (generateCustomerCode + create) —
+    // timeout mặc định của Prisma interactive transaction (5s) không đủ, transaction bị huỷ giữa chừng
+    // (rollback về 0 dòng) dù không báo lỗi rõ ràng cho NV. Nới lên 2 phút cho đủ dư với file lớn.
     await prisma.$transaction(async (tx) => {
       for (const vr of validRows) {
         const existing = vr.websiteNormalized ? existingByWebsite.get(vr.websiteNormalized) : undefined;
@@ -373,7 +376,7 @@ export async function POST(req: NextRequest) {
           create: { salesUserId, managerId, marketId },
         });
       }
-    });
+    }, { timeout: 120_000 });
   }
 
   return NextResponse.json({ successCount, errors });

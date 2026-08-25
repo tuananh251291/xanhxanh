@@ -59,22 +59,34 @@ export default function ExcelImportCard({
         for (const [key, value] of Object.entries(extraFormData)) formData.append(key, value);
       }
       const res = await fetch(uploadUrl, { method: "POST", body: formData });
-      const json = await res.json();
+      // Server lỗi (VD 500 do timeout DB) có thể trả về trang lỗi HTML thay vì JSON — res.json() sẽ ném
+      // exception. Bắt riêng để LUÔN báo được cho NV thay vì im lặng như file chưa từng được nhập (rất dễ
+      // hiểu nhầm là đã thành công vì không thấy lỗi gì).
+      let json: { successCount?: number; zeroedCount?: number; errors?: ImportRowError[]; message?: string };
+      try {
+        json = await res.json();
+      } catch {
+        toast.error("Máy chủ không phản hồi đúng định dạng (có thể do quá tải/timeout) — thử tải lên lại, nếu vẫn lỗi báo Admin kỹ thuật");
+        return;
+      }
       if (!res.ok) {
         toast.error(json.message ?? "Có lỗi xảy ra");
         return;
       }
-      setResult(json);
-      if (json.errors.length === 0) {
-        const label = successLabel ? successLabel(json.successCount) : `Đã nhập ${json.successCount} dòng`;
-        const zeroedSuffix = json.zeroedCount > 0 ? ` — kèm ${json.zeroedCount} lô trùng dữ liệu bị dồn về 0` : "";
+      const importResult = json as ImportResult;
+      setResult(importResult);
+      if (importResult.errors.length === 0) {
+        const label = successLabel ? successLabel(importResult.successCount) : `Đã nhập ${importResult.successCount} dòng`;
+        const zeroedSuffix = importResult.zeroedCount ? ` — kèm ${importResult.zeroedCount} lô trùng dữ liệu bị dồn về 0` : "";
         toast.success(`${label}${zeroedSuffix}`);
       } else {
         // File có dòng lỗi = KHÔNG ghi gì cả (xem các route /api/data-import/*) — báo rõ chưa nhập được
         // gì, tránh hiểu nhầm "đã nhập 0 dòng" là hệ thống có lỗi, thay vì hiểu đúng là cần sửa & tải lại.
-        toast.error(`Chưa nhập được gì — file có ${json.errors.length} dòng lỗi, xem chi tiết bên dưới rồi sửa lại và tải lên lại`);
+        toast.error(`Chưa nhập được gì — file có ${importResult.errors.length} dòng lỗi, xem chi tiết bên dưới rồi sửa lại và tải lên lại`);
       }
       router.refresh();
+    } catch {
+      toast.error("Có lỗi xảy ra khi tải file lên, thử lại nhé");
     } finally {
       setUploading(false);
     }
