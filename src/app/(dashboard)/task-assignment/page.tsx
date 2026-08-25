@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ClipboardList, Truck, PackageCheck, PackageOpen, Eye, AlertTriangle, RotateCcw, ClipboardCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
-import { DAILY_TASK_TYPE_LABELS, CONTAMINATION_PROPOSAL_TYPE_LABELS } from "@/types";
+import { CONTAMINATION_PROPOSAL_TYPE_LABELS } from "@/types";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
@@ -220,9 +220,8 @@ export default async function TaskAssignmentPage() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 5. Đề xuất trồng/hủy</CardTitle>
-          <DailyTaskCreateDialog type="DE_XUAT_TRONG_HUY" label={DAILY_TASK_TYPE_LABELS.DE_XUAT_TRONG_HUY} plantTypes={plantTypes} rooms={rooms} staffOptions={staffAll} />
         </CardHeader>
         <CardContent className="space-y-3">
           {thisWeekTask ? (
