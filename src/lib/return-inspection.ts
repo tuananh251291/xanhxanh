@@ -35,12 +35,3 @@ export async function getPendingReturnInspections(warehouseId: string): Promise<
     };
   });
 }
-
-// Đếm toàn hệ thống (không lọc theo kho) — dùng cho Dashboard NV/QL kho thành phẩm, xem
-// getKhoThanhPhamWeeklyStats ở src/app/(dashboard)/dashboard/page.tsx (các mục hàng tuần khác ở đó cũng
-// đếm toàn hệ thống, không lọc theo kho đang làm việc).
-export async function countPendingReturnInspections(): Promise<number> {
-  return prisma.goodsReceiptItem.count({
-    where: { returnedAt: null, receipt: { status: "CONFIRMED", supplier: { allowsReturn: true } } },
-  });
-}

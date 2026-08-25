@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
-  PackageCheck, PackageOpen, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
-  FlaskConical, Bell, Recycle, Eye, RotateCcw, ShieldPlus, LayoutList, Camera, Sprout, type LucideIcon,
+  PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
+  FlaskConical, Bell, ShieldPlus, LayoutList, Camera, Sprout, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS } from "@/types";
 import type { UserRole } from "@prisma/client";
@@ -19,7 +19,6 @@ import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
-import { countPendingReturnInspections } from "@/lib/return-inspection";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 
 async function getAdminStats() {
@@ -446,48 +445,6 @@ async function getKhoMoStats() {
   return { pendingTransfers, activeLots };
 }
 
-// Công việc hàng ngày của Kho thành phẩm — 3 việc lặp lại mỗi ngày, tính theo số lượng đang chờ xử lý
-// (không có khái niệm "hoàn thành %" như KY_THUAT/KHO_MO vì đây là hàng đợi liên tục, không có deadline
-// cố định trong ngày).
-async function getKhoThanhPhamDailyStats() {
-  const [packOrdersCount, hanTuiLots, processingPendingCount] = await Promise.all([
-    prisma.order.count({ where: { status: "CONFIRMED" } }),
-    prisma.lot.findMany({
-      where: { status: "ACTIVE", room: { type: "PHONG_HAN_TUI" } },
-      select: { quantity: true },
-    }),
-    prisma.orderProcessingRequest.count({ where: { status: "PENDING" } }),
-  ]);
-  return {
-    packOrdersCount,
-    hanTuiQuantity: hanTuiLots.reduce((s, l) => s + l.quantity, 0),
-    processingPendingCount,
-  };
-}
-
-// Công việc hàng tuần của Kho thành phẩm. "Trả hàng nhà cung cấp" đã có trang nghiệp vụ ở /goods-receipts
-// (mục "Trả hàng nhà cung cấp — cần kiểm tra", xem ReturnInspectionTable) — đếm toàn hệ thống (không lọc
-// theo kho đang làm việc, giống 3 mục còn lại ở đây). "Đề xuất Trồng/Hủy" đã có trang riêng ở
-// /contamination-proposals (xem finished-goods-proposal-submit.tsx) — đếm số đề xuất đang chờ duyệt do
-// Kho thành phẩm gửi (roomId khác null phân biệt với đề xuất cũ của Kho mô, luôn roomId null).
-async function getKhoThanhPhamWeeklyStats() {
-  const [contaminationPendingCount, theoDoiLots, proposalPendingCount, returnPendingCount] = await Promise.all([
-    prisma.contaminationRecord.count({ where: { confirmedAt: null, lot: { stage: "THANH_PHAM" } } }),
-    prisma.lot.findMany({
-      where: { status: "ACTIVE", room: { type: "PHONG_THEO_DOI" } },
-      select: { quantity: true },
-    }),
-    prisma.contaminationProposal.count({ where: { status: "PENDING", roomId: { not: null } } }),
-    countPendingReturnInspections(),
-  ]);
-  return {
-    contaminationPendingCount,
-    theoDoiQuantity: theoDoiLots.reduce((s, l) => s + l.quantity, 0),
-    proposalPendingCount,
-    returnPendingCount,
-  };
-}
-
 export default async function DashboardPage() {
   const session = await auth();
   const role = session?.user?.role as UserRole;
@@ -513,13 +470,11 @@ export default async function DashboardPage() {
   }
 
   if (isKhoThanhPhamRole(role)) {
-    const [stats, dailyStats, weeklyStats, myTasks] = await Promise.all([
+    const [stats, myTasks] = await Promise.all([
       getKhoMoStats(),
-      getKhoThanhPhamDailyStats(),
-      getKhoThanhPhamWeeklyStats(),
       getMyPendingTasks(userId),
     ]);
-    return <KhoDashboard stats={stats} dailyStats={dailyStats} weeklyStats={weeklyStats} role={role} myTasks={myTasks} />;
+    return <KhoDashboard stats={stats} role={role} myTasks={myTasks} />;
   }
 
   if (role === "CAY_MO") {
@@ -1113,11 +1068,9 @@ function MoiTruongDashboard({
 }
 
 function KhoDashboard({
-  stats, dailyStats, weeklyStats, role, myTasks,
+  stats, role, myTasks,
 }: {
   stats: Awaited<ReturnType<typeof getKhoMoStats>>;
-  dailyStats: Awaited<ReturnType<typeof getKhoThanhPhamDailyStats>>;
-  weeklyStats: Awaited<ReturnType<typeof getKhoThanhPhamWeeklyStats>>;
   role: UserRole;
   myTasks: MyTask[];
 }) {
@@ -1136,13 +1089,16 @@ function KhoDashboard({
         <StatCard title="Lô thành phẩm đang lưu" value={thanhPham?._count ?? 0} icon={Package} color="blue" subtitle={`${thanhPham?._sum?.quantity ?? 0} bình`} />
       </div>
 
-      {myTasks.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Công việc hôm nay của tôi</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {myTasks.map((t) =>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Công việc hôm nay của bạn</CardTitle>
+          <p className="text-xs text-text-secondary">Nhiệm vụ do Quản lý kho thành phẩm phân công cho bạn</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {myTasks.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-4">Chưa có nhiệm vụ nào được phân công</p>
+          ) : (
+            myTasks.map((t) =>
               t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType === "DE_XUAT_TRONG_HUY" ? (
                 <Link
                   key={t.key}
@@ -1176,129 +1132,11 @@ function KhoDashboard({
                   <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
                 </Link>
               )
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Công việc hàng ngày</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <QueueTaskRow
-            href="/orders/pack"
-            icon={PackageOpen}
-            title="1. Sắp xếp đơn hàng"
-            description="Đơn đã xác nhận, chờ đóng gói/xuất kho"
-            count={dailyStats.packOrdersCount}
-            unit="đơn"
-          />
-          <QueueTaskRow
-            href="/inventory/thanh-pham"
-            icon={Package}
-            title="2. Hàn túi"
-            description="Số lượng đang chờ ở Phòng hàn túi (xem tồn kho — trang thao tác riêng chưa có)"
-            count={dailyStats.hanTuiQuantity}
-            unit="cây"
-          />
-          <QueueTaskRow
-            href="/processing"
-            icon={Recycle}
-            title="3. Xử lý cây"
-            description="Yêu cầu tách túi từ đơn hàng đang chờ xử lý"
-            count={dailyStats.processingPendingCount}
-            unit="yêu cầu"
-          />
+            )
+          )}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Công việc hàng tuần</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <QueueTaskRow
-            href="/contamination"
-            icon={AlertTriangle}
-            title="1. Kiểm tra nhiễm"
-            description="Báo cáo nhiễm lô thành phẩm đang chờ xác nhận"
-            count={weeklyStats.contaminationPendingCount}
-            unit="báo cáo"
-          />
-          <QueueTaskRow
-            href="/contamination-proposals"
-            icon={AlertTriangle}
-            title="2. Đề xuất Trồng/Hủy"
-            description="Đề xuất xử lý lô thành phẩm — chọn phòng, chọn lô, gửi Admin duyệt"
-            count={weeklyStats.proposalPendingCount}
-            unit="đề xuất"
-          />
-          <QueueTaskRow
-            href="/inventory/thanh-pham"
-            icon={Eye}
-            title="3. Kiểm tra cây theo dõi"
-            description="Số lượng đang lưu ở Phòng theo dõi (xem tồn kho — trang thao tác riêng chưa có)"
-            count={weeklyStats.theoDoiQuantity}
-            unit="cây"
-          />
-          <QueueTaskRow
-            href="/goods-receipts"
-            icon={RotateCcw}
-            title="4. Trả hàng nhà cung cấp"
-            description="Dòng nhập hàng đang chờ kiểm tra trả hàng cho NCC"
-            count={weeklyStats.returnPendingCount}
-            unit="dòng"
-          />
-        </CardContent>
-      </Card>
-
     </div>
-  );
-}
-
-// Hàng đợi việc liên tục (không có deadline/% hoàn thành trong ngày như WeeklyTaskRow) — chỉ hiện số
-// lượng đang chờ. Không truyền `href` khi tính năng chưa có trang riêng: hiện dạng "Sắp ra mắt", không
-// bấm được, để không dẫn nhầm sang trang không liên quan.
-function QueueTaskRow({
-  href, icon: Icon, title, description, count, unit,
-}: {
-  href?: string;
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  count?: number;
-  unit?: string;
-}) {
-  const hasCount = count !== undefined;
-  const isEmpty = hasCount && count === 0;
-  const badgeClass = !hasCount
-    ? "bg-muted text-text-muted"
-    : isEmpty
-      ? "bg-primary-light text-primary-strong"
-      : "bg-warning-light text-warning-foreground";
-  const content = (
-    <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className={`p-2.5 rounded-xl shrink-0 ${!hasCount ? "bg-muted text-text-muted" : isEmpty ? "bg-primary-light text-primary-strong" : "bg-warning-light text-warning-foreground"}`}>
-          <Icon className="w-5 h-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">{title}</p>
-          <p className="text-xs text-text-secondary truncate">{description}</p>
-        </div>
-      </div>
-      <Badge className={`shrink-0 ${badgeClass}`}>
-        {hasCount ? `${count.toLocaleString("vi-VN")} ${unit}` : "Sắp ra mắt"}
-      </Badge>
-    </div>
-  );
-
-  if (!href) return content;
-  return (
-    <Link href={href} className="block hover:bg-primary-light rounded-lg transition-colors">
-      {content}
-    </Link>
   );
 }
 
