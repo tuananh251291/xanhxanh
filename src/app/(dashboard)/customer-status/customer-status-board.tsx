@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { CUSTOMER_STATUS_LABELS, CUSTOMER_STATUS_BADGE_VARIANT } from "@/types";
 
@@ -18,11 +18,15 @@ type Customer = {
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null;
 };
 
+const PAGE_SIZE = 10;
+
 export default function CustomerStatusBoard() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Record<string, { lastOrderAt: string; lastOrderCode: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +39,21 @@ export default function CustomerStatusBoard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) => c.name.toLowerCase().includes(q));
+  }, [customers, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
   const save = async (c: Customer) => {
     const d = draft[c.id];
@@ -61,7 +80,22 @@ export default function CustomerStatusBoard() {
   if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
 
   return (
-    <Card>
+    <div className="space-y-4">
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+        <Input
+          value={search}
+          onChange={(e) => changeSearch(e.target.value)}
+          placeholder="Tìm theo tên khách hàng..."
+          list="customer-name-suggestions"
+          className="pl-9"
+        />
+        <datalist id="customer-name-suggestions">
+          {customers.map((c) => <option key={c.id} value={c.name} />)}
+        </datalist>
+      </div>
+
+      <Card>
       <CardContent className="pt-4">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -79,8 +113,10 @@ export default function CustomerStatusBoard() {
             <tbody className="divide-y divide-divider">
               {customers.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-6 text-text-muted">Bạn chưa phụ trách khách hàng nào</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-6 text-text-muted">Không tìm thấy khách hàng nào khớp</td></tr>
               ) : (
-                customers.map((c) => {
+                paginated.map((c) => {
                   const d = draft[c.id] ?? {
                     lastOrderAt: c.lastOrderAt ? format(new Date(c.lastOrderAt), "yyyy-MM-dd") : "",
                     lastOrderCode: c.lastOrderCode ?? "",
@@ -128,6 +164,31 @@ export default function CustomerStatusBoard() {
           </table>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      {filtered.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm text-text-secondary">Trang {currentPage}/{totalPages} — {filtered.length} khách hàng</p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage <= 1}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> Trước
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Sau <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
