@@ -153,25 +153,31 @@ export async function POST(req: NextRequest) {
     managerCode: string;
     customerGroupText: string;
   };
+  // Ô KHÔNG phải ô gốc của 1 vùng merge (VD merge B26:B54) đọc value qua ExcelJS sẽ trả về y hệt ô gốc
+  // (B27..B54 đều "thấy" giống B26) dù nhìn trên Excel các ô đó có vẻ trống/không merge rõ ràng — dữ liệu
+  // dính merge kiểu này gần như luôn là lỗi định dạng khi copy-paste từ file khác (không phải giá trị
+  // thật của dòng), đọc thành rỗng thay vì để lọt vào so trùng/lưu nhầm dữ liệu của dòng khác.
+  const ownCellValue = (cell: ExcelJS.Cell): ExcelJS.CellValue => (cell.type === ExcelJS.ValueType.Merge ? null : cell.value);
+
   const parsedRows: ParsedRow[] = [];
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber <= 2) return;
-    const name = cellText(row.getCell(1).value);
+    const name = cellText(ownCellValue(row.getCell(1)));
     if (!name) return;
     parsedRows.push({
       row: rowNumber,
       name,
-      website: cellText(row.getCell(2).value),
-      marketCode: cellText(row.getCell(3).value).toUpperCase(),
-      statusText: cellText(row.getCell(4).value),
-      phone: cellText(row.getCell(5).value),
-      email: cellText(row.getCell(6).value),
-      firstContactAtRaw: cellDate(row.getCell(7).value),
-      lastOrderAtRaw: cellDate(row.getCell(8).value),
-      lastOrderCode: cellText(row.getCell(9).value),
-      assignedToCode: cellText(row.getCell(10).value).toUpperCase(),
-      managerCode: cellText(row.getCell(11).value).toUpperCase(),
-      customerGroupText: cellText(row.getCell(12).value),
+      website: cellText(ownCellValue(row.getCell(2))),
+      marketCode: cellText(ownCellValue(row.getCell(3))).toUpperCase(),
+      statusText: cellText(ownCellValue(row.getCell(4))),
+      phone: cellText(ownCellValue(row.getCell(5))),
+      email: cellText(ownCellValue(row.getCell(6))),
+      firstContactAtRaw: cellDate(ownCellValue(row.getCell(7))),
+      lastOrderAtRaw: cellDate(ownCellValue(row.getCell(8))),
+      lastOrderCode: cellText(ownCellValue(row.getCell(9))),
+      assignedToCode: cellText(ownCellValue(row.getCell(10))).toUpperCase(),
+      managerCode: cellText(ownCellValue(row.getCell(11))).toUpperCase(),
+      customerGroupText: cellText(ownCellValue(row.getCell(12))),
     });
   });
 
