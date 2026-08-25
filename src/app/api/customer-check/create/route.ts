@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
+import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
 import { generateCustomerCode } from "@/lib/codes";
 
 // Website/SĐT/Email đều KHÔNG bắt buộc riêng lẻ — nhưng phải có ÍT NHẤT 1 trong 3 (cùng ràng buộc ở
@@ -47,6 +47,9 @@ export async function POST(req: NextRequest) {
 
   const nameNormalized = normalizeCustomerName(data.name);
   const websiteNormalized = data.website ? normalizeWebsite(data.website) : "";
+  // Link mạng xã hội (facebook.com, instagram.com...) không phải website riêng — nhiều khách khác nhau
+  // cùng dùng chung domain này, không dùng để đối chiếu trùng khách (vẫn lưu link gốc bình thường).
+  const websiteForMatch = websiteNormalized && !isSocialMediaWebsite(websiteNormalized) ? websiteNormalized : "";
   const email = data.email.toLowerCase();
   // Race condition: 2 NV cùng bấm "Tiếp tục" cho cùng 1 khách gần như đồng thời — chặn lại ở đây thay
   // vì chỉ dựa vào bước "Kiểm tra" trước đó (đã có thể lỗi thời tại thời điểm submit). Chỉ so khớp theo
@@ -56,7 +59,7 @@ export async function POST(req: NextRequest) {
     where: {
       OR: [
         { nameNormalized },
-        ...(websiteNormalized ? [{ websiteNormalized }] : []),
+        ...(websiteForMatch ? [{ websiteNormalized: websiteForMatch }] : []),
         ...(data.phone ? [{ phone: data.phone }] : []),
         ...(email ? [{ email: { equals: email, mode: "insensitive" as const } }] : []),
       ],

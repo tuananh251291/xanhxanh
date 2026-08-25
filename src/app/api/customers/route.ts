@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
+import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
 import { generateCustomerCode } from "@/lib/codes";
 
 const createSchema = z.object({
@@ -106,8 +106,11 @@ export async function POST(req: NextRequest) {
 
   const nameNormalized = normalizeCustomerName(data.name);
   const websiteNormalized = normalizeWebsite(data.website);
+  // Link mạng xã hội (facebook.com, instagram.com...) không phải website riêng — không dùng để đối
+  // chiếu trùng khách (vẫn lưu link gốc bình thường).
+  const websiteForMatch = !isSocialMediaWebsite(websiteNormalized) ? websiteNormalized : "";
   const duplicate = await prisma.customer.findFirst({
-    where: { OR: [{ nameNormalized }, { websiteNormalized }] },
+    where: { OR: [{ nameNormalized }, ...(websiteForMatch ? [{ websiteNormalized: websiteForMatch }] : [])] },
   });
   if (duplicate) {
     return NextResponse.json({ message: "Đã có khách hàng trùng Tên công ty hoặc Website trong hệ thống" }, { status: 409 });

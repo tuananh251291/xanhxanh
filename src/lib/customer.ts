@@ -50,6 +50,20 @@ export function validateWebsite(url: string): string | null {
   return null;
 }
 
+// Domain mạng xã hội/chat dùng chung bởi rất nhiều công ty khác nhau (không phải website riêng) — nếu
+// dùng để so trùng khách sẽ báo trùng sai giữa 2 khách hoàn toàn khác nhau chỉ vì cùng để link
+// facebook.com/instagram.com... Khớp cả domain con (VD business.facebook.com, m.facebook.com).
+const SOCIAL_MEDIA_DOMAINS = [
+  "facebook.com", "fb.com", "instagram.com", "threads.net",
+  "zalo.me", "tiktok.com", "twitter.com", "x.com", "linkedin.com",
+  "youtube.com", "youtu.be", "telegram.me", "t.me", "wa.me", "messenger.com",
+];
+
+export function isSocialMediaWebsite(normalizedWebsite: string): boolean {
+  const host = normalizedWebsite.split("/")[0];
+  return SOCIAL_MEDIA_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
 // Phát hiện link trang con (VD abc.com/aboutus, abc.com/shop) để NHẮC NV bán hàng chỉ nhập link trang
 // chủ — không chặn lưu (nhiều công ty chỉ có trang giới thiệu ở 1 đường dẫn con thật), chỉ cảnh báo.
 // Dấu "/" cuối cùng (trailing slash) không tính là trang con, VD "abc.com/" vẫn coi là trang chủ.

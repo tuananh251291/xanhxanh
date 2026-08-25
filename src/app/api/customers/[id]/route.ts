@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
+import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -53,13 +53,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const nameNormalized = data.name ? normalizeCustomerName(data.name) : undefined;
   const websiteNormalized = data.website ? normalizeWebsite(data.website) : undefined;
-  if (nameNormalized || websiteNormalized) {
+  // Link mạng xã hội (facebook.com, instagram.com...) không phải website riêng — không dùng để đối
+  // chiếu trùng khách (vẫn lưu link gốc bình thường).
+  const websiteForMatch = websiteNormalized && !isSocialMediaWebsite(websiteNormalized) ? websiteNormalized : undefined;
+  if (nameNormalized || websiteForMatch) {
     const duplicate = await prisma.customer.findFirst({
       where: {
         id: { not: id },
         OR: [
           ...(nameNormalized ? [{ nameNormalized }] : []),
-          ...(websiteNormalized ? [{ websiteNormalized }] : []),
+          ...(websiteForMatch ? [{ websiteNormalized: websiteForMatch }] : []),
         ],
       },
     });

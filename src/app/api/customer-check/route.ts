@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
+import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
 import { getCustomerManager } from "@/lib/customer-manager";
 
 // Website/SĐT/Email đều KHÔNG bắt buộc riêng lẻ — nhưng phải có ÍT NHẤT 1 trong 3 (cùng ràng buộc ở
@@ -43,7 +43,11 @@ export async function POST(req: NextRequest) {
   }
 
   const nameNormalized = normalizeCustomerName(parsed.data.name);
-  const websiteNormalized = parsed.data.website ? normalizeWebsite(parsed.data.website) : "";
+  const websiteRaw = parsed.data.website ? normalizeWebsite(parsed.data.website) : "";
+  // Link mạng xã hội (facebook.com, instagram.com...) không phải website riêng của 1 công ty — rất nhiều
+  // khách khác nhau cùng dùng chung domain này, so trùng theo đó sẽ báo trùng sai. Vẫn lưu/hiển thị link
+  // gốc bình thường, chỉ KHÔNG dùng để đối chiếu trùng khách.
+  const websiteNormalized = websiteRaw && !isSocialMediaWebsite(websiteRaw) ? websiteRaw : "";
   const phone = parsed.data.phone;
   const email = parsed.data.email.toLowerCase();
 
