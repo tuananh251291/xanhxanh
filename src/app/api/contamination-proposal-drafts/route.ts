@@ -86,13 +86,14 @@ export async function POST(req: NextRequest) {
         if (!balance || balance.quantity < total) {
           throw new Error(`Số dư không đủ cho 1 dòng (còn ${balance?.quantity ?? 0}, cần ${total})`);
         }
+        // Tạm chấp nhận số dư Phòng nhiễm không khớp Lot vật lý (dữ liệu lịch sử có thể lệch) — không
+        // chặn "Gộp phiếu" nữa, chỉ trừ tối đa đến 0 thay vì bắt buộc đủ số lượng như trước.
         const lot = await tx.lot.findFirst({ where: { roomId: room.id, plantTypeId: e.plantTypeId, stageCode: e.stageCode, status: "ACTIVE" } });
-        if (!lot || lot.quantity < total) {
-          throw new Error(`Phòng nhiễm không đủ số lượng cho 1 dòng (còn ${lot?.quantity ?? 0}, cần ${total})`);
-        }
 
         await tx.contaminationStaffBalance.update({ where: { id: balance.id }, data: { quantity: { decrement: total } } });
-        await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: total } } });
+        if (lot) {
+          await tx.lot.update({ where: { id: lot.id }, data: { quantity: Math.max(0, lot.quantity - total) } });
+        }
 
         if (e.huyQuantity > 0) {
           const code = await generateContaminationProposalCode("HUY", new Date(), tx);
