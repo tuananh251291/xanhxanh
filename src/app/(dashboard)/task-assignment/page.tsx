@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck, FileSpreadsheet } from "lucide-react";
+import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
@@ -13,8 +13,7 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
-import GoodsReceiptForm from "../goods-receipts/goods-receipt-form";
-import ExcelImportCard from "@/components/shared/excel-import-card";
+import GoodsReceiptActions from "./goods-receipt-actions";
 
 export default async function TaskAssignmentPage() {
   const session = await auth();
@@ -112,26 +111,14 @@ export default async function TaskAssignmentPage() {
       </div>
 
       <div className="space-y-3">
-        <h2 className="text-base font-bold text-foreground flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</h2>
+          {workplaceWarehouseId && (
+            <GoodsReceiptActions rooms={goodsReceiptRooms} plantTypes={plantTypes} suppliers={suppliers} />
+          )}
+        </div>
 
-        {workplaceWarehouseId ? (
-          <>
-            <GoodsReceiptForm
-              rooms={goodsReceiptRooms}
-              plantTypes={plantTypes}
-              suppliers={suppliers}
-              defaultMode="PLANNED"
-              title="Tạo đơn nhập hàng"
-            />
-            <ExcelImportCard
-              icon={<FileSpreadsheet className="w-5 h-5" />}
-              title="Tạo hàng loạt bằng Excel"
-              description="Điền nhiều dòng (có thể nhiều NCC/ngày hàng về khác nhau) — mỗi nhóm cùng NCC + ngày hàng về gộp thành 1 đơn."
-              templateUrl="/api/goods-receipts/import"
-              uploadUrl="/api/goods-receipts/import"
-            />
-          </>
-        ) : (
+        {!workplaceWarehouseId && (
           <Card><CardContent className="py-6 text-center text-text-muted text-sm">
             Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao trước khi tạo đơn nhập hàng.
           </CardContent></Card>
