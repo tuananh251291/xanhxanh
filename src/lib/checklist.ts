@@ -2,12 +2,24 @@ import { prisma } from "@/lib/prisma";
 import { startOfDay, isSameDay } from "date-fns";
 import type { UserRole } from "@prisma/client";
 
+// Checklist hiển thị "hôm nay" cho NV: mọi việc chưa xong (bất kể sinh ngày nào — kể cả dồn từ hôm
+// trước), cộng thêm việc đã xong nhưng vừa được sinh/hoàn thành trong hôm nay (để NV thấy đã tích).
+// Chỉ còn dùng cho kind=DARK_ROOM_CHECK (trang /dark-room-check) — SIMPLE đã bỏ (xem ensureTodayChecklist).
+export async function getTodayChecklist(userId: string) {
+  const today = startOfDay(new Date());
+  const items = await prisma.checklistItem.findMany({
+    where: { userId },
+    orderBy: [{ completed: "asc" }, { createdAt: "asc" }],
+  });
+  return items.filter((i) => !i.completed || isSameDay(i.assignedDate, today));
+}
+
 // Sinh ChecklistItem hôm nay cho NV từ các template đang isActive của vai trò họ — mỗi template chỉ
 // sinh dòng mới nếu NV không còn dòng nào PENDING từ trước (còn pending thì coi như đã "dồn" sang hôm
 // nay, không nhân bản) và chưa có dòng nào của template đó cho đúng hôm nay.
 export async function ensureTodayChecklist(userId: string, role: UserRole | null | undefined): Promise<void> {
   if (!role) return;
-  const templates = await prisma.checklistTemplate.findMany({ where: { role, isActive: true } });
+  const templates = await prisma.checklistTemplate.findMany({ where: { role, isActive: true, kind: "DARK_ROOM_CHECK" } });
   if (templates.length === 0) return;
 
   const today = startOfDay(new Date());
@@ -63,15 +75,4 @@ export async function completeDarkRoomSubTask2ForWarehouse(warehouseId: string):
       await prisma.checklistItem.update({ where: { id: item.id }, data: updateData });
     }
   }
-}
-
-// Checklist hiển thị "hôm nay" cho NV: mọi việc chưa xong (bất kể sinh ngày nào — kể cả dồn từ hôm
-// trước), cộng thêm việc đã xong nhưng vừa được sinh/hoàn thành trong hôm nay (để NV thấy đã tích).
-export async function getTodayChecklist(userId: string) {
-  const today = startOfDay(new Date());
-  const items = await prisma.checklistItem.findMany({
-    where: { userId },
-    orderBy: [{ completed: "asc" }, { createdAt: "asc" }],
-  });
-  return items.filter((i) => !i.completed || isSameDay(i.assignedDate, today));
 }

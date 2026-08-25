@@ -4,17 +4,16 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  Flame, Trophy, Swords, Sparkles, Medal, Bell, CheckCircle2, XCircle,
-  PackageCheck, PenLine, Moon, Send, Loader2, Volume2, VolumeX, CalendarPlus, ChevronRight, PackageMinus, RefreshCw, type LucideIcon,
+  Flame, Trophy, Swords, Medal, Bell, CheckCircle2, XCircle,
+  PackageCheck, PenLine, Moon, Send, Volume2, VolumeX, CalendarPlus, ChevronRight, PackageMinus, RefreshCw, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Checkbox } from "@/components/ui/checkbox";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
 import type { CayMoQuestStats, Quest, MilestoneBadge } from "@/lib/cay-mo-quest-stats";
 import { generateConfettiPieces } from "@/lib/confetti";
-import { playTaskCompleteSound, playBadgeUnlockSound, playLevelUpSound, playPerfectDaySound } from "@/lib/sound-effects";
+import { playBadgeUnlockSound, playLevelUpSound, playPerfectDaySound } from "@/lib/sound-effects";
 import { loadQuestProgressSnapshot, saveQuestProgressSnapshot } from "@/lib/quest-progress-snapshot";
 
 const QUEST_ICONS: Record<Quest["key"], LucideIcon> = {
@@ -28,8 +27,6 @@ const QUEST_ICONS: Record<Quest["key"], LucideIcon> = {
 
 const MUTE_STORAGE_KEY = "caymo-quest-sound-muted";
 
-type ChecklistItem = { id: string; title: string; completed: boolean; assignedDate: string };
-
 export default function CayMoQuestDashboard({
   stats, userName, userId, quote, today,
 }: {
@@ -40,7 +37,6 @@ export default function CayMoQuestDashboard({
   today: string;
 }) {
   const [confettiBurst, setConfettiBurst] = useState(0);
-  const [sideQuestsAllDone, setSideQuestsAllDone] = useState(false);
   const [muted, setMuted] = useState(false);
   const [mutePrefLoaded, setMutePrefLoaded] = useState(false);
   const celebratedAllRef = useRef(false);
@@ -51,12 +47,6 @@ export default function CayMoQuestDashboard({
   const xpPercent = Math.round((stats.xpIntoLevel / stats.xpTarget) * 100);
 
   const fireConfetti = useCallback(() => setConfettiBurst((b) => b + 1), []);
-  const handleSideQuestAllDoneChange = useCallback((done: boolean) => setSideQuestsAllDone(done), []);
-
-  const celebrateTaskDone = useCallback(() => {
-    fireConfetti();
-    if (!muted) playTaskCompleteSound();
-  }, [fireConfetti, muted]);
 
   const toggleMuted = useCallback(() => {
     setMuted((prev) => {
@@ -83,7 +73,7 @@ export default function CayMoQuestDashboard({
   }, []);
 
   useEffect(() => {
-    if (mainQuestsAllDone && sideQuestsAllDone && !celebratedAllRef.current) {
+    if (mainQuestsAllDone && !celebratedAllRef.current) {
       celebratedAllRef.current = true;
       fireConfetti();
       if (!muted) playPerfectDaySound();
@@ -91,7 +81,7 @@ export default function CayMoQuestDashboard({
         icon: <Trophy className="w-4 h-4 text-achievement-foreground" />,
       });
     }
-  }, [mainQuestsAllDone, sideQuestsAllDone, fireConfetti, muted]);
+  }, [mainQuestsAllDone, fireConfetti, muted]);
 
   useEffect(() => {
     if (!mutePrefLoaded || celebratedProgressRef.current) return;
@@ -213,13 +203,6 @@ export default function CayMoQuestDashboard({
 
       <section className="space-y-3">
         <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-secondary-foreground" /> Nhiệm vụ phụ
-        </h2>
-        <SideQuestList onAllDoneChange={handleSideQuestAllDoneChange} onItemCompleted={celebrateTaskDone} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-bold text-foreground flex items-center gap-2">
           <Medal className="w-4 h-4 text-achievement-foreground" /> Huy hiệu cột mốc
         </h2>
         <div className="flex flex-wrap gap-3">
@@ -274,90 +257,6 @@ function BadgeChip({ badge }: { badge: MilestoneBadge }) {
     >
       <Medal className="w-3.5 h-3.5" />
       {badge.label}
-    </div>
-  );
-}
-
-function SideQuestList({
-  onAllDoneChange, onItemCompleted,
-}: {
-  onAllDoneChange: (done: boolean) => void;
-  onItemCompleted: () => void;
-}) {
-  const [items, setItems] = useState<ChecklistItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/checklist/today")
-      .then((r) => r.json())
-      .then((data) => setItems(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    // Không có nhiệm vụ phụ nào (vd role chưa có ChecklistTemplate) thì coi như đã xong hết —
-    // nếu không, banner "hoàn thành mọi nhiệm vụ" sẽ không bao giờ bật được cho các role đó.
-    if (!loading) onAllDoneChange(items.length === 0 || items.every((i) => i.completed));
-  }, [items, loading, onAllDoneChange]);
-
-  const toggle = async (item: ChecklistItem) => {
-    const completing = !item.completed;
-    setSavingId(item.id);
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, completed: completing } : i)));
-    try {
-      const res = await fetch(`/api/checklist/items/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completed: completing }),
-      });
-      if (!res.ok) {
-        setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, completed: item.completed } : i)));
-        return;
-      }
-      if (completing) {
-        onItemCompleted();
-        const allDone = items.every((i) => i.id === item.id || i.completed);
-        toast.success(
-          allDone
-            ? "Xuất sắc! Hôm nay bạn đã hoàn thành toàn bộ nhiệm vụ trong ngày. Cảm ơn vì sự nỗ lực của bạn!"
-            : `Đã hoàn thành '${item.title}' — làm tốt lắm!`,
-          { icon: <Trophy className="w-4 h-4 text-achievement-foreground" /> }
-        );
-      }
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  if (loading) {
-    return <p className="text-sm text-text-muted px-1">Đang tải nhiệm vụ phụ...</p>;
-  }
-  if (items.length === 0) {
-    return <p className="text-sm text-text-muted px-1">Chưa có nhiệm vụ phụ nào hôm nay.</p>;
-  }
-
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      {items.map((item, idx) => (
-        <label
-          key={item.id}
-          style={{ animationDelay: `${idx * 60}ms` }}
-          className={`animate-in fade-in slide-in-from-bottom-1 flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
-            item.completed ? "bg-primary-light border-primary-light" : "bg-card border-border hover:border-primary"
-          }`}
-        >
-          <Checkbox checked={item.completed} disabled={savingId === item.id} onCheckedChange={() => toggle(item)} />
-          <span className={`text-sm flex-1 ${item.completed ? "line-through text-text-muted" : "text-foreground"}`}>
-            {item.title}
-          </span>
-          {savingId === item.id ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" />
-          ) : item.completed ? (
-            <Sparkles className="w-4 h-4 text-primary-strong" />
-          ) : null}
-        </label>
-      ))}
     </div>
   );
 }

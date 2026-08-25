@@ -12,7 +12,6 @@ import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isA
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import TodayChecklist from "@/components/shared/today-checklist";
 import { ensureTodayChecklist } from "@/lib/checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
 import { isMediumOrderInProgress, isMediumSurplusEntryDay, toVnCalendarDate } from "@/lib/medium-orders";
@@ -563,7 +562,6 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
         <StatCard title="Đơn đang xử lý" value={stats.pendingOrders} icon={ShoppingCart} color="yellow" />
         <StatCard title="Nhân viên" value={stats.totalUsers} icon={Users} color="purple" />
       </div>
-      <TodayChecklist />
       {stats.recentAlerts.length > 0 && (
         <Card>
           <CardHeader>
@@ -605,7 +603,6 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
         <StatCard title="Tồn đạt tiêu chuẩn (TP)" value={stats.availableLots} icon={Package} color="green" subtitle="lô thành phẩm" />
         <StatCard title="Đơn đang hoạt động" value={stats.myOrders.length} icon={ShoppingCart} color="blue" />
       </div>
-      <TodayChecklist />
       {stats.myOrders.length > 0 && (
         <Card>
           <CardHeader>
@@ -708,8 +705,6 @@ function CayMoDashboard({
           ))}
         </CardContent>
       </Card>
-
-      <TodayChecklist />
     </div>
   );
 }
@@ -870,8 +865,6 @@ function KyThuatDashboard({
           )}
         </CardContent>
       </Card>
-
-      <TodayChecklist />
     </div>
   );
 }
@@ -1115,7 +1108,6 @@ function MoiTruongDashboard({
         </CardContent>
       </Card>
 
-      <TodayChecklist />
     </div>
   );
 }
@@ -1261,7 +1253,6 @@ function KhoDashboard({
         </CardContent>
       </Card>
 
-      <TodayChecklist />
     </div>
   );
 }
@@ -1319,7 +1310,6 @@ function DefaultDashboard({ role, userName }: { role: UserRole; userName: string
         <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
       <GreetingBanner />
-      <TodayChecklist />
       <Card>
         <CardContent className="pt-6">
           <div className="text-center py-8 text-text-secondary">
