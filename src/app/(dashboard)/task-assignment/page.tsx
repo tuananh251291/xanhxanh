@@ -110,41 +110,36 @@ export default async function TaskAssignmentPage() {
         </p>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-bold text-foreground flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</h2>
-          {workplaceWarehouseId && (
-            <GoodsReceiptActions rooms={goodsReceiptRooms} plantTypes={plantTypes} suppliers={suppliers} />
-          )}
-        </div>
-
-        {!workplaceWarehouseId && (
-          <Card><CardContent className="py-6 text-center text-text-muted text-sm">
-            Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao trước khi tạo đơn nhập hàng.
-          </CardContent></Card>
-        )}
-
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Đơn đang chờ gán / xác nhận</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {pendingReceipts.length === 0 ? (
-              <p className="text-sm text-text-muted py-2">Không có kế hoạch nhập hàng nào đang chờ</p>
-            ) : (
-              pendingReceipts.map((r) => (
-                <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
-                  <div>
-                    <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
-                    <p className="text-xs text-text-secondary">
-                      {r.supplier.name} ({r.supplier.code}){r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
-                    </p>
-                  </div>
-                  <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
-                </div>
-              ))
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</CardTitle>
+            {workplaceWarehouseId && (
+              <GoodsReceiptActions rooms={goodsReceiptRooms} plantTypes={plantTypes} suppliers={suppliers} />
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {!workplaceWarehouseId && (
+            <p className="text-sm text-text-muted py-2">Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao trước khi tạo đơn nhập hàng.</p>
+          )}
+          {pendingReceipts.length === 0 ? (
+            <p className="text-sm text-text-muted py-2">Không có kế hoạch nhập hàng nào đang chờ</p>
+          ) : (
+            pendingReceipts.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
+                <div>
+                  <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
+                  <p className="text-xs text-text-secondary">
+                    {r.supplier.name} ({r.supplier.code}){r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
+                  </p>
+                </div>
+                <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><PackageCheck className="w-4 h-4" /> 2. Nhận bàn giao từ kho sản xuất</CardTitle></CardHeader>
