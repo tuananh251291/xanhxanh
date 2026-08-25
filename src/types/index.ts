@@ -459,7 +459,7 @@ export const CUSTOMER_GROUP_BADGE_VARIANT = {
 export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: string }[]> = {
   SUPER_ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/user-management", label: "Quản lý người dùng", icon: "Users" },
+    { href: "/users", label: "Quản lý người dùng", icon: "Users" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
