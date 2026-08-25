@@ -405,6 +405,13 @@ export const MEDIUM_ORDER_STATUS_LABELS = {
   ENDED: "Đã kết thúc",
 } as const;
 
+// Nhãn trạng thái đơn môi trường phát sinh cho đơn xử lý (ProcessingMediumOrder) — khác MediumOrder,
+// không có lịch tuần, chỉ 2 trạng thái.
+export const PROCESSING_MEDIUM_ORDER_STATUS_LABELS = {
+  PENDING: "Chờ pha",
+  COMPLETED: "Đã hoàn thành",
+} as const;
+
 // Nhãn trạng thái từng dòng-ngày (MediumOrderDay) — dựa trên handedOverAt/confirmedAt.
 export const MEDIUM_ORDER_DAY_STATUS_LABELS = {
   NOT_HANDED_OVER: "Chưa bàn giao",

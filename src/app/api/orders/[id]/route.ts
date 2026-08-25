@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateOrderProcessingRequestCode } from "@/lib/codes";
+import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
@@ -73,6 +73,13 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   }
 
   let processingRequestCount = 0;
+  let mediumOrderCount = 0;
+
+  // Môi trường mặc định dùng cho ProcessingMediumOrder (đơn môi trường phát sinh cho đơn xử lý) — luôn
+  // là mã "10" (MT CTP Cơ bản, xem prisma/seed.ts). Tra trước transaction vì không đổi theo từng dòng.
+  // Thiếu mã này (Admin lỡ xoá ở /medium-types) thì bỏ qua việc tạo đơn môi trường, không chặn xác nhận
+  // đơn hàng — đây là tính năng phụ trợ, không phải điều kiện bắt buộc để xác nhận.
+  const defaultMediumType = await prisma.mediumType.findUnique({ where: { code: "10" } });
 
   await prisma.$transaction(async (tx) => {
     // Cache Phòng đạt tiêu chuẩn đích theo kho — nhiều dòng cùng đơn có thể cùng kho, tránh tra lại.
@@ -107,7 +114,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
 
       const bagSize = FINISHED_SPEC_BAG_SIZE[item.lot.stageCode as keyof typeof FINISHED_SPEC_BAG_SIZE] ?? 1;
       const code = await generateOrderProcessingRequestCode(tx);
-      await tx.orderProcessingRequest.create({
+      const processingRequest = await tx.orderProcessingRequest.create({
         data: {
           code,
           orderId: order.id,
@@ -124,6 +131,22 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
         },
       });
       processingRequestCount += 1;
+
+      // Đơn môi trường cho đơn xử lý này — số lượng = deductQuantity (cả túi nguồn đã mở ra để tách/ghép),
+      // ghi rõ trong notes đây là môi trường phục vụ đơn xử lý nào (xem comment ProcessingMediumOrder).
+      if (defaultMediumType) {
+        const mediumOrderCode = await generateProcessingMediumOrderCode(tx);
+        await tx.processingMediumOrder.create({
+          data: {
+            code: mediumOrderCode,
+            processingRequestId: processingRequest.id,
+            mediumTypeId: defaultMediumType.id,
+            quantity: item.quantity,
+            notes: `Đơn môi trường cho đơn xử lý ${processingRequest.code} (đơn hàng ${order.code})`,
+          },
+        });
+        mediumOrderCount += 1;
+      }
     }
 
     await tx.order.update({ where: { id: order.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
@@ -135,6 +158,17 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
       title: "Có đơn hàng cần tách túi trước khi xuất kho",
       message: `Đơn ${order.code} có ${processingRequestCount} dòng cần tách/ghép túi — xem trang Xử lý cây`,
       targetRole: "KHO_THANH_PHAM",
+      relatedId: order.id,
+      relatedType: "Order",
+    });
+  }
+
+  if (mediumOrderCount > 0) {
+    await createAlert({
+      type: "MEDIUM_ORDER_CREATED",
+      title: "Có đơn đặt hàng môi trường mới",
+      message: `Đơn ${order.code} cần ${mediumOrderCount} đơn môi trường mới cho việc xử lý tách/ghép túi — xem trang Đơn đặt hàng MT`,
+      targetRole: "MOI_TRUONG",
       relatedId: order.id,
       relatedType: "Order",
     });

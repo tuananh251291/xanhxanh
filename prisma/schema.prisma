@@ -344,6 +344,7 @@ model User {
   materialIntakes      MaterialIntake[]
   processingTickets    ProcessingTicket[]
   orderProcessingRequestsCompleted OrderProcessingRequest[]
+  processingMediumOrdersCompleted ProcessingMediumOrder[]
   goodsReceipts        GoodsReceipt[] @relation("GoodsReceiptCreatedBy")
   goodsReceiptsConfirmed GoodsReceipt[] @relation("GoodsReceiptConfirmedBy")
   goodsReceiptItemsReturned GoodsReceiptItem[] @relation("GoodsReceiptItemReturnedBy")
@@ -682,6 +683,7 @@ model MediumType {
   instructionItemsAsFinishedMedium  PlantingInstructionItem[] @relation("ItemFinishedMedium")
   instructionItemsAsPreRootingMotherMedium PlantingInstructionItem[] @relation("ItemPreRootingMotherMedium")
   orderItems                        MediumOrderItem[]
+  processingMediumOrders            ProcessingMediumOrder[]
 
   @@map("medium_types")
 }
@@ -2161,7 +2163,40 @@ model OrderProcessingRequest {
   completedById   String?
   completedBy     User?     @relation(fields: [completedById], references: [id])
 
+  mediumOrder     ProcessingMediumOrder?
+
   @@map("order_processing_requests")
+}
+
+enum ProcessingMediumOrderStatus {
+  PENDING
+  COMPLETED
+}
+
+// Đơn đặt hàng môi trường phát sinh TỰ ĐỘNG ngay khi tạo xong 1 OrderProcessingRequest (lúc Sale xác
+// nhận đơn hàng cần tách/ghép túi, xem PATCH /api/orders/[id] action=confirm) — khác hẳn MediumOrder
+// (sinh từ chỉ định cấy, có lịch tuần 8 ngày pha/bàn giao/nhận): đây là 1 đơn ĐƠN GIẢN, phát sinh đột
+// xuất không theo lịch tuần, số lượng = deductQuantity (cả túi nguồn đã mở để tách/ghép cho đơn xử lý
+// này), luôn dùng môi trường mã "10" (MT CTP Cơ bản). NV môi trường (MOI_TRUONG) pha xong bấm "Hoàn
+// thành" trực tiếp — không có bước xác nhận/bàn giao từng ngày riêng như MediumOrder.
+model ProcessingMediumOrder {
+  id                  String                       @id @default(cuid())
+  code                String                       @unique
+  processingRequestId String                       @unique
+  processingRequest   OrderProcessingRequest        @relation(fields: [processingRequestId], references: [id])
+  mediumTypeId        String
+  mediumType          MediumType                   @relation(fields: [mediumTypeId], references: [id])
+  quantity            Int
+  // Ghi rõ đây là đơn môi trường phát sinh cho đơn xử lý nào — hiển thị thẳng cho NV môi trường, không
+  // để họ nhầm với môi trường pha cho chỉ định cấy bình thường.
+  notes               String
+  status              ProcessingMediumOrderStatus  @default(PENDING)
+  completedAt         DateTime?
+  completedById       String?
+  completedBy         User?                        @relation(fields: [completedById], references: [id])
+  createdAt           DateTime                     @default(now())
+
+  @@map("processing_medium_orders")
 }
 
 // ============================================================

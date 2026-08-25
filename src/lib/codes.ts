@@ -255,6 +255,22 @@ export async function generateOrderProcessingRequestCode(client: Prisma.Transact
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
 
+// Mã đơn môi trường phát sinh cho đơn xử lý (ProcessingMediumOrder, xem PATCH /api/orders/[id]
+// action=confirm) — tiền tố "DHMTXL" để không trùng "DHMT..." (không dùng, MediumOrder dùng prefix riêng
+// "DHMT-YYYYMM") hay bất kỳ mã nào khác. client tuỳ chọn — truyền tx khi gọi trong 1 transaction để tính
+// mã kế tiếp dựa trên đúng state đang thấy trong transaction đó (nhiều dòng cùng đơn hàng có thể tạo
+// nhiều ProcessingMediumOrder trong CÙNG 1 transaction — cần read-your-own-writes, giống generateLotCode).
+export async function generateProcessingMediumOrderCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `DHMTXL-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.processingMediumOrder.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
 // client tuỳ chọn — truyền tx khi gọi trong 1 transaction (POST /api/goods-receipts) để tính mã kế tiếp
 // dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
 export async function generateGoodsReceiptCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
