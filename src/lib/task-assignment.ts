@@ -80,9 +80,11 @@ export type MyTask = {
 // dialog nên có thêm dailyTaskId.
 export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
   const [goodsReceipts, transfers, orders, dailyTasks] = await Promise.all([
+    // Chỉ hiện từ đúng "Ngày hàng về" (expectedDate) trở đi — kế hoạch nhập kho tạo/gán trước cả tuần
+    // vẫn chưa cần NV làm gì tới lúc đó, tránh hiện sớm gây rối bảng "Công việc hôm nay của tôi".
     prisma.goodsReceipt.findMany({
-      where: { assignedToId: userId, status: "PLANNED" },
-      select: { id: true, code: true, supplier: { select: { name: true } } },
+      where: { assignedToId: userId, status: "PLANNED", expectedDate: { lte: endOfDay(new Date()) } },
+      select: { id: true, code: true, expectedDate: true, supplier: { select: { name: true } } },
     }),
     prisma.transfer.findMany({
       where: { assignedToId: userId, status: "PENDING" },
@@ -100,7 +102,12 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
 
   const tasks: MyTask[] = [];
   for (const r of goodsReceipts) {
-    tasks.push({ key: `gr-${r.id}`, href: "/goods-receipts", title: `Nhận hàng NCC — ${r.code}`, description: `Xác nhận số liệu thật từ ${r.supplier.name}` });
+    tasks.push({
+      key: `gr-${r.id}`,
+      href: "/goods-receipts",
+      title: `Nhận hàng NCC — ${r.code}`,
+      description: `Xác nhận số liệu thật từ ${r.supplier.name}${r.expectedDate ? ` · Hàng về ${format(r.expectedDate, "dd/MM/yyyy", { locale: vi })}` : ""}`,
+    });
   }
   for (const t of transfers) {
     tasks.push({

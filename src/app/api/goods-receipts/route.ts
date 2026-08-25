@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateGoodsReceiptCode, generateLotCode } from "@/lib/codes";
+import { generateGoodsReceiptCode } from "@/lib/codes";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
-import { upsertLot } from "@/lib/goods-receipt";
+import { upsertLot, createPlannedGoodsReceipt } from "@/lib/goods-receipt";
 import { createAlert } from "@/lib/inventory";
 import { addDays } from "date-fns";
 import { cellDate } from "@/lib/excel-import";
@@ -106,51 +106,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Ngày dự kiến nhập kho không hợp lệ" }, { status: 400 });
       }
 
-      const receipt = await prisma.$transaction(async (tx) => {
-        const code = await generateGoodsReceiptCode(tx);
-        const created = await tx.goodsReceipt.create({
-          data: {
-            code,
-            supplierId: data.supplierId,
-            roomId: data.roomId,
-            createdById: session.user.id,
-            notes: data.notes,
-            status: "PLANNED",
-            expectedDate,
-          },
-        });
-
-        for (const item of data.items) {
-          const plantTypeCode = plantTypeById.get(item.plantTypeId)!.code;
-          const lotCode = await generateLotCode({ plantTypeCode, staffCode, stageCode: item.stageCode, date: expectedDate, client: tx });
-          const plannedLot = await tx.lot.create({
-            data: {
-              code: lotCode,
-              plantTypeId: item.plantTypeId,
-              stage: "THANH_PHAM",
-              stageCode: item.stageCode,
-              roomId: data.roomId,
-              quantity: item.estimatedQuantity,
-              initialQuantity: item.estimatedQuantity,
-              status: "PLANNED",
-              expectedDate,
-            },
-          });
-          await tx.goodsReceiptItem.create({
-            data: {
-              receiptId: created.id,
-              plantTypeId: item.plantTypeId,
-              stageCode: item.stageCode,
-              quantityDelivered: item.estimatedQuantity,
-              quantityRejected: 0,
-              quantityPassed: item.estimatedQuantity,
-              plannedLotId: plannedLot.id,
-            },
-          });
-        }
-
-        return created;
-      });
+      const receipt = await prisma.$transaction(async (tx) =>
+        createPlannedGoodsReceipt(tx, {
+          supplierId: data.supplierId,
+          roomId: data.roomId,
+          createdById: session.user.id,
+          notes: data.notes,
+          expectedDate,
+          staffCode,
+          items: data.items.map((item) => ({
+            plantTypeId: item.plantTypeId,
+            plantTypeCode: plantTypeById.get(item.plantTypeId)!.code,
+            stageCode: item.stageCode,
+            estimatedQuantity: item.estimatedQuantity,
+          })),
+        })
+      );
 
       return NextResponse.json(receipt, { status: 201 });
     }

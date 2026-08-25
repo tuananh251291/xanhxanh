@@ -5,13 +5,16 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck } from "lucide-react";
+import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck, FileSpreadsheet } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
+import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
+import GoodsReceiptForm from "../goods-receipts/goods-receipt-form";
+import ExcelImportCard from "@/components/shared/excel-import-card";
 
 export default async function TaskAssignmentPage() {
   const session = await auth();
@@ -31,6 +34,9 @@ export default async function TaskAssignmentPage() {
     staffKhoThanhPham,
     staffAll,
     deXuatTasks,
+    goodsReceiptRooms,
+    plantTypes,
+    suppliers,
   ] = await Promise.all([
     prisma.goodsReceipt.findMany({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
@@ -83,6 +89,9 @@ export default async function TaskAssignmentPage() {
         proposals: { select: { status: true } },
       },
     }),
+    getFinishedQualifiedRooms().then((rooms) => rooms.filter((r) => r.warehouseId === workplaceWarehouseId)),
+    prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const currentWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -102,26 +111,54 @@ export default async function TaskAssignmentPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
-          {pendingReceipts.length === 0 ? (
-            <p className="text-sm text-text-muted py-2">Không có kế hoạch nhập hàng nào đang chờ</p>
-          ) : (
-            pendingReceipts.map((r) => (
-              <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
-                <div>
-                  <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
-                  <p className="text-xs text-text-secondary">
-                    {r.supplier.name} ({r.supplier.code}){r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
-                  </p>
+      <div className="space-y-3">
+        <h2 className="text-base font-bold text-foreground flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</h2>
+
+        {workplaceWarehouseId ? (
+          <>
+            <GoodsReceiptForm
+              rooms={goodsReceiptRooms}
+              plantTypes={plantTypes}
+              suppliers={suppliers}
+              defaultMode="PLANNED"
+              title="Tạo đơn nhập hàng"
+            />
+            <ExcelImportCard
+              icon={<FileSpreadsheet className="w-5 h-5" />}
+              title="Tạo hàng loạt bằng Excel"
+              description="Điền nhiều dòng (có thể nhiều NCC/ngày hàng về khác nhau) — mỗi nhóm cùng NCC + ngày hàng về gộp thành 1 đơn."
+              templateUrl="/api/goods-receipts/import"
+              uploadUrl="/api/goods-receipts/import"
+              successLabel={(count) => `Đã nhập ${count} dòng`}
+            />
+          </>
+        ) : (
+          <Card><CardContent className="py-6 text-center text-text-muted text-sm">
+            Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao trước khi tạo đơn nhập hàng.
+          </CardContent></Card>
+        )}
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Đơn đang chờ gán / xác nhận</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {pendingReceipts.length === 0 ? (
+              <p className="text-sm text-text-muted py-2">Không có kế hoạch nhập hàng nào đang chờ</p>
+            ) : (
+              pendingReceipts.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
+                  <div>
+                    <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
+                    <p className="text-xs text-text-secondary">
+                      {r.supplier.name} ({r.supplier.code}){r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
+                    </p>
+                  </div>
+                  <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
                 </div>
-                <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><PackageCheck className="w-4 h-4" /> 2. Nhận bàn giao từ kho sản xuất</CardTitle></CardHeader>

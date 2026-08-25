@@ -40,8 +40,18 @@ const MODE_OPTIONS: { value: "CONFIRMED" | "PLANNED"; label: string }[] = [
 let rowKeySeq = 0;
 const newRow = (): ItemRow => ({ key: `r${++rowKeySeq}`, plantTypeId: "", stageCode: "T01", quantityDelivered: "", quantityRejected: "" });
 
-export default function GoodsReceiptForm({ rooms, plantTypes, suppliers }: { rooms: Room[]; plantTypes: PlantType[]; suppliers: Supplier[] }) {
-  const [mode, setMode] = useState<"CONFIRMED" | "PLANNED">("CONFIRMED");
+export default function GoodsReceiptForm({
+  rooms, plantTypes, suppliers, defaultMode = "CONFIRMED", title = "Nhập hàng",
+}: {
+  rooms: Room[];
+  plantTypes: PlantType[];
+  suppliers: Supplier[];
+  // "Phân công nhiệm vụ ngày" nhúng lại form này, mặc định "Kế hoạch dự kiến" vì mục đích chính ở đó là
+  // tạo việc để gán cho NV — trang /goods-receipts gốc vẫn mặc định "Đã có hàng thật" như cũ.
+  defaultMode?: "CONFIRMED" | "PLANNED";
+  title?: string;
+}) {
+  const [mode, setMode] = useState<"CONFIRMED" | "PLANNED">(defaultMode);
   const [roomId, setRoomId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
@@ -113,7 +123,7 @@ export default function GoodsReceiptForm({ rooms, plantTypes, suppliers }: { roo
 
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Nhập hàng</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1">
           <Label>Loại phiếu</Label>
