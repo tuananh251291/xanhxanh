@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
   };
   const errors: RowError[] = [];
   const validRows: ValidRow[] = [];
-  const claimedWebsites = new Set<string>();
+  const claimedWebsites = new Map<string, { row: number; label: string }>();
   // key "salesUserId:marketId" -> { managerId, managerCode, row } — phát hiện 2 dòng trong CÙNG file ghi
   // khác nhau cho cùng 1 cặp (NV phụ trách, Thị trường).
   const managerAssignments = new Map<string, { managerId: string; managerCode: string; row: number }>();
@@ -226,8 +226,12 @@ export async function POST(req: NextRequest) {
     // Để trống Website: không dùng làm khoá so trùng/cập nhật được (nhiều dòng cùng để trống sẽ không
     // phân biệt được với nhau) — luôn coi là tạo mới, bỏ qua toàn bộ kiểm tra trùng Website bên dưới.
     const websiteNormalized = parsed.website ? normalizeWebsite(parsed.website) : "";
-    if (websiteNormalized && claimedWebsites.has(websiteNormalized)) {
-      errors.push({ row: parsed.row, label, message: "Website trùng với 1 dòng khác trong file" });
+    const claimedBy = websiteNormalized ? claimedWebsites.get(websiteNormalized) : undefined;
+    if (claimedBy) {
+      errors.push({
+        row: parsed.row, label,
+        message: `Website trùng với dòng ${claimedBy.row} (${claimedBy.label}) trong file — sau khi bỏ "http(s)://"/"www."/dấu "/" cuối, 2 link này giống hệt nhau`,
+      });
       continue;
     }
 
@@ -287,7 +291,7 @@ export async function POST(req: NextRequest) {
     const existing = websiteNormalized ? existingByWebsite.get(websiteNormalized) : undefined;
     const firstContactAt = parsed.firstContactAtRaw ?? (existing ? undefined : new Date());
 
-    if (websiteNormalized) claimedWebsites.add(websiteNormalized);
+    if (websiteNormalized) claimedWebsites.set(websiteNormalized, { row: parsed.row, label });
     validRows.push({
       row: parsed.row,
       label,
