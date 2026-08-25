@@ -5,12 +5,11 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Users } from "lucide-react";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 import CustomerFormDialog from "./customer-form-dialog";
-import { CUSTOMER_STATUS_LABELS, CUSTOMER_STATUS_BADGE_VARIANT, CUSTOMER_GROUP_LABELS } from "@/types";
+import { CUSTOMER_STATUS_LABELS, CUSTOMER_GROUP_LABELS } from "@/types";
 
 type Market = { id: string; code: string; name: string };
 type UserLite = { id: string; code: string; name: string; role: string };
@@ -127,7 +126,6 @@ export default function CustomersBoard() {
                   <tr className="border-b border-border">
                     <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Khách hàng</th>
                     <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Thị trường</th>
-                    <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Trạng thái</th>
                     <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">NV phụ trách</th>
                     <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">NV quản lý</th>
                     <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ngày tiếp cận</th>
@@ -137,7 +135,7 @@ export default function CustomersBoard() {
                 </thead>
                 <tbody className="divide-y divide-divider">
                   {customers.length === 0 ? (
-                    <tr><td colSpan={8} className="text-center py-6 text-text-muted">Chưa có khách hàng nào</td></tr>
+                    <tr><td colSpan={7} className="text-center py-6 text-text-muted">Chưa có khách hàng nào</td></tr>
                   ) : (
                     customers.map((c) => (
                       <tr key={c.id}>
@@ -146,11 +144,6 @@ export default function CustomersBoard() {
                           <p className="text-xs text-text-muted font-mono">{c.code}</p>
                         </td>
                         <td className="px-3 py-2">{c.market.code}</td>
-                        <td className="px-3 py-2">
-                          <Badge variant={CUSTOMER_STATUS_BADGE_VARIANT[c.status]}>
-                            {CUSTOMER_STATUS_LABELS[c.status]}
-                          </Badge>
-                        </td>
                         <td className="px-3 py-2">{c.assignedTo ? `${c.assignedTo.name} (${c.assignedTo.code})` : "—"}</td>
                         <td className="px-3 py-2">{c.manager ? `${c.manager.name} (${c.manager.code})` : "—"}</td>
                         <td className="px-3 py-2">{format(new Date(c.firstContactAt), "dd/MM/yyyy", { locale: vi })}</td>
