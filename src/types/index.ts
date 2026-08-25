@@ -348,6 +348,13 @@ export const ALERT_TYPE_LABELS = {
   DE_XUAT_TRONG_HUY_WEEKLY_DUE: "Nhắc hạn Đề xuất trồng/hủy tuần",
 } as const;
 
+// Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
+// vào vừa đánh dấu đã xem vừa điều hướng thẳng tới đó, thay vì chỉ có nút "Đã xem" chung chung (xem
+// alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
+export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
+  CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
+};
+
 // Nhiệm vụ nhỏ "Kiểm tra kho cá nhân" (thuộc checklist "Kiểm tra kho tối" của Kho mô) chỉ cho chọn lỗi vi
 // phạm thuộc 2 nhóm này — đúng phạm vi kiểm tra thực tế lúc đi kiểm tra kho tối (tem nhãn + sắp xếp sản
 // phẩm), tránh danh sách dài lẫn cả lỗi không liên quan (an toàn lao động, phần mềm...). Dùng chung ở cả

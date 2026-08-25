@@ -16,10 +16,22 @@ import ShelfGroupBoard from "../settings/shelf-groups/shelf-group-board";
 // dùng chung, không trùng lặp logic). Riêng "Chỉ định cấy" KHÔNG nhúng thẳng nội dung route /instructions
 // (route đó dùng chung 4 vai trò, với SUPER_ADMIN/ADMIN vốn đã chỉ hiện 1 thẻ gọn trỏ /instructions/list
 // — nhúng nguyên logic 150+ dòng query của route đó vào đây không đáng, chỉ cần 1 thẻ dẫn sang y hệt).
-export default async function ProductionManagementPage() {
+const TAB_VALUES = ["warehouses", "instructions", "nhap-kho", "contamination", "shelf-groups"] as const;
+
+export default async function ProductionManagementPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!isAdminRole(role)) redirect("/dashboard");
+
+  // Cho phép trỏ thẳng tới 1 tab cụ thể qua ?tab= (VD nút "Xem chi tiết" ở trang Thông báo cho thông báo
+  // Đề xuất Trồng/Hủy trỏ tới ?tab=contamination) — mặc định "warehouses" như trước nếu không có/không
+  // hợp lệ.
+  const sp = await searchParams;
+  const defaultTab = (TAB_VALUES as readonly string[]).includes(sp.tab ?? "") ? sp.tab! : "warehouses";
 
   return (
     <div className="space-y-6">
@@ -32,7 +44,7 @@ export default async function ProductionManagementPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="warehouses">
+      <Tabs defaultValue={defaultTab}>
         <TabsList>
           <TabsTrigger value="warehouses">Kho & Kệ</TabsTrigger>
           <TabsTrigger value="instructions">Chỉ định cấy</TabsTrigger>
