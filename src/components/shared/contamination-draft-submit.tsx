@@ -90,11 +90,15 @@ export default function ContaminationDraftSubmit({ defaultExpanded = false, onSu
     setSubmitting(true);
     try {
       const res = await fetch("/api/contamination-proposal-drafts/submit", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã gửi ${json.count} đề xuất — chờ Admin duyệt`);
+      // Server có thể trả về lỗi không phải JSON (VD 500 timeout) — luôn phải báo cho NV biết thay vì
+      // im lặng, nếu không NV tưởng đã gửi xong rồi bỏ qua trong khi đề xuất chưa hề được tạo.
+      const json = await res.json().catch(() => null);
+      if (!res.ok) { toast.error(json?.message ?? "Có lỗi xảy ra, thử gửi lại"); return; }
+      toast.success(`Đã gửi ${json?.count ?? ""} đề xuất — chờ Admin duyệt`);
       load();
       onSubmitted?.();
+    } catch {
+      toast.error("Không gửi được — kiểm tra lại kết nối mạng rồi thử lại");
     } finally {
       setSubmitting(false);
     }
