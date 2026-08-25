@@ -16,18 +16,25 @@ type Garden = { id: string; code: string; name: string };
 type Lot = { id: string; plantTypeId: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
 
 export default function DeXuatExecuteForm({
-  taskId, taskCode, taskTitle, rooms, gardens, initialRoomId,
+  taskId, taskCode, taskTitle, deadlineLabel, rooms, gardens, initialRoomId, plantCategoryCodes,
 }: {
   taskId: string;
   taskCode: string;
   taskTitle: string;
+  deadlineLabel: string | null;
   rooms: Room[];
   gardens: Garden[];
   initialRoomId: string | null;
+  // Rỗng = không giới hạn (việc "kho thị trường", đã giới hạn sẵn bằng roomId/initialRoomId thay vào đó).
+  plantCategoryCodes: string[];
 }) {
   const router = useRouter();
   const [roomId, setRoomId] = useState(initialRoomId ?? "");
-  const [lots, setLots] = useState<Lot[]>([]);
+  const [allLots, setAllLots] = useState<Lot[]>([]);
+  // PlantType.code = 2 ký tự mã Loại cây + 3 ký tự riêng (VD "MT001") — xem prisma/schema.prisma.
+  const lots = plantCategoryCodes.length === 0
+    ? allLots
+    : allLots.filter((l) => plantCategoryCodes.includes(l.plantType.code.slice(0, 2)));
   const [loadingLots, setLoadingLots] = useState(false);
   const [values, setValues] = useState<Record<string, { huy: string; trong: string }>>({});
   const [productionGardenId, setProductionGardenId] = useState<string | null>(null);
@@ -39,7 +46,7 @@ export default function DeXuatExecuteForm({
     try {
       const res = await fetch(`/api/lots?roomId=${id}&status=ACTIVE`);
       const data = await res.json();
-      setLots(Array.isArray(data) ? data : []);
+      setAllLots(Array.isArray(data) ? data : []);
     } finally {
       setLoadingLots(false);
     }
@@ -107,7 +114,10 @@ export default function DeXuatExecuteForm({
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-foreground">{taskTitle}</h1>
-          <p className="text-text-secondary text-sm font-mono">{taskCode}</p>
+          <p className="text-text-secondary text-sm">
+            <span className="font-mono">{taskCode}</span>
+            {deadlineLabel && <span className="text-warning-foreground font-medium"> · {deadlineLabel}</span>}
+          </p>
         </div>
       </div>
 
@@ -136,7 +146,9 @@ export default function DeXuatExecuteForm({
             {loadingLots ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-text-muted" /></div>
             ) : lots.length === 0 ? (
-              <p className="text-sm text-text-muted py-4 text-center">Phòng này không có lô nào đang tồn</p>
+              <p className="text-sm text-text-muted py-4 text-center">
+                {allLots.length > 0 ? "Phòng này không có lô nào thuộc Loại cây của nhiệm vụ này" : "Phòng này không có lô nào đang tồn"}
+              </p>
             ) : (
               <>
                 <div className="border border-divider rounded-lg overflow-hidden overflow-x-auto">

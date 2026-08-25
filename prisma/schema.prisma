@@ -2247,17 +2247,16 @@ enum DailyTaskStatus {
   CANCELLED
 }
 
-// Nhiệm vụ do Quản lý kho thành phẩm tạo (hoặc hệ thống tự sinh hàng tuần — xem weekStart), gán cho 1 NV
-// kho thành phẩm (hoặc chính mình) — dùng cho 2 loại việc chưa có bản ghi nghiệp vụ gốc nào khác trong hệ
-// thống (Kiểm tra cây, Đề xuất trồng/hủy). Khác 3 việc còn lại của trang "Phân công nhiệm vụ ngày"
-// (GoodsReceipt/Transfer/Order, vốn đã có sẵn assignedToId/assignedById riêng) — 2 việc này KHÔNG có bản
-// ghi gốc nên cần model riêng.
-// - KIEM_TRA_CAY: NV hoàn thành = nhập resultNotes tự do ngay (không đổi, xem DailyTaskCompleteDialog).
-// - DE_XUAT_TRONG_HUY: NV "Thực hiện" đi qua luồng ContaminationProposal có sẵn (chọn phòng → bảng tồn
-//   kho → gửi Admin duyệt, xem /task-assignment/de-xuat/[taskId]) — nhiệm vụ CHỈ hoàn thành khi toàn bộ
-//   ContaminationProposal liên kết (xem quan hệ `proposals` dưới) được Admin Duyệt (không phải lúc gửi),
-//   tính lazy bởi ensureDeXuatTaskCompletion (src/lib/daily-task-weekly.ts) — không dùng resultNotes/
-//   proposedAction cho loại này nữa (2 field đó chỉ còn ý nghĩa với dữ liệu cũ tạo trước khi có luồng này).
+// Nhiệm vụ do hệ thống tự sinh hàng tuần cho Kho thành phẩm (xem weekStart) — "Kiểm nhiễm - Đề xuất
+// trồng/hủy": mỗi tuần sinh NHIỀU DailyTask cùng loại DE_XUAT_TRONG_HUY, mỗi cái phụ trách 1 "kho cây"
+// riêng (1 Loại cây chính MT/AL/PD/AT, 1 gộp các Loại cây còn lại, hoặc 1 Phòng thị trường — xem
+// ensureWeeklyDeXuatTask, src/lib/daily-task-weekly.ts) để Quản lý gán riêng từng NV phụ trách từng kho.
+// NV "Thực hiện" đi qua luồng ContaminationProposal có sẵn (chọn phòng → bảng tồn kho, LỌC theo
+// plantCategoryCodes nếu có → gửi Admin duyệt, xem /task-assignment/de-xuat/[taskId]) — nhiệm vụ CHỈ hoàn
+// thành khi toàn bộ ContaminationProposal liên kết (xem quan hệ `proposals` dưới) được Admin Duyệt
+// (không phải lúc gửi), tính lazy bởi ensureDeXuatTaskCompletion. Type KIEM_TRA_CAY vẫn còn trong DB (dữ
+// liệu cũ tạo trước khi gộp vào luồng trên) nhưng không còn tạo mới được nữa — xem DailyTaskCompleteDialog
+// (chỉ dùng cho các dòng KIEM_TRA_CAY còn PENDING từ trước).
 model DailyTask {
   id             String                     @id @default(cuid())
   code           String                     @unique
@@ -2269,8 +2268,7 @@ model DailyTask {
   room           Room?                      @relation(fields: [roomId], references: [id])
   notes          String?
   status         DailyTaskStatus            @default(PENDING)
-  // NULL = việc tự sinh hàng tuần chưa được Quản lý gán cho ai (xem ensureWeeklyDeXuatTask) — mọi việc
-  // tạo thủ công qua DailyTaskCreateDialog vẫn luôn có giá trị ngay từ lúc tạo như trước.
+  // NULL = việc tự sinh hàng tuần chưa được Quản lý gán cho ai (xem ensureWeeklyDeXuatTask).
   assignedToId   String?
   assignedTo     User?                      @relation("DailyTaskAssignedTo", fields: [assignedToId], references: [id])
   assignedById   String?
@@ -2279,13 +2277,24 @@ model DailyTask {
   resultNotes    String?
   completedAt    DateTime?
   createdAt      DateTime                   @default(now())
-  // 2 field dưới chỉ có giá trị với việc DE_XUAT_TRONG_HUY tự sinh hàng tuần (ensureWeeklyDeXuatTask) —
-  // NULL với mọi việc tạo thủ công (không đổi hành vi cũ).
+  // Các field dưới chỉ có giá trị với việc DE_XUAT_TRONG_HUY tự sinh hàng tuần (ensureWeeklyDeXuatTask) —
+  // NULL/rỗng với mọi việc khác (không đổi hành vi cũ).
   warehouseId    String?
   warehouse      Warehouse?                 @relation(fields: [warehouseId], references: [id])
   weekStart      DateTime?                  @db.Date
+  // Định danh "vị trí" của việc trong tuần đó — "cat:MT" | "cat:OTHER" | "market:<roomId>" — dùng để
+  // ensureWeeklyDeXuatTask không tạo trùng (kèm @@unique dưới), KHÔNG phải id hiển thị.
+  slotKey        String?
+  // Tiêu đề hiển thị đã tính sẵn lúc sinh (VD "Kiểm tra kho cây MT - Monstera") — khác title suy ra từ
+  // plantType/room như KIEM_TRA_CAY vì 1 việc có thể gộp NHIỀU loại cây (xem plantCategoryCodes).
+  title          String?
+  // Các mã Loại cây (PlantCategory.code, VD ["MT"] hoặc ["EP","HM","MS",...]) mà việc này phụ trách —
+  // rỗng = không giới hạn theo loại cây (dùng cho việc "kho thị trường", giới hạn bằng roomId thay).
+  // Lọc bảng tồn kho ở /task-assignment/de-xuat/[taskId] bằng cách so plantType.code 2 ký tự đầu.
+  plantCategoryCodes String[]                @default([])
   proposals      ContaminationProposal[]
 
+  @@unique([warehouseId, weekStart, slotKey])
   @@map("daily_tasks")
 }
 

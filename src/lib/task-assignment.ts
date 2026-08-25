@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay } from "date-fns";
+import { startOfDay, endOfDay, format } from "date-fns";
+import { vi } from "date-fns/locale";
 import type { DailyTaskType } from "@prisma/client";
-import { formatDeXuatTaskTitle } from "@/lib/daily-task-weekly";
+import { getDeXuatDeadline } from "@/lib/daily-task-weekly";
 
 // Dùng chung cho trang "Phân công nhiệm vụ ngày" (bảng tiến độ) và khối "Công việc hôm nay của tôi" ở
 // Dashboard NV kho thành phẩm — tổng hợp 4 nguồn việc có thể gán đích danh: GoodsReceipt (Nhận hàng NCC),
@@ -93,7 +94,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     }),
     prisma.dailyTask.findMany({
       where: { assignedToId: userId, status: "PENDING" },
-      select: { id: true, code: true, type: true, weekStart: true, plantType: { select: { code: true, name: true } }, room: { select: { name: true } } },
+      select: { id: true, code: true, type: true, weekStart: true, title: true, plantType: { select: { code: true, name: true } }, room: { select: { name: true } } },
     }),
   ]);
 
@@ -113,11 +114,14 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     tasks.push({ key: `or-${o.id}`, href: `/orders/pack/${o.id}`, title: `Sắp xếp đơn hàng — ${o.code}`, description: `Khách hàng ${o.customerCode}` });
   }
   for (const d of dailyTasks) {
+    const isDeXuat = d.type === "DE_XUAT_TRONG_HUY";
     tasks.push({
       key: `dt-${d.id}`,
       href: "/task-assignment",
-      title: d.type === "DE_XUAT_TRONG_HUY" && d.weekStart ? formatDeXuatTaskTitle(d.weekStart) : `Kiểm tra cây — ${d.code}`,
-      description: d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room ? d.room.name : "",
+      title: isDeXuat ? (d.title ?? d.code) : `Kiểm tra cây — ${d.code}`,
+      description: isDeXuat
+        ? (d.weekStart ? `Hạn hoàn thành: ${format(getDeXuatDeadline(d.weekStart), "dd/MM/yyyy", { locale: vi })} (Thứ Sáu)` : "")
+        : (d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room ? d.room.name : ""),
       dailyTaskId: d.id,
       dailyTaskCode: d.code,
       dailyTaskType: d.type,
