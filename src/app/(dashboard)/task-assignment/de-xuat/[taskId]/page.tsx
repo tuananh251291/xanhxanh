@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { isAdminRole } from "@/types";
 import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
+import { formatDeXuatTaskTitle } from "@/lib/daily-task-weekly";
 import DeXuatExecuteForm from "./de-xuat-execute-form";
 
 export default async function DeXuatExecutePage({ params }: { params: Promise<{ taskId: string }> }) {
@@ -13,7 +14,7 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
   const { taskId } = await params;
   const task = await prisma.dailyTask.findUnique({
     where: { id: taskId },
-    select: { id: true, code: true, type: true, status: true, roomId: true, assignedToId: true },
+    select: { id: true, code: true, type: true, status: true, roomId: true, assignedToId: true, weekStart: true },
   });
   if (!task || task.type !== "DE_XUAT_TRONG_HUY") notFound();
 
@@ -37,6 +38,7 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
     <DeXuatExecuteForm
       taskId={task.id}
       taskCode={task.code}
+      taskTitle={task.weekStart ? formatDeXuatTaskTitle(task.weekStart) : task.code}
       rooms={rooms}
       gardens={gardens}
       initialRoomId={task.roomId}

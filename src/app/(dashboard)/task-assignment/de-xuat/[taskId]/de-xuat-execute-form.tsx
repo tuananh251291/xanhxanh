@@ -16,10 +16,11 @@ type Garden = { id: string; code: string; name: string };
 type Lot = { id: string; plantTypeId: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
 
 export default function DeXuatExecuteForm({
-  taskId, taskCode, rooms, gardens, initialRoomId,
+  taskId, taskCode, taskTitle, rooms, gardens, initialRoomId,
 }: {
   taskId: string;
   taskCode: string;
+  taskTitle: string;
   rooms: Room[];
   gardens: Garden[];
   initialRoomId: string | null;
@@ -105,8 +106,8 @@ export default function DeXuatExecuteForm({
           <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-foreground font-mono">{taskCode}</h1>
-          <p className="text-text-secondary text-sm">Thực hiện — Đề xuất trồng/hủy</p>
+          <h1 className="text-2xl font-bold text-foreground">{taskTitle}</h1>
+          <p className="text-text-secondary text-sm font-mono">{taskCode}</p>
         </div>
       </div>
 

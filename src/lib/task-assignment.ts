@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { startOfDay, endOfDay } from "date-fns";
 import type { DailyTaskType } from "@prisma/client";
+import { formatDeXuatTaskTitle } from "@/lib/daily-task-weekly";
 
 // Dùng chung cho trang "Phân công nhiệm vụ ngày" (bảng tiến độ) và khối "Công việc hôm nay của tôi" ở
 // Dashboard NV kho thành phẩm — tổng hợp 4 nguồn việc có thể gán đích danh: GoodsReceipt (Nhận hàng NCC),
@@ -92,7 +93,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     }),
     prisma.dailyTask.findMany({
       where: { assignedToId: userId, status: "PENDING" },
-      select: { id: true, code: true, type: true, plantType: { select: { code: true, name: true } }, room: { select: { name: true } } },
+      select: { id: true, code: true, type: true, weekStart: true, plantType: { select: { code: true, name: true } }, room: { select: { name: true } } },
     }),
   ]);
 
@@ -115,7 +116,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     tasks.push({
       key: `dt-${d.id}`,
       href: "/task-assignment",
-      title: `${d.type === "KIEM_TRA_CAY" ? "Kiểm tra cây" : "Đề xuất trồng/hủy"} — ${d.code}`,
+      title: d.type === "DE_XUAT_TRONG_HUY" && d.weekStart ? formatDeXuatTaskTitle(d.weekStart) : `Kiểm tra cây — ${d.code}`,
       description: d.plantType ? `${d.plantType.name} (${d.plantType.code})` : d.room ? d.room.name : "",
       dailyTaskId: d.id,
       dailyTaskCode: d.code,

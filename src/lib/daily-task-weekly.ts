@@ -3,6 +3,15 @@ import { createAlert } from "@/lib/inventory";
 import { generateDailyTaskCode } from "@/lib/codes";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek, addDays, format } from "date-fns";
+import { vi } from "date-fns/locale";
+
+// Tên hiển thị cho DailyTask DE_XUAT_TRONG_HUY tự sinh hàng tuần — dùng chung ở dashboard, trang Phân
+// công nhiệm vụ ngày và trang Thực hiện, thay cho mã CV-xxx khó đọc.
+export function formatDeXuatTaskTitle(weekStart: Date): string {
+  const start = format(weekStart, "dd/MM/yyyy", { locale: vi });
+  const end = format(addDays(weekStart, 6), "dd/MM/yyyy", { locale: vi });
+  return `Đề xuất trồng/hủy tuần (Từ ngày ${start} đến ngày ${end})`;
+}
 
 // "Đề xuất trồng/hủy" của Kho thành phẩm tự sinh 1 lần/tuần (không có cron thật trong app này — tính lazy
 // mỗi lần tải trang, giống mọi hàm ensureXxx khác, xem src/app/(dashboard)/layout.tsx). weekStart dùng

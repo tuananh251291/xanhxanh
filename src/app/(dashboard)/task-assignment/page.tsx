@@ -11,6 +11,7 @@ import { CONTAMINATION_PROPOSAL_TYPE_LABELS } from "@/types";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
+import { formatDeXuatTaskTitle } from "@/lib/daily-task-weekly";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import DailyTaskCreateDialog from "./daily-task-create-dialog";
@@ -287,8 +288,10 @@ function DeXuatTaskRow({
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border ${highlight ? "bg-warning-light/30 border-warning" : "bg-background border-divider"}`}>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground font-mono">{d.code}</p>
-        <p className="text-xs text-text-secondary">{label}</p>
+        <p className="text-sm font-medium text-foreground">{d.weekStart ? formatDeXuatTaskTitle(d.weekStart) : d.code}</p>
+        <p className="text-xs text-text-secondary">
+          <span className="font-mono">{d.code}</span>{label !== "Mọi phòng" ? ` · ${label}` : ""}
+        </p>
         {d.proposals.length > 0 && (
           <p className="text-xs text-text-muted mt-0.5">{approvedCount}/{d.proposals.length} phiếu đã được Duyệt</p>
         )}
