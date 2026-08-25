@@ -3,15 +3,18 @@ import { startOfDay, isSameDay } from "date-fns";
 import type { UserRole } from "@prisma/client";
 
 // Checklist hiển thị "hôm nay" cho NV: mọi việc chưa xong (bất kể sinh ngày nào — kể cả dồn từ hôm
-// trước), cộng thêm việc đã xong nhưng vừa được sinh/hoàn thành trong hôm nay (để NV thấy đã tích).
-// Chỉ còn dùng cho kind=DARK_ROOM_CHECK (trang /dark-room-check) — SIMPLE đã bỏ (xem ensureTodayChecklist).
+// trước), cộng thêm việc đã xong nhưng vừa được sinh/hoàn thành trong hôm nay (để NV thấy đã tích) — kể
+// cả khi việc đó là 1 đầu việc dồn từ hôm trước (assignedDate cũ) nhưng vừa được hoàn thành HÔM NAY, vì
+// đó chính là việc NV vừa làm xong trong ngày, không phải việc của ngày cũ.
 export async function getTodayChecklist(userId: string) {
   const today = startOfDay(new Date());
   const items = await prisma.checklistItem.findMany({
     where: { userId },
     orderBy: [{ completed: "asc" }, { createdAt: "asc" }],
   });
-  return items.filter((i) => !i.completed || isSameDay(i.assignedDate, today));
+  return items.filter(
+    (i) => !i.completed || isSameDay(i.assignedDate, today) || (i.completedAt && isSameDay(i.completedAt, today))
+  );
 }
 
 // Sinh ChecklistItem hôm nay cho NV từ các template đang isActive của vai trò họ — mỗi template chỉ
@@ -25,14 +28,18 @@ export async function ensureTodayChecklist(userId: string, role: UserRole | null
   const today = startOfDay(new Date());
   const existing = await prisma.checklistItem.findMany({
     where: { userId, templateId: { in: templates.map((t) => t.id) } },
-    select: { templateId: true, completed: true, assignedDate: true },
+    select: { templateId: true, completed: true, assignedDate: true, completedAt: true },
   });
 
   const toCreate = templates
     .filter((t) => {
       const items = existing.filter((i) => i.templateId === t.id);
       const hasPending = items.some((i) => !i.completed);
-      const hasToday = items.some((i) => isSameDay(i.assignedDate, today));
+      // Đã có dòng cho hôm nay nếu assignedDate là hôm nay, HOẶC 1 dòng dồn từ hôm trước vừa được hoàn
+      // thành HÔM NAY (completedAt) — tránh sinh thêm 1 dòng mới ngay sau khi NV vừa xử lý xong việc dồn.
+      const hasToday = items.some(
+        (i) => isSameDay(i.assignedDate, today) || (i.completed && i.completedAt && isSameDay(i.completedAt, today))
+      );
       return !hasPending && !hasToday;
     })
     .map((t) => ({ templateId: t.id, userId, title: t.title, kind: t.kind, assignedDate: today }));
