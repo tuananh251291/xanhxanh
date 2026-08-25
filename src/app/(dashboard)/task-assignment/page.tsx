@@ -227,7 +227,7 @@ export default async function TaskAssignmentPage() {
         <CardContent className="space-y-3">
           {thisWeekTask ? (
             <div>
-              <p className="text-xs font-semibold text-text-secondary mb-1.5">Việc tuần này (tự sinh — cần hoàn thành trước Chủ nhật, nhắc từ thứ 5)</p>
+              <p className="text-xs font-semibold text-text-secondary mb-1.5">Việc tuần này (tự sinh — cần hoàn thành trước thứ 6, nhắc từ thứ 5)</p>
               <DeXuatTaskRow d={thisWeekTask} canAssign={canAssign} staffOptions={staffAll} highlight />
             </div>
           ) : (
