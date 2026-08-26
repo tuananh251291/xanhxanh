@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
 import { generateDailyTaskCode } from "@/lib/codes";
 import { toStoredWeekStart } from "@/lib/week-rotation";
-import { startOfWeek, addDays, format } from "date-fns";
+import { startOfWeek, endOfWeek, addDays, format, getWeek } from "date-fns";
+import { vi } from "date-fns/locale";
 
 // "Kiểm nhiễm - Đề xuất trồng/hủy" — 4 Loại cây chính có việc riêng, các Loại cây còn lại gộp chung 1
 // việc (danh sách còn lại tính động theo PlantCategory hiện có, không hardcode ngoài 4 mã này).
@@ -17,7 +18,9 @@ type WeeklyTarget = { slotKey: string; title: string; plantCategoryCodes: string
 
 // 1 "kho cây" = 1 việc riêng trong tuần: 4 Loại cây chính (MT/AL/PD/AT), 1 việc gộp mọi Loại cây còn lại,
 // và 1 việc/Phòng thị trường đang hoạt động của đúng kho thành phẩm này (tự thêm khi có kho thị trường mới).
-async function buildWeeklyTargets(warehouseId: string): Promise<WeeklyTarget[]> {
+// title luôn kèm "tuần X (ngày ... đến ngày ...)" — chính là tuần lúc việc được tự sinh (weekStart truyền
+// vào), để phân biệt các việc cùng slotKey nhưng khác tuần khi xem lịch sử ở /task-assignment.
+async function buildWeeklyTargets(warehouseId: string, weekStart: Date): Promise<WeeklyTarget[]> {
   const categories = await prisma.plantCategory.findMany({
     where: { isActive: true },
     select: { code: true, name: true },
@@ -34,9 +37,12 @@ async function buildWeeklyTargets(warehouseId: string): Promise<WeeklyTarget[]> 
     orderBy: { name: "asc" },
   });
 
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+  const weekLabel = ` tuần ${getWeek(weekStart, { weekStartsOn: 1 })} (ngày ${format(weekStart, "dd/MM", { locale: vi })} đến ngày ${format(weekEnd, "dd/MM", { locale: vi })})`;
+
   const targets: WeeklyTarget[] = primary.map((c) => ({
     slotKey: `cat:${c.code}`,
-    title: `Kiểm tra kho cây ${c.code} - ${c.name}`,
+    title: `Kiểm tra kho cây ${c.code} - ${c.name}${weekLabel}`,
     plantCategoryCodes: [c.code],
     roomId: null,
   }));
@@ -44,14 +50,14 @@ async function buildWeeklyTargets(warehouseId: string): Promise<WeeklyTarget[]> 
   if (others.length > 0) {
     targets.push({
       slotKey: "cat:OTHER",
-      title: `Kiểm tra kho cây ${others.map((c) => c.code).join(", ")} - Các loại còn lại`,
+      title: `Kiểm tra kho cây ${others.map((c) => c.code).join(", ")} - Các loại còn lại${weekLabel}`,
       plantCategoryCodes: others.map((c) => c.code),
       roomId: null,
     });
   }
 
   for (const r of marketRooms) {
-    targets.push({ slotKey: `market:${r.id}`, title: `Kiểm tra kho cây thị trường ${r.name}`, plantCategoryCodes: [], roomId: r.id });
+    targets.push({ slotKey: `market:${r.id}`, title: `Kiểm tra kho cây thị trường ${r.name}${weekLabel}`, plantCategoryCodes: [], roomId: r.id });
   }
 
   return targets;
@@ -65,7 +71,7 @@ async function buildWeeklyTargets(warehouseId: string): Promise<WeeklyTarget[]> 
 export async function ensureWeeklyDeXuatTask(warehouseId: string | null) {
   if (!warehouseId) return;
   const weekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  const targets = await buildWeeklyTargets(warehouseId);
+  const targets = await buildWeeklyTargets(warehouseId, weekStart);
 
   const existing = await prisma.dailyTask.findMany({
     where: { type: "DE_XUAT_TRONG_HUY", warehouseId, weekStart },
