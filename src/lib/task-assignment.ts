@@ -175,7 +175,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
   for (const r of goodsReceipts) {
     tasks.push({
       key: `gr-${r.id}`,
-      href: `/goods-receipts?confirmId=${r.id}`,
+      href: `/goods-receipts/confirm/${r.id}`,
       endpoint: `/api/goods-receipts/${r.id}`,
       confirmedAt: r.assignmentConfirmedAt,
       title: `Nhận hàng NCC — ${r.code}`,

@@ -1,9 +1,11 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Truck, ClipboardCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
@@ -11,18 +13,12 @@ import { formatDistanceToNow, isPast } from "date-fns";
 import { vi } from "date-fns/locale";
 import GoodsReceiptForm from "./goods-receipt-form";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
-import ConfirmPlanDialog from "./confirm-plan-dialog";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 
-export default async function GoodsReceiptsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ confirmId?: string }>;
-}) {
+export default async function GoodsReceiptsPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/goods-receipts"))) redirect("/dashboard");
-  const { confirmId } = await searchParams;
 
   // NV kho thành phẩm chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) —
   // khác các nơi khác dùng getFinishedQualifiedRooms (VD Xử lý cây) vốn KHÔNG giới hạn theo kho.
@@ -52,7 +48,7 @@ export default async function GoodsReceiptsPage({
         supplier: { select: { code: true, name: true } },
         items: {
           select: {
-            id: true, stageCode: true, quantityDelivered: true,
+            stageCode: true, quantityDelivered: true,
             plantType: { select: { code: true, name: true } },
           },
         },
@@ -106,18 +102,11 @@ export default async function GoodsReceiptsPage({
                       canAssign={canAssign}
                       confirmedAt={plan.assignmentConfirmedAt}
                     />
-                    <ConfirmPlanDialog
-                      receiptId={plan.id}
-                      code={plan.code}
-                      supplierName={`${plan.supplier.name} (${plan.supplier.code})`}
-                      items={plan.items.map((i) => ({
-                        itemId: i.id,
-                        plantTypeLabel: `${i.plantType.name} (${i.plantType.code})`,
-                        stageCode: i.stageCode,
-                        estimatedQuantity: i.quantityDelivered,
-                      }))}
-                      autoOpen={plan.id === confirmId}
-                    />
+                    <Link href={`/goods-receipts/confirm/${plan.id}`}>
+                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                        <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Xác nhận số liệu thật
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               );

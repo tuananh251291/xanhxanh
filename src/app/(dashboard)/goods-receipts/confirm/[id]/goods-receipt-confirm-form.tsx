@@ -2,34 +2,31 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ClipboardCheck, PackageCheck, Loader2 } from "lucide-react";
+import { ArrowLeft, PackageCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type PlanItem = { itemId: string; plantTypeLabel: string; stageCode: string; estimatedQuantity: number };
 
-export default function ConfirmPlanDialog({
+export default function GoodsReceiptConfirmForm({
   receiptId,
   code,
   supplierName,
   items,
-  autoOpen,
 }: {
   receiptId: string;
   code: string;
   supplierName: string;
   items: PlanItem[];
-  // Tự mở dialog khi vào trang qua link ?confirmId=<id> (VD từ "Công việc hôm nay của tôi" ở dashboard).
-  autoOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(autoOpen ?? false);
+  const router = useRouter();
   const [values, setValues] = useState<Record<string, { delivered: string; rejected: string }>>(() =>
     Object.fromEntries(items.map((i) => [i.itemId, { delivered: String(i.estimatedQuantity), rejected: "0" }]))
   );
   const [submitting, setSubmitting] = useState(false);
-  const router = useRouter();
 
   const updateValue = (itemId: string, patch: Partial<{ delivered: string; rejected: string }>) =>
     setValues((prev) => ({ ...prev, [itemId]: { ...prev[itemId], ...patch } }));
@@ -53,7 +50,7 @@ export default function ConfirmPlanDialog({
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success(`Đã xác nhận số liệu thật cho kế hoạch ${code}`);
-      setOpen(false);
+      router.push("/goods-receipts");
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -61,13 +58,22 @@ export default function ConfirmPlanDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" />}>
-        <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Xác nhận số liệu thật
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle className="font-mono">{code} — {supplierName}</DialogTitle></DialogHeader>
-        <div className="space-y-4 mt-2">
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <div className="flex items-center gap-3">
+        <Link href="/goods-receipts">
+          <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Xác nhận số liệu thật</h1>
+          <p className="text-text-secondary text-sm">
+            <span className="font-mono">{code}</span> — {supplierName}
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Nhập số liệu thật cho từng dòng</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
           <div className="border border-divider rounded-lg overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -105,14 +111,12 @@ export default function ConfirmPlanDialog({
           <p className="text-xs text-text-secondary">
             Nếu số lượng bàn giao thật thấp hơn số đã có đơn giữ chỗ, hệ thống sẽ chặn xác nhận và báo rõ dòng nào bị ảnh hưởng.
           </p>
-          <div className="flex gap-2 pt-2">
-            <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={confirm}>
-              {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-2" />}
-              Nhập kho
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <Button type="button" className="w-full bg-primary hover:bg-primary-hover" disabled={submitting} onClick={confirm}>
+            {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-2" />}
+            Nhập kho
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
