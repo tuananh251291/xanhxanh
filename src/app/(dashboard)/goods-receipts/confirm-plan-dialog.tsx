@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ClipboardCheck, Ban, Loader2 } from "lucide-react";
+import { ClipboardCheck, PackageCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type PlanItem = { itemId: string; plantTypeLabel: string; stageCode: string; estimatedQuantity: number };
@@ -57,25 +57,6 @@ export default function ConfirmPlanDialog({
     }
   };
 
-  const cancelPlan = async () => {
-    if (!window.confirm(`Hủy hẳn kế hoạch nhập kho ${code}? Không thể hoàn tác.`)) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/goods-receipts/${receiptId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã hủy kế hoạch ${code}`);
-      setOpen(false);
-      router.refresh();
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" />}>
@@ -89,7 +70,7 @@ export default function ConfirmPlanDialog({
               <thead>
                 <tr className="bg-primary-light">
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Loại cây / Quy cách</th>
-                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-28">Ước tính</th>
+                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-32">Số lượng theo phiếu bàn giao</th>
                   <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-32">SL bàn giao thật</th>
                   <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-32">SL không đạt</th>
                 </tr>
@@ -122,12 +103,9 @@ export default function ConfirmPlanDialog({
             Nếu số lượng bàn giao thật thấp hơn số đã có đơn giữ chỗ, hệ thống sẽ chặn xác nhận và báo rõ dòng nào bị ảnh hưởng.
           </p>
           <div className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" className="text-destructive hover:bg-danger-light" disabled={submitting} onClick={cancelPlan}>
-              <Ban className="w-4 h-4 mr-2" /> Hủy kế hoạch
-            </Button>
             <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={confirm}>
-              {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ClipboardCheck className="w-4 h-4 mr-2" />}
-              Xác nhận
+              {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-2" />}
+              Nhập kho
             </Button>
           </div>
         </div>
