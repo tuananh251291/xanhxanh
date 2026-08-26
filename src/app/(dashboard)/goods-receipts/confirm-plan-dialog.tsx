@@ -15,13 +15,16 @@ export default function ConfirmPlanDialog({
   code,
   supplierName,
   items,
+  autoOpen,
 }: {
   receiptId: string;
   code: string;
   supplierName: string;
   items: PlanItem[];
+  // Tự mở dialog khi vào trang qua link ?confirmId=<id> (VD từ "Công việc hôm nay của tôi" ở dashboard).
+  autoOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen ?? false);
   const [values, setValues] = useState<Record<string, { delivered: string; rejected: string }>>(() =>
     Object.fromEntries(items.map((i) => [i.itemId, { delivered: String(i.estimatedQuantity), rejected: "0" }]))
   );

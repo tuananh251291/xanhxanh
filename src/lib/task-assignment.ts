@@ -104,7 +104,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
   for (const r of goodsReceipts) {
     tasks.push({
       key: `gr-${r.id}`,
-      href: "/goods-receipts",
+      href: `/goods-receipts?confirmId=${r.id}`,
       title: `Nhận hàng NCC — ${r.code}`,
       description: `Xác nhận số liệu thật từ ${r.supplier.name}${r.expectedDate ? ` · Hàng về ${format(r.expectedDate, "dd/MM/yyyy", { locale: vi })}` : ""}`,
     });

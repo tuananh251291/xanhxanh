@@ -14,10 +14,15 @@ import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import ConfirmPlanDialog from "./confirm-plan-dialog";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 
-export default async function GoodsReceiptsPage() {
+export default async function GoodsReceiptsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ confirmId?: string }>;
+}) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/goods-receipts"))) redirect("/dashboard");
+  const { confirmId } = await searchParams;
 
   // NV kho thành phẩm chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) —
   // khác các nơi khác dùng getFinishedQualifiedRooms (VD Xử lý cây) vốn KHÔNG giới hạn theo kho.
@@ -110,6 +115,7 @@ export default async function GoodsReceiptsPage() {
                         stageCode: i.stageCode,
                         estimatedQuantity: i.quantityDelivered,
                       }))}
+                      autoOpen={plan.id === confirmId}
                     />
                   </div>
                 </div>
