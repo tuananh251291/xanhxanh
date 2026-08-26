@@ -536,13 +536,15 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
+  // "Nhận hàng" (/goods-receipts) gộp cả "Nhận hàng từ NCC" lẫn "Nhận bàn giao thành phẩm" (route
+  // /transfers/receive cũ đã xoá, nội dung chuyển vào TransferReceiveBoard trong trang này) — chỉ còn 1
+  // mục menu duy nhất cho cả 2 luồng nhận hàng.
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
-    { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
+    { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
@@ -559,10 +561,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/task-progress", label: "Theo dõi tiến độ công việc", icon: "Gauge" },
-    { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
-    { href: "/goods-receipts", label: "Nhập hàng", icon: "Truck" },
+    { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },

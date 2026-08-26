@@ -46,7 +46,7 @@ type Transfer = {
   assignmentConfirmedAt: string | null;
 };
 
-export default function TransferReceivePage() {
+export default function TransferReceiveBoard() {
   const { data: session } = useSession();
   const canAssign = session?.user?.role === "QUAN_LY_KHO_THANH_PHAM" || session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN";
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -137,13 +137,8 @@ export default function TransferReceivePage() {
   const pendingTransfers = transfers.filter((t) => t.status === "PENDING");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <PackageCheck className="w-6 h-6 text-info-foreground" /> Nhận bàn giao thành phẩm
-        </h1>
-        <p className="text-text-secondary text-sm mt-1">{pendingTransfers.length} phiếu chờ xác nhận</p>
-      </div>
+    <div className="space-y-3">
+      <p className="text-sm text-text-secondary">{pendingTransfers.length} phiếu chờ xác nhận</p>
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>

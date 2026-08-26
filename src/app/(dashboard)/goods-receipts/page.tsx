@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Truck, ClipboardCheck } from "lucide-react";
+import { Truck, ClipboardCheck, PackageCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
@@ -14,6 +14,7 @@ import { vi } from "date-fns/locale";
 import GoodsReceiptForm from "./goods-receipt-form";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
+import TransferReceiveBoard from "./transfer-receive-board";
 
 export default async function GoodsReceiptsPage() {
   const session = await auth();
@@ -68,12 +69,16 @@ export default async function GoodsReceiptsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Truck className="w-6 h-6 text-primary-strong" /> Nhập hàng
+          <Truck className="w-6 h-6 text-primary-strong" /> Nhận hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Ghi nhận hàng nhận từ nhà cung cấp ngoài — số lượng bàn giao cộng vào tồn thực tế, số lượng đạt cộng vào tồn đạt tiêu chuẩn.
+          Nhận hàng từ nhà cung cấp ngoài và nhận bàn giao thành phẩm từ kho sản xuất.
         </p>
       </div>
+
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+        <Truck className="w-5 h-5 text-primary-strong" /> 1. Nhận hàng từ nhà cung cấp (NCC)
+      </h2>
 
       {pendingPlans.length > 0 && (
         <Card>
@@ -155,6 +160,11 @@ export default async function GoodsReceiptsPage() {
           </CardContent>
         </Card>
       )}
+
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2 pt-2">
+        <PackageCheck className="w-5 h-5 text-primary-strong" /> 2. Nhận bàn giao thành phẩm
+      </h2>
+      <TransferReceiveBoard />
     </div>
   );
 }
