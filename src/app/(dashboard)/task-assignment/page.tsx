@@ -36,6 +36,7 @@ export default async function TaskAssignmentPage() {
     goodsReceiptRooms,
     plantTypes,
     suppliers,
+    gardens,
   ] = await Promise.all([
     prisma.goodsReceipt.findMany({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
@@ -43,6 +44,7 @@ export default async function TaskAssignmentPage() {
       select: {
         id: true, code: true, expectedDate: true, assignmentConfirmedAt: true,
         supplier: { select: { code: true, name: true } },
+        productionGarden: { select: { code: true, name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
       },
     }),
@@ -91,6 +93,7 @@ export default async function TaskAssignmentPage() {
     getFinishedQualifiedRooms().then((rooms) => rooms.filter((r) => r.warehouseId === workplaceWarehouseId)),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const currentWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -115,7 +118,7 @@ export default async function TaskAssignmentPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</CardTitle>
             {workplaceWarehouseId && (
-              <GoodsReceiptActions rooms={goodsReceiptRooms} plantTypes={plantTypes} suppliers={suppliers} />
+              <GoodsReceiptActions rooms={goodsReceiptRooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
             )}
           </div>
         </CardHeader>
@@ -131,7 +134,8 @@ export default async function TaskAssignmentPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
                   <p className="text-xs text-text-secondary">
-                    {r.supplier.name} ({r.supplier.code}){r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
+                    {r.supplier ? `${r.supplier.name} (${r.supplier.code})` : r.productionGarden ? `${r.productionGarden.name} (${r.productionGarden.code}) — Khu SX nội bộ` : "—"}
+                    {r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
                   </p>
                 </div>
                 <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} confirmedAt={r.assignmentConfirmedAt} />

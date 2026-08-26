@@ -31,15 +31,17 @@ const createSchema = z.discriminatedUnion("status", [
     items: z.array(confirmedItemSchema).min(1, "Cần ít nhất 1 dòng nhập hàng"),
   }),
   // Kế hoạch nhập kho — chưa có hàng thật, chỉ ước tính tổng số lượng mỗi SKU (chưa biết tỉ lệ đạt/không
-  // đạt cho tới khi hàng về). Xem PATCH /api/goods-receipts/[id]/confirm để xác nhận số liệu thật.
+  // đạt cho tới khi hàng về). Xem PATCH /api/goods-receipts/[id]/confirm để xác nhận số liệu thật. Nguồn
+  // hàng là ĐÚNG 1 trong 2: NCC ngoài (supplierId) hoặc khu sản xuất nội bộ (productionGardenId).
   z.object({
     status: z.literal("PLANNED"),
-    supplierId: z.string().min(1),
+    supplierId: z.string().min(1).optional(),
+    productionGardenId: z.string().min(1).optional(),
     roomId: z.string().min(1),
     notes: z.string().optional(),
     expectedDate: z.string().min(1, "Cần nhập ngày dự kiến nhập kho"),
     items: z.array(plannedItemSchema).min(1, "Cần ít nhất 1 dòng kế hoạch"),
-  }),
+  }).refine((d) => !!d.supplierId !== !!d.productionGardenId, { message: "Chọn đúng 1 đơn vị cung cấp" }),
 ]);
 
 // "Nhập hàng" — Kho thành phẩm ghi nhận 1 lần nhận hàng từ nhà cung cấp ngoài. Mỗi dòng tự chọn quy cách
@@ -71,13 +73,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao" }, { status: 400 });
   }
 
-  const [supplier, allRooms, creatingUser] = await Promise.all([
-    prisma.supplier.findUnique({ where: { id: data.supplierId }, select: { id: true, isActive: true, allowsReturn: true, returnWindowDays: true } }),
+  const [allRooms, creatingUser] = await Promise.all([
     getFinishedQualifiedRooms(),
     prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } }),
   ]);
-  if (!supplier || !supplier.isActive) {
-    return NextResponse.json({ message: "Không tìm thấy nhà cung cấp" }, { status: 400 });
+
+  // Nguồn hàng — supplierId luôn có với phiếu CONFIRMED (bắt buộc, xem createSchema); với PLANNED có thể
+  // là supplierId HOẶC productionGardenId (đúng 1 trong 2, đã ràng buộc ở zod .refine() trên).
+  let supplier: { id: string; isActive: boolean; allowsReturn: boolean; returnWindowDays: number | null } | null = null;
+  if (data.supplierId) {
+    supplier = await prisma.supplier.findUnique({ where: { id: data.supplierId }, select: { id: true, isActive: true, allowsReturn: true, returnWindowDays: true } });
+    if (!supplier || !supplier.isActive) {
+      return NextResponse.json({ message: "Không tìm thấy nhà cung cấp" }, { status: 400 });
+    }
+  }
+  if (data.status === "PLANNED" && data.productionGardenId) {
+    const garden = await prisma.productionGarden.findUnique({ where: { id: data.productionGardenId }, select: { id: true, isActive: true } });
+    if (!garden || !garden.isActive) {
+      return NextResponse.json({ message: "Không tìm thấy khu sản xuất nội bộ" }, { status: 400 });
+    }
   }
   // Chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) — khác
   // getFinishedQualifiedRooms dùng ở nơi khác (VD Xử lý cây) vốn không giới hạn theo kho.
@@ -109,6 +123,7 @@ export async function POST(req: NextRequest) {
       const receipt = await prisma.$transaction(async (tx) =>
         createPlannedGoodsReceipt(tx, {
           supplierId: data.supplierId,
+          productionGardenId: data.productionGardenId,
           roomId: data.roomId,
           createdById: session.user.id,
           notes: data.notes,
@@ -176,8 +191,8 @@ export async function POST(req: NextRequest) {
       return created;
     });
 
-    if (supplier.allowsReturn && supplier.returnWindowDays) {
-      const deadline = addDays(receipt.createdAt, supplier.returnWindowDays);
+    if (supplier!.allowsReturn && supplier!.returnWindowDays) {
+      const deadline = addDays(receipt.createdAt, supplier!.returnWindowDays);
       await createAlert({
         type: "GOODS_RECEIPT_RETURN_DUE",
         title: "Phiếu nhập hàng cần kiểm tra trả hàng",

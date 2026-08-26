@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (item.receipt.room.warehouseId !== session.user.workplaceWarehouseId) {
     return NextResponse.json({ message: "Dòng này thuộc kho thành phẩm khác — không đúng địa điểm làm việc của bạn" }, { status: 403 });
   }
-  if (!item.receipt.supplier.allowsReturn) {
+  if (!item.receipt.supplier?.allowsReturn) {
     return NextResponse.json({ message: "Nhà cung cấp này không cho phép trả hàng" }, { status: 400 });
   }
   if (item.returnedAt) {

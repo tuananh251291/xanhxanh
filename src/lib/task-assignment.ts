@@ -155,7 +155,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     // vẫn chưa cần NV làm gì tới lúc đó, tránh hiện sớm gây rối bảng "Công việc hôm nay của tôi".
     prisma.goodsReceipt.findMany({
       where: { assignedToId: userId, status: "PLANNED", expectedDate: { lte: endOfDay(new Date()) } },
-      select: { id: true, code: true, expectedDate: true, assignmentConfirmedAt: true, supplier: { select: { name: true } } },
+      select: { id: true, code: true, expectedDate: true, assignmentConfirmedAt: true, supplier: { select: { name: true } }, productionGarden: { select: { name: true } } },
     }),
     prisma.transfer.findMany({
       where: { assignedToId: userId, status: "PENDING" },
@@ -179,7 +179,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
       endpoint: `/api/goods-receipts/${r.id}`,
       confirmedAt: r.assignmentConfirmedAt,
       title: `Nhận hàng NCC — ${r.code}`,
-      description: `Xác nhận số liệu thật từ ${r.supplier.name}${r.expectedDate ? ` · Hàng về ${format(r.expectedDate, "dd/MM/yyyy", { locale: vi })}` : ""}`,
+      description: `Xác nhận số liệu thật từ ${r.supplier?.name ?? r.productionGarden?.name ?? "—"}${r.expectedDate ? ` · Hàng về ${format(r.expectedDate, "dd/MM/yyyy", { locale: vi })}` : ""}`,
     });
   }
   for (const t of transfers) {

@@ -27,10 +27,11 @@ export default async function GoodsReceiptsPage() {
   const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
   const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
 
-  const [allRooms, plantTypes, suppliers, recentReceipts, pendingInspections, pendingPlans, staffUsers] = await Promise.all([
+  const [allRooms, plantTypes, suppliers, gardens, recentReceipts, pendingInspections, pendingPlans, staffUsers] = await Promise.all([
     getFinishedQualifiedRooms(),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.goodsReceipt.findMany({
       where: { createdById: session?.user?.id ?? "", status: "CONFIRMED" },
       orderBy: { createdAt: "desc" },
@@ -38,6 +39,7 @@ export default async function GoodsReceiptsPage() {
       select: {
         id: true, code: true, notes: true, createdAt: true,
         supplier: { select: { code: true, name: true } },
+        productionGarden: { select: { code: true, name: true } },
         items: { select: { quantityDelivered: true, quantityRejected: true, quantityPassed: true } },
       },
     }),
@@ -48,6 +50,7 @@ export default async function GoodsReceiptsPage() {
       select: {
         id: true, code: true, expectedDate: true, assignmentConfirmedAt: true,
         supplier: { select: { code: true, name: true } },
+        productionGarden: { select: { code: true, name: true } },
         items: {
           select: {
             stageCode: true, quantityDelivered: true,
@@ -65,6 +68,14 @@ export default async function GoodsReceiptsPage() {
   ]);
 
   const rooms = allRooms.filter((r) => r.warehouseId === workplaceWarehouseId);
+  // Tên nguồn hàng hiển thị — đúng 1 trong 2 luôn có giá trị (supplier hoặc productionGarden, xem
+  // GoodsReceipt.supplierId/productionGardenId).
+  const sourceLabel = (source: { supplier: { name: string; code: string } | null; productionGarden: { name: string; code: string } | null }) =>
+    source.supplier
+      ? `${source.supplier.name} (${source.supplier.code})`
+      : source.productionGarden
+        ? `${source.productionGarden.name} (${source.productionGarden.code}) — Khu SX nội bộ`
+        : "—";
 
   return (
     <div className="space-y-6">
@@ -81,6 +92,7 @@ export default async function GoodsReceiptsPage() {
         <TabsList>
           <TabsTrigger value="ncc">Nhận hàng từ NCC</TabsTrigger>
           <TabsTrigger value="transfer">Nhận bàn giao thành phẩm</TabsTrigger>
+          <TabsTrigger value="planned">Dự kiến nhập hàng</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ncc" className="mt-4 space-y-6">
@@ -93,7 +105,7 @@ export default async function GoodsReceiptsPage() {
                   return (
                     <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
                       <div>
-                        <p className="text-sm font-medium text-foreground font-mono">{plan.code} · {plan.supplier.name}</p>
+                        <p className="text-sm font-medium text-foreground font-mono">{plan.code} · {sourceLabel(plan)}</p>
                         <p className="text-xs text-text-secondary flex flex-wrap items-center gap-1.5 mt-0.5">
                           {plan.items.map((i) => `${i.plantType.code} (${i.stageCode}): ${i.quantityDelivered.toLocaleString("vi-VN")} cây`).join(" · ")}
                           {plan.expectedDate && (
@@ -133,14 +145,6 @@ export default async function GoodsReceiptsPage() {
             </Card>
           )}
 
-          {workplaceWarehouseId ? (
-            <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} />
-          ) : (
-            <Card><CardContent className="py-8 text-center text-text-muted">
-              Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao để được gán trước khi nhập hàng.
-            </CardContent></Card>
-          )}
-
           {recentReceipts.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-base">Phiếu gần đây của bạn</CardTitle></CardHeader>
@@ -153,7 +157,7 @@ export default async function GoodsReceiptsPage() {
                       <div>
                         <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
                         <p className="text-xs text-text-secondary">
-                          {r.supplier.name} ({r.supplier.code}) · Bàn giao {delivered.toLocaleString("vi-VN")} cây
+                          {sourceLabel(r)} · Bàn giao {delivered.toLocaleString("vi-VN")} cây
                           {rejected > 0 && ` · Không đạt ${rejected.toLocaleString("vi-VN")}`}
                           {r.notes ? ` · ${r.notes}` : ""} · {formatDistanceToNow(r.createdAt, { addSuffix: true, locale: vi })}
                         </p>
@@ -168,6 +172,16 @@ export default async function GoodsReceiptsPage() {
 
         <TabsContent value="transfer" className="mt-4">
           <TransferReceiveBoard />
+        </TabsContent>
+
+        <TabsContent value="planned" className="mt-4">
+          {workplaceWarehouseId ? (
+            <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
+          ) : (
+            <Card><CardContent className="py-8 text-center text-text-muted">
+              Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao để được gán trước khi nhập hàng.
+            </CardContent></Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

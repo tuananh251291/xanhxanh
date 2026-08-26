@@ -44,7 +44,9 @@ export async function upsertLot(
 export async function createPlannedGoodsReceipt(
   tx: Prisma.TransactionClient,
   params: {
-    supplierId: string;
+    // Đúng 1 trong 2 — xem GoodsReceipt.supplierId/productionGardenId (prisma/schema.prisma).
+    supplierId?: string;
+    productionGardenId?: string;
     roomId: string;
     createdById: string;
     notes?: string;
@@ -53,10 +55,10 @@ export async function createPlannedGoodsReceipt(
     staffCode: string;
   }
 ) {
-  const { supplierId, roomId, createdById, notes, expectedDate, items, staffCode } = params;
+  const { supplierId, productionGardenId, roomId, createdById, notes, expectedDate, items, staffCode } = params;
   const code = await generateGoodsReceiptCode(tx);
   const created = await tx.goodsReceipt.create({
-    data: { code, supplierId, roomId, createdById, notes, status: "PLANNED", expectedDate },
+    data: { code, supplierId, productionGardenId, roomId, createdById, notes, status: "PLANNED", expectedDate },
   });
 
   for (const item of items) {

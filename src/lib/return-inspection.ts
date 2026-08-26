@@ -21,11 +21,14 @@ export async function getPendingReturnInspections(warehouseId: string): Promise<
   });
 
   return items.map((item) => {
-    const deadline = addDays(item.receipt.createdAt, item.receipt.supplier.returnWindowDays ?? 0);
+    // where đã lọc supplier: { allowsReturn: true } nên receipt.supplier chắc chắn khác null ở đây —
+    // supplierId chỉ NULL với phiếu nguồn khu sản xuất nội bộ, vốn không khớp điều kiện lọc này.
+    const supplier = item.receipt.supplier!;
+    const deadline = addDays(item.receipt.createdAt, supplier.returnWindowDays ?? 0);
     return {
       id: item.id,
       receiptCode: item.receipt.code,
-      supplierName: item.receipt.supplier.name,
+      supplierName: supplier.name,
       plantCode: item.plantType.code,
       plantName: item.plantType.name,
       stageCode: item.stageCode,

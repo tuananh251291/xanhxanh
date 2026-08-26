@@ -210,7 +210,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
-  const supplier = await prisma.supplier.findUnique({ where: { id: receipt.supplierId }, select: { allowsReturn: true, returnWindowDays: true } });
+  const supplier = receipt.supplierId
+    ? await prisma.supplier.findUnique({ where: { id: receipt.supplierId }, select: { allowsReturn: true, returnWindowDays: true } })
+    : null;
   if (supplier?.allowsReturn && supplier.returnWindowDays) {
     const deadline = addDays(new Date(), supplier.returnWindowDays);
     await createAlert({

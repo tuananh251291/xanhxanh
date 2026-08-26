@@ -12,8 +12,8 @@ type GoodsReceiptFormProps = React.ComponentProps<typeof GoodsReceiptForm>;
 // 2 nút hành động cạnh tiêu đề "1. Nhận hàng từ nhà cung cấp" — mở dialog thay vì chiếm chỗ cố định
 // trên trang, để box bên dưới chỉ còn "Đơn đang chờ gán / xác nhận".
 export default function GoodsReceiptActions({
-  rooms, plantTypes, suppliers,
-}: Pick<GoodsReceiptFormProps, "rooms" | "plantTypes" | "suppliers">) {
+  rooms, plantTypes, suppliers, gardens,
+}: Pick<GoodsReceiptFormProps, "rooms" | "plantTypes" | "suppliers" | "gardens">) {
   const [formOpen, setFormOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
 
@@ -24,7 +24,7 @@ export default function GoodsReceiptActions({
           <Plus className="w-4 h-4 mr-1.5" /> Tạo đơn nhập hàng
         </DialogTrigger>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} defaultMode="PLANNED" title="Tạo đơn nhập hàng" />
+          <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} title="Tạo đơn nhập hàng" />
         </DialogContent>
       </Dialog>
 

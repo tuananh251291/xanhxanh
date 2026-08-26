@@ -14,6 +14,7 @@ export default async function GoodsReceiptConfirmPage({ params }: { params: Prom
     select: {
       id: true, code: true, status: true,
       supplier: { select: { code: true, name: true } },
+      productionGarden: { select: { code: true, name: true } },
       room: { select: { warehouseId: true } },
       items: {
         select: {
@@ -27,11 +28,17 @@ export default async function GoodsReceiptConfirmPage({ params }: { params: Prom
   if (receipt.room.warehouseId !== session?.user?.workplaceWarehouseId) redirect("/goods-receipts");
   if (receipt.status !== "PLANNED") redirect("/goods-receipts");
 
+  const supplierName = receipt.supplier
+    ? `${receipt.supplier.name} (${receipt.supplier.code})`
+    : receipt.productionGarden
+      ? `${receipt.productionGarden.name} (${receipt.productionGarden.code}) — Khu SX nội bộ`
+      : "—";
+
   return (
     <GoodsReceiptConfirmForm
       receiptId={receipt.id}
       code={receipt.code}
-      supplierName={`${receipt.supplier.name} (${receipt.supplier.code})`}
+      supplierName={supplierName}
       items={receipt.items.map((i) => ({
         itemId: i.id,
         plantTypeLabel: `${i.plantType.name} (${i.plantType.code})`,
