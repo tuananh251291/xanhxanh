@@ -42,8 +42,8 @@ export default async function TaskProgressPage() {
               <thead>
                 <tr className="bg-primary-light">
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã xác nhận</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã hoàn thành</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32 whitespace-nowrap">Đã xác nhận</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32 whitespace-nowrap">Đã hoàn thành</th>
                 </tr>
               </thead>
               <tbody>
