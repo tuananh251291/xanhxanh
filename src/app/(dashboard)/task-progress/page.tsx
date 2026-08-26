@@ -42,35 +42,41 @@ export default async function TaskProgressPage() {
               <thead>
                 <tr className="bg-primary-light">
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Chưa xác nhận</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã xác nhận<br />(hôm nay)</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Chưa hoàn thành</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã hoàn thành<br />(hôm nay)</th>
-                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-24">Tỉ lệ</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã xác nhận</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã hoàn thành</th>
                 </tr>
               </thead>
               <tbody>
                 {progress.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-text-muted">Chưa có NV kho thành phẩm nào</td></tr>
+                  <tr><td colSpan={3} className="px-4 py-8 text-center text-text-muted">Chưa có NV kho thành phẩm nào</td></tr>
                 ) : (
-                  progress.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0 even:bg-primary-light/30">
-                      <td className="px-4 py-3 text-foreground">{p.name} <span className="font-mono text-xs text-text-muted">({p.code})</span></td>
-                      <td className="px-4 py-3 text-center">
-                        {p.notAcked > 0 ? <Badge className="bg-warning-light text-warning-foreground">{p.notAcked}</Badge> : <span className="text-text-muted">0</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {p.ackedToday > 0 ? <Badge variant="completed">{p.ackedToday}</Badge> : <span className="text-text-muted">0</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {p.notCompleted > 0 ? <Badge className="bg-warning-light text-warning-foreground">{p.notCompleted}</Badge> : <span className="text-text-muted">0</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {p.completedToday > 0 ? <Badge variant="completed">{p.completedToday}</Badge> : <span className="text-text-muted">0</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center text-text-secondary">{p.percent === null ? "—" : `${p.percent}%`}</td>
-                    </tr>
-                  ))
+                  progress.map((p) => {
+                    const acked = p.notCompleted - p.notAcked;
+                    const totalToday = p.notCompleted + p.completedToday;
+                    return (
+                      <tr key={p.id} className="border-b last:border-0 even:bg-primary-light/30">
+                        <td className="px-4 py-3 text-foreground">{p.name} <span className="font-mono text-xs text-text-muted">({p.code})</span></td>
+                        <td className="px-4 py-3 text-center">
+                          {p.notCompleted === 0 ? (
+                            <span className="text-text-muted">—</span>
+                          ) : (
+                            <span className={acked === p.notCompleted ? "text-success-foreground font-medium" : "text-warning-foreground font-medium"}>
+                              {acked}/{p.notCompleted}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {totalToday === 0 ? (
+                            <span className="text-text-muted">—</span>
+                          ) : (
+                            <span className={p.completedToday === totalToday ? "text-success-foreground font-medium" : "text-warning-foreground font-medium"}>
+                              {p.completedToday}/{totalToday}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
