@@ -1100,24 +1100,30 @@ function KhoDashboard({
           {myTasks.length === 0 ? (
             <p className="text-sm text-text-secondary text-center py-4">Chưa có nhiệm vụ nào được phân công</p>
           ) : (
-            myTasks.map((t) =>
+            myTasks.map((t, i) =>
               t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType === "DE_XUAT_TRONG_HUY" ? (
                 <Link
                   key={t.key}
                   href={`/task-assignment/de-xuat/${t.dailyTaskId}`}
                   className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  <div className="min-w-0 flex items-start gap-2">
+                    <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                      <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                    </div>
                   </div>
                   <Badge className="bg-warning-light text-warning-foreground shrink-0">Thực hiện</Badge>
                 </Link>
               ) : t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
                 <div key={t.key} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  <div className="min-w-0 flex items-start gap-2">
+                    <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                      <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                    </div>
                   </div>
                   <DailyTaskCompleteDialog taskId={t.dailyTaskId} code={t.dailyTaskCode} type={t.dailyTaskType} subtitle={t.description} />
                 </div>
@@ -1127,9 +1133,12 @@ function KhoDashboard({
                   href={t.href}
                   className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  <div className="min-w-0 flex items-start gap-2">
+                    <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                      <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                    </div>
                   </div>
                   <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
                 </Link>
