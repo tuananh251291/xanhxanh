@@ -16,6 +16,7 @@ import GoodsReceiptForm from "./goods-receipt-form";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import TransferReceiveBoard from "./transfer-receive-board";
+import GoodsReceiptActions from "./goods-receipt-actions";
 
 export default async function GoodsReceiptsPage() {
   const session = await auth();
@@ -96,6 +97,12 @@ export default async function GoodsReceiptsPage() {
         </TabsList>
 
         <TabsContent value="ncc" className="mt-4 space-y-6">
+          {workplaceWarehouseId && (
+            <div className="flex justify-end">
+              <GoodsReceiptActions rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
+            </div>
+          )}
+
           {pendingPlans.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-base">Danh sách nhập hàng từ NCC</CardTitle></CardHeader>

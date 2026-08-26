@@ -8,12 +8,10 @@ import { Button } from "@/components/ui/button";
 import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
-import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
-import GoodsReceiptActions from "./goods-receipt-actions";
 
 export default async function TaskAssignmentPage() {
   const session = await auth();
@@ -33,10 +31,6 @@ export default async function TaskAssignmentPage() {
     staffKhoThanhPham,
     staffAll,
     deXuatTasks,
-    goodsReceiptRooms,
-    plantTypes,
-    suppliers,
-    gardens,
   ] = await Promise.all([
     prisma.goodsReceipt.findMany({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
@@ -90,10 +84,6 @@ export default async function TaskAssignmentPage() {
         proposals: { select: { status: true } },
       },
     }),
-    getFinishedQualifiedRooms().then((rooms) => rooms.filter((r) => r.warehouseId === workplaceWarehouseId)),
-    prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
-    prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
-    prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const currentWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -115,17 +105,9 @@ export default async function TaskAssignmentPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</CardTitle>
-            {workplaceWarehouseId && (
-              <GoodsReceiptActions rooms={goodsReceiptRooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
-            )}
-          </div>
+          <CardTitle className="text-base flex items-center gap-2"><Truck className="w-4 h-4" /> 1. Nhận hàng từ nhà cung cấp</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {!workplaceWarehouseId && (
-            <p className="text-sm text-text-muted py-2">Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao trước khi tạo đơn nhập hàng.</p>
-          )}
           {pendingReceipts.length === 0 ? (
             <p className="text-sm text-text-muted py-2">Không có kế hoạch nhập hàng nào đang chờ</p>
           ) : (

@@ -4,13 +4,13 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Plus, FileSpreadsheet } from "lucide-react";
-import GoodsReceiptForm from "../goods-receipts/goods-receipt-form";
+import GoodsReceiptForm from "./goods-receipt-form";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 
 type GoodsReceiptFormProps = React.ComponentProps<typeof GoodsReceiptForm>;
 
-// 2 nút hành động cạnh tiêu đề "1. Nhận hàng từ nhà cung cấp" — mở dialog thay vì chiếm chỗ cố định
-// trên trang, để box bên dưới chỉ còn "Đơn đang chờ gán / xác nhận".
+// 2 nút hành động cạnh tiêu đề tab "Nhận hàng từ NCC" (/goods-receipts) — mở dialog thay vì chiếm chỗ cố
+// định trên trang.
 export default function GoodsReceiptActions({
   rooms, plantTypes, suppliers, gardens,
 }: Pick<GoodsReceiptFormProps, "rooms" | "plantTypes" | "suppliers" | "gardens">) {
