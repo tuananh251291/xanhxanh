@@ -42,11 +42,11 @@ export default async function TaskProgressPage() {
               <thead>
                 <tr className="bg-primary-light">
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Chưa xác nhận</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Đã xác nhận (hôm nay)</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Chưa hoàn thành</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Đã hoàn thành (hôm nay)</th>
-                  <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Tỉ lệ</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Chưa xác nhận</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã xác nhận<br />(hôm nay)</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Chưa hoàn thành</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-32">Đã hoàn thành<br />(hôm nay)</th>
+                  <th className="text-center px-4 py-3 text-base text-primary-strong font-bold w-24">Tỉ lệ</th>
                 </tr>
               </thead>
               <tbody>
@@ -56,19 +56,19 @@ export default async function TaskProgressPage() {
                   progress.map((p) => (
                     <tr key={p.id} className="border-b last:border-0 even:bg-primary-light/30">
                       <td className="px-4 py-3 text-foreground">{p.name} <span className="font-mono text-xs text-text-muted">({p.code})</span></td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-center">
                         {p.notAcked > 0 ? <Badge className="bg-warning-light text-warning-foreground">{p.notAcked}</Badge> : <span className="text-text-muted">0</span>}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-center">
                         {p.ackedToday > 0 ? <Badge variant="completed">{p.ackedToday}</Badge> : <span className="text-text-muted">0</span>}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-center">
                         {p.notCompleted > 0 ? <Badge className="bg-warning-light text-warning-foreground">{p.notCompleted}</Badge> : <span className="text-text-muted">0</span>}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-center">
                         {p.completedToday > 0 ? <Badge variant="completed">{p.completedToday}</Badge> : <span className="text-text-muted">0</span>}
                       </td>
-                      <td className="px-4 py-3 text-right text-text-secondary">{p.percent === null ? "—" : `${p.percent}%`}</td>
+                      <td className="px-4 py-3 text-center text-text-secondary">{p.percent === null ? "—" : `${p.percent}%`}</td>
                     </tr>
                   ))
                 )}
