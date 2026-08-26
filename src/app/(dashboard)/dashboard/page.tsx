@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
   PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
@@ -20,6 +21,7 @@ import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
+import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 
 async function getAdminStats() {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
@@ -1100,50 +1102,32 @@ function KhoDashboard({
           {myTasks.length === 0 ? (
             <p className="text-sm text-text-secondary text-center py-4">Chưa có nhiệm vụ nào được phân công</p>
           ) : (
-            myTasks.map((t, i) =>
-              t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType === "DE_XUAT_TRONG_HUY" ? (
-                <Link
-                  key={t.key}
-                  href={`/task-assignment/de-xuat/${t.dailyTaskId}`}
-                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
-                >
-                  <div className="min-w-0 flex items-start gap-2">
-                    <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                      <p className="text-xs text-text-secondary truncate">{t.description}</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-warning-light text-warning-foreground shrink-0">Thực hiện</Badge>
-                </Link>
-              ) : t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
-                <div key={t.key} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
-                  <div className="min-w-0 flex items-start gap-2">
-                    <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                      <p className="text-xs text-text-secondary truncate">{t.description}</p>
-                    </div>
-                  </div>
-                  <DailyTaskCompleteDialog taskId={t.dailyTaskId} code={t.dailyTaskCode} type={t.dailyTaskType} subtitle={t.description} />
-                </div>
-              ) : (
-                <Link
-                  key={t.key}
-                  href={t.href}
-                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border hover:bg-primary-light transition-colors"
-                >
-                  <div className="min-w-0 flex items-start gap-2">
-                    <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                      <p className="text-xs text-text-secondary truncate">{t.description}</p>
-                    </div>
+            myTasks.map((t, i) => (
+              <div key={t.key} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-border">
+                <div className="min-w-0 flex items-center gap-2 flex-1">
+                  <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
                   </div>
                   <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
-                </Link>
-              )
-            )
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {!t.confirmedAt && <ConfirmTaskButton endpoint={t.endpoint} />}
+                  {t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType === "DE_XUAT_TRONG_HUY" ? (
+                    <Link href={`/task-assignment/de-xuat/${t.dailyTaskId}`}>
+                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
+                    </Link>
+                  ) : t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
+                    <DailyTaskCompleteDialog taskId={t.dailyTaskId} code={t.dailyTaskCode} type={t.dailyTaskType} subtitle={t.description} />
+                  ) : (
+                    <Link href={t.href}>
+                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))
           )}
         </CardContent>
       </Card>

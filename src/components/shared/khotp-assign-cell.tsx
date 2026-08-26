@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, UserCheck } from "lucide-react";
+import { Loader2, UserCheck, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 const NONE = "NONE";
@@ -17,16 +17,20 @@ type StaffOption = { id: string; code: string; name: string };
 // onlyMyAssigned ở page.tsx) nên ô này với NV thường lúc đó chỉ còn tác dụng hiển thị tham khảo. Ô này
 // chỉ hiện dropdown chọn NV cho Quản lý (canAssign), người khác chỉ thấy badge "Đã giao: ..." tham khảo.
 // endpoint nhận PATCH { action: "assign", assignedToId }, 3 route đều cùng hình dạng này.
+// confirmedAt có giá trị (NV đã bấm "Xác nhận" nhận việc ở Dashboard) — KHOÁ đổi người phụ trách, kể cả
+// với Quản lý (canAssign=true) — luôn hiện badge tham khảo, không còn dropdown.
 export default function KhoTpAssignCell({
   endpoint,
   assignedTo,
   staffOptions,
   canAssign,
+  confirmedAt,
 }: {
   endpoint: string;
   assignedTo: StaffOption | null;
   staffOptions: StaffOption[];
   canAssign: boolean;
+  confirmedAt?: Date | string | null;
 }) {
   const [saving, setSaving] = useState(false);
   const router = useRouter();
@@ -47,6 +51,14 @@ export default function KhoTpAssignCell({
       setSaving(false);
     }
   };
+
+  if (assignedTo && confirmedAt) {
+    return (
+      <Badge className="bg-success-light text-success-foreground whitespace-nowrap">
+        <ShieldCheck className="w-3 h-3 mr-1" /> {assignedTo.name} ({assignedTo.code}) · Đã xác nhận
+      </Badge>
+    );
+  }
 
   if (!canAssign) {
     if (!assignedTo) return <span className="text-xs text-text-muted">—</span>;

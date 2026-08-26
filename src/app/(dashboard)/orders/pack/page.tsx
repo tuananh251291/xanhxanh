@@ -98,6 +98,7 @@ export default async function OrdersPackPage() {
                         assignedTo={order.assignedTo}
                         staffOptions={staffUsers}
                         canAssign={canAssign}
+                        confirmedAt={order.assignmentConfirmedAt}
                       />
                       <Link href={`/orders/pack/${order.id}`}>
                         <Button size="sm" variant="outline" className="h-8">

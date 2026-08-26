@@ -9,7 +9,7 @@ import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
 const confirmSchema = z.object({
-  action: z.enum(["confirm", "reject", "assign"]),
+  action: z.enum(["confirm", "reject", "assign", "ack"]),
   shelfAssignments: z.array(z.object({ lotId: z.string(), shelfId: z.string() })).optional(),
   // Nhận thành phẩm từ Phòng ra rễ — chia số lượng theo TỪNG loại cây + quy cách (T01/T05) vào Phòng
   // theo dõi/Phòng hàn túi (không được gộp nhiều loại cây lại rồi chia theo tổng quy cách).
@@ -78,6 +78,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (transfer.toWarehouse?.type !== "THANH_PHAM") {
       return NextResponse.json({ message: "Chỉ gán được cho phiếu bàn giao thành phẩm" }, { status: 400 });
     }
+    if (transfer.assignmentConfirmedAt) {
+      return NextResponse.json({ message: "NV đã xác nhận nhận việc — không thể đổi người phụ trách khác" }, { status: 400 });
+    }
     const { assignedToId } = parsed.data;
     if (assignedToId) {
       const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
@@ -87,8 +90,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const updated = await prisma.transfer.update({
       where: { id },
-      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null },
-      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null, assignmentConfirmedAt: null },
+      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } }, assignmentConfirmedAt: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  if (parsed.data.action === "ack") {
+    if (transfer.assignedToId !== session.user.id) {
+      return NextResponse.json({ message: "Bạn không được giao việc này" }, { status: 403 });
+    }
+    if (transfer.assignmentConfirmedAt) {
+      return NextResponse.json({ message: "Bạn đã xác nhận trước đó" }, { status: 400 });
+    }
+    const updated = await prisma.transfer.update({
+      where: { id },
+      data: { assignmentConfirmedAt: new Date() },
+      select: { id: true, assignmentConfirmedAt: true },
     });
     return NextResponse.json(updated);
   }

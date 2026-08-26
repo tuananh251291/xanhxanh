@@ -48,7 +48,7 @@ export default async function GoodsReceiptsPage({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
       orderBy: { expectedDate: "asc" },
       select: {
-        id: true, code: true, expectedDate: true,
+        id: true, code: true, expectedDate: true, assignmentConfirmedAt: true,
         supplier: { select: { code: true, name: true } },
         items: {
           select: {
@@ -104,6 +104,7 @@ export default async function GoodsReceiptsPage({
                       assignedTo={plan.assignedTo}
                       staffOptions={staffUsers}
                       canAssign={canAssign}
+                      confirmedAt={plan.assignmentConfirmedAt}
                     />
                     <ConfirmPlanDialog
                       receiptId={plan.id}

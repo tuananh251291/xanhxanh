@@ -41,7 +41,7 @@ export default async function TaskAssignmentPage() {
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
       orderBy: { expectedDate: "asc" },
       select: {
-        id: true, code: true, expectedDate: true,
+        id: true, code: true, expectedDate: true, assignmentConfirmedAt: true,
         supplier: { select: { code: true, name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
       },
@@ -51,7 +51,7 @@ export default async function TaskAssignmentPage() {
       where: { status: "PENDING", toWarehouse: { type: "THANH_PHAM" } },
       orderBy: { transferredAt: "asc" },
       select: {
-        id: true, code: true, transferredAt: true,
+        id: true, code: true, transferredAt: true, assignmentConfirmedAt: true,
         fromUser: { select: { code: true, name: true } },
         fromWarehouse: { select: { name: true } },
         fromRoom: { select: { name: true } },
@@ -62,7 +62,7 @@ export default async function TaskAssignmentPage() {
       where: { status: "CONFIRMED" },
       orderBy: { confirmedAt: "asc" },
       select: {
-        id: true, code: true, customerCode: true, confirmedAt: true,
+        id: true, code: true, customerCode: true, confirmedAt: true, assignmentConfirmedAt: true,
         sale: { select: { name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
       },
@@ -82,7 +82,7 @@ export default async function TaskAssignmentPage() {
       orderBy: [{ weekStart: "desc" }, { title: "asc" }, { createdAt: "desc" }],
       take: 60,
       select: {
-        id: true, code: true, status: true, title: true, weekStart: true, plantCategoryCodes: true,
+        id: true, code: true, status: true, title: true, weekStart: true, plantCategoryCodes: true, assignmentConfirmedAt: true,
         room: { select: { name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
         proposals: { select: { status: true } },
@@ -106,7 +106,7 @@ export default async function TaskAssignmentPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           Giao việc trong ngày cho NV kho thành phẩm — xem tiến độ hoàn thành tại{" "}
-          <Link href="/task-progress" className="text-primary-strong underline underline-offset-2">Theo dõi tiến độ hôm nay</Link>.
+          <Link href="/task-progress" className="text-primary-strong underline underline-offset-2">Theo dõi tiến độ công việc</Link>.
         </p>
       </div>
 
@@ -134,7 +134,7 @@ export default async function TaskAssignmentPage() {
                     {r.supplier.name} ({r.supplier.code}){r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
                   </p>
                 </div>
-                <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
+                <KhoTpAssignCell endpoint={`/api/goods-receipts/${r.id}`} assignedTo={r.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} confirmedAt={r.assignmentConfirmedAt} />
               </div>
             ))
           )}
@@ -155,7 +155,7 @@ export default async function TaskAssignmentPage() {
                     {t.fromUser.name} ({t.fromUser.code}) · {t.fromWarehouse?.name}{t.fromRoom ? ` — ${t.fromRoom.name}` : ""}
                   </p>
                 </div>
-                <KhoTpAssignCell endpoint={`/api/transfers/${t.id}`} assignedTo={t.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
+                <KhoTpAssignCell endpoint={`/api/transfers/${t.id}`} assignedTo={t.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} confirmedAt={t.assignmentConfirmedAt} />
               </div>
             ))
           )}
@@ -174,7 +174,7 @@ export default async function TaskAssignmentPage() {
                   <p className="text-sm font-medium text-foreground font-mono">{o.code}</p>
                   <p className="text-xs text-text-secondary">Khách {o.customerCode} · NV Sale {o.sale.name}</p>
                 </div>
-                <KhoTpAssignCell endpoint={`/api/orders/${o.id}`} assignedTo={o.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} />
+                <KhoTpAssignCell endpoint={`/api/orders/${o.id}`} assignedTo={o.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} confirmedAt={o.assignmentConfirmedAt} />
               </div>
             ))
           )}
@@ -229,6 +229,7 @@ type DeXuatTask = {
   plantCategoryCodes: string[];
   room: { name: string } | null;
   assignedTo: { id: string; code: string; name: string } | null;
+  assignmentConfirmedAt: Date | null;
   proposals: { status: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED" }[];
 };
 
@@ -261,7 +262,7 @@ function DeXuatTaskRow({
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {canAssign && d.status === "PENDING" && (
-          <KhoTpAssignCell endpoint={`/api/daily-tasks/${d.id}`} assignedTo={d.assignedTo} staffOptions={staffOptions} canAssign={canAssign} />
+          <KhoTpAssignCell endpoint={`/api/daily-tasks/${d.id}`} assignedTo={d.assignedTo} staffOptions={staffOptions} canAssign={canAssign} confirmedAt={d.assignmentConfirmedAt} />
         )}
         {d.status === "PENDING" ? (
           <Link href={`/task-assignment/de-xuat/${d.id}`}>

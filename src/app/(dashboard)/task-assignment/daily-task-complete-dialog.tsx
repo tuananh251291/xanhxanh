@@ -50,7 +50,7 @@ export default function DailyTaskCompleteDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" />}>
-        <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Hoàn thành
+        Thực hiện nhiệm vụ
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle className="font-mono">{code}</DialogTitle></DialogHeader>

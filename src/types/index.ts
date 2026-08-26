@@ -551,14 +551,14 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // Khác KHO_THANH_PHAM: 3 mục xem tồn (Xem tồn của Khu sản xuất/Xem tồn đạt tiêu chuẩn/Xem tồn thực tế)
   // gộp chung 1 mục "Xem tồn kho" (xem /inventory, KHÔNG áp dụng "Phòng ra rễ" cho NV kho thành phẩm
   // thường — redirect riêng role === "KHO_THANH_PHAM" ở inventory/kho-sang/page.tsx), có thêm "Phân công
-  // nhiệm vụ ngày" + "Theo dõi tiến độ hôm nay" (chỉ Quản lý mới giao việc/xem tiến độ, xem
+  // nhiệm vụ ngày" + "Theo dõi tiến độ công việc" (chỉ Quản lý mới giao việc/xem tiến độ, xem
   // isKhoThanhPhamRole, /task-assignment, /task-progress). 3 mục đơn hàng (Tạo đơn hàng hộ Sale/Danh
   // sách đơn hàng/Sắp xếp đơn hàng) cũng gộp chung 1 mục "Xử lý đơn hàng" (xem /orders — hub y hệt
   // /inventory, trang tạo đơn thật đã dời sang /orders/create) — còn lại giống hệt KHO_THANH_PHAM.
   QUAN_LY_KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
-    { href: "/task-progress", label: "Theo dõi tiến độ hôm nay", icon: "Gauge" },
+    { href: "/task-progress", label: "Theo dõi tiến độ công việc", icon: "Gauge" },
     { href: "/transfers/receive", label: "Nhận bàn giao thành phẩm", icon: "PackageCheck" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },

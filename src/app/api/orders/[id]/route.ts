@@ -7,7 +7,7 @@ import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/type
 import { z } from "zod";
 
 const patchSchema = z.object({
-  action: z.enum(["confirm", "ship", "cancel", "assign"]),
+  action: z.enum(["confirm", "ship", "cancel", "assign", "ack"]),
   // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất
   // đơn này. null = bỏ gán.
   assignedToId: z.string().nullable().optional(),
@@ -19,10 +19,13 @@ async function assignOrder(orderId: string, user: { id: string; role: string | n
   if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN" && user.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được việc này" }, { status: 403 });
   }
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true, assignmentConfirmedAt: true } });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   if (order.status !== "CONFIRMED") {
     return NextResponse.json({ message: "Chỉ gán được cho đơn đã xác nhận, đang chờ xuất" }, { status: 400 });
+  }
+  if (order.assignmentConfirmedAt) {
+    return NextResponse.json({ message: "NV đã xác nhận nhận việc — không thể đổi người phụ trách khác" }, { status: 400 });
   }
   if (assignedToId) {
     const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
@@ -32,8 +35,26 @@ async function assignOrder(orderId: string, user: { id: string; role: string | n
   }
   const updated = await prisma.order.update({
     where: { id: orderId },
-    data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? user.id : null },
-    select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+    data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? user.id : null, assignmentConfirmedAt: null },
+    select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } }, assignmentConfirmedAt: true },
+  });
+  return NextResponse.json(updated);
+}
+
+// NV được gán bấm "Xác nhận" đã nhận việc — khoá không cho Quản lý đổi assignedToId nữa (xem assignOrder).
+async function ackOrder(orderId: string, user: { id: string; role: string | null }) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true, assignedToId: true, assignmentConfirmedAt: true } });
+  if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
+  if (order.assignedToId !== user.id) {
+    return NextResponse.json({ message: "Bạn không được giao việc này" }, { status: 403 });
+  }
+  if (order.assignmentConfirmedAt) {
+    return NextResponse.json({ message: "Bạn đã xác nhận trước đó" }, { status: 400 });
+  }
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { assignmentConfirmedAt: new Date() },
+    select: { id: true, assignmentConfirmedAt: true },
   });
   return NextResponse.json(updated);
 }
@@ -291,6 +312,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (parsed.data.action === "confirm") return await confirmOrder(id, session.user);
     if (parsed.data.action === "cancel") return await cancelOrder(id, session.user);
     if (parsed.data.action === "assign") return await assignOrder(id, session.user, parsed.data.assignedToId);
+    if (parsed.data.action === "ack") return await ackOrder(id, session.user);
     return await shipOrder(id, session.user);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";

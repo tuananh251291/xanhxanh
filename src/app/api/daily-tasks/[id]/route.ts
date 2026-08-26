@@ -14,7 +14,9 @@ const cancelSchema = z.object({ action: z.literal("cancel") });
 // Quản lý kho thành phẩm gán/bỏ gán 1 NV cho nhiệm vụ (chủ yếu dùng cho việc DE_XUAT_TRONG_HUY tự sinh
 // hàng tuần, chưa có ai lúc tạo — xem ensureWeeklyDeXuatTask). null = bỏ gán.
 const assignSchema = z.object({ action: z.literal("assign"), assignedToId: z.string().nullable() });
-const patchSchema = z.discriminatedUnion("action", [completeSchema, cancelSchema, assignSchema]);
+// NV được gán bấm "Xác nhận" đã nhận nhiệm vụ — khoá không cho Quản lý đổi assignedToId nữa.
+const ackSchema = z.object({ action: z.literal("ack") });
+const patchSchema = z.discriminatedUnion("action", [completeSchema, cancelSchema, assignSchema, ackSchema]);
 
 // Hoàn thành/hủy/gán 1 "Nhiệm vụ ngày" (Kiểm tra cây / Đề xuất trồng-hủy) — action=complete do đúng NV
 // được gán hoặc Quản lý/Admin thực hiện; action=cancel/assign chỉ Quản lý/Admin. Hoàn thành xong báo lại
@@ -45,6 +47,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (parsed.data.action === "assign") {
     if (!isManager) return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới gán được nhiệm vụ" }, { status: 403 });
+    if (task.assignmentConfirmedAt) {
+      return NextResponse.json({ message: "NV đã xác nhận nhận việc — không thể đổi người phụ trách khác" }, { status: 400 });
+    }
     const { assignedToId } = parsed.data;
     if (assignedToId) {
       const staff = await prisma.user.findUnique({ where: { id: assignedToId }, select: { role: true } });
@@ -54,8 +59,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const updated = await prisma.dailyTask.update({
       where: { id },
-      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null },
-      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } } },
+      data: { assignedToId: assignedToId ?? null, assignedById: assignedToId ? session.user.id : null, assignmentConfirmedAt: null },
+      select: { id: true, assignedToId: true, assignedTo: { select: { name: true, code: true } }, assignmentConfirmedAt: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  if (parsed.data.action === "ack") {
+    if (task.assignedToId !== session.user.id) {
+      return NextResponse.json({ message: "Bạn không được giao nhiệm vụ này" }, { status: 403 });
+    }
+    if (task.assignmentConfirmedAt) {
+      return NextResponse.json({ message: "Bạn đã xác nhận trước đó" }, { status: 400 });
+    }
+    const updated = await prisma.dailyTask.update({
+      where: { id },
+      data: { assignmentConfirmedAt: new Date() },
+      select: { id: true, assignmentConfirmedAt: true },
     });
     return NextResponse.json(updated);
   }

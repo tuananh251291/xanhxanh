@@ -246,7 +246,7 @@ enum AlertStatus {
 // Nguyên nhân KY_THUAT chọn khi xử lý alert OUTPUT_DEVIATION — chỉ áp dụng cho loại alert này.
 enum DeviationCause {
   KY_THUAT_SAI // Do nhân viên kỹ thuật ra chỉ định sai
-  CAY_MO_SAI   // Do nhân viên cấy sai
+  CAY_MO_SAI // Do nhân viên cấy sai
 }
 
 enum UserStatus {
@@ -267,27 +267,27 @@ enum EmploymentType {
 // ============================================================
 
 model User {
-  id        String     @id @default(cuid())
-  code      String     @unique
-  name      String
-  email     String     @unique
-  password  String
-  avatar    String?    @db.Text
-  role      UserRole?
-  status    UserStatus @default(PENDING)
-  isActive  Boolean    @default(true)
-  holdDays  Int?
+  id                   String          @id @default(cuid())
+  code                 String          @unique
+  name                 String
+  email                String          @unique
+  password             String
+  avatar               String?         @db.Text
+  role                 UserRole?
+  status               UserStatus      @default(PENDING)
+  isActive             Boolean         @default(true)
+  holdDays             Int?
   // Đếm số lần đăng nhập sai mật khẩu liên tiếp — reset về 0 khi đăng nhập đúng hoặc khi SUPER_ADMIN
   // mở khóa. Đạt 5 lần thì khóa tài khoản (xem lockedAt).
-  failedLoginAttempts Int @default(0)
+  failedLoginAttempts  Int             @default(0)
   // Khác null = tài khoản đang bị khóa do đăng nhập sai quá 5 lần — chặn đăng nhập dù đúng mật khẩu.
   // Chỉ SUPER_ADMIN mở khóa lại được (PATCH /api/users/[id] { unlockAccount: true }).
-  lockedAt DateTime?
+  lockedAt             DateTime?
   // ID phiên đăng nhập ĐANG hoạt động — mỗi lần đăng nhập thành công (authorize() ở src/lib/auth.ts) ghi
   // đè bằng 1 giá trị random mới, tự động vô hiệu phiên cũ (đăng nhập ở thiết bị/trình duyệt khác thì
   // JWT của thiết bị trước đó không còn khớp field này nữa — chỉ CHO PHÉP 1 phiên hoạt động/tài khoản).
   // null = chưa từng đăng nhập lần nào (tài khoản mới tạo).
-  currentSessionId String?
+  currentSessionId     String?
   // Địa điểm làm việc — áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG (ràng buộc 1 kho sản xuất/SAN_XUAT) và
   // SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng đạt tiêu chuẩn ở đó, xem thêm RoomAccess cho
   // các Phòng thị trường được cấp quyền riêng). KHO_THANH_PHAM cũng gán được 1 kho THÀNH PHẨM nhưng
@@ -295,97 +295,97 @@ model User {
   // src/lib/processing.ts). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho. Chỉ
   // SUPER_ADMIN được sửa field này.
   workplaceWarehouseId String?
-  workplaceWarehouse    Warehouse? @relation(fields: [workplaceWarehouseId], references: [id])
+  workplaceWarehouse   Warehouse?      @relation(fields: [workplaceWarehouseId], references: [id])
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), do NV kho mô phụ trách cùng kho sản xuất cài
   // đặt (xem /api/users/[id] PATCH). Null = chưa cài đặt.
-  inspectionLane InspectionLane?
+  inspectionLane       InspectionLane?
   // Năng lực cấy — chỉ áp dụng cho NV cấy mô (CAY_MO): số cụm mẫu mẹ NV đó dùng hết trong 1 tuần
   // (thể hiện tốc độ cấy), chỉ ADMIN/SUPER_ADMIN cài đặt được (xem /api/users/[id] PATCH).
-  plantingCapacity Int @default(1920)
+  plantingCapacity     Int             @default(1920)
   // Loại hợp đồng ("Chính thức"/"Thử việc") — chỉ áp dụng cho NV cấy mô (CAY_MO), chỉ SUPER_ADMIN/
   // HANH_CHINH_NHAN_SU cài đặt được (xem /api/users/[id] PATCH). Null = chưa cài đặt.
-  employmentType EmploymentType?
+  employmentType       EmploymentType?
   // "Cấy học việc" — chỉ áp dụng cho NV cấy mô (CAY_MO), độc lập với employmentType (1 NV Thử việc có
   // thể đang hoặc đã rời giai đoạn học việc). Tài khoản CAY_MO mới tạo tự động true + employmentType
   // THU_VIEC (xem POST /api/users); SUPER_ADMIN/HANH_CHINH_NHAN_SU tắt lại khi NV rời nhóm học việc (xem
   // /api/users/[id] PATCH).
-  isTrainee Boolean @default(false)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  isTrainee            Boolean         @default(false)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
-  plantingInstructions PlantingInstruction[] @relation("CreatedBy")
-  assignedInstructions PlantingInstruction[] @relation("AssignedTo")
-  handedOverInstructions PlantingInstruction[] @relation("HandedOverBy")
-  returnedInstructions PlantingInstruction[] @relation("ReturnedBy")
-  contaminationProposalsRequested ContaminationProposal[] @relation("ContaminationProposalRequestedBy")
-  contaminationProposalsApproved  ContaminationProposal[] @relation("ContaminationProposalApprovedBy")
-  contaminationRoomEntries        ContaminationRoomEntry[]
+  plantingInstructions                 PlantingInstruction[]        @relation("CreatedBy")
+  assignedInstructions                 PlantingInstruction[]        @relation("AssignedTo")
+  handedOverInstructions               PlantingInstruction[]        @relation("HandedOverBy")
+  returnedInstructions                 PlantingInstruction[]        @relation("ReturnedBy")
+  contaminationProposalsRequested      ContaminationProposal[]      @relation("ContaminationProposalRequestedBy")
+  contaminationProposalsApproved       ContaminationProposal[]      @relation("ContaminationProposalApprovedBy")
+  contaminationRoomEntries             ContaminationRoomEntry[]
   personalContaminationChecksAsStaff   PersonalContaminationCheck[] @relation("PersonalContaminationCheckStaff")
   personalContaminationChecksAsChecker PersonalContaminationCheck[] @relation("PersonalContaminationCheckedBy")
-  replantHandoversCreated   ReplantHandover[] @relation("ReplantHandoverCreatedBy")
-  replantHandoversConfirmed ReplantHandover[] @relation("ReplantHandoverConfirmedBy")
-  dailyRecords         DailyRecord[]
-  dailyRecordEditsAsStaff  DailyRecordEdit[] @relation("DailyRecordEditStaff")
-  dailyRecordEditsAsEditor DailyRecordEdit[] @relation("DailyRecordEditEditedBy")
-  transfersFrom        Transfer[]            @relation("TransferFrom")
-  transfersTo          Transfer[]            @relation("TransferTo")
-  orders               Order[]
-  alerts               Alert[]
-  roomAccess           RoomAccess[]
-  assignedShelves      Shelf[]                @relation("ShelfAssignedStaff")
-  assignedRooms        Room[]                 @relation("RoomAssignedStaff")
-  mediumOrdersConfirmed    MediumOrder[]      @relation("MediumOrderConfirmedBy")
-  mediumOrdersEndedEarly   MediumOrder[]      @relation("MediumOrderEndedBy")
-  mediumOrderDaysConfirmed MediumOrderDay[]   @relation("MediumOrderDayConfirmedBy")
-  checklistItems       ChecklistItem[]
-  lotInspections       LotInspection[]
-  inspectedLots        Lot[]                 @relation("LotInspectedBy")
-  transferInspectionsPerformed TransferInspection[] @relation("TransferInspectedBy")
-  materialIntakes      MaterialIntake[]
-  processingTickets    ProcessingTicket[]
-  orderProcessingRequestsCompleted OrderProcessingRequest[]
-  processingMediumOrdersCompleted ProcessingMediumOrder[]
-  goodsReceipts        GoodsReceipt[] @relation("GoodsReceiptCreatedBy")
-  goodsReceiptsConfirmed GoodsReceipt[] @relation("GoodsReceiptConfirmedBy")
-  goodsReceiptItemsReturned GoodsReceiptItem[] @relation("GoodsReceiptItemReturnedBy")
-  extraWorkRequests         ExtraWorkRequest[] @relation("ExtraWorkRequestStaff")
-  extraWorkRequestsResponded ExtraWorkRequest[] @relation("ExtraWorkRequestRespondedBy")
-  productPrices             ProductPrice[]
-  repackCreated             RepackInstruction[] @relation("RepackCreatedBy")
-  repackAssignedTo          RepackInstruction[] @relation("RepackAssignedTo")
-  repackAssignedBy          RepackInstruction[] @relation("RepackAssignedBy")
-  repackInspectedBy         RepackInstruction[] @relation("RepackInspectedBy")
-  repackPlacedBy            RepackInstruction[] @relation("RepackPlacedBy")
-  repackQuantityIssueReportedBy RepackInstruction[] @relation("RepackQuantityIssueReportedBy")
-  transfersAssignedTo       Transfer[]        @relation("TransferAssignedTo")
-  transfersAssignedBy       Transfer[]        @relation("TransferAssignedBy")
-  goodsReceiptsAssignedTo   GoodsReceipt[]    @relation("GoodsReceiptAssignedTo")
-  goodsReceiptsAssignedBy   GoodsReceipt[]    @relation("GoodsReceiptAssignedBy")
-  ordersAssignedTo          Order[]           @relation("OrderAssignedTo")
-  ordersAssignedBy          Order[]           @relation("OrderAssignedBy")
-  dailyTasksAssignedTo      DailyTask[]       @relation("DailyTaskAssignedTo")
-  dailyTasksAssignedBy      DailyTask[]       @relation("DailyTaskAssignedBy")
-  managedGardens            ProductionGarden[] @relation("ProductionGardenManager")
-  darkRoomInspectionChecksAsStaff     DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckStaff")
-  darkRoomInspectionChecksAsCheckedBy DarkRoomInspectionCheck[] @relation("DarkRoomInspectionCheckedBy")
-  violationTypesCreated              ViolationType[]
-  customersAssigned                  Customer[]                @relation("CustomerAssignedTo")
-  salesManagerAssignmentsAsSales     SalesManagerAssignment[]   @relation("SalesManagerAssignmentSales")
-  salesManagerAssignmentsAsManager   SalesManagerAssignment[]   @relation("SalesManagerAssignmentManager")
-  motherPhotos                       MotherPhoto[]
-  taskCompletionExemptions           TaskCompletionExemption[] @relation("TaskExemptionStaff")
-  taskCompletionExemptionsCreated    TaskCompletionExemption[] @relation("TaskExemptionCreatedBy")
-  violationRecordsAsStaff            ViolationRecord[]         @relation("ViolationRecordStaff")
-  violationRecordsCreated            ViolationRecord[]         @relation("ViolationRecordCreatedBy")
-  staffBaseSalary                    StaffBaseSalary?
-  staffKpiDailyRate                  StaffKpiDailyRate?
-  kpiBonusRatesCreated                KpiBonusRate[]
-  publicHolidaysCreated               PublicHoliday[]
-  payrollOtherBonusesAsStaff          PayrollOtherBonus[]       @relation("PayrollOtherBonusStaff")
-  payrollOtherBonusesCreated          PayrollOtherBonus[]       @relation("PayrollOtherBonusCreatedBy")
-  complianceRecoveryPointsAsStaff     ComplianceRecoveryPoint[] @relation("ComplianceRecoveryPointStaff")
-  complianceRecoveryPointsCreated     ComplianceRecoveryPoint[] @relation("ComplianceRecoveryPointCreatedBy")
-  recoveryBehaviorTypesCreated        RecoveryBehaviorType[]
+  replantHandoversCreated              ReplantHandover[]            @relation("ReplantHandoverCreatedBy")
+  replantHandoversConfirmed            ReplantHandover[]            @relation("ReplantHandoverConfirmedBy")
+  dailyRecords                         DailyRecord[]
+  dailyRecordEditsAsStaff              DailyRecordEdit[]            @relation("DailyRecordEditStaff")
+  dailyRecordEditsAsEditor             DailyRecordEdit[]            @relation("DailyRecordEditEditedBy")
+  transfersFrom                        Transfer[]                   @relation("TransferFrom")
+  transfersTo                          Transfer[]                   @relation("TransferTo")
+  orders                               Order[]
+  alerts                               Alert[]
+  roomAccess                           RoomAccess[]
+  assignedShelves                      Shelf[]                      @relation("ShelfAssignedStaff")
+  assignedRooms                        Room[]                       @relation("RoomAssignedStaff")
+  mediumOrdersConfirmed                MediumOrder[]                @relation("MediumOrderConfirmedBy")
+  mediumOrdersEndedEarly               MediumOrder[]                @relation("MediumOrderEndedBy")
+  mediumOrderDaysConfirmed             MediumOrderDay[]             @relation("MediumOrderDayConfirmedBy")
+  checklistItems                       ChecklistItem[]
+  lotInspections                       LotInspection[]
+  inspectedLots                        Lot[]                        @relation("LotInspectedBy")
+  transferInspectionsPerformed         TransferInspection[]         @relation("TransferInspectedBy")
+  materialIntakes                      MaterialIntake[]
+  processingTickets                    ProcessingTicket[]
+  orderProcessingRequestsCompleted     OrderProcessingRequest[]
+  processingMediumOrdersCompleted      ProcessingMediumOrder[]
+  goodsReceipts                        GoodsReceipt[]               @relation("GoodsReceiptCreatedBy")
+  goodsReceiptsConfirmed               GoodsReceipt[]               @relation("GoodsReceiptConfirmedBy")
+  goodsReceiptItemsReturned            GoodsReceiptItem[]           @relation("GoodsReceiptItemReturnedBy")
+  extraWorkRequests                    ExtraWorkRequest[]           @relation("ExtraWorkRequestStaff")
+  extraWorkRequestsResponded           ExtraWorkRequest[]           @relation("ExtraWorkRequestRespondedBy")
+  productPrices                        ProductPrice[]
+  repackCreated                        RepackInstruction[]          @relation("RepackCreatedBy")
+  repackAssignedTo                     RepackInstruction[]          @relation("RepackAssignedTo")
+  repackAssignedBy                     RepackInstruction[]          @relation("RepackAssignedBy")
+  repackInspectedBy                    RepackInstruction[]          @relation("RepackInspectedBy")
+  repackPlacedBy                       RepackInstruction[]          @relation("RepackPlacedBy")
+  repackQuantityIssueReportedBy        RepackInstruction[]          @relation("RepackQuantityIssueReportedBy")
+  transfersAssignedTo                  Transfer[]                   @relation("TransferAssignedTo")
+  transfersAssignedBy                  Transfer[]                   @relation("TransferAssignedBy")
+  goodsReceiptsAssignedTo              GoodsReceipt[]               @relation("GoodsReceiptAssignedTo")
+  goodsReceiptsAssignedBy              GoodsReceipt[]               @relation("GoodsReceiptAssignedBy")
+  ordersAssignedTo                     Order[]                      @relation("OrderAssignedTo")
+  ordersAssignedBy                     Order[]                      @relation("OrderAssignedBy")
+  dailyTasksAssignedTo                 DailyTask[]                  @relation("DailyTaskAssignedTo")
+  dailyTasksAssignedBy                 DailyTask[]                  @relation("DailyTaskAssignedBy")
+  managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
+  darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
+  darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
+  violationTypesCreated                ViolationType[]
+  customersAssigned                    Customer[]                   @relation("CustomerAssignedTo")
+  salesManagerAssignmentsAsSales       SalesManagerAssignment[]     @relation("SalesManagerAssignmentSales")
+  salesManagerAssignmentsAsManager     SalesManagerAssignment[]     @relation("SalesManagerAssignmentManager")
+  motherPhotos                         MotherPhoto[]
+  taskCompletionExemptions             TaskCompletionExemption[]    @relation("TaskExemptionStaff")
+  taskCompletionExemptionsCreated      TaskCompletionExemption[]    @relation("TaskExemptionCreatedBy")
+  violationRecordsAsStaff              ViolationRecord[]            @relation("ViolationRecordStaff")
+  violationRecordsCreated              ViolationRecord[]            @relation("ViolationRecordCreatedBy")
+  staffBaseSalary                      StaffBaseSalary?
+  staffKpiDailyRate                    StaffKpiDailyRate?
+  kpiBonusRatesCreated                 KpiBonusRate[]
+  publicHolidaysCreated                PublicHoliday[]
+  payrollOtherBonusesAsStaff           PayrollOtherBonus[]          @relation("PayrollOtherBonusStaff")
+  payrollOtherBonusesCreated           PayrollOtherBonus[]          @relation("PayrollOtherBonusCreatedBy")
+  complianceRecoveryPointsAsStaff      ComplianceRecoveryPoint[]    @relation("ComplianceRecoveryPointStaff")
+  complianceRecoveryPointsCreated      ComplianceRecoveryPoint[]    @relation("ComplianceRecoveryPointCreatedBy")
+  recoveryBehaviorTypesCreated         RecoveryBehaviorType[]
 
   @@map("users")
 }
@@ -536,26 +536,26 @@ model DarkRoomInspectionCheck {
 // mô cũng tự thêm được ngay lúc ghi nhận. Không hard-delete (chỉ isActive) để không vỡ báo cáo cũ nếu 1
 // loại từng dùng bị ẩn đi sau này.
 model ViolationType {
-  id          String   @id @default(cuid())
-  label       String   @unique
-  isActive    Boolean  @default(true)
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  id                        String   @id @default(cuid())
+  label                     String   @unique
+  isActive                  Boolean  @default(true)
+  createdById               String
+  createdBy                 User     @relation(fields: [createdById], references: [id])
+  createdAt                 DateTime @default(now())
   // Điểm trừ CƠ BẢN khi 1 NV cấy mô mắc lỗi này (dùng tính điểm tuân thủ cho lương — xem
   // src/lib/payroll-calculation.ts). Lần đầu trong kỳ lương = điểm này, từ lần 2 trở đi (cùng NV, cùng
   // loại lỗi, cùng kỳ) = điểm này × 1.5, xem ViolationRecord.pointsApplied.
-  points      Int      @default(5)
+  points                    Int      @default(5)
   // Nhóm lỗi — chỉ để GOM HIỂN THỊ danh sách loại lỗi vi phạm cho dễ theo dõi (VD "An toàn lao động",
   // "Kỹ thuật cấy", "Vệ sinh kho"), không ràng buộc danh mục cố định — nhập tự do, gõ đúng tên nhóm đã
   // có để gộp chung. Null = "Chưa phân nhóm" (áp dụng cho lỗi tạo trước khi có tính năng này).
-  groupName   String?
+  groupName                 String?
   // Nhóm "Trung thực, gian lận và hành vi trọng yếu" KHÔNG trừ điểm tuân thủ (points nên để 0) — thay vào
   // đó 1 ViolationRecord dùng loại lỗi có cờ true ở đây khiến TOÀN BỘ Thưởng KPI tuân thủ và/hoặc Thưởng
   // vượt KPI sản lượng của NV đó = 0 cho TRỌN kỳ lương chứa bản ghi, bất kể compliancePoints — xem
   // computePayrollForPeriod (src/lib/payroll-calculation.ts).
-  disqualifiesComplianceKpi Boolean @default(false)
-  disqualifiesProductionKpi Boolean @default(false)
+  disqualifiesComplianceKpi Boolean  @default(false)
+  disqualifiesProductionKpi Boolean  @default(false)
 
   records ViolationRecord[]
 
@@ -614,41 +614,41 @@ model PlantCategory {
 // mã tự động. Tỉ lệ nhân mẫu mẹ/ra rễ + môi trường KHÔNG có cấu hình mặc định ở đây — KY_THUAT tự nhập
 // theo tình trạng thực tế của từng lô khi tạo chỉ định cấy (xem PlantingInstructionItem).
 model PlantType {
-  id                 String   @id @default(cuid())
-  categoryId         String
-  category           PlantCategory @relation(fields: [categoryId], references: [id])
-  seq                Int // số thứ tự để sắp hiển thị trong Loại cây, không quyết định code
-  code               String   @unique // category.code (2 ký tự, tự lấy theo Loại cây) + 3 ký tự NV nhập tay, VD: "MT001"
-  name               String
-  description        String?
+  id                String        @id @default(cuid())
+  categoryId        String
+  category          PlantCategory @relation(fields: [categoryId], references: [id])
+  seq               Int // số thứ tự để sắp hiển thị trong Loại cây, không quyết định code
+  code              String        @unique // category.code (2 ký tự, tự lấy theo Loại cây) + 3 ký tự NV nhập tay, VD: "MT001"
+  name              String
+  description       String?
   // Số tuần cố định (không phải khoảng min-max) do Admin cài đặt cho từng chi tiết loại cây.
   // Mặc định: 4 tuần cho mọi Loại cây, riêng MT (Monstera) là 6 tuần.
-  transferWaitWeeks  Int      @default(4) // Thời gian đợi cấy chuyển (mẫu mẹ) — dùng tính Lot.expectedMoveAt khi stage = MAU_ME
+  transferWaitWeeks Int           @default(4) // Thời gian đợi cấy chuyển (mẫu mẹ) — dùng tính Lot.expectedMoveAt khi stage = MAU_ME
   // Mặc định 3 tuần cho MỌI loại cây.
-  rootingWeeks       Int      @default(3) // Thời gian ra rễ (thành phẩm) — dùng tính Lot.expectedMoveAt khi stage = THANH_PHAM
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  rootingWeeks      Int           @default(3) // Thời gian ra rễ (thành phẩm) — dùng tính Lot.expectedMoveAt khi stage = THANH_PHAM
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   // Nhóm biến thể (đột biến) — 1 mã cây chỉ thuộc ĐÚNG 1 nhóm (VD MT047 thuộc nhóm {MT047, MT005,
   // MT042}). Có nhóm (khác null) VÀ nhóm có >1 thành viên thì chỉ định cấy dùng mã cây này mới hiện
   // được checkbox "Phát sinh cây cần phân loại" lúc nhập dữ liệu cấy — xem POST /api/daily-records.
-  variantGroupId     String?
-  variantGroup       PlantVariantGroup? @relation(fields: [variantGroupId], references: [id])
+  variantGroupId String?
+  variantGroup   PlantVariantGroup? @relation(fields: [variantGroupId], references: [id])
 
-  lots                 Lot[]
-  plantingInstructions PlantingInstruction[]
-  shelves              Shelf[]
-  contaminationProposals ContaminationProposal[]
+  lots                       Lot[]
+  plantingInstructions       PlantingInstruction[]
+  shelves                    Shelf[]
+  contaminationProposals     ContaminationProposal[]
   contaminationStaffBalances ContaminationStaffBalance[]
-  processingTickets    ProcessingTicket[]
-  orderProcessingRequests OrderProcessingRequest[]
-  goodsReceiptItems    GoodsReceiptItem[]
-  repackInstructions   RepackInstruction[]
-  motherPhotos         MotherPhoto[]
-  kpiRate              PlantTypeKpiRate?
-  transferInspectionItems TransferInspectionItem[]
-  dailyTasks           DailyTask[]
+  processingTickets          ProcessingTicket[]
+  orderProcessingRequests    OrderProcessingRequest[]
+  goodsReceiptItems          GoodsReceiptItem[]
+  repackInstructions         RepackInstruction[]
+  motherPhotos               MotherPhoto[]
+  kpiRate                    PlantTypeKpiRate?
+  transferInspectionItems    TransferInspectionItem[]
+  dailyTasks                 DailyTask[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -679,11 +679,11 @@ model MediumType {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  instructionItemsAsMotherMedium    PlantingInstructionItem[] @relation("ItemMotherMedium")
-  instructionItemsAsFinishedMedium  PlantingInstructionItem[] @relation("ItemFinishedMedium")
+  instructionItemsAsMotherMedium           PlantingInstructionItem[] @relation("ItemMotherMedium")
+  instructionItemsAsFinishedMedium         PlantingInstructionItem[] @relation("ItemFinishedMedium")
   instructionItemsAsPreRootingMotherMedium PlantingInstructionItem[] @relation("ItemPreRootingMotherMedium")
-  orderItems                        MediumOrderItem[]
-  processingMediumOrders            ProcessingMediumOrder[]
+  orderItems                               MediumOrderItem[]
+  processingMediumOrders                   ProcessingMediumOrder[]
 
   @@map("medium_types")
 }
@@ -727,17 +727,17 @@ model MaterialIntake {
 // ============================================================
 
 model Supplier {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
   // Nhà cung cấp có cho phép trả hàng hay không — nếu có, Kho thành phẩm phải "kiểm tra" lại trong vòng
   // returnWindowDays ngày kể từ ngày nhập (GoodsReceipt.createdAt) để phát hiện thêm cây không đạt phát
   // sinh sau khi nhận hàng (xem GoodsReceiptItem). returnWindowDays chỉ có ý nghĩa khi allowsReturn = true.
-  allowsReturn     Boolean @default(false)
+  allowsReturn     Boolean  @default(false)
   returnWindowDays Int?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   goodsReceipts GoodsReceipt[]
 
@@ -819,16 +819,19 @@ model GoodsReceipt {
   expectedDate  DateTime?
   confirmedAt   DateTime?
   confirmedById String?
-  confirmedBy   User?    @relation("GoodsReceiptConfirmedBy", fields: [confirmedById], references: [id])
+  confirmedBy   User?              @relation("GoodsReceiptConfirmedBy", fields: [confirmedById], references: [id])
 
   // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách xác nhận phiếu này khi hàng thật
   // về (chủ yếu có ý nghĩa với phiếu còn PLANNED — kế hoạch nhập kho) — không giới hạn ai được XEM/xác
   // nhận, chỉ mang tính phân công/theo dõi + báo cho đúng người đã gán khi NV được gán bấm xác nhận xong
   // (xem PATCH /api/goods-receipts/[id]).
-  assignedToId String?
-  assignedTo   User?   @relation("GoodsReceiptAssignedTo", fields: [assignedToId], references: [id])
-  assignedById String?
-  assignedBy   User?   @relation("GoodsReceiptAssignedBy", fields: [assignedById], references: [id])
+  assignedToId          String?
+  assignedTo            User?     @relation("GoodsReceiptAssignedTo", fields: [assignedToId], references: [id])
+  assignedById          String?
+  assignedBy            User?     @relation("GoodsReceiptAssignedBy", fields: [assignedById], references: [id])
+  // NV được gán bấm "Xác nhận" đã nhận việc — khác hẳn `confirmedAt` (xác nhận SỐ LIỆU THẬT khi hàng
+  // về). Có giá trị = khoá không cho Quản lý đổi assignedToId nữa (xem PATCH action=assign/ack).
+  assignmentConfirmedAt DateTime?
 
   items GoodsReceiptItem[]
 
@@ -870,10 +873,10 @@ model GoodsReceiptItem {
   // returnQuantity là TỔNG 2 cột dưới, lưu sẵn để nơi khác (VD dashboard) không phải cộng lại.
   returnQuantityNhiem    Int?
   returnQuantityKhongDat Int?
-  returnQuantity Int?
-  returnedAt     DateTime?
-  returnedById   String?
-  returnedBy     User?     @relation("GoodsReceiptItemReturnedBy", fields: [returnedById], references: [id])
+  returnQuantity         Int?
+  returnedAt             DateTime?
+  returnedById           String?
+  returnedBy             User?     @relation("GoodsReceiptItemReturnedBy", fields: [returnedById], references: [id])
 
   @@map("goods_receipt_items")
 }
@@ -892,16 +895,16 @@ model Warehouse {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  rooms        Room[]
-  shelves      Shelf[]
-  transfersIn  Transfer[] @relation("TransferTo")
-  transfersOut Transfer[] @relation("TransferFrom")
-  staff        User[]
-  contaminationProposals ContaminationProposal[]
-  contaminationStaffBalances ContaminationStaffBalance[]
+  rooms                       Room[]
+  shelves                     Shelf[]
+  transfersIn                 Transfer[]                   @relation("TransferTo")
+  transfersOut                Transfer[]                   @relation("TransferFrom")
+  staff                       User[]
+  contaminationProposals      ContaminationProposal[]
+  contaminationStaffBalances  ContaminationStaffBalance[]
   personalContaminationChecks PersonalContaminationCheck[]
-  replantHandovers ReplantHandover[]
-  dailyTasks   DailyTask[]
+  replantHandovers            ReplantHandover[]
+  dailyTasks                  DailyTask[]
 
   @@map("warehouses")
 }
@@ -912,32 +915,32 @@ model Warehouse {
 // ============================================================
 
 model Room {
-  id          String   @id @default(cuid())
-  code        String   @unique
+  id          String    @id @default(cuid())
+  code        String    @unique
   name        String
   type        RoomType
   warehouseId String
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Chỉ có giá trị với Room type = PHONG_TOI (phòng tối cá nhân) — 1 NV cấy mô = 1 Room riêng, đóng
   // vai trò tương đương assignedStaffId trên Shelf ở Phòng mẫu mẹ nhưng ở cấp Room (không qua kệ).
   assignedStaffId String?
-  assignedStaff   User?    @relation("RoomAssignedStaff", fields: [assignedStaffId], references: [id])
+  assignedStaff   User?   @relation("RoomAssignedStaff", fields: [assignedStaffId], references: [id])
 
-  shelves           Shelf[]
-  lots              Lot[]      @relation("LotDirectRoom")
-  transfersFromRoom Transfer[] @relation("TransferFromRoom")
-  transfersToRoom   Transfer[] @relation("TransferToRoom")
-  roomAccess        RoomAccess[]
-  processingTickets ProcessingTicket[]
-  orderProcessingRequests OrderProcessingRequest[]
+  shelves                         Shelf[]
+  lots                            Lot[]                    @relation("LotDirectRoom")
+  transfersFromRoom               Transfer[]               @relation("TransferFromRoom")
+  transfersToRoom                 Transfer[]               @relation("TransferToRoom")
+  roomAccess                      RoomAccess[]
+  processingTickets               ProcessingTicket[]
+  orderProcessingRequests         OrderProcessingRequest[]
   orderProcessingRequestsAsTarget OrderProcessingRequest[] @relation("OrderProcessingRequestTarget")
-  goodsReceipts     GoodsReceipt[]
-  dailyTasks        DailyTask[]
-  contaminationProposals ContaminationProposal[]
+  goodsReceipts                   GoodsReceipt[]
+  dailyTasks                      DailyTask[]
+  contaminationProposals          ContaminationProposal[]
 
   @@map("rooms")
 }
@@ -960,28 +963,28 @@ model RoomAccess {
 // ============================================================
 
 model Shelf {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  name        String
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
   // Luôn trỏ tới kho chứa kệ này (kể cả khi kệ nằm trong 1 room) — giữ để
   // các query/hiển thị hiện có dựa vào shelf.warehouse tiếp tục hoạt động.
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId      String
+  warehouse        Warehouse         @relation(fields: [warehouseId], references: [id])
   // Có giá trị khi kệ nằm trong 1 phòng cụ thể (mọi kệ hiện nay đều vậy).
   // Để null nếu sau này có kệ gắn thẳng vào kho, không qua phòng nào.
-  roomId      String?
-  room        Room?     @relation(fields: [roomId], references: [id])
-  rowNumber   Int?
-  colNumber   Int?
+  roomId           String?
+  room             Room?             @relation(fields: [roomId], references: [id])
+  rowNumber        Int?
+  colNumber        Int?
   // Khối vật lý trong 1 phòng — các kệ cùng 1 hàng (rowNumber), VD R04C01 đến R04C99 trong CÙNG 1 phòng,
   // thuộc chung 1 block (VD "R04"). Không gộp xuyên phòng (Phòng mẫu mẹ và Phòng ra rễ luôn tách block
   // riêng dù trùng rowNumber) — chỉ là nhãn tiện nhóm/lọc, tính từ rowNumber lúc tạo/đổi mã kệ.
-  block       String?
+  block            String?
   // Nhóm gộp các kệ lẻ lại (VD kệ A1C10 + B1C09 cùng 1 Nhóm dù khác block) — không bắt buộc, chỉ Admin
   // cấp cao (SUPER_ADMIN) mới cài đặt được (xem /settings/shelf-groups). Chọn theo từng kệ, không theo
   // block — có thể gộp kệ từ nhiều block/phòng/kho khác nhau vào cùng 1 Nhóm.
-  groupId     String?
-  group       ShelfGroup? @relation("ShelfPhysicalGroup", fields: [groupId], references: [id], onDelete: SetNull)
+  groupId          String?
+  group            ShelfGroup?       @relation("ShelfPhysicalGroup", fields: [groupId], references: [id], onDelete: SetNull)
   // Nhóm xoay vòng (ShelfGroup có rotationKind = RA_RE hoặc MAU_ME) — SUPER_ADMIN gán kệ vào đúng 1
   // trong các Nhóm đã tạo ở /settings/shelf-groups (xem "Quản lý kệ" ở đó), TÁCH BIỆT với groupId ở trên
   // (1 kệ có thể vừa thuộc 1 Nhóm vật lý tự do vừa thuộc 1 Nhóm xoay vòng cùng lúc). Cây ra rễ/mẫu mẹ đưa
@@ -992,17 +995,17 @@ model Shelf {
   // tính riêng theo Lot.expectedMoveAt (đã cộng đúng PlantType.rootingWeeks của từng lô lúc tạo — xem
   // src/lib/rooting-ready.ts). Nhóm tuần mẫu mẹ tương tự dùng transferWaitWeeks riêng của từng mã cây —
   // xem src/lib/mother-week-group.ts.
-  rotationGroupId String?
-  rotationGroup   ShelfGroup? @relation("ShelfRotationGroup", fields: [rotationGroupId], references: [id], onDelete: SetNull)
+  rotationGroupId  String?
+  rotationGroup    ShelfGroup?       @relation("ShelfRotationGroup", fields: [rotationGroupId], references: [id], onDelete: SetNull)
   // Tối đa được xếp trên kệ này — tính theo TÚI cho cả Phòng mẫu mẹ (mặc định 600 nếu không nhập) lẫn
   // Phòng ra rễ (túi thành phẩm T01/T05), không bắt buộc — null nghĩa là không giới hạn.
-  capacity    Int?
+  capacity         Int?
   // Chỉ ràng buộc với kệ trong Phòng mẫu mẹ (SUPER_ADMIN cấu hình) — 1 kệ chỉ xếp 1 mã cây và
   // gắn với 1 nhân viên cấy mô cụ thể. Kệ Phòng ra rễ không dùng 2 field này (luôn null).
-  plantTypeId String?
-  plantType   PlantType? @relation(fields: [plantTypeId], references: [id])
-  assignedStaffId String?
-  assignedStaff   User?  @relation("ShelfAssignedStaff", fields: [assignedStaffId], references: [id])
+  plantTypeId      String?
+  plantType        PlantType?        @relation(fields: [plantTypeId], references: [id])
+  assignedStaffId  String?
+  assignedStaff    User?             @relation("ShelfAssignedStaff", fields: [assignedStaffId], references: [id])
   // Chỉ áp dụng cho kệ "chung" (assignedStaffId null) trong Phòng mẫu mẹ — phân nhóm Kho quá hạn/đúng
   // hạn trong "Kho mẫu mẹ chung" (không phải Room riêng, chỉ là cờ trên kệ). Kệ "đã chia" luôn null.
   sharedMotherPool SharedMotherPool?
@@ -1011,15 +1014,15 @@ model Shelf {
   // kệ có ít nhất 1 chuỗi trong danh sách là TIỀN TỐ của mã chi tiết loại cây (VD "MT" khớp mọi mã
   // MT001/MT005/MT041..., "MT041" chỉ khớp đúng mã đó) — thay thế hoàn toàn cho plantTypeId ở kệ chung
   // (kệ "đã chia" vẫn dùng plantTypeId như cũ, không đổi). Mảng rỗng = chưa cấu hình.
-  allowedCodes String[] @default([])
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  allowedCodes     String[]          @default([])
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   lots             Lot[]
   instructionItems PlantingInstructionItem[]
-  repackAsSource   RepackInstruction[] @relation("RepackSourceShelf")
-  repackAsOutput   RepackInstruction[] @relation("RepackActualOutputShelf")
+  repackAsSource   RepackInstruction[]       @relation("RepackSourceShelf")
+  repackAsOutput   RepackInstruction[]       @relation("RepackActualOutputShelf")
   motherPhotos     MotherPhoto[]
 
   @@map("shelves")
@@ -1029,12 +1032,12 @@ model Shelf {
 // thuộc tính không bắt buộc, chỉ Admin cấp cao (SUPER_ADMIN) cài đặt qua trang /settings/shelf-groups.
 // Có thể gộp kệ từ nhiều block/phòng/kho khác nhau vào cùng 1 Nhóm.
 model ShelfGroup {
-  id        String   @id @default(cuid())
-  name      String
+  id            String                  @id @default(cuid())
+  name          String
   // Loại nhóm — nhập tự do, không bắt buộc, chỉ để Admin cấp cao tự phân loại/ghi chú thêm (VD "Khu
   // sản xuất chính", "Khu dự trữ"...), không ràng buộc nghiệp vụ nào khác. Không dùng để xác định cơ chế
   // xoay vòng (xem rotationKind bên dưới) — 1 Nhóm có thể vừa có type tự do vừa có rotationKind.
-  type      String?
+  type          String?
   // Có giá trị = Nhóm này là 1 "khe" trong cơ chế xoay vòng Nhóm tuần ra rễ/Nhóm tuần mẫu mẹ (SUPER_ADMIN
   // cấu hình qua /settings/shelf-groups) — xem Shelf.rotationGroupId. null = Nhóm gộp kệ tự do thông
   // thường, không tham gia xoay vòng.
@@ -1043,8 +1046,8 @@ model ShelfGroup {
   // cùng rotationKind (VD 4 Nhóm "Nhóm tuần ra rễ" → N=4, 6 Nhóm "Nhóm tuần mẫu mẹ" → N=6, không hard-code
   // 4 như trước). Chỉ có ý nghĩa khi rotationKind khác null.
   rotationOrder Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
 
   shelves         Shelf[] @relation("ShelfPhysicalGroup")
   rotationShelves Shelf[] @relation("ShelfRotationGroup")
@@ -1057,28 +1060,28 @@ model ShelfGroup {
 // ============================================================
 
 model Lot {
-  id              String     @id @default(cuid())
+  id          String     @id @default(cuid())
   // Không unique riêng lẻ — mã lô = mã cây + mã NV cấy + mã tuần/năm (VD "AL001003" + "0726"), NHIỀU lô có
   // thể dùng chung 1 mã nếu cùng chỉ định/tuần nhưng khác quy cách (VD M05 và T05 vẫn là 2 dòng Lot
   // riêng, chỉ đính cùng mã lô để NV nhìn biết chúng thuộc cùng 1 đợt cấy). Duy nhất theo (code, stageCode).
-  code            String
-  plantTypeId     String
-  plantType       PlantType  @relation(fields: [plantTypeId], references: [id])
-  stage           PlantStage
-  stageCode       String
+  code        String
+  plantTypeId String
+  plantType   PlantType  @relation(fields: [plantTypeId], references: [id])
+  stage       PlantStage
+  stageCode   String
 
-  shelfId         String?
-  shelf           Shelf?     @relation(fields: [shelfId], references: [id])
+  shelfId String?
+  shelf   Shelf?  @relation(fields: [shelfId], references: [id])
   // Chỉ dùng cho Kho thành phẩm (không quản lý theo giàn kệ) — lô gắn thẳng vào Phòng (Khả dụng/Theo
   // dõi/Hàn túi/Thị trường), không qua Shelf. Kho sản xuất luôn dùng shelfId ở trên, roomId luôn null.
-  roomId          String?
-  room            Room?      @relation("LotDirectRoom", fields: [roomId], references: [id])
+  roomId  String?
+  room    Room?   @relation("LotDirectRoom", fields: [roomId], references: [id])
 
   quantity        Int
   initialQuantity Int
-  status          LotStatus  @default(ACTIVE)
+  status          LotStatus @default(ACTIVE)
 
-  enteredAt       DateTime   @default(now())
+  enteredAt         DateTime  @default(now())
   // Ngày nhập kho tối GỐC (bất biến, không đổi theo vòng đời lô) — TÁCH RIÊNG khỏi enteredAt vì
   // enteredAt bị commitShelfPlacements (src/lib/dark-room-shelf-commit.ts) GHI ĐÈ thành thời điểm lên kệ
   // kho sáng mỗi khi Kho mô xác nhận bàn giao (để tính đúng hạn "đến lịch chuyển kho tiếp theo" từ lúc
@@ -1090,44 +1093,44 @@ model Lot {
   // không thuộc luồng Phòng tối (VD lô Phòng nhiễm, lô Kho thành phẩm nhập trực tiếp) — nơi hiển thị nên
   // fallback về enteredAt nếu null.
   darkRoomEnteredAt DateTime?
-  expectedMoveAt  DateTime?
+  expectedMoveAt    DateTime?
   // Chỉ có giá trị khi status = PLANNED — ngày dự kiến hàng thật về, lấy từ GoodsReceipt.expectedDate lúc
   // tạo Kế hoạch nhập kho. Dùng so sánh với Order.expectedShipAt để quyết định lô này có tính vào khả
   // dụng cho 1 đơn hàng cụ thể hay không (xem getQualifiedLots ở src/lib/order-availability.ts). Xoá về
   // null khi lô được xác nhận chuyển ACTIVE.
-  expectedDate    DateTime?
+  expectedDate      DateTime?
 
   // Kiểm tra nhiễm phòng tối cá nhân — null = Chưa kiểm tra, khác null = Đã kiểm tra (cùng convention
   // với ContaminationRecord.confirmedAt). Bắt buộc trước khi được chọn bàn giao từ phòng tối.
-  inspectedAt     DateTime?
-  inspectedById   String?
-  inspectedBy     User?      @relation("LotInspectedBy", fields: [inspectedById], references: [id])
+  inspectedAt   DateTime?
+  inspectedById String?
+  inspectedBy   User?     @relation("LotInspectedBy", fields: [inspectedById], references: [id])
 
-  parentLotId     String?
-  parentLot       Lot?       @relation("LotChildren", fields: [parentLotId], references: [id])
-  childLots       Lot[]      @relation("LotChildren")
+  parentLotId String?
+  parentLot   Lot?    @relation("LotChildren", fields: [parentLotId], references: [id])
+  childLots   Lot[]   @relation("LotChildren")
 
-  instructionId   String?
-  instruction     PlantingInstruction? @relation(fields: [instructionId], references: [id])
+  instructionId String?
+  instruction   PlantingInstruction? @relation(fields: [instructionId], references: [id])
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  dailyRecordItems    DailyRecordItem[]
-  transferItems       TransferItem[]
-  orderItems          OrderItem[]
-  contaminations      ContaminationRecord[]
-  instructionItems    PlantingInstructionItem[]
-  inspectionItems     LotInspectionItem[]
-  processingOutputTickets ProcessingTicket[]
-  processingInputRows     ProcessingTicketInputLot[]
+  dailyRecordItems                DailyRecordItem[]
+  transferItems                   TransferItem[]
+  orderItems                      OrderItem[]
+  contaminations                  ContaminationRecord[]
+  instructionItems                PlantingInstructionItem[]
+  inspectionItems                 LotInspectionItem[]
+  processingOutputTickets         ProcessingTicket[]
+  processingInputRows             ProcessingTicketInputLot[]
   orderProcessingRequestsAsSource OrderProcessingRequest[]
   // Ngược của GoodsReceiptItem.plannedLotId — chỉ có giá trị khi lô này là lô "ảo" do 1 Kế hoạch nhập
   // kho tạo ra (status = PLANNED).
-  goodsReceiptPlan GoodsReceiptItem?
-  repackAsSource   RepackInstruction[] @relation("RepackSourceLot")
-  repackAsOutput   RepackInstruction[] @relation("RepackOutputLot")
-  motherPhotos     MotherPhoto[]
+  goodsReceiptPlan                GoodsReceiptItem?
+  repackAsSource                  RepackInstruction[]        @relation("RepackSourceLot")
+  repackAsOutput                  RepackInstruction[]        @relation("RepackOutputLot")
+  motherPhotos                    MotherPhoto[]
 
   @@unique([code, stageCode])
   @@map("lots")
@@ -1146,16 +1149,16 @@ enum MotherPhotoMediumRole {
 // hạn Thứ 2/Thứ 3) hay "đã thực hiện" (trễ hạn) tính LIVE từ createdAt/weekStart của các dòng này mỗi
 // lần cần, giống triết lý getKyThuatStats (dashboard/page.tsx) — không lưu cờ "đã hoàn thành".
 model MotherPhoto {
-  id          String    @id @default(cuid())
+  id          String                 @id @default(cuid())
   lotId       String
-  lot         Lot       @relation(fields: [lotId], references: [id])
+  lot         Lot                    @relation(fields: [lotId], references: [id])
   // Denormalize khỏi lot.plantTypeId để query nhanh theo loại cây (trang Xem dữ liệu hình ảnh) mà
   // không phải join qua Lot mỗi lần.
   plantTypeId String
-  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  plantType   PlantType              @relation(fields: [plantTypeId], references: [id])
   // Giàn kệ lúc chụp — lô mẫu mẹ có thể đổi giàn theo tuần xoay vòng nên không suy ngược từ lotId được.
   shelfId     String
-  shelf       Shelf     @relation(fields: [shelfId], references: [id])
+  shelf       Shelf                  @relation(fields: [shelfId], references: [id])
   // "Kiểu ảnh" — tuần thứ mấy trong chu kỳ mẫu mẹ (1..PlantType.transferWaitWeeks-1), gợi ý tự động từ
   // Shelf.rotationGroup.rotationOrder lúc chụp nhưng NV có thể sửa tay.
   weekIndex   Int
@@ -1170,8 +1173,8 @@ model MotherPhoto {
   // Public URL từ Supabase Storage bucket "mother-photos" — xem src/lib/mother-photo-storage.ts.
   imageUrl    String
   takenById   String
-  takenBy     User      @relation(fields: [takenById], references: [id])
-  createdAt   DateTime  @default(now())
+  takenBy     User                   @relation(fields: [takenById], references: [id])
+  createdAt   DateTime               @default(now())
 
   @@index([plantTypeId])
   @@index([lotId])
@@ -1184,38 +1187,38 @@ model MotherPhoto {
 // ============================================================
 
 model PlantingInstruction {
-  id            String            @id @default(cuid())
-  code          String            @unique
-  plantTypeId   String
-  plantType     PlantType         @relation(fields: [plantTypeId], references: [id])
+  id          String    @id @default(cuid())
+  code        String    @unique
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
   // Môi trường nay chọn riêng theo từng dòng quy cách nguồn (M3/M5) — xem PlantingInstructionItem,
   // vì mỗi quy cách có thể dùng môi trường nhân mẫu mẹ / ra rễ khác nhau.
 
-  createdById   String
-  createdBy     User              @relation("CreatedBy", fields: [createdById], references: [id])
-  assignedToId  String?
-  assignedTo    User?             @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User    @relation("CreatedBy", fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id])
 
   // Tổng đầu vào/dự kiến cộng dồn từ tất cả các dòng quy cách nguồn (items) — 1 chỉ định có thể dùng nhiều
   // quy cách nguồn (VD: cùng 1 kệ có cả M3 và M5), mỗi dòng tự có tỉ lệ riêng — xem PlantingInstructionItem.
-  inputMotherQuantity     Int
-  expectedMotherOutput    Int?
-  expectedFinishedOutput  Int?
+  inputMotherQuantity    Int
+  expectedMotherOutput   Int?
+  expectedFinishedOutput Int?
 
   // Kế hoạch phân bổ thành phẩm dự kiến theo quy cách đóng gói — KY_THUAT nhập lúc tạo chỉ định,
   // tổng nên khớp expectedFinishedOutput. Lô thành phẩm thật sự tạo ra khi NV cấy nhập nhật ký hàng ngày
   // có thể mang quy cách T01 hoặc T05 tùy NV chọn — 2 số này chỉ là kế hoạch để đối chiếu.
-  plannedT01Quantity      Int?
-  plannedT05Quantity      Int?
+  plannedT01Quantity Int?
+  plannedT05Quantity Int?
 
-  status      InstructionStatus @default(DRAFT)
-  weekStart   DateTime?
-  notes       String?
+  status    InstructionStatus @default(DRAFT)
+  weekStart DateTime?
+  notes     String?
 
   // Kho mô bấm nút "Bàn giao" thì mới coi là ĐÃ bàn giao — khác với việc assignedToId đã có giá trị
   // (kệ "đã chia" tự động điền sẵn NV mặc định lúc tạo chỉ định, nhưng CHƯA phải đã bàn giao thật).
   // null = "Chưa bàn giao" dù assignedToId có thể đã có sẵn.
-  handedOverAt DateTime?
+  handedOverAt   DateTime?
   // NV kho mô đã thực hiện bàn giao — dùng để in đúng tên/vị trí "Bên giao" trên Phiếu chỉ định sản
   // xuất (khác với người đang xem trang, có thể là KY_THUAT hoặc Admin).
   handedOverById String?
@@ -1228,7 +1231,7 @@ model PlantingInstruction {
   // Lý do chuyển ENDED — chỉ có giá trị khi status = ENDED. TIME_UP: hết ngày Chủ nhật của tuần chỉ
   // định (kiểm tra ngay khi NV cấy mô bấm "Lưu dữ liệu hôm nay"). MOTHER_USED_UP: tổng "MM sử dụng"
   // đã đạt/vượt inputMotherQuantity. EARLY_END_BY_STAFF: NV cấy mô tự bấm kết thúc sớm.
-  endReason        InstructionEndReason?
+  endReason           InstructionEndReason?
   // NV cấy mô bấm "Bàn giao MM dư" (áp dụng khi endReason = TIME_UP hoặc EARLY_END_BY_STAFF và còn dư
   // — 2 lý do duy nhất có thể còn MM chưa dùng hết) — set khi đã tạo Transfer bàn giao phần mẫu mẹ dư
   // cho Kho mô, tránh bàn giao lặp lại.
@@ -1244,18 +1247,18 @@ model PlantingInstruction {
   returnedById String?
   returnedBy   User?     @relation("ReturnedBy", fields: [returnedById], references: [id])
 
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Chỉ định cấy dự phòng — nhiệm vụ tuần của KY_THUAT: tạo tối thiểu 5 chỉ định dự phòng cho tuần sau
   // trước Thứ 5 tuần này, nguồn LUÔN lấy từ kệ mẫu mẹ "chung" chưa chia (Shelf.assignedStaffId = null),
   // chưa gắn NV cụ thể lúc tạo — dùng khi NV cấy mô đăng ký làm thêm/hoàn thành sớm (xem
   // ExtraWorkRequest.fulfilledInstructionId). Xem POST /api/instructions, getKyThuatStats.
-  isBackup    Boolean           @default(false)
+  isBackup Boolean @default(false)
 
-  items               PlantingInstructionItem[]
-  lots                Lot[]
-  dailyRecords        DailyRecord[]
+  items        PlantingInstructionItem[]
+  lots         Lot[]
+  dailyRecords DailyRecord[]
 
   // Nhiều chỉ định cùng tuần thực hiện (weekStart) gộp chung vào 1 đơn đặt hàng môi trường — xem
   // MediumOrder. null nếu chỉ định không cần môi trường nào (hiếm).
@@ -1296,10 +1299,10 @@ model PlantingInstructionItem {
   preRootingMotherMedium         MediumType? @relation("ItemPreRootingMotherMedium", fields: [preRootingMotherMediumTypeId], references: [id])
 
   // Môi trường riêng cho dòng quy cách này: 1 để nhân thêm mẫu mẹ, 1 để ra rễ thành cây thành phẩm.
-  motherMediumTypeId     String?
-  motherMedium           MediumType? @relation("ItemMotherMedium", fields: [motherMediumTypeId], references: [id])
-  finishedMediumTypeId   String?
-  finishedMedium         MediumType? @relation("ItemFinishedMedium", fields: [finishedMediumTypeId], references: [id])
+  motherMediumTypeId   String?
+  motherMedium         MediumType? @relation("ItemMotherMedium", fields: [motherMediumTypeId], references: [id])
+  finishedMediumTypeId String?
+  finishedMedium       MediumType? @relation("ItemFinishedMedium", fields: [finishedMediumTypeId], references: [id])
 
   @@map("planting_instruction_items")
 }
@@ -1316,12 +1319,12 @@ model PlantingInstructionItem {
 // Trạng thái vòng đời — luồng tuyến tính, KHÔNG có khái niệm tuần/auto-end như PlantingInstruction (thời
 // lượng ngắn 1-2 ngày, không cần sweep tự động — xem RepackInstruction.staffConfirmedAt).
 enum RepackInstructionStatus {
-  CREATED           // KY_THUAT vừa tạo, chưa gán NV cấy mô
-  ASSIGNED          // Kho mô đã chọn NV cấy mô, chờ NV xác nhận "Nhận bàn giao"
-  IN_PROGRESS       // NV đã xác nhận nhận — ĐÃ trừ inputQuantity khỏi lô nguồn, đang xử lý
+  CREATED // KY_THUAT vừa tạo, chưa gán NV cấy mô
+  ASSIGNED // Kho mô đã chọn NV cấy mô, chờ NV xác nhận "Nhận bàn giao"
+  IN_PROGRESS // NV đã xác nhận nhận — ĐÃ trừ inputQuantity khỏi lô nguồn, đang xử lý
   PENDING_PLACEMENT // NV đã bàn giao kết quả (đạt/không đạt tự khai) — chờ Kho mô kiểm tra + sắp xếp
-  COMPLETED         // Kho mô đã sắp xếp xong lên kệ — kết thúc vòng đời
-  CANCELLED         // Hủy trước khi NV xác nhận nhận (không cần hoàn tồn kho)
+  COMPLETED // Kho mô đã sắp xếp xong lên kệ — kết thúc vòng đời
+  CANCELLED // Hủy trước khi NV xác nhận nhận (không cần hoàn tồn kho)
 }
 
 model RepackInstruction {
@@ -1337,14 +1340,14 @@ model RepackInstruction {
   sourceLotId   String
   sourceLot     Lot    @relation("RepackSourceLot", fields: [sourceLotId], references: [id])
 
-  inputStageCode String // VD "T05" — quy cách của sourceLot lúc tạo, lấy từ sourceLot (không tin client)
+  inputStageCode         String // VD "T05" — quy cách của sourceLot lúc tạo, lấy từ sourceLot (không tin client)
   // Số CÂY (không phải số túi — Lot.quantity của thành phẩm luôn tính theo cây trong toàn hệ thống, xem
   // FINISHED_SPEC_BAG_SIZE ở src/types/index.ts) — sẽ bị trừ khỏi sourceLot NGAY LÚC NV cấy mô xác nhận
   // "Nhận bàn giao" (staffConfirmedAt), KHÁC thời điểm trừ của PlantingInstruction (trừ lúc Kho mô bàn
   // giao, không phải lúc NV tự xác nhận nhận).
-  inputQuantity Int
+  inputQuantity          Int
   // VD "T01" — quy cách đích, luôn khác inputStageCode (validate ở POST /api/repack-instructions).
-  outputStageCode String
+  outputStageCode        String
   // = inputQuantity — đóng gói lại KHÔNG sinh thêm cây, lưu tường minh để đối chiếu đạt/không đạt.
   expectedOutputQuantity Int
 
@@ -1389,17 +1392,17 @@ model RepackInstruction {
   confirmedFailedQuantity Int?
   // = confirmedPassedQuantity — chỉ số "đạt" DUY NHẤT tính lương/năng suất (không đạt vẫn được xếp kho
   // thật ở bước Sắp xếp, chỉ không tính công — cùng nguyên tắc TransferItem.unqualifiedQuantity).
-  creditedQuantity Int?
+  creditedQuantity        Int?
 
   // Kho mô "Sắp xếp" — LUÔN gợi ý mặc định đúng sourceShelfId trước, chỉ đổi sang kệ khác nếu kệ gốc hết
   // chỗ (Kho mô tự nhập mã kệ khác — xem src/lib/repack-placement.ts).
   placedAt            DateTime?
   placedById          String?
-  placedBy            User?   @relation("RepackPlacedBy", fields: [placedById], references: [id])
+  placedBy            User?     @relation("RepackPlacedBy", fields: [placedById], references: [id])
   actualOutputShelfId String?
-  actualOutputShelf   Shelf?  @relation("RepackActualOutputShelf", fields: [actualOutputShelfId], references: [id])
+  actualOutputShelf   Shelf?    @relation("RepackActualOutputShelf", fields: [actualOutputShelfId], references: [id])
   outputLotId         String?
-  outputLot           Lot?    @relation("RepackOutputLot", fields: [outputLotId], references: [id])
+  outputLot           Lot?      @relation("RepackOutputLot", fields: [outputLotId], references: [id])
 
   // Đăng ký hoàn thành sớm/làm thêm (ExtraWorkRequest) đã được Kho mô "dùng" để gán NV cho ĐÚNG chỉ định
   // này — xem ExtraWorkRequest.fulfilledRepackInstructionId, PATCH nhánh assignExtraWorkRequestId.
@@ -1419,7 +1422,7 @@ model RepackInstruction {
 // ============================================================
 
 model MediumOrder {
-  id String @id @default(cuid())
+  id   String @id @default(cuid())
   code String @unique
 
   // Nhiều chỉ định cùng tuần thực hiện (PlantingInstruction.weekStart) được gộp vào 1 đơn — KY_THUAT
@@ -1538,21 +1541,21 @@ model MediumOrderDayItem {
 // ============================================================
 
 model DailyRecord {
-  id            String              @id @default(cuid())
-  instructionId String
-  instruction   PlantingInstruction @relation(fields: [instructionId], references: [id])
-  staffId       String
-  staff         User                @relation(fields: [staffId], references: [id])
-  recordDate    DateTime            @default(now())
-  motherUsed    Int
+  id                    String              @id @default(cuid())
+  instructionId         String
+  instruction           PlantingInstruction @relation(fields: [instructionId], references: [id])
+  staffId               String
+  staff                 User                @relation(fields: [staffId], references: [id])
+  recordDate            DateTime            @default(now())
+  motherUsed            Int
   // "MM đã kiểm tra" / "MM mẹ nhiễm" trên bảng nhập liệu tuần của NV cấy mô — nhập tay mỗi ngày,
   // không suy ra được từ ContaminationRecord (model đó theo dõi nhiễm ở cấp Lot, khác cấp/khác lúc).
   // Chỉ còn 1 quy cách mẫu mẹ (M05) — đã bỏ field motherContaminatedM03 (gộp vào field này khi migrate,
   // xem prisma/migrate-m03-to-m05.ts), tên field giữ nguyên "M05" để không phải đổi khắp codebase.
-  motherChecked         Int         @default(0)
-  motherContaminatedM05 Int         @default(0)
-  notes         String?
-  createdAt     DateTime            @default(now())
+  motherChecked         Int                 @default(0)
+  motherContaminatedM05 Int                 @default(0)
+  notes                 String?
+  createdAt             DateTime            @default(now())
 
   items DailyRecordItem[]
   edits DailyRecordEdit[]
@@ -1613,56 +1616,56 @@ model ContaminationRecord {
 // của kho sản xuất mình đang làm việc — gửi Admin cấp cao/Admin duyệt. Số lượng bị trừ ngay khỏi Phòng
 // nhiễm lúc gửi đề xuất (xem POST /api/contamination-proposals); nếu bị từ chối sẽ hoàn lại.
 model ContaminationProposal {
-  id            String                       @id @default(cuid())
-  code          String                       @unique
+  id                 String                      @id @default(cuid())
+  code               String                      @unique
   // Mã của đề xuất gộp (nhiều dòng cây gửi cùng 1 lần bấm "Gửi đề xuất") — mặc định = code của dòng đầu
   // tiên trong lần gửi đó (xem POST /api/contamination-proposals). NULL với các dòng tạo trước khi có
   // tính năng gộp — khi hiển thị coi như 1 batch riêng lẻ (dùng chính code của nó).
-  batchCode     String?
-  type          ContaminationProposalType
-  warehouseId   String
-  warehouse     Warehouse                    @relation(fields: [warehouseId], references: [id])
-  plantTypeId   String
-  plantType     PlantType                    @relation(fields: [plantTypeId], references: [id])
-  stageCode     String
-  quantity      Int
-  status        ContaminationProposalStatus  @default(PENDING)
+  batchCode          String?
+  type               ContaminationProposalType
+  warehouseId        String
+  warehouse          Warehouse                   @relation(fields: [warehouseId], references: [id])
+  plantTypeId        String
+  plantType          PlantType                   @relation(fields: [plantTypeId], references: [id])
+  stageCode          String
+  quantity           Int
+  status             ContaminationProposalStatus @default(PENDING)
   // Chỉ có giá trị với đề xuất do Kho thành phẩm gửi (xem isKhoThanhPhamRole) — đúng phòng (Đạt tiêu
   // chuẩn/Theo dõi/Hàn túi/Thị trường) đã trừ lô lúc gửi, cần nhớ lại để hoàn đúng chỗ khi Admin từ
   // chối (khác Phòng nhiễm của Kho mô — chỉ 1 phòng/kho nên dò thẳng theo warehouseId được — 1 kho
   // thành phẩm có tới 4 loại phòng nên không dò ngược được nếu không lưu). NULL = luồng cũ Kho mô.
-  roomId        String?
-  room          Room?                        @relation(fields: [roomId], references: [id])
+  roomId             String?
+  room               Room?                       @relation(fields: [roomId], references: [id])
   // Chỉ có giá trị khi status = DRAFT — NV cấy mô nguồn của dòng nháp này (xem ContaminationStaffBalance),
   // "" = tồn cũ/không rõ NV. Sau khi gộp thành đề xuất PENDING thật (nhiều dòng DRAFT khác NV có thể gộp
   // chung 1 dòng PENDING) thì để "" vì không còn đại diện cho 1 NV cụ thể nữa.
-  staffId       String                       @default("")
-  notes         String?
-  requestedById String
-  requestedBy   User                         @relation("ContaminationProposalRequestedBy", fields: [requestedById], references: [id])
-  approvedById  String?
-  approvedBy    User?                        @relation("ContaminationProposalApprovedBy", fields: [approvedById], references: [id])
-  approvedAt    DateTime?
+  staffId            String                      @default("")
+  notes              String?
+  requestedById      String
+  requestedBy        User                        @relation("ContaminationProposalRequestedBy", fields: [requestedById], references: [id])
+  approvedById       String?
+  approvedBy         User?                       @relation("ContaminationProposalApprovedBy", fields: [approvedById], references: [id])
+  approvedAt         DateTime?
   // Lý do Admin từ chối (tuỳ chọn, Admin có thể để trống) — hiện trong thông báo gửi NV + trên phiếu để
   // NV biết cần sửa gì trước khi "Sửa & gửi lại" (xem PATCH nhánh reject/resubmit). Tự xoá (null) khi
   // "Sửa & gửi lại" thành công, không giữ lý do cũ cho lần gửi mới.
-  rejectionReason String?
+  rejectionReason    String?
   // Chỉ có giá trị với dòng type=TRONG đã APPROVED — đã được gộp vào 1 phiếu "Bàn giao cây trồng" gửi
   // Nhân viên sản xuất chưa (xem ReplantHandover). NULL = chưa gộp, còn chờ Kho mô bấm "Bàn giao".
-  replantHandoverId String?
-  replantHandover   ReplantHandover?          @relation(fields: [replantHandoverId], references: [id])
+  replantHandoverId  String?
+  replantHandover    ReplantHandover?            @relation(fields: [replantHandoverId], references: [id])
   // Chỉ có giá trị/bắt buộc với dòng type=TRONG do Kho thành phẩm gửi (roomId khác null) — Vườn sản xuất
   // sẽ nhận cây trồng lại. Kho mô không dùng field này (Trồng lại của Kho mô đi qua ReplantHandover →
   // NHAN_VIEN_SAN_XUAT như cũ, không có khái niệm Vườn).
   productionGardenId String?
-  productionGarden   ProductionGarden?         @relation(fields: [productionGardenId], references: [id])
+  productionGarden   ProductionGarden?           @relation(fields: [productionGardenId], references: [id])
   // Đề xuất này được tạo từ "Thực hiện" 1 DailyTask (type=DE_XUAT_TRONG_HUY) — dùng để tính nhiệm vụ đó
   // đã hoàn thành hay chưa (xem ensureDeXuatTaskCompletion, src/lib/daily-task-weekly.ts). NULL = tạo từ
   // form tự do (FinishedGoodsProposalSubmit) hoặc luồng Kho mô, không gắn với nhiệm vụ ngày nào.
-  dailyTaskId   String?
-  dailyTask     DailyTask?                   @relation(fields: [dailyTaskId], references: [id])
-  createdAt     DateTime                     @default(now())
-  updatedAt     DateTime                     @updatedAt
+  dailyTaskId        String?
+  dailyTask          DailyTask?                  @relation(fields: [dailyTaskId], references: [id])
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 
   @@map("contamination_proposals")
 }
@@ -1697,16 +1700,16 @@ enum ReplantHandoverStatus {
 // (Kho mô bấm bàn giao TẠO phiếu này, Nhân viên sản xuất XÁC NHẬN status CONFIRMED), xem
 // dashboard/page.tsx + lib/task-completion-report.ts.
 model ReplantHandover {
-  id            String                 @id @default(cuid())
-  code          String                 @unique
+  id            String                  @id @default(cuid())
+  code          String                  @unique
   warehouseId   String
-  warehouse     Warehouse              @relation(fields: [warehouseId], references: [id])
-  status        ReplantHandoverStatus  @default(PENDING)
+  warehouse     Warehouse               @relation(fields: [warehouseId], references: [id])
+  status        ReplantHandoverStatus   @default(PENDING)
   createdById   String
-  createdBy     User                   @relation("ReplantHandoverCreatedBy", fields: [createdById], references: [id])
-  createdAt     DateTime               @default(now())
+  createdBy     User                    @relation("ReplantHandoverCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime                @default(now())
   confirmedById String?
-  confirmedBy   User?                  @relation("ReplantHandoverConfirmedBy", fields: [confirmedById], references: [id])
+  confirmedBy   User?                   @relation("ReplantHandoverConfirmedBy", fields: [confirmedById], references: [id])
   confirmedAt   DateTime?
   proposals     ContaminationProposal[]
 
@@ -1734,16 +1737,16 @@ enum ContaminationBalanceCategory {
 // POST /api/contamination-proposal-drafts) — tổng theo (warehouseId, plantTypeId, stageCode) của bảng
 // này (cộng cả 2 category) luôn khớp đúng Lot.quantity của Phòng nhiễm tương ứng.
 model ContaminationStaffBalance {
-  id          String    @id @default(cuid())
+  id          String                       @id @default(cuid())
   warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  staffId     String    @default("")
+  warehouse   Warehouse                    @relation(fields: [warehouseId], references: [id])
+  staffId     String                       @default("")
   plantTypeId String
-  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  plantType   PlantType                    @relation(fields: [plantTypeId], references: [id])
   stageCode   String
   category    ContaminationBalanceCategory @default(LO_BAN_GIAO)
-  quantity    Int       @default(0)
-  updatedAt   DateTime  @updatedAt
+  quantity    Int                          @default(0)
+  updatedAt   DateTime                     @updatedAt
 
   @@unique([warehouseId, staffId, plantTypeId, stageCode, category])
   @@map("contamination_staff_balances")
@@ -1754,15 +1757,15 @@ model ContaminationStaffBalance {
 // nút "Kiểm tra xong"). Nhiệm vụ nhỏ này tự động hoàn thành (ChecklistItem.subTask2Done, xem
 // lib/checklist.ts) khi ĐỦ tất cả NV cấy mô đang làm việc tại kho đó có 1 dòng ở đây cho hôm nay.
 model PersonalContaminationCheck {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   staffId     String
-  staff       User     @relation("PersonalContaminationCheckStaff", fields: [staffId], references: [id])
+  staff       User      @relation("PersonalContaminationCheckStaff", fields: [staffId], references: [id])
   warehouseId String
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
   checkedDate DateTime
   checkedById String
-  checkedBy   User     @relation("PersonalContaminationCheckedBy", fields: [checkedById], references: [id])
-  createdAt   DateTime @default(now())
+  checkedBy   User      @relation("PersonalContaminationCheckedBy", fields: [checkedById], references: [id])
+  createdAt   DateTime  @default(now())
 
   @@unique([staffId, checkedDate])
   @@map("personal_contamination_checks")
@@ -1834,10 +1837,10 @@ enum ExtraWorkRequestStatus {
 }
 
 model ExtraWorkRequest {
-  id     String               @id @default(cuid())
-  type   ExtraWorkRequestType
+  id      String               @id @default(cuid())
+  type    ExtraWorkRequestType
   staffId String
-  staff   User                @relation("ExtraWorkRequestStaff", fields: [staffId], references: [id])
+  staff   User                 @relation("ExtraWorkRequestStaff", fields: [staffId], references: [id])
 
   // Chỉ dùng cho EARLY_COMPLETION — chỉ định đang thực hiện của NV tại lúc gửi đăng ký (server tự suy ra,
   // không cho client chọn tay để tránh chọn nhầm chỉ định của NV khác).
@@ -1847,7 +1850,7 @@ model ExtraWorkRequest {
   expectedEndSession WorkSession?
 
   // Chỉ dùng cho OVERTIME — nhiều dòng ngày/giờ trong 1 lần đăng ký, xem ExtraWorkSlot.
-  slots ExtraWorkSlot[]
+  slots   ExtraWorkSlot[]
   // Chỉ dùng cho OVERTIME — bắt buộc chọn lúc gửi đăng ký (xem ExtraWorkPurpose).
   purpose ExtraWorkPurpose?
 
@@ -1869,8 +1872,8 @@ model ExtraWorkRequest {
   fulfilledRepackInstructionId String?
   fulfilledRepackInstruction   RepackInstruction?   @relation("ExtraWorkRequestFulfilledRepackInstruction", fields: [fulfilledRepackInstructionId], references: [id])
 
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("extra_work_requests")
 }
@@ -1905,7 +1908,7 @@ model LotInspection {
   passedQuantity       Int
   createdAt            DateTime @default(now())
 
-  items                LotInspectionItem[]
+  items LotInspectionItem[]
 
   @@map("lot_inspections")
 }
@@ -1954,10 +1957,13 @@ model Transfer {
   // phiếu "Nhận bàn giao thành phẩm" — Phòng ra rễ → Kho thành phẩm) — không giới hạn ai được XEM/xác
   // nhận phiếu (NV kho thành phẩm khác vẫn thấy và xác nhận được như cũ), chỉ mang tính phân công/theo
   // dõi + báo cho đúng người đã gán khi NV được gán bấm xác nhận xong (xem PATCH /api/transfers/[id]).
-  assignedToId String?
-  assignedTo   User?   @relation("TransferAssignedTo", fields: [assignedToId], references: [id])
-  assignedById String?
-  assignedBy   User?   @relation("TransferAssignedBy", fields: [assignedById], references: [id])
+  assignedToId          String?
+  assignedTo            User?     @relation("TransferAssignedTo", fields: [assignedToId], references: [id])
+  assignedById          String?
+  assignedBy            User?     @relation("TransferAssignedBy", fields: [assignedById], references: [id])
+  // NV được gán bấm "Xác nhận" đã nhận việc — khoá không cho Quản lý đổi assignedToId nữa (xem PATCH
+  // action=assign/ack).
+  assignmentConfirmedAt DateTime?
 
   items      TransferItem[]
   inspection TransferInspection?
@@ -2010,23 +2016,23 @@ model TransferInspectionItem {
 }
 
 model TransferItem {
-  id          String    @id @default(cuid())
-  transferId  String
-  transfer    Transfer  @relation(fields: [transferId], references: [id])
-  lotId       String
-  lot         Lot       @relation(fields: [lotId], references: [id])
-  quantity    Int
-  notes       String?
+  id                  String    @id @default(cuid())
+  transferId          String
+  transfer            Transfer  @relation(fields: [transferId], references: [id])
+  lotId               String
+  lot                 Lot       @relation(fields: [lotId], references: [id])
+  quantity            Int
+  notes               String?
   // NV cấy mô tự khai "không đạt" trong số `quantity` đang bàn giao (VD cây thành phẩm quá nhỏ) — CHỈ áp
   // dụng cho lô thành phẩm (T01/T05), luôn 0 với lô mẫu mẹ (M05, coi như đạt hết). KHÔNG ảnh hưởng tới
   // số lượng thực tế đem xếp kệ (`quantity` giữ nguyên, không tách vật lý) — chỉ dùng để tính "số lượng
   // ghi nhận" cho lương: luồng Xanh dùng thẳng số này, luồng Đỏ cho Kho mô xác nhận/sửa lại lúc kiểm tra
   // (xem TransferInspectionItem.unqualifiedQuantity).
-  unqualifiedQuantity Int @default(0)
+  unqualifiedQuantity Int       @default(0)
   // Đã được xếp kệ (mẫu mẹ hoặc ra rễ) — dùng cho luồng bàn giao Phòng tối Xanh (xem
   // /transfers/receive-phong-toi), cho phép xác nhận ĐỘC LẬP từng nhóm (mẫu mẹ / ra rễ) trong cùng 1
   // phiếu thay vì phải xong cả phiếu mới CONFIRMED. null = chưa xếp.
-  confirmedAt DateTime?
+  confirmedAt         DateTime?
 
   @@map("transfer_items")
 }
@@ -2036,42 +2042,45 @@ model TransferItem {
 // ============================================================
 
 model Order {
-  id              String      @id @default(cuid())
-  code            String      @unique
+  id             String      @id @default(cuid())
+  code           String      @unique
   // "Mã đơn xuất khẩu" — mã riêng NV bán hàng tự nhập (VD mã tờ khai hải quan), KHÁC hoàn toàn `code`
   // nội bộ hệ thống (DHKT-...) ở trên. Không unique — có thể để trống hoặc trùng giữa nhiều đơn.
-  exportCode      String?
-  saleId          String
-  sale            User        @relation(fields: [saleId], references: [id])
+  exportCode     String?
+  saleId         String
+  sale           User        @relation(fields: [saleId], references: [id])
   // Snapshot Customer.code lúc Tạm giữ (giữ nguyên tên field/kiểu dữ liệu cho mọi nơi hiển thị hiện có) —
   // customerId bên dưới mới là liên kết THẬT tới danh sách Khách hàng, dùng để đọc CustomerGroup quyết
   // định hạn giữ đơn (xem POST /api/orders). Nullable — đơn tạo TRƯỚC khi có tính năng này không có.
-  customerCode    String
-  customerId      String?
-  customer        Customer?   @relation(fields: [customerId], references: [id])
-  market          OrderMarket
-  status          OrderStatus @default(DRAFT)
-  holdUntil       DateTime?
+  customerCode   String
+  customerId     String?
+  customer       Customer?   @relation(fields: [customerId], references: [id])
+  market         OrderMarket
+  status         OrderStatus @default(DRAFT)
+  holdUntil      DateTime?
   // Sale tự ước lượng lúc tạm giữ đơn — chỉ để tham khảo lên kế hoạch, không ràng buộc nghiệp vụ (khác
   // holdUntil, vốn quyết định lúc nào đơn tự hủy).
-  expectedShipAt  DateTime?
-  confirmedAt     DateTime?
-  shippedAt       DateTime?
-  cancelledAt     DateTime?
-  notes           String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  expectedShipAt DateTime?
+  confirmedAt    DateTime?
+  shippedAt      DateTime?
+  cancelledAt    DateTime?
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất đơn này (chỉ có ý
   // nghĩa với đơn đã CONFIRMED, chờ xuất — xem trang "Sắp xếp đơn hàng") — không giới hạn ai được XEM/xuất
   // đơn, chỉ mang tính phân công/theo dõi + báo cho đúng người đã gán khi NV được gán bấm xuất kho xong
   // (xem PATCH /api/orders/[id] action=ship).
-  assignedToId String?
-  assignedTo   User?   @relation("OrderAssignedTo", fields: [assignedToId], references: [id])
-  assignedById String?
-  assignedBy   User?   @relation("OrderAssignedBy", fields: [assignedById], references: [id])
+  assignedToId          String?
+  assignedTo            User?     @relation("OrderAssignedTo", fields: [assignedToId], references: [id])
+  assignedById          String?
+  assignedBy            User?     @relation("OrderAssignedBy", fields: [assignedById], references: [id])
+  // NV được gán bấm "Xác nhận" đã nhận việc — khoá không cho Quản lý đổi assignedToId nữa (xem PATCH
+  // action=assign/ack).
+  assignmentConfirmedAt DateTime?
 
-  items OrderItem[]
+  items              OrderItem[]
   processingRequests OrderProcessingRequest[]
 
   @@index([customerId])
@@ -2079,20 +2088,20 @@ model Order {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id])
-  lotId     String
-  lot       Lot     @relation(fields: [lotId], references: [id])
+  id             String  @id @default(cuid())
+  orderId        String
+  order          Order   @relation(fields: [orderId], references: [id])
+  lotId          String
+  lot            Lot     @relation(fields: [lotId], references: [id])
   // Số thực sự cần cho đơn — bằng `quantity` ở dòng bình thường (null). Khác null khi dòng này là bù
   // túi từ 1 quy cách khác (VD thiếu 21 cây T01, bù từ 1 lô T05 phải mở nguyên túi 25 cây): `quantity`
   // giữ NGUYÊN CẢ TÚI (25, đã trừ khỏi tồn đạt tiêu chuẩn ngay lúc Tạm giữ — xem POST /api/orders), còn
   // `neededQuantity` (21) là phần thật sự dùng cho đơn; `quantity - neededQuantity` là phần dư, chỉ quy
   // đổi sang T01 lúc Xác nhận đơn (xem PATCH /api/orders/[id] action=confirm).
   neededQuantity Int?
-  quantity  Int
-  unitPrice Float?
-  notes     String?
+  quantity       Int
+  unitPrice      Float?
+  notes          String?
 
   // Trang "Sắp xếp đơn hàng" (/orders/pack) — NV/QL kho thành phẩm tự ghi số lượng thực tế đã nhặt được
   // cho dòng này qua từng lần đi lấy hàng (có thể rải nhiều vị trí/thời điểm nên tách 3 lần, không cộng
@@ -2124,46 +2133,46 @@ enum OrderProcessingRequestStatus {
 // thường; một khi COMPLETED, dòng này bị loại khỏi HELD-netting (xem getQualifiedLots) vì tồn thực đã
 // giảm thật, tránh trừ đôi. CANCELLED khi đơn hết hạn/hủy trong lúc còn PENDING.
 model OrderProcessingRequest {
-  id              String    @id @default(cuid())
-  code            String    @unique
-  orderId         String
-  order           Order     @relation(fields: [orderId], references: [id])
-  orderItemId     String    @unique
-  orderItem       OrderItem @relation(fields: [orderItemId], references: [id])
-  roomId          String
-  room            Room      @relation(fields: [roomId], references: [id])
+  id                    String                       @id @default(cuid())
+  code                  String                       @unique
+  orderId               String
+  order                 Order                        @relation(fields: [orderId], references: [id])
+  orderItemId           String                       @unique
+  orderItem             OrderItem                    @relation(fields: [orderItemId], references: [id])
+  roomId                String
+  room                  Room                         @relation(fields: [roomId], references: [id])
   // Chỉ có giá trị khi sourceLot đang ở Kho hàn túi/Theo dõi (không phải Phòng đạt tiêu chuẩn) — Phòng
   // đạt tiêu chuẩn ĐÍCH mà số lượng dư (nếu có) sẽ được cộng vào lúc hoàn thành, vì phòng nguồn
   // (roomId ở trên) không phải phòng bán được nên không thể cộng dư ngược lại đó như tier "mở túi"
   // thường (xem PATCH /api/order-processing-requests/[id]). null = dùng luôn sourceLot.roomId như cũ
   // (tier mở túi trong Phòng đạt tiêu chuẩn, không đổi phòng).
-  targetRoomId    String?
-  targetRoom      Room?     @relation("OrderProcessingRequestTarget", fields: [targetRoomId], references: [id])
-  plantTypeId     String
-  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
-  sourceLotId     String
-  sourceLot       Lot       @relation(fields: [sourceLotId], references: [id])
-  sourceStageCode String
-  neededQuantity  Int
-  bagSize         Int
+  targetRoomId          String?
+  targetRoom            Room?                        @relation("OrderProcessingRequestTarget", fields: [targetRoomId], references: [id])
+  plantTypeId           String
+  plantType             PlantType                    @relation(fields: [plantTypeId], references: [id])
+  sourceLotId           String
+  sourceLot             Lot                          @relation(fields: [sourceLotId], references: [id])
+  sourceStageCode       String
+  neededQuantity        Int
+  bagSize               Int
   // Kế hoạch lúc giữ đơn — deductQuantity đã bao gồm cả phần bù tròn túi lẫn dự phòng hao hụt 5% (nếu
   // có, chỉ áp dụng cho tier quy đổi quy cách trong Phòng đạt tiêu chuẩn — xem orders/check/route.ts),
   // surplusQuantity = deductQuantity - neededQuantity (không tách riêng field dự phòng).
-  deductQuantity  Int
-  surplusQuantity Int
+  deductQuantity        Int
+  surplusQuantity       Int
   // Số liệu THẬT thủ kho nhập lúc "Hoàn thành" — có thể khác kế hoạch. actualSurplusQuantity trả về
   // ĐÚNG quy cách nguồn (sourceStageCode), khác surplusQuantity kế hoạch (quy về T01) — xem PATCH
   // /api/order-processing-requests/[id]. null = chưa hoàn thành.
   actualDeductQuantity  Int?
   actualOutputQuantity  Int?
   actualSurplusQuantity Int?
-  status          OrderProcessingRequestStatus @default(PENDING)
-  createdAt       DateTime  @default(now())
-  completedAt     DateTime?
-  completedById   String?
-  completedBy     User?     @relation(fields: [completedById], references: [id])
+  status                OrderProcessingRequestStatus @default(PENDING)
+  createdAt             DateTime                     @default(now())
+  completedAt           DateTime?
+  completedById         String?
+  completedBy           User?                        @relation(fields: [completedById], references: [id])
 
-  mediumOrder     ProcessingMediumOrder?
+  mediumOrder ProcessingMediumOrder?
 
   @@map("order_processing_requests")
 }
@@ -2180,21 +2189,21 @@ enum ProcessingMediumOrderStatus {
 // này), luôn dùng môi trường mã "10" (MT CTP Cơ bản). NV môi trường (MOI_TRUONG) pha xong bấm "Hoàn
 // thành" trực tiếp — không có bước xác nhận/bàn giao từng ngày riêng như MediumOrder.
 model ProcessingMediumOrder {
-  id                  String                       @id @default(cuid())
-  code                String                       @unique
-  processingRequestId String                       @unique
-  processingRequest   OrderProcessingRequest        @relation(fields: [processingRequestId], references: [id])
+  id                  String                      @id @default(cuid())
+  code                String                      @unique
+  processingRequestId String                      @unique
+  processingRequest   OrderProcessingRequest      @relation(fields: [processingRequestId], references: [id])
   mediumTypeId        String
-  mediumType          MediumType                   @relation(fields: [mediumTypeId], references: [id])
+  mediumType          MediumType                  @relation(fields: [mediumTypeId], references: [id])
   quantity            Int
   // Ghi rõ đây là đơn môi trường phát sinh cho đơn xử lý nào — hiển thị thẳng cho NV môi trường, không
   // để họ nhầm với môi trường pha cho chỉ định cấy bình thường.
   notes               String
-  status              ProcessingMediumOrderStatus  @default(PENDING)
+  status              ProcessingMediumOrderStatus @default(PENDING)
   completedAt         DateTime?
   completedById       String?
-  completedBy         User?                        @relation(fields: [completedById], references: [id])
-  createdAt           DateTime                     @default(now())
+  completedBy         User?                       @relation(fields: [completedById], references: [id])
+  createdAt           DateTime                    @default(now())
 
   @@map("processing_medium_orders")
 }
@@ -2250,18 +2259,18 @@ model ProcessingTicketInputLot {
 // ============================================================
 
 model Alert {
-  id          String      @id @default(cuid())
+  id          String          @id @default(cuid())
   type        AlertType
-  status      AlertStatus @default(UNREAD)
+  status      AlertStatus     @default(UNREAD)
   title       String
   message     String
   userId      String?
   targetRole  UserRole?
-  user        User?       @relation(fields: [userId], references: [id])
+  user        User?           @relation(fields: [userId], references: [id])
   relatedId   String?
   relatedType String?
   cause       DeviationCause?
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime        @default(now())
   readAt      DateTime?
 
   @@map("alerts")
@@ -2293,41 +2302,44 @@ enum DailyTaskStatus {
 // liệu cũ tạo trước khi gộp vào luồng trên) nhưng không còn tạo mới được nữa — xem DailyTaskCompleteDialog
 // (chỉ dùng cho các dòng KIEM_TRA_CAY còn PENDING từ trước).
 model DailyTask {
-  id             String                     @id @default(cuid())
-  code           String                     @unique
-  type           DailyTaskType
-  assignedDate   DateTime                   @default(now()) @db.Date
-  plantTypeId    String?
-  plantType      PlantType?                 @relation(fields: [plantTypeId], references: [id])
-  roomId         String?
-  room           Room?                      @relation(fields: [roomId], references: [id])
-  notes          String?
-  status         DailyTaskStatus            @default(PENDING)
+  id                    String                     @id @default(cuid())
+  code                  String                     @unique
+  type                  DailyTaskType
+  assignedDate          DateTime                   @default(now()) @db.Date
+  plantTypeId           String?
+  plantType             PlantType?                 @relation(fields: [plantTypeId], references: [id])
+  roomId                String?
+  room                  Room?                      @relation(fields: [roomId], references: [id])
+  notes                 String?
+  status                DailyTaskStatus            @default(PENDING)
   // NULL = việc tự sinh hàng tuần chưa được Quản lý gán cho ai (xem ensureWeeklyDeXuatTask).
-  assignedToId   String?
-  assignedTo     User?                      @relation("DailyTaskAssignedTo", fields: [assignedToId], references: [id])
-  assignedById   String?
-  assignedBy     User?                      @relation("DailyTaskAssignedBy", fields: [assignedById], references: [id])
-  proposedAction ContaminationProposalType?
-  resultNotes    String?
-  completedAt    DateTime?
-  createdAt      DateTime                   @default(now())
+  assignedToId          String?
+  assignedTo            User?                      @relation("DailyTaskAssignedTo", fields: [assignedToId], references: [id])
+  assignedById          String?
+  assignedBy            User?                      @relation("DailyTaskAssignedBy", fields: [assignedById], references: [id])
+  // NV được gán bấm "Xác nhận" đã nhận việc — khoá không cho Quản lý đổi assignedToId nữa (xem PATCH
+  // action=assign/ack).
+  assignmentConfirmedAt DateTime?
+  proposedAction        ContaminationProposalType?
+  resultNotes           String?
+  completedAt           DateTime?
+  createdAt             DateTime                   @default(now())
   // Các field dưới chỉ có giá trị với việc DE_XUAT_TRONG_HUY tự sinh hàng tuần (ensureWeeklyDeXuatTask) —
   // NULL/rỗng với mọi việc khác (không đổi hành vi cũ).
-  warehouseId    String?
-  warehouse      Warehouse?                 @relation(fields: [warehouseId], references: [id])
-  weekStart      DateTime?                  @db.Date
+  warehouseId           String?
+  warehouse             Warehouse?                 @relation(fields: [warehouseId], references: [id])
+  weekStart             DateTime?                  @db.Date
   // Định danh "vị trí" của việc trong tuần đó — "cat:MT" | "cat:OTHER" | "market:<roomId>" — dùng để
   // ensureWeeklyDeXuatTask không tạo trùng (kèm @@unique dưới), KHÔNG phải id hiển thị.
-  slotKey        String?
+  slotKey               String?
   // Tiêu đề hiển thị đã tính sẵn lúc sinh (VD "Kiểm tra kho cây MT - Monstera") — khác title suy ra từ
   // plantType/room như KIEM_TRA_CAY vì 1 việc có thể gộp NHIỀU loại cây (xem plantCategoryCodes).
-  title          String?
+  title                 String?
   // Các mã Loại cây (PlantCategory.code, VD ["MT"] hoặc ["EP","HM","MS",...]) mà việc này phụ trách —
   // rỗng = không giới hạn theo loại cây (dùng cho việc "kho thị trường", giới hạn bằng roomId thay).
   // Lọc bảng tồn kho ở /task-assignment/de-xuat/[taskId] bằng cách so plantType.code 2 ký tự đầu.
-  plantCategoryCodes String[]                @default([])
-  proposals      ContaminationProposal[]
+  plantCategoryCodes    String[]                   @default([])
+  proposals             ContaminationProposal[]
 
   @@unique([warehouseId, weekStart, slotKey])
   @@map("daily_tasks")
@@ -2509,7 +2521,7 @@ model PayrollOtherBonus {
   id          String   @id @default(cuid())
   staffId     String
   staff       User     @relation("PayrollOtherBonusStaff", fields: [staffId], references: [id])
-  periodMonth String   // "yyyy-MM"
+  periodMonth String // "yyyy-MM"
   amount      Int
   reason      String
   createdById String
@@ -2542,19 +2554,19 @@ model RecoveryBehaviorType {
 // Điểm phục hồi — HR tự nhập tay cho 1 NV cấy mô, 1 kỳ lương cụ thể, CỘNG vào điểm tuân thủ cuối kỳ
 // (100 − điểm vi phạm + điểm phục hồi, tối đa 100). Không có cơ chế tự sinh — hoàn toàn do HR quyết định.
 model ComplianceRecoveryPoint {
-  id          String   @id @default(cuid())
-  staffId     String
-  staff       User     @relation("ComplianceRecoveryPointStaff", fields: [staffId], references: [id])
-  periodMonth String   // "yyyy-MM"
-  points      Int
-  reason      String
+  id             String                @id @default(cuid())
+  staffId        String
+  staff          User                  @relation("ComplianceRecoveryPointStaff", fields: [staffId], references: [id])
+  periodMonth    String // "yyyy-MM"
+  points         Int
+  reason         String
   // Hành vi được chọn từ danh mục lúc thêm (tuỳ chọn) — chỉ để truy vết/gợi ý, KHÔNG snapshot cứng: xoá
   // hành vi khỏi danh mục sau đó không ảnh hưởng dòng điểm phục hồi đã tạo (points/reason đã lưu riêng).
   behaviorTypeId String?
-  behaviorType    RecoveryBehaviorType? @relation(fields: [behaviorTypeId], references: [id])
-  createdById String
-  createdBy   User     @relation("ComplianceRecoveryPointCreatedBy", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  behaviorType   RecoveryBehaviorType? @relation(fields: [behaviorTypeId], references: [id])
+  createdById    String
+  createdBy      User                  @relation("ComplianceRecoveryPointCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime              @default(now())
 
   @@index([staffId, periodMonth])
   @@map("compliance_recovery_points")

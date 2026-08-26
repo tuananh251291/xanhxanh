@@ -43,6 +43,7 @@ type Transfer = {
   transferredAt: string;
   items: TransferItem[];
   assignedTo: { id: string; code: string; name: string } | null;
+  assignmentConfirmedAt: string | null;
 };
 
 export default function TransferReceivePage() {
@@ -241,6 +242,7 @@ export default function TransferReceivePage() {
                               assignedTo={t.assignedTo}
                               staffOptions={staffOptions}
                               canAssign={canAssign}
+                              confirmedAt={t.assignmentConfirmedAt}
                             />
                           </td>
                           <td className="px-4 py-3 text-center">
