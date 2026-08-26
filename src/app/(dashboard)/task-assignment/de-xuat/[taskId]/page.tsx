@@ -43,6 +43,12 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
     ? `Hạn hoàn thành: ${format(getDeXuatDeadline(task.weekStart), "dd/MM/yyyy", { locale: vi })} (Thứ Sáu)`
     : null;
 
+  // Việc "Kiểm tra kho cây <Loại>" (không có roomId cụ thể — khác việc "kho thị trường", vốn đã gắn sẵn 1
+  // Phòng thị trường) mặc định kiểm tra Phòng đạt tiêu chuẩn — phòng chính chứa tồn thành phẩm theo loại
+  // cây, NV vẫn đổi được sang phòng khác trong dropdown nếu cần.
+  const standardRoom = rooms.find((r) => r.type === "PHONG_DAT_TIEU_CHUAN");
+  const defaultRoomId = task.roomId ?? standardRoom?.id ?? null;
+
   return (
     <DeXuatExecuteForm
       taskId={task.id}
@@ -51,7 +57,7 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
       deadlineLabel={deadlineLabel}
       rooms={rooms}
       gardens={gardens}
-      initialRoomId={task.roomId}
+      initialRoomId={defaultRoomId}
       plantCategoryCodes={task.plantCategoryCodes}
     />
   );
