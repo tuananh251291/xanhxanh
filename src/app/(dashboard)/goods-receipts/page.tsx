@@ -81,7 +81,7 @@ export default async function GoodsReceiptsPage({
 
       {pendingPlans.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Kế hoạch đang chờ hàng về</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Danh sách nhập hàng từ NCC</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {pendingPlans.map((plan) => {
               const overdue = plan.expectedDate ? isPast(plan.expectedDate) : false;

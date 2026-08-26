@@ -135,7 +135,7 @@ export default function GoodsReceiptForm({
           </Select>
           {mode === "PLANNED" && (
             <p className="text-xs text-text-secondary">
-              Chưa có hàng thật — chỉ ghi ước tính, chưa cộng vào tồn kho. Xác nhận số liệu thật khi hàng về ở mục &quot;Kế hoạch đang chờ hàng về&quot; bên dưới.
+              Chưa có hàng thật — chỉ ghi ước tính, chưa cộng vào tồn kho. Xác nhận số liệu thật khi hàng về ở mục &quot;Danh sách nhập hàng từ NCC&quot; bên dưới.
             </p>
           )}
         </div>
