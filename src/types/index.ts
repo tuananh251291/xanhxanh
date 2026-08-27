@@ -565,6 +565,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
+    { href: "/reports/goods-receipt-summary", label: "Báo cáo nhập hàng", icon: "BarChart3" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
