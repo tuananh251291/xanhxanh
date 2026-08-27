@@ -5,9 +5,10 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck } from "lucide-react";
+import { ClipboardList, Truck, PackageCheck, PackageOpen, AlertTriangle, RotateCcw, ClipboardCheck, Send } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
+import { getOrderPackStatus } from "@/lib/order-pack-status";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
@@ -27,7 +28,7 @@ export default async function TaskAssignmentPage() {
     pendingReceipts,
     pendingReturnInspections,
     pendingTransfers,
-    pendingOrders,
+    confirmedOrders,
     staffKhoThanhPham,
     staffAll,
     deXuatTasks,
@@ -61,6 +62,7 @@ export default async function TaskAssignmentPage() {
         id: true, code: true, customerCode: true, confirmedAt: true, assignmentConfirmedAt: true,
         sale: { select: { name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
+        items: { select: { quantity: true, pickedQuantity1: true, pickedQuantity2: true, pickedQuantity3: true } },
       },
     }),
     prisma.user.findMany({
@@ -85,6 +87,11 @@ export default async function TaskAssignmentPage() {
       },
     }),
   ]);
+
+  // Đơn CONFIRMED tách 2 nhóm theo tiến độ nhặt hàng (xem getOrderPackStatus) — "Đã sắp xếp xong" chuyển
+  // sang mục 6 (Xuất đơn hàng), còn lại vẫn ở mục 3 (Sắp xếp đơn hàng) như cũ.
+  const pendingOrders = confirmedOrders.filter((o) => getOrderPackStatus(o).variant !== "completed");
+  const readyToShipOrders = confirmedOrders.filter((o) => getOrderPackStatus(o).variant === "completed");
 
   const currentWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const thisWeekTasks = deXuatTasks.filter((d) => d.weekStart?.getTime() === currentWeekStart.getTime());
@@ -200,6 +207,28 @@ export default async function TaskAssignmentPage() {
         </CardHeader>
         <CardContent>
           <ReturnInspectionTable items={pendingReturnInspections} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Send className="w-4 h-4" /> 6. Xuất đơn hàng</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {readyToShipOrders.length === 0 ? (
+            <p className="text-sm text-text-muted py-2">Không có đơn nào đã sắp xếp xong, chờ xuất kho</p>
+          ) : (
+            readyToShipOrders.map((o) => (
+              <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-background rounded-lg border border-divider">
+                <div>
+                  <p className="text-sm font-medium text-foreground font-mono flex items-center gap-2">
+                    {o.code}
+                    <Badge variant="completed">Đã sắp xếp xong</Badge>
+                  </p>
+                  <p className="text-xs text-text-secondary">Khách {o.customerCode} · NV Sale {o.sale.name}</p>
+                </div>
+                <KhoTpAssignCell endpoint={`/api/orders/${o.id}`} assignedTo={o.assignedTo} staffOptions={staffKhoThanhPham} canAssign={canAssign} confirmedAt={o.assignmentConfirmedAt} />
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>

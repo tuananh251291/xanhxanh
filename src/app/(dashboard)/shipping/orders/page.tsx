@@ -3,25 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { PackageOpen, ListChecks, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
+import { PackageCheck } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
+import ShipOrderButton from "@/components/shared/ship-order-button";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 
-export default async function OrdersPackPage() {
+// Chỉ hiện đơn CONFIRMED đã "Đã sắp xếp xong" (nhặt đủ số lượng ở /orders/pack) — đơn chưa nhặt xong
+// KHÔNG xuất kho được ở đây nữa (tách hẳn 2 bước: Nhặt hàng ở /orders/pack, Xuất kho ở đây).
+export default async function ShippingOrdersPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/orders/pack"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/shipping/orders"))) redirect("/dashboard");
 
   const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
-  // NV kho thành phẩm thường chỉ thấy đơn ĐÃ được Quản lý kho thành phẩm phân công cho đúng mình — Quản
-  // lý/Admin vẫn thấy mọi đơn đang chờ đóng gói như cũ (họ mới là người phân công, cần thấy hết để gán).
   const onlyMyAssigned = role === "KHO_THANH_PHAM";
 
-  const [orders, staffUsers] = await Promise.all([
+  const [allOrders, staffUsers] = await Promise.all([
     prisma.order.findMany({
       where: {
         status: "CONFIRMED",
@@ -33,7 +32,7 @@ export default async function OrdersPackPage() {
         items: {
           include: {
             lot: { select: { stageCode: true } },
-            processingRequest: { select: { status: true, deductQuantity: true, surplusQuantity: true } },
+            processingRequest: { select: { status: true } },
           },
         },
         assignedTo: { select: { id: true, code: true, name: true } },
@@ -46,32 +45,28 @@ export default async function OrdersPackPage() {
     }),
   ]);
 
+  const orders = allOrders.filter((o) => getOrderPackStatus(o).variant === "completed");
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <PackageOpen className="w-6 h-6 text-primary-strong" /> Sắp xếp đơn hàng
+          <PackageCheck className="w-6 h-6 text-primary-strong" /> Xuất đơn hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          {onlyMyAssigned
-            ? "Đơn đã được Quản lý kho thành phẩm phân công cho bạn — hoàn thành Yêu cầu xử lý cây (nếu có) tại trang "
-            : "Đơn đã được Sale xác nhận, chờ đóng gói — hoàn thành Yêu cầu xử lý cây (nếu có) tại trang "}
-          <Link href="/processing" className="text-primary-strong underline underline-offset-2">Xử lý cây</Link>{" "}
-          trước, nhặt đủ số lượng thì đơn tự chuyển &quot;Đã sắp xếp xong&quot; — xuất kho tại mục{" "}
-          <Link href="/shipping/orders" className="text-primary-strong underline underline-offset-2">Xuất hàng</Link>.
+          Đơn đã sắp xếp xong, chờ xuất kho — bấm &quot;Xuất kho&quot; để trừ tồn thực tế và hoàn tất đơn.
         </p>
       </div>
 
       {orders.length === 0 ? (
         <Card><CardContent className="py-12 text-center text-text-muted">
-          {onlyMyAssigned ? "Bạn chưa được phân công đơn hàng nào" : "Không có đơn nào đang chờ đóng gói"}
+          {onlyMyAssigned ? "Bạn chưa có đơn nào đã sắp xếp xong" : "Không có đơn nào đã sắp xếp xong, chờ xuất kho"}
         </CardContent></Card>
       ) : (
         <div className="space-y-3">
           {orders.map((order) => {
             const pendingCount = order.items.filter((i) => i.processingRequest?.status === "PENDING").length;
             const totalQuantity = order.items.reduce((s, i) => s + i.quantity, 0);
-            const packStatus = getOrderPackStatus(order);
             return (
               <Card key={order.id}>
                 <CardContent className="py-4 space-y-3">
@@ -79,7 +74,7 @@ export default async function OrdersPackPage() {
                     <div>
                       <p className="text-sm font-medium text-foreground font-mono flex items-center gap-2">
                         {order.code}
-                        <Badge variant={packStatus.variant}>{packStatus.label}</Badge>
+                        <Badge variant="completed">Đã sắp xếp xong</Badge>
                       </p>
                       <p className="text-xs text-text-secondary">
                         {order.customerCode} · {MARKET_LABELS[order.market]} · NV {order.sale.name} ·{" "}
@@ -100,30 +95,14 @@ export default async function OrdersPackPage() {
                         canAssign={canAssign}
                         confirmedAt={order.assignmentConfirmedAt}
                       />
-                      {packStatus.variant === "completed" ? (
-                        <Button size="sm" variant="outline" className="h-8 bg-card text-text-muted cursor-not-allowed" disabled>
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Đã sắp xếp xong
-                        </Button>
-                      ) : (
-                        <Link href={`/orders/pack/${order.id}`}>
-                          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
-                            <ListChecks className="w-3.5 h-3.5 mr-1.5" /> Nhặt hàng
-                          </Button>
-                        </Link>
-                      )}
+                      <ShipOrderButton orderId={order.id} disabled={pendingCount > 0} />
                     </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     {order.items.map((item) => (
-                      <Badge
-                        key={item.id}
-                        variant={
-                          !item.processingRequest ? "outline" : item.processingRequest.status === "COMPLETED" ? "completed" : "in-progress"
-                        }
-                      >
+                      <Badge key={item.id} variant="completed">
                         {item.lot.stageCode} · {item.quantity.toLocaleString("vi-VN")} cây
-                        {item.processingRequest && (item.processingRequest.status === "COMPLETED" ? " · đã xử lý" : " · chờ tách túi")}
                       </Badge>
                     ))}
                   </div>
