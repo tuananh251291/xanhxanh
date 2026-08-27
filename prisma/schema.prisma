@@ -649,6 +649,7 @@ model PlantType {
   kpiRate                    PlantTypeKpiRate?
   transferInspectionItems    TransferInspectionItem[]
   dailyTasks                 DailyTask[]
+  motherStockWeekSnapshots   MotherStockWeekSnapshot[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -911,6 +912,7 @@ model Warehouse {
   personalContaminationChecks PersonalContaminationCheck[]
   replantHandovers            ReplantHandover[]
   dailyTasks                  DailyTask[]
+  motherStockWeekSnapshots    MotherStockWeekSnapshot[]
 
   @@map("warehouses")
 }
@@ -1140,6 +1142,28 @@ model Lot {
 
   @@unique([code, stageCode])
   @@map("lots")
+}
+
+// Cache "tồn mẫu mẹ (MAU_ME) cuối kỳ" của 1 kho sản xuất + 1 mã cây tại 1 mốc Chủ nhật cuối tuần cụ thể —
+// dùng cho báo cáo "Số lượng mẫu mẹ gia tăng" (Admin, xem src/lib/mother-stock-growth-report.ts). Hệ thống
+// KHÔNG lưu lịch sử tồn kho theo thời điểm ở đâu khác (Lot.quantity chỉ là số hiện tại) nên số tồn tại 1
+// mốc quá khứ phải dựng lại từ bảng lots (enteredAt, status, PlantingInstruction.handedOverAt...) — bảng
+// này chỉ đóng vai trò CACHE kết quả tính lại đó để lần sau khỏi tính nữa, KHÔNG phải nguồn sự thật. CHỈ
+// ghi cache cho tuần đã CHỐT (đã qua hết Chủ nhật) — tuần đang chạy dở luôn tính sống, không lưu (xem
+// computeMotherStockBalance). Không cần cron — tính-rồi-lưu theo yêu cầu (lazy), dự án hiện không có hạ
+// tầng cron/scheduled job nào.
+model MotherStockWeekSnapshot {
+  id          String    @id @default(cuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  weekEndDate DateTime // Chủ nhật cuối tuần đó, 23:59:59.999
+  quantity    Int
+  computedAt  DateTime  @default(now())
+
+  @@unique([warehouseId, plantTypeId, weekEndDate])
+  @@map("mother_stock_week_snapshots")
 }
 
 // ============================================================
