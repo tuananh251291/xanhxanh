@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Combobox,
@@ -15,7 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Loader2 } from "lucide-react";
+import { Loader2, Filter } from "lucide-react";
 import { getISOWeek, getISOWeekYear, subWeeks } from "date-fns";
 
 type PlantType = { id: string; code: string; name: string };
@@ -56,6 +57,9 @@ export default function MotherStockGrowthBoard() {
   const [rows, setRows] = useState<GrowthRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Chỉ tính toán khi NV bấm nút "Lọc dữ liệu" — không tự chạy mỗi lần đổi bộ lọc (báo cáo dựng lại tồn
+  // kho lịch sử khá nặng, tránh gọi API liên tục khi đang chỉnh từng ô lọc).
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     fetch("/api/warehouses?type=SAN_XUAT").then((r) => r.json()).then((d) => {
@@ -73,6 +77,7 @@ export default function MotherStockGrowthBoard() {
 
   const load = useCallback(async () => {
     if (!warehouseId || !fromWeek || !toWeek) { setRows([]); return; }
+    setHasSearched(true);
     setLoading(true);
     setError("");
     try {
@@ -86,8 +91,6 @@ export default function MotherStockGrowthBoard() {
       setLoading(false);
     }
   }, [warehouseId, plantTypeOption, fromWeek, toWeek]);
-
-  useEffect(() => { load(); }, [load]);
 
   const total = useMemo(
     () =>
@@ -151,12 +154,18 @@ export default function MotherStockGrowthBoard() {
             <Label className="text-xs">Đến tuần</Label>
             <Input type="week" value={toWeek} onChange={(e) => setToWeek(e.target.value)} className="w-40" />
           </div>
+
+          <Button type="button" onClick={load} disabled={loading || !warehouseId || !fromWeek || !toWeek}>
+            <Filter className="w-4 h-4" /> Lọc dữ liệu
+          </Button>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
+        ) : !hasSearched ? (
+          <p className="text-sm text-text-muted text-center py-12">Chọn bộ lọc rồi bấm &quot;Lọc dữ liệu&quot; để xem báo cáo</p>
         ) : rows.length === 0 ? (
           <p className="text-sm text-text-muted text-center py-12">Không có dữ liệu mẫu mẹ trong khoảng đã chọn</p>
         ) : (
