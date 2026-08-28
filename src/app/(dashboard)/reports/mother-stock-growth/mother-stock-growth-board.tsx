@@ -30,6 +30,7 @@ type GrowthRow = {
   endBalance: number;
   remainingHandedOver: number;
   sentToOtherFacilities: number;
+  unshelvedInDarkRoom: number;
   growth: number;
 };
 
@@ -100,9 +101,10 @@ export default function MotherStockGrowthBoard() {
           endBalance: acc.endBalance + r.endBalance,
           remainingHandedOver: acc.remainingHandedOver + r.remainingHandedOver,
           sentToOtherFacilities: acc.sentToOtherFacilities + r.sentToOtherFacilities,
+          unshelvedInDarkRoom: acc.unshelvedInDarkRoom + r.unshelvedInDarkRoom,
           growth: acc.growth + r.growth,
         }),
-        { startBalance: 0, endBalance: 0, remainingHandedOver: 0, sentToOtherFacilities: 0, growth: 0 }
+        { startBalance: 0, endBalance: 0, remainingHandedOver: 0, sentToOtherFacilities: 0, unshelvedInDarkRoom: 0, growth: 0 }
       ),
     [rows]
   );
@@ -178,6 +180,7 @@ export default function MotherStockGrowthBoard() {
                   <th className="px-3 py-2 text-center font-bold text-base">Tồn cuối kỳ</th>
                   <th className="px-3 py-2 text-center font-bold text-base">Đã bàn giao, chưa cấy hết</th>
                   <th className="px-3 py-2 text-center font-bold text-base">Đã chuyển cơ sở khác</th>
+                  <th className="px-3 py-2 text-center font-bold text-base">Trong kho tối, chưa lên kệ</th>
                   <th className="px-3 py-2 text-center font-bold text-base">Gia tăng</th>
                 </tr>
               </thead>
@@ -189,6 +192,7 @@ export default function MotherStockGrowthBoard() {
                     <td className="px-3 py-2 text-center tabular-nums">{fmt(r.endBalance)}</td>
                     <td className="px-3 py-2 text-center tabular-nums">{fmt(r.remainingHandedOver)}</td>
                     <td className="px-3 py-2 text-center tabular-nums">{fmt(r.sentToOtherFacilities)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums">{fmt(r.unshelvedInDarkRoom)}</td>
                     <td className="px-3 py-2 text-center tabular-nums font-bold text-primary-strong">{fmt(r.growth)}</td>
                   </tr>
                 ))}
@@ -199,6 +203,7 @@ export default function MotherStockGrowthBoard() {
                     <td className="px-3 py-2 text-center tabular-nums">{fmt(total.endBalance)}</td>
                     <td className="px-3 py-2 text-center tabular-nums">{fmt(total.remainingHandedOver)}</td>
                     <td className="px-3 py-2 text-center tabular-nums">{fmt(total.sentToOtherFacilities)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums">{fmt(total.unshelvedInDarkRoom)}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-primary-strong">{fmt(total.growth)}</td>
                   </tr>
                 )}

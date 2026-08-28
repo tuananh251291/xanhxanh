@@ -12,6 +12,9 @@ import { MOTHER_WAREHOUSE_TRANSFER_TAG } from "@/types";
 //     + Số đã chuyển đi cơ sở khác trong khoảng (tuần n-1 → n+x) — KHÔNG bị trừ, vẫn tính là sản lượng
 //       của cơ sở này (đã xác nhận với Admin — mẫu mẹ nhận VỀ từ cơ sở khác thì cứ tính vào tồn cuối kỳ
 //       bình thường, không cần xử lý riêng).
+//     + Số mẫu mẹ đang nằm trong phòng tối cá nhân của NV cấy mô (đã nhập nhật ký cấy, tạo ra lô, nhưng
+//       Kho mô CHƯA xác nhận bàn giao lên kệ kho sáng) tính đến hết tuần n+x — đã sản xuất ra rồi, chỉ
+//       chưa kịp lên kệ nên chưa nằm trong "Tồn kho sáng cuối kỳ".
 //
 // Hệ thống không lưu lịch sử tồn kho theo thời điểm (Lot.quantity chỉ là số hiện tại) — xem
 // computeMotherStockBalance để biết cách dựng lại đúng số tồn tại 1 mốc quá khứ chỉ từ các bảng giao dịch
@@ -25,6 +28,7 @@ export type PlantTypeGrowthRow = {
   endBalance: number;
   remainingHandedOver: number;
   sentToOtherFacilities: number;
+  unshelvedInDarkRoom: number;
   growth: number;
 };
 
@@ -160,14 +164,46 @@ async function computeSentToOtherFacilities(
   return items.reduce((s, i) => s + i.quantity, 0);
 }
 
-// Mọi mã cây từng có mẫu mẹ trên giàn Phòng mẫu mẹ của kho này — dùng làm phạm vi khi Admin chọn "Tất cả".
-async function getRelevantPlantTypeIds(warehouseId: string): Promise<string[]> {
-  const rows = await prisma.lot.findMany({
-    where: { stage: "MAU_ME", shelf: { warehouseId, room: { type: "PHONG_MAU_ME" } } },
-    distinct: ["plantTypeId"],
-    select: { plantTypeId: true },
+// Mẫu mẹ đã nhập nhật ký cấy (đã tạo Lot ở phòng tối cá nhân của NV cấy mô) nhưng Kho mô CHƯA xác nhận bàn
+// giao lên kệ kho sáng — lô này vẫn còn roomId (Phòng tối), chưa có shelfId (bất biến "Kho sản xuất luôn
+// dùng shelfId, roomId luôn null" chỉ áp dụng SAU khi lên kệ, xem prisma/schema.prisma model Lot). Dùng
+// darkRoomEnteredAt (mốc nhập kho tối gốc, bất biến) để lọc theo asOf — enteredAt không dùng được ở đây vì
+// với lô CHƯA lên kệ, enteredAt vẫn = lúc tạo lô (chưa bị commitShelfPlacements ghi đè).
+// Giới hạn chấp nhận được: chỉ xét đúng trạng thái HIỆN TẠI (lô còn nằm phòng tối ngay lúc gọi báo cáo) —
+// không dựng lại lịch sử "còn ở phòng tối tính đến 1 mốc quá khứ xa" vì lô đã lên kệ thì roomId bị xoá
+// hẳn, không còn cách xác định ngược nó "còn ở phòng tối tới lúc nào" — thời gian lô nằm phòng tối chờ Kho
+// mô xác nhận thường chỉ vài ngày nên sai số không đáng kể.
+async function computeUnshelvedDarkRoomMother(warehouseId: string, plantTypeId: string, asOf: Date): Promise<number> {
+  const lots = await prisma.lot.findMany({
+    where: {
+      stage: "MAU_ME",
+      plantTypeId,
+      status: "ACTIVE",
+      darkRoomEnteredAt: { not: null, lte: asOf },
+      room: { warehouseId, type: "PHONG_TOI" },
+    },
+    select: { quantity: true },
   });
-  return rows.map((r) => r.plantTypeId);
+  return lots.reduce((s, l) => s + l.quantity, 0);
+}
+
+// Mọi mã cây từng có mẫu mẹ trên giàn Phòng mẫu mẹ, HOẶC đang nằm phòng tối chưa lên kệ, của kho này —
+// dùng làm phạm vi khi Admin chọn "Tất cả" (không chỉ nhìn giàn kệ, kẻo bỏ sót mã cây mới chỉ vừa nhập
+// nhật ký cấy lần đầu, chưa từng có lô nào lên kệ).
+async function getRelevantPlantTypeIds(warehouseId: string): Promise<string[]> {
+  const [shelved, unshelved] = await Promise.all([
+    prisma.lot.findMany({
+      where: { stage: "MAU_ME", shelf: { warehouseId, room: { type: "PHONG_MAU_ME" } } },
+      distinct: ["plantTypeId"],
+      select: { plantTypeId: true },
+    }),
+    prisma.lot.findMany({
+      where: { stage: "MAU_ME", status: "ACTIVE", room: { warehouseId, type: "PHONG_TOI" } },
+      distinct: ["plantTypeId"],
+      select: { plantTypeId: true },
+    }),
+  ]);
+  return Array.from(new Set([...shelved, ...unshelved].map((r) => r.plantTypeId)));
 }
 
 // `weekNStart` = Thứ 2 đầu tuần n, `weekNPlusXStart` = Thứ 2 đầu tuần n+x (tuần cuối của khoảng đang xem).
@@ -191,14 +227,18 @@ export async function computeMotherStockGrowth(
 
   const rows = await Promise.all(
     plantTypes.map(async (pt): Promise<PlantTypeGrowthRow> => {
-      const [startBalance, endBalance, remainingHandedOver, sentToOtherFacilities] = await Promise.all([
+      const [startBalance, endBalance, remainingHandedOver, sentToOtherFacilities, unshelvedInDarkRoom] = await Promise.all([
         getBalanceForPlantType(warehouseId, pt.id, weekNMinus1End),
         getBalanceForPlantType(warehouseId, pt.id, weekNPlusXEnd),
         computeRemainingHandedOverMother(warehouseId, pt.id, weekNPlusXEnd),
         computeSentToOtherFacilities(warehouseId, pt.id, weekNMinus1End, weekNPlusXEnd),
+        computeUnshelvedDarkRoomMother(warehouseId, pt.id, weekNPlusXEnd),
       ]);
-      const growth = endBalance - startBalance + remainingHandedOver + sentToOtherFacilities;
-      return { plantTypeId: pt.id, code: pt.code, name: pt.name, startBalance, endBalance, remainingHandedOver, sentToOtherFacilities, growth };
+      const growth = endBalance - startBalance + remainingHandedOver + sentToOtherFacilities + unshelvedInDarkRoom;
+      return {
+        plantTypeId: pt.id, code: pt.code, name: pt.name,
+        startBalance, endBalance, remainingHandedOver, sentToOtherFacilities, unshelvedInDarkRoom, growth,
+      };
     })
   );
 
