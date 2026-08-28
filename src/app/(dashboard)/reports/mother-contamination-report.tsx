@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import StaffCombobox from "@/components/shared/staff-combobox";
 import { Loader2 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -85,20 +85,7 @@ export default function MotherContaminationReport() {
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Nhân viên</Label>
-              <Select
-                items={staffOptions}
-                value={staffId}
-                onValueChange={(v) => setStaffId(v as string)}
-              >
-                <SelectTrigger className="w-56">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {staffOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <StaffCombobox options={staffOptions} value={staffId} onChange={setStaffId} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Từ ngày</Label>
