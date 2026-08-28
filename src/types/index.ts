@@ -488,6 +488,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
+    { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

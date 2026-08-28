@@ -30,7 +30,7 @@ const PAGE_SIZE = 8;
 export default async function InstructionsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; date?: string; shelf?: string; plantCode?: string; staff?: string }>;
+  searchParams: Promise<{ page?: string; date?: string; shelf?: string; plantCode?: string; staff?: string; code?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -38,6 +38,9 @@ export default async function InstructionsListPage({
   // Trang danh sách chi tiết này chỉ dành cho vai trò có thể tạo chỉ định (KY_THUAT/Admin) —
   // các vai trò khác (KHO_MO, CAY_MO...) vẫn thao tác trên bảng inline ở /instructions.
   if (!(isAdminRole(role) || role === "KY_THUAT")) redirect("/instructions");
+  // ADMIN (khác SUPER_ADMIN) chỉ được XEM ở trang này — không sửa/hủy chỉ định (ẩn hẳn 2 nút thao tác
+  // bên dưới), giữ nguyên quyền đầy đủ cho KY_THUAT (người tạo/quản lý chỉ định hàng ngày).
+  const viewOnly = role === "ADMIN";
 
   const sp = await searchParams;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
@@ -45,8 +48,12 @@ export default async function InstructionsListPage({
   const shelfFilter = sp.shelf?.trim() ?? "";
   const plantCodeFilter = sp.plantCode?.trim() ?? "";
   const staffFilter = sp.staff?.trim() ?? "";
+  const codeFilter = sp.code?.trim() ?? "";
 
   const where: Record<string, unknown> = {};
+  if (codeFilter) {
+    where.code = { contains: codeFilter, mode: "insensitive" };
+  }
   if (dateFilter) {
     const d = new Date(dateFilter);
     if (!Number.isNaN(d.getTime())) where.createdAt = { gte: startOfDay(d), lte: endOfDay(d) };
@@ -89,10 +96,11 @@ export default async function InstructionsListPage({
   const staffOptions = staff.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const hasFilters = !!(dateFilter || shelfFilter || plantCodeFilter || staffFilter);
+  const hasFilters = !!(codeFilter || dateFilter || shelfFilter || plantCodeFilter || staffFilter);
 
   const pageHref = (p: number) => {
     const params = new URLSearchParams();
+    if (codeFilter) params.set("code", codeFilter);
     if (dateFilter) params.set("date", dateFilter);
     if (shelfFilter) params.set("shelf", shelfFilter);
     if (plantCodeFilter) params.set("plantCode", plantCodeFilter);
@@ -117,6 +125,10 @@ export default async function InstructionsListPage({
       <Card>
         <CardContent className="pt-4">
           <form className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Mã chỉ định</Label>
+              <Input type="text" name="code" defaultValue={codeFilter} placeholder="Nhập mã chỉ định" className="w-40" />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">Ngày tạo</Label>
               <Input type="date" name="date" defaultValue={dateFilter} className="w-40" />
@@ -203,9 +215,10 @@ export default async function InstructionsListPage({
                             </Button>
                           </Link>
                           {/* Chỉ sửa/hủy được TRƯỚC khi Kho mô bàn giao — bàn giao rồi coi như đã chốt,
-                              xem PATCH /api/instructions/[id] nhánh "edit"/"cancelInstruction". */}
-                          {!inst.handedOverAt && <EditInstructionDialog instructionId={inst.id} />}
-                          {!inst.handedOverAt && <CancelInstructionButton instructionId={inst.id} instructionCode={inst.code} />}
+                              xem PATCH /api/instructions/[id] nhánh "edit"/"cancelInstruction". ADMIN chỉ
+                              được xem (viewOnly) — không hiện 2 nút thao tác này. */}
+                          {!viewOnly && !inst.handedOverAt && <EditInstructionDialog instructionId={inst.id} />}
+                          {!viewOnly && !inst.handedOverAt && <CancelInstructionButton instructionId={inst.id} instructionCode={inst.code} />}
                           <Link href={`/instructions/${inst.id}`} target="_blank">
                             <Button variant="ghost" size="sm" title="In phiếu chỉ định"><Printer className="w-4 h-4" /></Button>
                           </Link>
