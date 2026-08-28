@@ -60,10 +60,15 @@ async function computeRawBalanceForPlantType(warehouseId: string, plantTypeId: s
     if (!consumedByAsOf) total += lot.quantity;
   }
 
+  // Chỉ cộng bù nếu chính lô đó đã có mặt (enteredAt <= asOf) — tức đã được tính trong tổng ở trên rồi mới
+  // bị trừ bởi lần gửi sau đó. Thiếu điều kiện này sẽ cộng nhầm cho asOf ở TRƯỚC cả lúc lô lên kệ (lô chưa
+  // hề tồn tại ở mốc đó, không nằm trong tổng để mà cần cộng bù) — bug thực tế gặp phải: khiến "Tồn đầu kỳ"
+  // bị thổi phồng đúng bằng số đã gửi cơ sở khác, làm "Gia tăng" = "Tồn cuối kỳ" (Tồn đầu kỳ bị cộng bù sai
+  // triệt tiêu vừa đủ với số cộng bù ở ngoài công thức, xem computeSentToOtherFacilities).
   const futureSends = await prisma.transferItem.findMany({
     where: {
       transfer: { fromWarehouseId: warehouseId, notes: { startsWith: MOTHER_WAREHOUSE_TRANSFER_TAG }, transferredAt: { gt: asOf } },
-      lot: { stage: "MAU_ME", plantTypeId },
+      lot: { stage: "MAU_ME", plantTypeId, enteredAt: { lte: asOf } },
     },
     select: { quantity: true },
   });
