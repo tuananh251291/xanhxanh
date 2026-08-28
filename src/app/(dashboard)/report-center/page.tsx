@@ -8,8 +8,7 @@ import { isAdminRole } from "@/types";
 // Hub liên kết nhẹ (KHÔNG dùng Tabs) — 2/3 trang báo cáo gốc đã bị tách riêng CÓ CHỦ ĐÍCH trước đây (xem
 // comment gốc ở reports/overview/page.tsx và reports/production-capacity/page.tsx, cái sau ghi rõ
 // "tránh xung đột chỉnh sửa đồng thời với reports/page.tsx") nên KHÔNG gộp bằng Tabs thật — chỉ các thẻ
-// dẫn sang, không đụng gì file gốc. "Xem dữ liệu hình ảnh" chỉ hiện cho SUPER_ADMIN — giữ đúng phạm vi
-// ROLE_NAV hiện có (ADMIN chưa được cấp trong menu dù trang gốc kỹ thuật cho phép cả 2 role).
+// dẫn sang, không đụng gì file gốc.
 export default async function ReportCenterPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -21,9 +20,7 @@ export default async function ReportCenterPage() {
     { href: "/reports/production-capacity", icon: Gauge, title: "Năng lực sản xuất", description: "Dự báo năng lực sản xuất theo nhóm tuần xoay vòng." },
     { href: "/reports/inventory-flow-summary", icon: ArrowLeftRight, title: "Tổng hợp Nhập - Xuất", description: "Tổng số lượng nhập (theo NCC) và xuất (đơn hàng, khu sản xuất, trồng/hủy), lọc theo thời gian." },
     { href: "/reports/mother-stock-growth", icon: Sprout, title: "Mẫu mẹ gia tăng", description: "Sản lượng mẫu mẹ 1 cơ sở sản xuất làm tăng thêm, lọc theo mã cây và khoảng tuần." },
-    ...(role === "SUPER_ADMIN"
-      ? [{ href: "/mother-photo-update/view", icon: Images, title: "Xem dữ liệu hình ảnh", description: "Ảnh cập nhật tình trạng mẫu mẹ theo giàn kệ/mã cây." }]
-      : []),
+    { href: "/mother-photo-update/view", icon: Images, title: "Xem dữ liệu hình ảnh", description: "Ảnh cập nhật tình trạng mẫu mẹ theo giàn kệ/mã cây." },
   ];
 
   return (
