@@ -1,13 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { format, addWeeks, startOfWeek } from "date-fns";
 import { vi } from "date-fns/locale";
 
 const STAGE_CODES = ["M05", "T05", "T01"] as const;
+const ALL_STAFF = "ALL";
+
+type Staff = { id: string; name: string; code: string };
 
 type Row = {
   key: string;
@@ -29,14 +34,30 @@ const fmt = (n: number) => n.toLocaleString("vi-VN");
 // số lượng nhập kho tối của đúng chỉ định đó. Có nút chuyển tuần trước/sau, mặc định tuần hiện tại.
 export default function DarkRoomContaminationByInstructionSection() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffId, setStaffId] = useState<string>(ALL_STAFF);
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (ws: Date) => {
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data: { id: string; name: string; code: string; role: string }[]) => {
+        setStaffList(
+          (Array.isArray(data) ? data : [])
+            .filter((u) => u.role === "CAY_MO")
+            .map((u) => ({ id: u.id, name: u.name, code: u.code }))
+        );
+      });
+  }, []);
+
+  const load = useCallback(async (ws: Date, staff: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/reports/dark-room-contamination-by-instruction?weekStart=${format(ws, "yyyy-MM-dd")}`);
+      const params = new URLSearchParams({ weekStart: format(ws, "yyyy-MM-dd") });
+      if (staff !== ALL_STAFF) params.set("staffId", staff);
+      const res = await fetch(`/api/reports/dark-room-contamination-by-instruction?${params}`);
       const data = await res.json();
       setRows(Array.isArray(data.rows) ? data.rows : []);
       setSummary(data.summary ?? null);
@@ -45,7 +66,12 @@ export default function DarkRoomContaminationByInstructionSection() {
     }
   }, []);
 
-  useEffect(() => { load(weekStart); }, [weekStart, load]);
+  useEffect(() => { load(weekStart, staffId); }, [weekStart, staffId, load]);
+
+  const staffOptions = useMemo(
+    () => [{ value: ALL_STAFF, label: "Toàn hệ thống" }, ...staffList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))],
+    [staffList]
+  );
 
   const weekEnd = addWeeks(weekStart, 1);
   const weekEndDisplay = new Date(weekEnd.getTime() - 24 * 60 * 60 * 1000);
@@ -61,7 +87,18 @@ export default function DarkRoomContaminationByInstructionSection() {
               NV cấy mô tự kiểm tra ngay sau khi lô đủ ngày ủ tối — số lượng nhiễm theo từng quy cách, % nhiễm trên tổng nhập kho tối
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="space-y-1">
+              <Label className="text-xs">Nhân viên</Label>
+              <Select items={staffOptions} value={staffId} onValueChange={(v) => setStaffId(v as string)}>
+                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {staffOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addWeeks(w, -1))}>
               <ChevronLeft className="w-4 h-4" />
             </Button>

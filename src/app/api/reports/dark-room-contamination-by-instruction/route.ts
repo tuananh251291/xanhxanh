@@ -23,12 +23,16 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const weekStartParam = searchParams.get("weekStart");
+  const staffId = searchParams.get("staffId");
   const anchor = weekStartParam ? new Date(weekStartParam) : new Date();
   const weekStart = startOfWeek(anchor, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(anchor, { weekStartsOn: 1 });
 
   const items = await prisma.lotInspectionItem.findMany({
-    where: { inspection: { createdAt: { gte: weekStart, lte: weekEnd } } },
+    where: {
+      inspection: { createdAt: { gte: weekStart, lte: weekEnd } },
+      ...(staffId ? { lot: { instruction: { assignedToId: staffId } } } : {}),
+    },
     select: {
       stageCode: true,
       initialQuantity: true,
