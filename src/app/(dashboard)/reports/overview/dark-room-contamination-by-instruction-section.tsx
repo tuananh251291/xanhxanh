@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import StaffCombobox from "@/components/shared/staff-combobox";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { format, addWeeks, startOfWeek } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -90,14 +90,7 @@ export default function DarkRoomContaminationByInstructionSection() {
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Nhân viên</Label>
-              <Select items={staffOptions} value={staffId} onValueChange={(v) => setStaffId(v as string)}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {staffOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <StaffCombobox options={staffOptions} value={staffId} onChange={setStaffId} />
             </div>
             <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addWeeks(w, -1))}>
               <ChevronLeft className="w-4 h-4" />
