@@ -54,6 +54,9 @@ export default function PlantingLogSummaryBoard({
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rangeLabel, setRangeLabel] = useState("");
   const [loading, setLoading] = useState(true);
+  // Danh sách mã cây thực sự đã cấy đúng bộ lọc kho/nhân sự/thời gian hiện tại (server tính lại mỗi lần
+  // load — xem availablePlantTypes ở API) — mặc định là toàn bộ mã cây đang hoạt động trước khi có dữ liệu.
+  const [availablePlantTypes, setAvailablePlantTypes] = useState<PlantType[]>(plantTypes);
 
   // Đổi kho → nếu NV đang chọn không thuộc kho mới, bỏ chọn về "Tất cả NV" thay vì giữ lựa chọn không
   // còn khớp bộ lọc.
@@ -65,6 +68,12 @@ export default function PlantingLogSummaryBoard({
     if (staffId !== ALL && !staffOptionsForWarehouse.some((s) => s.id === staffId)) setStaffId(ALL);
   }, [staffOptionsForWarehouse, staffId]);
   const staffOptions: ComboOption[] = staffOptionsForWarehouse.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
+
+  // Mã cây đang chọn không còn nằm trong danh sách đã cấy thật (VD vừa đổi nhân sự/thời gian) → bỏ chọn
+  // về "Tất cả mã cây" thay vì giữ lựa chọn không còn khớp.
+  useEffect(() => {
+    if (plantTypeId !== ALL && !availablePlantTypes.some((p) => p.id === plantTypeId)) setPlantTypeId(ALL);
+  }, [availablePlantTypes, plantTypeId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +87,7 @@ export default function PlantingLogSummaryBoard({
       const data = await res.json();
       setRows(Array.isArray(data.rows) ? data.rows : []);
       setSummary(data.summary ?? null);
+      setAvailablePlantTypes(Array.isArray(data.availablePlantTypes) ? data.availablePlantTypes : []);
       if (data.rangeStart && data.rangeEnd) {
         setRangeLabel(`${format(new Date(data.rangeStart), "dd/MM/yyyy")} — ${format(new Date(data.rangeEnd), "dd/MM/yyyy")}`);
       }
@@ -151,14 +161,14 @@ export default function PlantingLogSummaryBoard({
           <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
             <Select
-              items={[{ value: ALL, label: "Tất cả mã cây" }, ...plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }))]}
+              items={[{ value: ALL, label: "Tất cả mã cây" }, ...availablePlantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }))]}
               value={plantTypeId}
               onValueChange={(v) => setPlantTypeId((v as string) ?? ALL)}
             >
               <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Tất cả mã cây</SelectItem>
-                {plantTypes.map((p) => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
+                {availablePlantTypes.map((p) => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

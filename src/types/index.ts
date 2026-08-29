@@ -503,6 +503,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/mother-photo-update", label: "Cập nhật hình ảnh định kì", icon: "Camera" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
+    { href: "/reports/planting-log-summary", label: "Dữ liệu nhật ký cấy", icon: "BookOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   CAY_MO: [

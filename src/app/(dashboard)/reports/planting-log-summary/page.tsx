@@ -5,11 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/types";
 import PlantingLogSummaryBoard from "./planting-log-summary-board";
 
-// Báo cáo cho Admin/Admin cấp cao — xem src/app/api/reports/planting-log-summary/route.ts.
+// Báo cáo cho Admin/Admin cấp cao + NV Kỹ thuật — xem src/app/api/reports/planting-log-summary/route.ts.
 export default async function PlantingLogSummaryPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role)) redirect("/dashboard");
+  if (!isAdminRole(role) && role !== "KY_THUAT") redirect("/dashboard");
 
   const [warehouses, staffList, plantTypes] = await Promise.all([
     prisma.warehouse.findMany({ where: { type: "SAN_XUAT" }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
