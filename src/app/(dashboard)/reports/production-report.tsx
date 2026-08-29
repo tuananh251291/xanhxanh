@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getWeekBuckets, bucketIndexForDate } from "@/lib/report-utils";
 import ReportBarChart from "./charts/report-bar-chart";
+import ProductionQuickCheck from "./production-quick-check";
 
 const HISTORY_WEEKS = 10;
 
@@ -29,23 +30,27 @@ export default async function ProductionReport() {
   const totalFinished = data.reduce((s, d) => s + d["Thành phẩm"], 0);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Sản lượng theo thời gian ({HISTORY_WEEKS} tuần gần nhất)</CardTitle>
-        <p className="text-sm text-text-secondary">
-          Tổng mẫu mẹ: <strong>{totalMother.toLocaleString("vi-VN")}</strong> · Tổng thành phẩm: <strong>{totalFinished.toLocaleString("vi-VN")}</strong>
-        </p>
-      </CardHeader>
-      <CardContent>
-        <ReportBarChart
-          data={data}
-          xKey="Tuần"
-          series={[
-            { key: "Mẫu mẹ", label: "Mẫu mẹ", color: "#2a78d6" },
-            { key: "Thành phẩm", label: "Thành phẩm", color: "#1baf7a" },
-          ]}
-        />
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Sản lượng theo thời gian ({HISTORY_WEEKS} tuần gần nhất)</CardTitle>
+          <p className="text-sm text-text-secondary">
+            Tổng mẫu mẹ: <strong>{totalMother.toLocaleString("vi-VN")}</strong> · Tổng thành phẩm: <strong>{totalFinished.toLocaleString("vi-VN")}</strong>
+          </p>
+        </CardHeader>
+        <CardContent>
+          <ReportBarChart
+            data={data}
+            xKey="Tuần"
+            series={[
+              { key: "Mẫu mẹ", label: "Mẫu mẹ", color: "#2a78d6" },
+              { key: "Thành phẩm", label: "Thành phẩm", color: "#1baf7a" },
+            ]}
+          />
+        </CardContent>
+      </Card>
+
+      <ProductionQuickCheck />
+    </div>
   );
 }
