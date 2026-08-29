@@ -13,14 +13,18 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // 1 kỳ kế tiếp nếu không nhập gì. LUÔN trả về cả 3 quy cách (Mẫu mẹ/Thành phẩm/Tổng) cùng lúc — không lọc
 // theo 1 quy cách nữa — mỗi quy cách 2 khoá: khoá "gốc" (VD "Mẫu mẹ") phủ mọi kỳ <= kỳ hiện tại THẬT
 // (đã xảy ra, FE vẽ nét đậm), khoá "(dự kiến)" (VD "Mẫu mẹ (dự kiến)") phủ kỳ hiện tại (để nối liền, cùng
-// giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh) — MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi
-// cộng dồn các tuần rơi vào đúng kỳ hiển thị: mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới
-// "cấy" (không phải chỉ 1 Nhóm duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới
-// lượt, mỗi Nhóm có 1 chuỗi cộng dồn RIÊNG cách nhau N tuần = transferWaitWeeks). Hệ số trung bình luôn
-// tính theo 3 TUẦN GẦN NHẤT CÓ DỮ LIỆU thật tính tới "now" (computeAverageRatios) — bất kể đơn vị đang
-// xem Tuần hay Tháng, không bao giờ dùng dữ liệu tương lai. Vốn dự báo và sản lượng thực tế là 2 khái
-// niệm khác nhau (năng LỰC tối đa có thể đạt nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy
-// xu hướng quá khứ) nên số có thể lệch hẳn nhau ngay tại điểm nối. Query params: unit=week|month,
+// giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh). Mỗi khoá là số LŨY KẾ cộng dồn từ kỳ ĐẦU TIÊN
+// đang hiển thị trên trục ngang (không phải sản lượng riêng của từng kỳ) — theo đúng yêu cầu Admin: biểu
+// đồ luôn đi lên/đi ngang, không đi xuống, dù xem theo Tuần hay Tháng (đổi "from" sẽ đổi luôn mốc 0 bắt
+// đầu cộng dồn). Phần dự kiến MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn tiếp vào đúng lũy
+// kế thực tế: mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy" (không phải chỉ 1 Nhóm
+// duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt, mỗi Nhóm có 1 chuỗi cộng
+// dồn RIÊNG cách nhau N tuần = transferWaitWeeks). Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ
+// LIỆU thật tính tới "now" (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng, không bao giờ
+// dùng dữ liệu tương lai. Vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối đa có
+// thể đạt nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy xu hướng quá khứ) nên ĐỘ DỐC (không
+// phải giá trị tuyệt đối, vì đã lũy kế từ cùng 1 điểm nối) có thể lệch hẳn nhau ngay sau điểm nối. Query
+// params: unit=week|month,
 // plantTypeId (bắt buộc), scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ
 // chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường dự kiến).
 // Response còn thêm `staffing` — mỗi kỳ TƯƠNG LAI cần bao nhiêu ngày công NV cấy để đạt đúng kịch bản tối
@@ -88,15 +92,22 @@ export async function GET(req: NextRequest) {
     { label: "Tổng", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput + p.finishedOutput },
   ];
 
+  // Biểu đồ vẽ LŨY KẾ (cộng dồn từ kỳ đầu tiên đang hiển thị), không phải sản lượng riêng từng kỳ — để
+  // luôn là đường đi lên/đi ngang (không bao giờ đi xuống, đúng bản chất tổng cộng dồn không có gì bị trừ
+  // đi), bất kể đơn vị đang xem Tuần hay Tháng. Cộng dồn trên giá trị THÔ (chưa làm tròn) rồi mới làm tròn
+  // từng điểm hiển thị — tránh lệch dần do làm tròn nhiều lần cộng lại. Đường dự kiến (tương lai) cộng tiếp
+  // từ đúng lũy kế thực tế tới hết kỳ hiện tại, không tính lại từ 0.
+  const cumulative: Record<string, number> = Object.fromEntries(SPECS.map((s) => [s.label, 0]));
   const data: Record<string, string | number>[] = buckets.map((b) => {
     const row: Record<string, string | number> = { period: b.label };
     if (b.start <= todayBucket.start) {
       const idx = historyBuckets.findIndex((h) => h.start.getTime() === b.start.getTime());
       const point = idx !== -1 ? actualPoints[idx] : { motherOutput: 0, finishedOutput: 0 };
       for (const s of SPECS) {
-        const actualValue = Math.round(s.valueFor(point));
-        row[s.label] = actualValue;
-        if (b.start.getTime() === todayBucket.start.getTime()) row[`${s.label} (dự kiến)`] = actualValue;
+        cumulative[s.label] += s.valueFor(point);
+        const cumulativeValue = Math.round(cumulative[s.label]);
+        row[s.label] = cumulativeValue;
+        if (b.start.getTime() === todayBucket.start.getTime()) row[`${s.label} (dự kiến)`] = cumulativeValue;
       }
     } else {
       // Cộng dồn mọi tuần mô phỏng rơi vào đúng kỳ hiển thị này — 1 kỳ Tháng thường gồm ~4 tuần, mỗi
@@ -107,7 +118,8 @@ export async function GET(req: NextRequest) {
         { motherOutput: 0, finishedOutput: 0 }
       );
       for (const s of SPECS) {
-        row[`${s.label} (dự kiến)`] = Math.round(s.valueFor(summed));
+        cumulative[s.label] += s.valueFor(summed);
+        row[`${s.label} (dự kiến)`] = Math.round(cumulative[s.label]);
       }
     }
     return row;

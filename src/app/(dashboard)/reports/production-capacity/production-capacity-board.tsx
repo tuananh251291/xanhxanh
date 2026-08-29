@@ -153,6 +153,12 @@ export default function ProductionCapacityBoard() {
         <div className="space-y-4">
           <ul className="text-sm text-text-secondary space-y-1.5 list-disc pl-5">
             <li>
+              Biểu đồ vẽ <span className="font-semibold text-foreground">số lũy kế</span> (cộng dồn từ kỳ
+              đầu tiên đang hiển thị trên trục ngang), không phải sản lượng riêng từng kỳ — nên đường luôn
+              đi lên hoặc đi ngang, không đi xuống, dù xem theo Tuần hay Tháng. Đổi &quot;Từ&quot; sẽ đổi
+              luôn mốc bắt đầu cộng dồn.
+            </li>
+            <li>
               Luôn hiện <span className="font-semibold text-foreground">cả 3 đường</span> cùng lúc, phân
               biệt bằng màu:{" "}
               <span className="font-semibold" style={{ color: "#2e9e5b" }}>Tổng (xanh)</span>,{" "}
@@ -161,15 +167,15 @@ export default function ProductionCapacityBoard() {
             </li>
             <li>
               Mỗi đường tự phân biệt <span className="font-semibold text-foreground">đã xảy ra</span> (nét
-              đậm — sản lượng thực tế) với <span className="font-semibold text-foreground">dự kiến</span>{" "}
-              (nét mảnh — NĂNG LỰC tối đa, không phải ngoại suy xu hướng quá khứ). Điểm nối 2 đoạn là kỳ
-              hiện tại.
+              đậm — lũy kế sản lượng thực tế) với <span className="font-semibold text-foreground">dự kiến</span>{" "}
+              (nét mảnh — lũy kế tiếp theo NĂNG LỰC tối đa, không phải ngoại suy xu hướng quá khứ). Điểm nối
+              2 đoạn là kỳ hiện tại.
             </li>
             <li>
               Từ kỳ kế tiếp trở đi, phần nét mảnh mô phỏng <span className="font-semibold text-foreground">từng tuần</span>:
               mỗi tuần chỉ Nhóm giàn mẫu mẹ đúng lượt xoay vòng mới được cấy — không phải 1 Nhóm áp dụng
               suốt, mà qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, mỗi Nhóm tự cộng dồn theo chu
-              kỳ riêng.
+              kỳ riêng, rồi cộng tiếp vào lũy kế chung.
             </li>
             <li>
               Hệ số nhân MM/ra rễ dùng để tính lấy trung bình{" "}
@@ -178,8 +184,9 @@ export default function ProductionCapacityBoard() {
               &quot;Đến&quot; đã chọn.
             </li>
             <li className="text-text-muted">
-              Lưu ý: đoạn nét mảnh có thể lệch mạnh so với đoạn nét đậm vì là 2 khái niệm khác nhau — năng
-              lực tối đa nếu tận dụng hết tồn đủ tuổi của mọi Nhóm, không phải xu hướng đã xảy ra.
+              Lưu ý: độ dốc đoạn nét mảnh có thể lệch mạnh so với đoạn nét đậm vì là 2 khái niệm khác nhau
+              — năng lực tối đa nếu tận dụng hết tồn đủ tuổi của mọi Nhóm, không phải xu hướng đã xảy ra
+              (2 đoạn vẫn nối liền tại cùng 1 điểm, chỉ khác tốc độ tăng sau đó).
             </li>
           </ul>
           <div className="flex items-end gap-2 flex-wrap">
