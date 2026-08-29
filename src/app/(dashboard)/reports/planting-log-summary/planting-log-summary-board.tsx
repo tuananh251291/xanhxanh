@@ -5,6 +5,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxClear,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -22,6 +33,7 @@ type Row = {
   finishedOut: number;
 };
 type Summary = { staffCount: number; totalMotherUsed: number; totalMotherOut: number; totalFinishedOut: number };
+type ComboOption = { value: string; label: string };
 
 const ALL = "ALL";
 
@@ -52,6 +64,7 @@ export default function PlantingLogSummaryBoard({
   useEffect(() => {
     if (staffId !== ALL && !staffOptionsForWarehouse.some((s) => s.id === staffId)) setStaffId(ALL);
   }, [staffOptionsForWarehouse, staffId]);
+  const staffOptions: ComboOption[] = staffOptionsForWarehouse.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,17 +129,24 @@ export default function PlantingLogSummaryBoard({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Nhân sự</Label>
-            <Select
-              items={[{ value: ALL, label: "Tất cả NV" }, ...staffOptionsForWarehouse.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))]}
-              value={staffId}
-              onValueChange={(v) => setStaffId((v as string) ?? ALL)}
+            <Combobox
+              items={staffOptions}
+              value={staffOptions.find((o) => o.value === staffId) ?? null}
+              isItemEqualToValue={(a, b) => a.value === b.value}
+              onValueChange={(v) => setStaffId(v?.value ?? ALL)}
             >
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả NV</SelectItem>
-                {staffOptionsForWarehouse.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.code})</SelectItem>)}
-              </SelectContent>
-            </Select>
+              <ComboboxInputGroup className="w-56">
+                <ComboboxInput placeholder="Tất cả NV — gõ để tìm tên…" />
+                <ComboboxClear />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy NV</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
