@@ -42,8 +42,27 @@ export async function GET(req: NextRequest) {
           OR: [
             { code: { contains: q, mode: "insensitive" as const } },
             { name: { contains: q, mode: "insensitive" as const } },
-            { plantType: { name: { contains: q, mode: "insensitive" as const } } },
             { assignedStaff: { name: { contains: q, mode: "insensitive" as const } } },
+            // Trước chỉ khớp `plantType.name` qua field cố định trên Shelf — field đó CHỈ có giá trị ở kệ
+            // "đã chia" (1 kệ = đúng 1 mã cây), luôn null ở kệ "chung" (nhiều mã cây khác nhau, chỉ biết
+            // qua các lô đang xếp) nên gõ tên cây không ra kết quả gì ở "Kho mẫu mẹ chung". Cũng thiếu hẳn
+            // tìm theo MÃ cây dù placeholder có ghi "Tìm... mã cây". Tìm qua lô M05 đang xếp (cùng điều
+            // kiện với `s.lots` select bên dưới) khớp cả code lẫn name, đúng cho cả 2 loại kệ.
+            {
+              lots: {
+                some: {
+                  status: "ACTIVE" as const,
+                  stageCode: "M05",
+                  quantity: { gt: 0 },
+                  plantType: {
+                    OR: [
+                      { code: { contains: q, mode: "insensitive" as const } },
+                      { name: { contains: q, mode: "insensitive" as const } },
+                    ],
+                  },
+                },
+              },
+            },
           ],
         }
       : {}),
