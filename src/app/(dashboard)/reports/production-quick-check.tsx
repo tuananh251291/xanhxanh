@@ -21,13 +21,16 @@ import { ROOM_TYPE_LABELS } from "@/types";
 type Warehouse = { id: string; code: string; name: string };
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
-type CheckResult = { total: number; byRoomType: Record<string, number> };
+type CheckResult = { total: number; byRoomType: Record<string, number>; byStageCode?: Record<string, number> };
 
 const STAGE_OPTIONS = [
   { value: "M05", label: "M05 — Mẫu mẹ (túi 5 cụm)" },
   { value: "T01", label: "T01 — Thành phẩm (túi 1 cây)" },
   { value: "T05", label: "T05 — Thành phẩm (túi 5 cây)" },
   { value: "T10", label: "T10 — Thành phẩm (túi 10 cây)" },
+  // Không phải 1 quy cách túi cụ thể — server cộng gộp cả 3 quy cách T01+T05+T10 lại (xem ALL_FINISHED_
+  // STAGE_CODES ở route.ts).
+  { value: "ALL_FINISHED", label: "Cây thành phẩm (tổng T01 + T05 + T10)" },
 ];
 
 // "Kiểm tra nhanh sản lượng" — bổ sung dưới biểu đồ sản lượng ở tab Sản lượng (/reports). Gộp số lượng
@@ -147,6 +150,15 @@ export default function ProductionQuickCheck() {
                 {Object.entries(result.byRoomType).map(([type, qty]) => (
                   <span key={type}>
                     {ROOM_TYPE_LABELS[type as keyof typeof ROOM_TYPE_LABELS] ?? type}: <strong className="text-foreground">{qty.toLocaleString("vi-VN")}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
+            {result.byStageCode && Object.keys(result.byStageCode).length > 0 && (
+              <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
+                {Object.entries(result.byStageCode).map(([code, qty]) => (
+                  <span key={code}>
+                    {code}: <strong className="text-foreground">{qty.toLocaleString("vi-VN")}</strong>
                   </span>
                 ))}
               </div>
