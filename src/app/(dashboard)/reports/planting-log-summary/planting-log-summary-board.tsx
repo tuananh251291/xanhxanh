@@ -182,7 +182,7 @@ export default function PlantingLogSummaryBoard({
 
       {summary && (
         <p className="text-sm text-text-secondary">
-          {summary.staffCount} NV cấy mô · Được cấy: <strong className="text-foreground">{summary.totalMotherUsed.toLocaleString("vi-VN")}</strong>
+          {summary.staffCount} NV cấy mô · Mẫu mẹ sử dụng: <strong className="text-foreground">{summary.totalMotherUsed.toLocaleString("vi-VN")}</strong>
           {" "}· Ra mẫu mẹ: <strong className="text-primary-strong">{summary.totalMotherOut.toLocaleString("vi-VN")}</strong>
           {" "}· Ra thành phẩm: <strong className="text-primary-strong">{summary.totalFinishedOut.toLocaleString("vi-VN")}</strong>
         </p>
@@ -205,7 +205,7 @@ export default function PlantingLogSummaryBoard({
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên NV</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Khu sản xuất</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Số bản ghi</th>
-                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Được cấy</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Mẫu mẹ sử dụng</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Cấy ra mẫu mẹ</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Cấy ra thành phẩm</th>
                   </tr>

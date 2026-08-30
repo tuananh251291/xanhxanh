@@ -9,7 +9,7 @@ import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, parse, isValid } from
 // Lot.plantTypeId — 1 DailyRecord coi như 1 mã cây, chỉ cần CÓ dòng khớp là tính cả motherUsed của record
 // đó, xem vòng lặp bên dưới), và khoảng thời gian theo TUẦN (Thứ 2 - Chủ nhật, weekStartsOn:1 — khớp quy
 // ước tuần dùng chung toàn hệ thống, KHÔNG dùng số tuần ISO) hoặc THÁNG (lịch).
-// - "Được cấy bao nhiêu cây" = DailyRecord.motherUsed (mẫu mẹ đưa vào cấy).
+// - "Mẫu mẹ sử dụng" = DailyRecord.motherUsed (mẫu mẹ đưa vào cấy).
 // - "Cấy ra mẫu mẹ" = DailyRecordItem.quantityCreated tổng theo stage=MAU_ME.
 // - "Thành phẩm" = DailyRecordItem.quantityCreated tổng theo stage=THANH_PHAM.
 export async function GET(req: NextRequest) {
