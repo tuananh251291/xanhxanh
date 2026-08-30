@@ -39,10 +39,15 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export default function AccountPage() {
-  const { data: session, update } = useSession();
+  const { data: session } = useSession();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  // Avatar KHÔNG nằm trong session (xem comment ở src/lib/auth.config.ts — ảnh lớn làm vỡ header
+  // cookie) — tự tải riêng qua GET /api/account/avatar thay vì đọc session?.user?.avatar.
+  const [avatar, setAvatar] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/account/avatar").then((r) => r.json()).then((d) => setAvatar(d.avatar ?? null));
+  }, []);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   // Chặn submit form kiểu HTML gốc (GET, lộ mật khẩu ra URL) nếu người dùng bấm quá sớm, trước khi
@@ -54,7 +59,7 @@ export default function AccountPage() {
     register, handleSubmit, reset, formState: { errors },
   } = useForm<PasswordForm>({ resolver: zodResolver(passwordSchema) });
 
-  const currentAvatar = avatarPreview ?? session?.user?.avatar ?? undefined;
+  const currentAvatar = avatar ?? undefined;
   const userName = session?.user?.name ?? "";
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,8 +74,9 @@ export default function AccountPage() {
       return;
     }
 
+    const previousAvatar = avatar;
     const dataUrl = await readFileAsDataUrl(file);
-    setAvatarPreview(dataUrl);
+    setAvatar(dataUrl);
     setUploadingAvatar(true);
     try {
       const res = await fetch("/api/account/avatar", {
@@ -81,10 +87,9 @@ export default function AccountPage() {
       if (!res.ok) {
         const err = await res.json();
         toast.error(err.message ?? "Cập nhật ảnh thất bại");
-        setAvatarPreview(null);
+        setAvatar(previousAvatar);
         return;
       }
-      await update();
       router.refresh();
       toast.success("Đã cập nhật ảnh đại diện");
     } finally {
@@ -93,15 +98,16 @@ export default function AccountPage() {
   };
 
   const handleRemoveAvatar = async () => {
+    const previousAvatar = avatar;
     setUploadingAvatar(true);
     try {
       const res = await fetch("/api/account/avatar", { method: "DELETE" });
       if (!res.ok) {
         toast.error("Xóa ảnh thất bại");
+        setAvatar(previousAvatar);
         return;
       }
-      setAvatarPreview(null);
-      await update();
+      setAvatar(null);
       router.refresh();
       toast.success("Đã xóa ảnh đại diện");
     } finally {

@@ -24,30 +24,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as { role: UserRole | null }).role;
         token.status = (user as { status: UserStatus }).status;
         token.id = user.id as string;
-        token.avatar = (user as { avatar?: string | null }).avatar ?? null;
         token.workplaceWarehouseId = (user as { workplaceWarehouseId?: string | null }).workplaceWarehouseId ?? null;
         token.holdDays = (user as { holdDays?: number | null }).holdDays ?? null;
         token.sessionId = (user as { sessionId?: string }).sessionId;
         token.sessionRevoked = false;
         return token;
       }
-      // Làm mới role/status/isActive/avatar/workplaceWarehouseId/holdDays/currentSessionId từ DB mỗi
+      // Làm mới role/status/isActive/workplaceWarehouseId/holdDays/currentSessionId từ DB mỗi
       // request, để Admin duyệt/đổi vai trò/khóa tài khoản/đổi địa điểm làm việc/năng lực giữ đơn có
       // hiệu lực ngay mà không cần đăng xuất — ĐỒNG THỜI cũng là lúc phát hiện phiên này đã bị 1 lần
       // đăng nhập MỚI HƠN (thiết bị/trình duyệt khác) ghi đè currentSessionId (xem authorize() bên
       // dưới) — không xóa token, chỉ đánh dấu sessionRevoked để layout.tsx tự đăng xuất và báo rõ lý do
-      // (khác hẳn "tài khoản bị từ chối" của status REJECTED, không nên lẫn 2 khái niệm).
+      // (khác hẳn "tài khoản bị từ chối" của status REJECTED, không nên lẫn 2 khái niệm). KHÔNG nạp
+      // avatar vào token — xem comment ở src/lib/auth.config.ts (ảnh lớn làm vỡ header cookie).
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { role: true, status: true, isActive: true, avatar: true, workplaceWarehouseId: true, holdDays: true, currentSessionId: true },
+          select: { role: true, status: true, isActive: true, workplaceWarehouseId: true, holdDays: true, currentSessionId: true },
         });
         if (!dbUser || !dbUser.isActive) {
           token.status = "REJECTED";
         } else {
           token.role = dbUser.role;
           token.status = dbUser.status;
-          token.avatar = dbUser.avatar;
           token.workplaceWarehouseId = dbUser.workplaceWarehouseId;
           token.holdDays = dbUser.holdDays;
           token.sessionRevoked = !!token.sessionId && dbUser.currentSessionId !== token.sessionId;
@@ -115,7 +114,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           role: user.role,
           status: user.status,
-          avatar: user.avatar,
           workplaceWarehouseId: user.workplaceWarehouseId,
           holdDays: user.holdDays,
           sessionId,

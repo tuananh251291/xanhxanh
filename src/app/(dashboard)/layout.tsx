@@ -38,6 +38,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     await ensureDeXuatTaskCompletion(session.user.workplaceWarehouseId);
   }
 
+  // Avatar KHÔNG nằm trong session (xem comment ở src/lib/auth.config.ts) — query DB riêng ở đây.
+  const currentUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { avatar: true } });
+
   const alertCount = await prisma.alert.count({
     where: {
       status: "UNREAD",
@@ -66,7 +69,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             name: session.user.name ?? "",
             email: session.user.email ?? "",
             role,
-            avatar: session.user.avatar,
+            avatar: currentUser?.avatar ?? null,
           }}
           navItems={navItems}
           alertCount={alertCount}

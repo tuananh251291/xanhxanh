@@ -12,6 +12,17 @@ const avatarSchema = z.object({
     .max(MAX_DATA_URL_LENGTH, "Ảnh quá lớn, vui lòng chọn ảnh nhỏ hơn"),
 });
 
+// Avatar KHÔNG nằm trong session/JWT (xem comment ở src/lib/auth.config.ts) — nơi cần hiển thị/chỉnh sửa
+// avatar của chính mình phải tự gọi endpoint này thay vì đọc qua useSession().
+export async function GET() {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ message: "Chưa đăng nhập" }, { status: 401 });
+  }
+  const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { avatar: true } });
+  return NextResponse.json({ avatar: user?.avatar ?? null });
+}
+
 export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {

@@ -9,7 +9,6 @@ declare module "next-auth" {
       email: string;
       role: UserRole | null;
       status: UserStatus;
-      avatar: string | null;
       workplaceWarehouseId: string | null;
       holdDays: number | null;
       // true = phiên này đã bị 1 lần đăng nhập MỚI HƠN (thiết bị/trình duyệt khác) thay thế — chỉ 1
@@ -20,7 +19,6 @@ declare module "next-auth" {
   interface User {
     role: UserRole | null;
     status: UserStatus;
-    avatar?: string | null;
     workplaceWarehouseId?: string | null;
     holdDays?: number | null;
     // ID phiên vừa tạo lúc đăng nhập (authorize()) — gán vào token.sessionId ngay sau đó.
@@ -33,7 +31,6 @@ declare module "next-auth/jwt" {
     role: UserRole | null;
     status: UserStatus;
     id: string;
-    avatar: string | null;
     workplaceWarehouseId: string | null;
     holdDays: number | null;
     sessionId?: string;
