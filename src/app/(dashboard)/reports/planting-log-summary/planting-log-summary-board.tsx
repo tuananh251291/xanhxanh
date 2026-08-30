@@ -74,6 +74,7 @@ export default function PlantingLogSummaryBoard({
   useEffect(() => {
     if (plantTypeId !== ALL && !availablePlantTypes.some((p) => p.id === plantTypeId)) setPlantTypeId(ALL);
   }, [availablePlantTypes, plantTypeId]);
+  const plantTypeOptions: ComboOption[] = availablePlantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,17 +161,24 @@ export default function PlantingLogSummaryBoard({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
-            <Select
-              items={[{ value: ALL, label: "Tất cả mã cây" }, ...availablePlantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }))]}
-              value={plantTypeId}
-              onValueChange={(v) => setPlantTypeId((v as string) ?? ALL)}
+            <Combobox
+              items={plantTypeOptions}
+              value={plantTypeOptions.find((o) => o.value === plantTypeId) ?? null}
+              isItemEqualToValue={(a, b) => a.value === b.value}
+              onValueChange={(v) => setPlantTypeId(v?.value ?? ALL)}
             >
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả mã cây</SelectItem>
-                {availablePlantTypes.map((p) => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+              <ComboboxInputGroup className="w-56">
+                <ComboboxInput placeholder="Tất cả mã cây — gõ để tìm mã/tên…" />
+                <ComboboxClear />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           </div>
           {rangeLabel && (
             <p className="text-sm text-text-secondary">
