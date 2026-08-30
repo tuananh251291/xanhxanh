@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 
-const MAX_DATA_URL_LENGTH = 2_000_000; // ~1.5MB ảnh gốc sau base64
+// Chốt chặn phía server — FE (account/page.tsx) đã tự thu nhỏ ảnh về tối đa 256px + nén JPEG trước khi
+// gửi lên (luôn ra vài chục KB), giới hạn này chỉ để chặn ai gọi thẳng API bỏ qua FE. Avatar lưu thẳng
+// dạng data URL trong DB, không qua session/JWT (xem src/lib/auth.config.ts) — nhưng vẫn phải nhỏ để an
+// toàn nếu sau này có chỗ nào lại vô tình đưa vào session, và để không phình DB/mọi query có avatar.
+const MAX_DATA_URL_LENGTH = 300_000; // ~220KB ảnh gốc sau base64 — dư nhiều so với ảnh đã nén ở FE
 
 const avatarSchema = z.object({
   avatar: z

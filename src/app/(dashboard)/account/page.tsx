@@ -14,7 +14,11 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { KeyRound, Loader2, Save, UserCircle, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-const MAX_FILE_SIZE = 1_500_000; // ~1.5MB
+// Cho phép chọn ảnh gốc khá lớn (VD ảnh chụp thẳng từ điện thoại) — luôn tự thu nhỏ + nén lại trước khi
+// gửi lên (xem resizeImageToDataUrl) nên kích thước file gốc không ảnh hưởng tới kết quả lưu.
+const MAX_ORIGINAL_FILE_SIZE = 15_000_000; // ~15MB
+const AVATAR_MAX_DIMENSION = 256; // px — đủ cho ảnh đại diện hiển thị, không cần lớn hơn
+const AVATAR_JPEG_QUALITY = 0.8;
 
 const passwordSchema = z
   .object({
@@ -36,6 +40,40 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Luôn thu nhỏ về tối đa AVATAR_MAX_DIMENSION px (giữ tỉ lệ) + nén lại thành JPEG — ảnh đại diện hiển thị
+// rất nhỏ trên giao diện nên không cần giữ nguyên độ phân giải gốc. Quan trọng hơn: ảnh đại diện lưu
+// thẳng dạng data URL trong DB (không qua CDN/file storage riêng), phải nhỏ để không làm phình cookie
+// phiên đăng nhập nếu sau này có chỗ nào lại vô tình đưa vào session/JWT (từng gây lỗi thật — 1 tài khoản
+// có avatar ~112KB base64 làm vỡ giới hạn header của nginx, không đăng nhập được, xem src/lib/auth.config.ts).
+async function resizeImageToDataUrl(file: File): Promise<string> {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const img = await loadImage(originalDataUrl);
+  const scale = Math.min(1, AVATAR_MAX_DIMENSION / Math.max(img.width, img.height));
+  const width = Math.round(img.width * scale);
+  const height = Math.round(img.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return originalDataUrl;
+  // Nền trắng trước khi vẽ — ảnh PNG có vùng trong suốt sẽ không bị đổi thành đen khi xuất JPEG (JPEG
+  // không hỗ trợ alpha).
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", AVATAR_JPEG_QUALITY);
 }
 
 export default function AccountPage() {
@@ -69,13 +107,13 @@ export default function AccountPage() {
       toast.error("Vui lòng chọn file ảnh");
       return;
     }
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error("Ảnh quá lớn, vui lòng chọn ảnh dưới 1.5MB");
+    if (file.size > MAX_ORIGINAL_FILE_SIZE) {
+      toast.error("Ảnh quá lớn, vui lòng chọn ảnh dưới 15MB");
       return;
     }
 
     const previousAvatar = avatar;
-    const dataUrl = await readFileAsDataUrl(file);
+    const dataUrl = await resizeImageToDataUrl(file);
     setAvatar(dataUrl);
     setUploadingAvatar(true);
     try {
