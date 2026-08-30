@@ -150,6 +150,10 @@ export default function LoginPage() {
         }, GREETING_DURATION_MS);
       }
     } catch {
+      // signIn()/getSession() ném lỗi (mất mạng, server tạm gián đoạn...) — TRƯỚC im lặng đặt lại loading
+      // mà không báo gì, khiến NV tưởng nút "Đăng nhập" không phản hồi (không rõ thành công hay thất bại).
+      // Luôn hiện 1 thông báo, dù không biết chính xác nguyên nhân.
+      setError("Không thể đăng nhập lúc này — vui lòng kiểm tra kết nối mạng và thử lại.");
       setLoading(false);
     }
   };
