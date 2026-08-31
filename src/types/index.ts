@@ -507,6 +507,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/reports/planting-log-summary", label: "Dữ liệu nhật ký cấy", icon: "BookOpen" },
     { href: "/rooting-forecast", label: "Dự kiến đáp ứng cây ra rễ", icon: "Sprout" },
+    { href: "/reports/rooting-plan-vs-actual", label: "Kế hoạch vs thực tế cây ra rễ", icon: "Gauge" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   CAY_MO: [

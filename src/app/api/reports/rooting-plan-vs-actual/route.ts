@@ -7,18 +7,21 @@ import { startOfMonth, subMonths, format, isValid } from "date-fns";
 
 const DEFAULT_HISTORY_BUCKETS = 10;
 
-// Báo cáo "Kế hoạch vs thực tế — Cây ra rễ" (tab "Kế hoạch vs thực tế", Admin). Kế hoạch lấy từ
-// RootingForecastEntry (nhiệm vụ tháng NV Kỹ thuật nhập, xem src/lib/rooting-forecast.ts) — 1 dòng
-// taskMonth=M là dự báo cho THÁNG KẾ TIẾP M+1, nên kế hoạch cho 1 kỳ hiển thị T phải lấy đúng dòng có
-// taskMonth = T trừ 1 tháng; xem theo tuần thì lấy kế hoạch THÁNG chứa tuần đó rồi chia 4. Thực tế = sản
-// lượng thành phẩm (DailyRecordItem.quantityCreated, stage THANH_PHAM) — cùng quy ước đã có ở
-// src/lib/production-capacity.ts (lọc theo cơ sở qua NV cấy mô đang gán workplaceWarehouseId đúng cơ sở
-// đó, không có FK kho trực tiếp trên PlantingInstruction/DailyRecord). Query params: unit=week|month,
-// from/to (tuỳ chọn yyyy-MM-dd, có cả 2 mới dùng quãng tự nhập), scope=all|warehouse, warehouseId (bắt
-// buộc nếu scope=warehouse), plantTypeId (tuỳ chọn, bỏ trống = "Tất cả").
+// Báo cáo "Kế hoạch vs thực tế — Cây ra rễ" (tab "Kế hoạch vs thực tế" của Admin/Admin cấp cao, và trang
+// riêng /reports/rooting-plan-vs-actual cho NV Kỹ thuật — xem cùng 1 dữ liệu, không giới hạn phạm vi xem
+// theo cơ sở của chính NV). Kế hoạch lấy từ RootingForecastEntry (nhiệm vụ tháng NV Kỹ thuật nhập, xem
+// src/lib/rooting-forecast.ts) — 1 dòng taskMonth=M là dự báo cho THÁNG KẾ TIẾP M+1, nên kế hoạch cho 1 kỳ
+// hiển thị T phải lấy đúng dòng có taskMonth = T trừ 1 tháng; xem theo tuần thì lấy kế hoạch THÁNG chứa
+// tuần đó rồi chia 4. Thực tế = sản lượng thành phẩm (DailyRecordItem.quantityCreated, stage THANH_PHAM)
+// — cùng quy ước đã có ở src/lib/production-capacity.ts (lọc theo cơ sở qua NV cấy mô đang gán
+// workplaceWarehouseId đúng cơ sở đó, không có FK kho trực tiếp trên PlantingInstruction/DailyRecord).
+// Query params: unit=week|month, from/to (tuỳ chọn yyyy-MM-dd, có cả 2 mới dùng quãng tự nhập),
+// scope=all|warehouse, warehouseId (bắt buộc nếu scope=warehouse), plantTypeId (tuỳ chọn, bỏ trống =
+// "Tất cả").
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  const role = session?.user?.role;
+  if (!isAdminRole(role) && role !== "KY_THUAT") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get("unit") === "month" ? "month" : "week";
