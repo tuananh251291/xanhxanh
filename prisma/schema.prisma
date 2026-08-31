@@ -372,7 +372,8 @@ model User {
   ordersAssignedBy                     Order[]                      @relation("OrderAssignedBy")
   dailyTasksAssignedTo                 DailyTask[]                  @relation("DailyTaskAssignedTo")
   dailyTasksAssignedBy                 DailyTask[]                  @relation("DailyTaskAssignedBy")
-  rootingForecastEntries               RootingForecastEntry[]
+  rootingForecastEntriesEntered         RootingForecastEntry[] @relation("RootingForecastEnteredBy")
+  rootingForecastEntriesAssigned        RootingForecastEntry[] @relation("RootingForecastAssignedStaff")
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -2397,28 +2398,36 @@ model DailyTask {
 }
 
 // Nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" cho NV Kỹ thuật (KY_THUAT, gán 1 cơ sở sản xuất qua
-// User.workplaceWarehouseId) — mỗi dòng = số cây ra rễ dự kiến đáp ứng được của 1 mã cây, cho THÁNG KẾ
-// TIẾP taskMonth (không phải sản lượng của chính taskMonth). Hạn hoàn thành ngày 15 CỦA taskMonth (dời
+// User.workplaceWarehouseId) — mỗi dòng = số cây ra rễ dự kiến đáp ứng được của 1 mã cây MÀ 1 NV CẤY MÔ CỤ
+// THỂ đảm nhiệm, cho THÁNG KẾ TIẾP taskMonth (không phải sản lượng của chính taskMonth). 1 mã cây có thể
+// gán cho NHIỀU NV cấy mô khác nhau (nhiều dòng cùng plantTypeId+taskMonth, khác assignedStaffId) — tổng
+// dự kiến của 1 mã cây = cộng quantity mọi dòng của mã cây đó. Hạn hoàn thành ngày 15 CỦA taskMonth (dời
 // ngày 16 nếu 15 là Chủ nhật) — xem getForecastDeadline, src/lib/rooting-forecast.ts. KHÔNG có model
 // "Task" riêng lưu trạng thái hoàn thành — tính LIVE mỗi lần cần (giống getKyThuatStats,
 // src/app/(dashboard)/dashboard/page.tsx): 1 tháng coi là xong khi mọi mã cây đang hoạt động tại cơ sở đó
-// đều đã có dòng cho đúng taskMonth; "hoàn thành lúc nào" = MAX(enteredAt) trong các dòng đó.
+// đều có ÍT NHẤT 1 dòng (bất kỳ NV nào) cho đúng taskMonth; "hoàn thành lúc nào" = MAX(enteredAt) trong
+// các dòng đó.
 model RootingForecastEntry {
-  id          String    @id @default(cuid())
-  warehouseId String
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  plantTypeId String
-  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  id              String    @id @default(cuid())
+  warehouseId     String
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+  plantTypeId     String
+  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
   // Ngày 1 đầu THÁNG NHIỆM VỤ xuất hiện (hạn ngày 15/16 của CHÍNH tháng này) — số quantity là dự báo cho
   // THÁNG KẾ TIẾP taskMonth.
-  taskMonth   DateTime  @db.Date
-  quantity    Int
-  enteredById String
-  enteredBy   User      @relation(fields: [enteredById], references: [id])
-  enteredAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  taskMonth       DateTime  @db.Date
+  // NV cấy mô dự kiến đảm nhiệm phần số lượng này (bắt buộc — mỗi dòng gắn đúng 1 NV, không có dòng
+  // "chung chung không rõ ai làm"). Không ràng buộc cứng NV này phải cùng cơ sở với warehouseId ở trên
+  // (NV Kỹ thuật tự chịu trách nhiệm chọn đúng), nhưng UI chỉ gợi ý NV cấy mô cùng cơ sở.
+  assignedStaffId String
+  assignedStaff   User      @relation("RootingForecastAssignedStaff", fields: [assignedStaffId], references: [id])
+  quantity        Int
+  enteredById     String
+  enteredBy       User      @relation("RootingForecastEnteredBy", fields: [enteredById], references: [id])
+  enteredAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  @@unique([warehouseId, plantTypeId, taskMonth])
+  @@unique([warehouseId, plantTypeId, taskMonth, assignedStaffId])
   @@map("rooting_forecast_entries")
 }
 
