@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/combobox";
 import { Loader2, Save, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, addMonths } from "date-fns";
 
 type ForecastEntryRow = {
   entryId: string;
@@ -186,8 +186,8 @@ export default function RootingForecastBoard() {
       <CardContent className="p-4 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <p className="text-sm text-text-secondary">
-            Kỳ dự báo: <strong className="text-foreground">tháng {format(new Date(status.deadline), "MM/yyyy")} tới</strong>
-            {" "}· Hạn hoàn thành: <strong className="text-foreground">{format(new Date(status.deadline), "dd/MM/yyyy")}</strong>
+            Đang dự kiến sản lượng cho <strong className="text-primary-strong">THÁNG SAU — tháng {format(addMonths(new Date(status.taskMonth), 1), "MM/yyyy")}</strong>
+            {" "}· Hạn hoàn thành (của tháng hiện tại): <strong className="text-foreground">{format(new Date(status.deadline), "dd/MM/yyyy")}</strong>
           </p>
           <StatusBadge status={status} />
         </div>
