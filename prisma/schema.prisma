@@ -223,6 +223,13 @@ enum AlertType {
   // src/lib/rooting-forecast.ts) chưa hoàn thành, tới hạn nhắc ngày 15 (dời ngày 16 nếu 15 là Chủ nhật) —
   // báo cho đúng NV Kỹ thuật đang gán cơ sở sản xuất đó (userId), 1 lần/tháng/cơ sở.
   ROOTING_FORECAST_MONTHLY_DUE
+  // NV Kỹ thuật gửi đề xuất chỉnh sửa "Dự kiến đáp ứng cây ra rễ" (sau khi đã khoá) — báo Admin/Admin cấp
+  // cao (targetRole) vào duyệt, xem POST /api/rooting-forecast-edit-proposals.
+  ROOTING_FORECAST_EDIT_PROPOSAL
+  // Admin duyệt đề xuất chỉnh sửa — báo đúng NV đã gửi (userId) biết đã cập nhật vào dữ liệu chính.
+  ROOTING_FORECAST_EDIT_APPROVED
+  // Admin từ chối đề xuất chỉnh sửa — báo đúng NV đã gửi (userId), kèm lý do nếu có.
+  ROOTING_FORECAST_EDIT_REJECTED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -374,6 +381,10 @@ model User {
   dailyTasksAssignedBy                 DailyTask[]                  @relation("DailyTaskAssignedBy")
   rootingForecastEntriesEntered         RootingForecastEntry[] @relation("RootingForecastEnteredBy")
   rootingForecastEntriesAssigned        RootingForecastEntry[] @relation("RootingForecastAssignedStaff")
+  rootingForecastSubmissions            RootingForecastSubmission[]
+  rootingForecastEditProposalsRequested RootingForecastEditProposal[] @relation("RootingForecastEditProposalRequestedBy")
+  rootingForecastEditProposalsReviewed  RootingForecastEditProposal[] @relation("RootingForecastEditProposalReviewedBy")
+  rootingForecastEditProposalItems      RootingForecastEditProposalItem[] @relation("RootingForecastEditProposalItemStaff")
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -660,6 +671,7 @@ model PlantType {
   dailyTasks                 DailyTask[]
   motherStockWeekSnapshots   MotherStockWeekSnapshot[]
   rootingForecastEntries     RootingForecastEntry[]
+  rootingForecastEditProposalItems RootingForecastEditProposalItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -924,6 +936,8 @@ model Warehouse {
   dailyTasks                  DailyTask[]
   motherStockWeekSnapshots    MotherStockWeekSnapshot[]
   rootingForecastEntries      RootingForecastEntry[]
+  rootingForecastSubmissions  RootingForecastSubmission[]
+  rootingForecastEditProposals RootingForecastEditProposal[]
 
   @@map("warehouses")
 }
@@ -2400,13 +2414,13 @@ model DailyTask {
 // Nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" cho NV Kỹ thuật (KY_THUAT, gán 1 cơ sở sản xuất qua
 // User.workplaceWarehouseId) — mỗi dòng = số cây ra rễ dự kiến đáp ứng được của 1 mã cây MÀ 1 NV CẤY MÔ CỤ
 // THỂ đảm nhiệm, cho THÁNG KẾ TIẾP taskMonth (không phải sản lượng của chính taskMonth). 1 mã cây có thể
-// gán cho NHIỀU NV cấy mô khác nhau (nhiều dòng cùng plantTypeId+taskMonth, khác assignedStaffId) — tổng
-// dự kiến của 1 mã cây = cộng quantity mọi dòng của mã cây đó. Hạn hoàn thành ngày 15 CỦA taskMonth (dời
-// ngày 16 nếu 15 là Chủ nhật) — xem getForecastDeadline, src/lib/rooting-forecast.ts. KHÔNG có model
-// "Task" riêng lưu trạng thái hoàn thành — tính LIVE mỗi lần cần (giống getKyThuatStats,
-// src/app/(dashboard)/dashboard/page.tsx): 1 tháng coi là xong khi mọi mã cây đang hoạt động tại cơ sở đó
-// đều có ÍT NHẤT 1 dòng (bất kỳ NV nào) cho đúng taskMonth; "hoàn thành lúc nào" = MAX(enteredAt) trong
-// các dòng đó.
+// gán cho NHIỀU NV cấy mô khác nhau (nhiều dòng cùng plantTypeId+taskMonth, khác assignedStaffId), 1 NV
+// cấy mô cũng gán được nhiều mã cây — tổng dự kiến của 1 mã cây = cộng quantity mọi dòng của mã cây đó.
+// Hạn hoàn thành ngày 15 CỦA taskMonth (dời ngày 16 nếu 15 là Chủ nhật) — xem getForecastDeadline,
+// src/lib/rooting-forecast.ts. NỘP 1 LẦN DUY NHẤT MỖI THÁNG — hễ có RootingForecastSubmission cho đúng
+// (warehouseId, taskMonth) thì coi là ĐÃ KHOÁ, không được tạo/sửa/xoá trực tiếp dòng nào ở đây nữa (chỉ
+// còn cách qua RootingForecastEditProposal, Admin duyệt mới thực sự ghi vào bảng này). "Hoàn thành nhiệm
+// vụ" = đã có dòng RootingForecastSubmission (trùng với "đã khoá").
 model RootingForecastEntry {
   id              String    @id @default(cuid())
   warehouseId     String
@@ -2429,6 +2443,65 @@ model RootingForecastEntry {
 
   @@unique([warehouseId, plantTypeId, taskMonth, assignedStaffId])
   @@map("rooting_forecast_entries")
+}
+
+// Đánh dấu 1 (cơ sở, tháng) ĐÃ NỘP "Dự kiến đáp ứng cây ra rễ" — có dòng này = khoá cứng RootingForecastEntry
+// của đúng (warehouseId, taskMonth) đó, xem comment ở model đó.
+model RootingForecastSubmission {
+  id            String    @id @default(cuid())
+  warehouseId   String
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
+  taskMonth     DateTime  @db.Date
+  submittedById String
+  submittedBy   User      @relation(fields: [submittedById], references: [id])
+  submittedAt   DateTime  @default(now())
+
+  @@unique([warehouseId, taskMonth])
+  @@map("rooting_forecast_submissions")
+}
+
+enum RootingForecastEditProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// NV Kỹ thuật đề xuất thêm/sửa dòng "Dự kiến đáp ứng cây ra rễ" SAU KHI đã khoá (đã có
+// RootingForecastSubmission cho đúng tháng đó) — Admin duyệt/từ chối, xem PATCH
+// /api/rooting-forecast-edit-proposals/[id]. Duyệt thì mới thực sự upsert vào RootingForecastEntry (qua
+// applyForecastEntry, src/lib/rooting-forecast.ts) — gửi đề xuất KHÔNG tự đổi dữ liệu chính ngay.
+model RootingForecastEditProposal {
+  id              String    @id @default(cuid())
+  warehouseId     String
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+  taskMonth       DateTime  @db.Date
+  reason          String
+  status          RootingForecastEditProposalStatus @default(PENDING)
+  requestedById   String
+  requestedBy     User      @relation("RootingForecastEditProposalRequestedBy", fields: [requestedById], references: [id])
+  reviewedById    String?
+  reviewedBy      User?     @relation("RootingForecastEditProposalReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+
+  items RootingForecastEditProposalItem[]
+
+  @@map("rooting_forecast_edit_proposals")
+}
+
+// 1 dòng đề xuất thêm/sửa — cùng hình dạng (mã cây, NV cấy mô, số lượng) với RootingForecastEntry.
+model RootingForecastEditProposalItem {
+  id              String   @id @default(cuid())
+  proposalId      String
+  proposal        RootingForecastEditProposal @relation(fields: [proposalId], references: [id])
+  plantTypeId     String
+  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
+  assignedStaffId String
+  assignedStaff   User      @relation("RootingForecastEditProposalItemStaff", fields: [assignedStaffId], references: [id])
+  quantity        Int
+
+  @@map("rooting_forecast_edit_proposal_items")
 }
 
 // ============================================================
