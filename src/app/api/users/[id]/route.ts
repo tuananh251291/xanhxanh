@@ -8,13 +8,15 @@ import { z } from "zod";
 
 const ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON"] as const;
 
-// Chỉ NV kho mô/cấy mô/môi trường mới bị ràng buộc làm việc với đúng 1 kho sản xuất — NV kỹ thuật
-// làm việc được ở mọi kho nên không gán field này. NV bán hàng (SALE) cũng dùng field này nhưng ràng
-// buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên dưới. NV/Quản lý
-// kho thành phẩm (isKhoThanhPhamRole) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ —
-// KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm như trước (xem
-// getFinishedQualifiedRooms ở src/lib/processing.ts).
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
+// NV kho mô/cấy mô/môi trường/kỹ thuật bị ràng buộc làm việc với đúng 1 kho sản xuất — KY_THUAT gán được
+// từ khi có nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" (xem src/lib/rooting-forecast.ts), CHƯA dùng field
+// này để giới hạn phạm vi xem Phòng tối/Phòng sáng/giàn mẫu mẹ của KY_THUAT (những nơi đó vẫn cố tình bỏ
+// qua field này cho role này, giữ nguyên "xem được mọi kho" như trước). NV bán hàng (SALE) cũng dùng field
+// này nhưng ràng buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên
+// dưới. NV/Quản lý kho thành phẩm (isKhoThanhPhamRole) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính
+// hiển thị/lưu trữ — KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm
+// như trước (xem getFinishedQualifiedRooms ở src/lib/processing.ts).
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
 
 const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
@@ -59,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
     if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
     if (!target.role || !WORKPLACE_ROLES.includes(target.role as (typeof WORKPLACE_ROLES)[number])) {
-      return NextResponse.json({ message: "Chỉ áp dụng cho NV kho mô, cấy mô, môi trường, bán hàng, kho thành phẩm" }, { status: 400 });
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV kho mô, cấy mô, môi trường, kỹ thuật, bán hàng, kho thành phẩm" }, { status: 400 });
     }
     const { workplaceWarehouseId } = parsed.data;
     // NV bán hàng và NV kho thành phẩm làm việc với 1 Kho THÀNH PHẨM — các vai trò còn lại vẫn là Kho

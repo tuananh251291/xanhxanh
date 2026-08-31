@@ -14,6 +14,7 @@ import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { ensureMediumOrdersSent } from "@/lib/medium-order-lifecycle";
 import { ensureCustomerAutoExpire, ensureCustomerStatusReminders } from "@/lib/customer-lifecycle";
 import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-task-weekly";
+import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -30,7 +31,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   await ensureExpiredOrdersCancelled();
   await ensureMediumOrdersSent();
   await ensureCustomerAutoExpire();
-  if (role === "KY_THUAT") await ensureMotherReadyAlerts();
+  if (role === "KY_THUAT") {
+    await ensureMotherReadyAlerts();
+    await ensureRootingForecastReminder(session.user.workplaceWarehouseId);
+  }
   if (role === "KHO_MO") await ensureRootingReadyAlerts();
   if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);
   if (isKhoThanhPhamRole(role)) {

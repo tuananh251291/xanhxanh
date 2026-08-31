@@ -26,7 +26,7 @@ const ASSIGNABLE_ROLE_LABELS = Object.fromEntries(
 
 // Đồng bộ với WORKPLACE_ROLES ở users/page.tsx và src/app/api/users/[id]/route.ts. NV/Quản lý kho thành
 // phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
 const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
 const NO_WAREHOUSE = "NONE";
 

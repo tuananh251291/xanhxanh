@@ -219,6 +219,10 @@ enum AlertType {
   // Admin có ghi) để sửa số lượng/loại/ghi chú rồi gửi lại — xem PATCH /api/contamination-proposals/[id]
   // nhánh reject + nhánh resubmit.
   CONTAMINATION_PROPOSAL_REJECTED
+  // Nhắc nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" (xem ensureRootingForecastReminder,
+  // src/lib/rooting-forecast.ts) chưa hoàn thành, tới hạn nhắc ngày 15 (dời ngày 16 nếu 15 là Chủ nhật) —
+  // báo cho đúng NV Kỹ thuật đang gán cơ sở sản xuất đó (userId), 1 lần/tháng/cơ sở.
+  ROOTING_FORECAST_MONTHLY_DUE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -288,12 +292,15 @@ model User {
   // JWT của thiết bị trước đó không còn khớp field này nữa — chỉ CHO PHÉP 1 phiên hoạt động/tài khoản).
   // null = chưa từng đăng nhập lần nào (tài khoản mới tạo).
   currentSessionId     String?
-  // Địa điểm làm việc — áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG (ràng buộc 1 kho sản xuất/SAN_XUAT) và
-  // SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng đạt tiêu chuẩn ở đó, xem thêm RoomAccess cho
-  // các Phòng thị trường được cấp quyền riêng). KHO_THANH_PHAM cũng gán được 1 kho THÀNH PHẨM nhưng
-  // CHỈ mang tính hiển thị/lưu trữ — không giới hạn phạm vi thao tác (xem getFinishedQualifiedRooms ở
-  // src/lib/processing.ts). NV kỹ thuật (KY_THUAT) không cần gán, luôn làm việc ở mọi kho. Chỉ
-  // SUPER_ADMIN được sửa field này.
+  // Địa điểm làm việc — áp dụng cho KHO_MO/CAY_MO/MOI_TRUONG/KY_THUAT (ràng buộc 1 kho sản xuất/SAN_XUAT)
+  // và SALE (ràng buộc 1 kho thành phẩm/THANH_PHAM — xem tồn Phòng đạt tiêu chuẩn ở đó, xem thêm
+  // RoomAccess cho các Phòng thị trường được cấp quyền riêng). KHO_THANH_PHAM cũng gán được 1 kho THÀNH
+  // PHẨM nhưng CHỈ mang tính hiển thị/lưu trữ — không giới hạn phạm vi thao tác (xem
+  // getFinishedQualifiedRooms ở src/lib/processing.ts). KY_THUAT gán được từ khi có nhiệm vụ "Dự kiến đáp
+  // ứng cây ra rễ" (xem src/lib/rooting-forecast.ts) — CHƯA dùng field này để giới hạn phạm vi xem
+  // Phòng tối/Phòng sáng/giàn mẫu mẹ của KY_THUAT (những nơi đó vẫn cố tình bỏ qua field này cho role này,
+  // giữ nguyên hành vi "xem được mọi kho" cũ). Optional với mọi role — không bắt buộc phải gán mới lưu
+  // được tài khoản. SUPER_ADMIN/HANH_CHINH_NHAN_SU được sửa field này (xem canAssignWorkplace).
   workplaceWarehouseId String?
   workplaceWarehouse   Warehouse?      @relation(fields: [workplaceWarehouseId], references: [id])
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), do NV kho mô phụ trách cùng kho sản xuất cài
@@ -365,6 +372,7 @@ model User {
   ordersAssignedBy                     Order[]                      @relation("OrderAssignedBy")
   dailyTasksAssignedTo                 DailyTask[]                  @relation("DailyTaskAssignedTo")
   dailyTasksAssignedBy                 DailyTask[]                  @relation("DailyTaskAssignedBy")
+  rootingForecastEntries               RootingForecastEntry[]
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -650,6 +658,7 @@ model PlantType {
   transferInspectionItems    TransferInspectionItem[]
   dailyTasks                 DailyTask[]
   motherStockWeekSnapshots   MotherStockWeekSnapshot[]
+  rootingForecastEntries     RootingForecastEntry[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -913,6 +922,7 @@ model Warehouse {
   replantHandovers            ReplantHandover[]
   dailyTasks                  DailyTask[]
   motherStockWeekSnapshots    MotherStockWeekSnapshot[]
+  rootingForecastEntries      RootingForecastEntry[]
 
   @@map("warehouses")
 }
@@ -2384,6 +2394,32 @@ model DailyTask {
 
   @@unique([warehouseId, weekStart, slotKey])
   @@map("daily_tasks")
+}
+
+// Nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" cho NV Kỹ thuật (KY_THUAT, gán 1 cơ sở sản xuất qua
+// User.workplaceWarehouseId) — mỗi dòng = số cây ra rễ dự kiến đáp ứng được của 1 mã cây, cho THÁNG KẾ
+// TIẾP taskMonth (không phải sản lượng của chính taskMonth). Hạn hoàn thành ngày 15 CỦA taskMonth (dời
+// ngày 16 nếu 15 là Chủ nhật) — xem getForecastDeadline, src/lib/rooting-forecast.ts. KHÔNG có model
+// "Task" riêng lưu trạng thái hoàn thành — tính LIVE mỗi lần cần (giống getKyThuatStats,
+// src/app/(dashboard)/dashboard/page.tsx): 1 tháng coi là xong khi mọi mã cây đang hoạt động tại cơ sở đó
+// đều đã có dòng cho đúng taskMonth; "hoàn thành lúc nào" = MAX(enteredAt) trong các dòng đó.
+model RootingForecastEntry {
+  id          String    @id @default(cuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  // Ngày 1 đầu THÁNG NHIỆM VỤ xuất hiện (hạn ngày 15/16 của CHÍNH tháng này) — số quantity là dự báo cho
+  // THÁNG KẾ TIẾP taskMonth.
+  taskMonth   DateTime  @db.Date
+  quantity    Int
+  enteredById String
+  enteredBy   User      @relation(fields: [enteredById], references: [id])
+  enteredAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([warehouseId, plantTypeId, taskMonth])
+  @@map("rooting_forecast_entries")
 }
 
 // ============================================================
