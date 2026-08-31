@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,19 +19,32 @@ import { Loader2, Save, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-type ForecastEntryRow = { entryId: string; assignedStaffId: string; staffCode: string; staffName: string; quantity: number };
-type ForecastPlantTypeRow = { plantTypeId: string; code: string; name: string; entries: ForecastEntryRow[]; totalQuantity: number };
+type ForecastEntryRow = {
+  entryId: string;
+  plantTypeId: string; plantTypeCode: string; plantTypeName: string;
+  assignedStaffId: string; staffCode: string; staffName: string;
+  quantity: number;
+};
 type AvailableStaff = { id: string; code: string; name: string };
+type PlantType = { id: string; code: string; name: string };
 type ForecastStatus = {
   taskMonth: string;
   deadline: string;
-  plantTypes: ForecastPlantTypeRow[];
+  entries: ForecastEntryRow[];
   availableStaff: AvailableStaff[];
   isComplete: boolean;
   completedAt: string | null;
   isOnTime: boolean | null;
 };
 type ComboOption = { value: string; label: string };
+
+const DEFAULT_BLANK_ROWS = 10;
+
+type DraftRow = { key: string; plantTypeOption: ComboOption | null; staffOption: ComboOption | null; quantity: string };
+
+function newDraftRow(): DraftRow {
+  return { key: `draft-${Math.random().toString(36).slice(2)}`, plantTypeOption: null, staffOption: null, quantity: "" };
+}
 
 function StatusBadge({ status }: { status: ForecastStatus }) {
   const deadline = new Date(status.deadline);
@@ -53,17 +66,29 @@ function StatusBadge({ status }: { status: ForecastStatus }) {
 
 export default function RootingForecastBoard() {
   const [status, setStatus] = useState<ForecastStatus | null>(null);
+  const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [editValues, setEditValues] = useState<Record<string, string>>({});
-  const [addStaffOption, setAddStaffOption] = useState<Record<string, ComboOption | null>>({});
-  const [addQuantity, setAddQuantity] = useState<Record<string, string>>({});
+
+  // Dòng ĐÃ LƯU — sửa/xoá được, giữ giá trị đang chỉnh riêng theo entryId.
+  const [savedEditValues, setSavedEditValues] = useState<Record<string, { plantTypeOption: ComboOption; staffOption: ComboOption; quantity: string }>>({});
+  // Dòng NHÁP — chưa lưu, chỉ tồn tại ở client, mặc định 10 dòng trống.
+  const [draftRows, setDraftRows] = useState<DraftRow[]>(() => Array.from({ length: DEFAULT_BLANK_ROWS }, newDraftRow));
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const applyStatus = useCallback((data: ForecastStatus) => {
     setStatus(data);
-    setEditValues(
-      Object.fromEntries(data.plantTypes.flatMap((p) => p.entries.map((e) => [e.entryId, e.quantity.toString()])))
+    setSavedEditValues(
+      Object.fromEntries(
+        data.entries.map((e) => [
+          e.entryId,
+          {
+            plantTypeOption: { value: e.plantTypeId, label: `${e.plantTypeCode} — ${e.plantTypeName}` },
+            staffOption: { value: e.assignedStaffId, label: `${e.staffCode} — ${e.staffName}` },
+            quantity: e.quantity.toString(),
+          },
+        ])
+      )
     );
   }, []);
 
@@ -71,13 +96,18 @@ export default function RootingForecastBoard() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/rooting-forecast");
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data?.message ?? "Không tải được dữ liệu");
+      const [statusRes, plantTypesRes] = await Promise.all([
+        fetch("/api/rooting-forecast"),
+        fetch("/api/plant-types"),
+      ]);
+      const statusData = await statusRes.json();
+      if (!statusRes.ok) {
+        setError(statusData?.message ?? "Không tải được dữ liệu");
         return;
       }
-      applyStatus(data);
+      applyStatus(statusData);
+      const plantTypesData = await plantTypesRes.json();
+      setPlantTypes(Array.isArray(plantTypesData) ? plantTypesData : []);
     } finally {
       setLoading(false);
     }
@@ -85,17 +115,16 @@ export default function RootingForecastBoard() {
 
   useEffect(() => { load(); }, [load]);
 
+  const plantTypeOptions: ComboOption[] = useMemo(() => plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })), [plantTypes]);
   const staffOptions: ComboOption[] = useMemo(
     () => (status?.availableStaff ?? []).map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` })),
     [status]
   );
 
-  const saveEntry = async (plantTypeId: string, assignedStaffId: string, quantityRaw: string, key: string) => {
+  const saveRow = async (plantTypeId: string, assignedStaffId: string, quantityRaw: string, key: string, onSuccess: () => void) => {
+    if (quantityRaw.trim() === "") { toast.error("Nhập số lượng"); return; }
     const quantity = Number(quantityRaw);
-    if (quantityRaw.trim() === "" || !Number.isInteger(quantity) || quantity < 0) {
-      toast.error("Nhập số lượng hợp lệ (số nguyên, không âm)");
-      return;
-    }
+    if (!Number.isInteger(quantity) || quantity < 0) { toast.error("Số lượng phải là số nguyên, không âm"); return; }
     setBusyKey(key);
     try {
       const res = await fetch("/api/rooting-forecast", {
@@ -104,26 +133,27 @@ export default function RootingForecastBoard() {
         body: JSON.stringify({ plantTypeId, assignedStaffId, quantity }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data?.message ?? "Lưu thất bại");
-        return;
-      }
+      if (!res.ok) { toast.error(data?.message ?? "Lưu thất bại"); return; }
       applyStatus(data);
       toast.success("Đã lưu");
+      onSuccess();
     } finally {
       setBusyKey(null);
     }
   };
 
-  const addEntry = async (plantTypeId: string) => {
-    const staffOption = addStaffOption[plantTypeId];
-    if (!staffOption) {
-      toast.error("Chọn NV cấy mô");
-      return;
-    }
-    await saveEntry(plantTypeId, staffOption.value, addQuantity[plantTypeId] ?? "", `add-${plantTypeId}`);
-    setAddStaffOption((prev) => ({ ...prev, [plantTypeId]: null }));
-    setAddQuantity((prev) => ({ ...prev, [plantTypeId]: "" }));
+  const saveDraftRow = (row: DraftRow) => {
+    if (!row.plantTypeOption) { toast.error("Chọn mã cây"); return; }
+    if (!row.staffOption) { toast.error("Chọn NV cấy mô"); return; }
+    saveRow(row.plantTypeOption.value, row.staffOption.value, row.quantity, row.key, () => {
+      setDraftRows((prev) => prev.filter((r) => r.key !== row.key));
+    });
+  };
+
+  const saveExistingRow = (entryId: string) => {
+    const v = savedEditValues[entryId];
+    if (!v) return;
+    saveRow(v.plantTypeOption.value, v.staffOption.value, v.quantity, `saved-${entryId}`, () => {});
   };
 
   const removeEntry = async (entryId: string) => {
@@ -135,10 +165,7 @@ export default function RootingForecastBoard() {
         body: JSON.stringify({ entryId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data?.message ?? "Xoá thất bại");
-        return;
-      }
+      if (!res.ok) { toast.error(data?.message ?? "Xoá thất bại"); return; }
       applyStatus(data);
       toast.success("Đã xoá");
     } finally {
@@ -172,120 +199,165 @@ export default function RootingForecastBoard() {
           </p>
         )}
 
-        {status.plantTypes.length === 0 ? (
-          <p className="text-sm text-text-muted text-center py-12">
-            Cơ sở sản xuất của bạn hiện chưa có mã cây nào đang hoạt động
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-primary-light text-primary-strong">
-                  <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
-                  <th className="px-3 py-2 text-left font-bold text-base">Tên cây</th>
-                  <th className="px-3 py-2 text-left font-bold text-base">NV cấy mô</th>
-                  <th className="px-3 py-2 text-center font-bold text-base">Số lượng dự kiến</th>
-                  <th className="px-3 py-2 text-center font-bold text-base">Thao tác</th>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-primary-light text-primary-strong">
+                <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
+                <th className="px-3 py-2 text-left font-bold text-base">NV cấy mô</th>
+                <th className="px-3 py-2 text-center font-bold text-base">Số lượng dự kiến</th>
+                <th className="px-3 py-2 text-center font-bold text-base">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {status.entries.map((e) => {
+                const v = savedEditValues[e.entryId];
+                if (!v) return null;
+                return (
+                  <tr key={e.entryId} className="border-b even:bg-primary-light">
+                    <td className="px-2 py-2">
+                      <Combobox
+                        items={plantTypeOptions}
+                        value={v.plantTypeOption}
+                        isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                        onValueChange={(val) => setSavedEditValues((prev) => ({ ...prev, [e.entryId]: { ...prev[e.entryId], plantTypeOption: val as ComboOption } }))}
+                      >
+                        <ComboboxInputGroup className="w-52 h-9">
+                          <ComboboxInput placeholder="Gõ mã/tên cây…" />
+                          <ComboboxTrigger />
+                        </ComboboxInputGroup>
+                        <ComboboxContent>
+                          <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+                          <ComboboxList>
+                            {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+                    </td>
+                    <td className="px-2 py-2">
+                      <Combobox
+                        items={staffOptions}
+                        value={v.staffOption}
+                        isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                        onValueChange={(val) => setSavedEditValues((prev) => ({ ...prev, [e.entryId]: { ...prev[e.entryId], staffOption: val as ComboOption } }))}
+                      >
+                        <ComboboxInputGroup className="w-52 h-9">
+                          <ComboboxInput placeholder="Gõ mã/tên NV…" />
+                          <ComboboxTrigger />
+                        </ComboboxInputGroup>
+                        <ComboboxContent>
+                          <ComboboxEmpty>Không tìm thấy NV</ComboboxEmpty>
+                          <ComboboxList>
+                            {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number" min={0}
+                        value={v.quantity}
+                        onChange={(ev) => setSavedEditValues((prev) => ({ ...prev, [e.entryId]: { ...prev[e.entryId], quantity: ev.target.value } }))}
+                        className="w-28 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          type="button" size="icon-sm" variant="outline"
+                          disabled={busyKey === `saved-${e.entryId}`}
+                          onClick={() => saveExistingRow(e.entryId)}
+                        >
+                          {busyKey === `saved-${e.entryId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        </Button>
+                        <Button
+                          type="button" size="icon-sm" variant="ghost"
+                          disabled={busyKey === `del-${e.entryId}`}
+                          onClick={() => removeEntry(e.entryId)}
+                        >
+                          {busyKey === `del-${e.entryId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 text-destructive" />}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {draftRows.map((row) => (
+                <tr key={row.key} className="border-b even:bg-primary-light">
+                  <td className="px-2 py-2">
+                    <Combobox
+                      items={plantTypeOptions}
+                      value={row.plantTypeOption}
+                      isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                      onValueChange={(val) => setDraftRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, plantTypeOption: val as ComboOption | null } : r)))}
+                    >
+                      <ComboboxInputGroup className="w-52 h-9">
+                        <ComboboxInput placeholder="Gõ mã/tên cây…" />
+                        <ComboboxTrigger />
+                      </ComboboxInputGroup>
+                      <ComboboxContent>
+                        <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+                        <ComboboxList>
+                          {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </td>
+                  <td className="px-2 py-2">
+                    <Combobox
+                      items={staffOptions}
+                      value={row.staffOption}
+                      isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                      onValueChange={(val) => setDraftRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, staffOption: val as ComboOption | null } : r)))}
+                    >
+                      <ComboboxInputGroup className="w-52 h-9">
+                        <ComboboxInput placeholder="Gõ mã/tên NV…" />
+                        <ComboboxTrigger />
+                      </ComboboxInputGroup>
+                      <ComboboxContent>
+                        <ComboboxEmpty>Không tìm thấy NV</ComboboxEmpty>
+                        <ComboboxList>
+                          {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </td>
+                  <td className="px-2 py-2">
+                    <Input
+                      type="number" min={0}
+                      placeholder="Số lượng"
+                      value={row.quantity}
+                      onChange={(ev) => setDraftRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, quantity: ev.target.value } : r)))}
+                      className="w-28 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Button
+                        type="button" size="icon-sm" variant="outline"
+                        disabled={busyKey === row.key || staffOptions.length === 0}
+                        onClick={() => saveDraftRow(row)}
+                      >
+                        {busyKey === row.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      </Button>
+                      <Button
+                        type="button" size="icon-sm" variant="ghost"
+                        onClick={() => setDraftRows((prev) => prev.filter((r) => r.key !== row.key))}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {status.plantTypes.map((p) => {
-                  const rowSpan = p.entries.length + 1;
-                  return (
-                    <Fragment key={p.plantTypeId}>
-                      {p.entries.map((e, idx) => (
-                        <tr key={e.entryId} className="border-b even:bg-primary-light">
-                          {idx === 0 && (
-                            <>
-                              <td className="px-3 py-2 font-mono align-top" rowSpan={rowSpan}>{p.code}</td>
-                              <td className="px-3 py-2 align-top" rowSpan={rowSpan}>
-                                {p.name}
-                                <div className="text-xs text-text-muted mt-1">Tổng: {p.totalQuantity.toLocaleString("vi-VN")}</div>
-                              </td>
-                            </>
-                          )}
-                          <td className="px-3 py-2 text-text-secondary">{e.staffCode} — {e.staffName}</td>
-                          <td className="px-2 py-2">
-                            <Input
-                              type="number" min={0}
-                              value={editValues[e.entryId] ?? ""}
-                              onChange={(ev) => setEditValues((prev) => ({ ...prev, [e.entryId]: ev.target.value }))}
-                              className="w-28 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button
-                                type="button" size="icon-sm" variant="outline"
-                                disabled={busyKey === `edit-${e.entryId}`}
-                                onClick={() => saveEntry(p.plantTypeId, e.assignedStaffId, editValues[e.entryId] ?? "", `edit-${e.entryId}`)}
-                              >
-                                {busyKey === `edit-${e.entryId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                              </Button>
-                              <Button
-                                type="button" size="icon-sm" variant="ghost"
-                                disabled={busyKey === `del-${e.entryId}`}
-                                onClick={() => removeEntry(e.entryId)}
-                              >
-                                {busyKey === `del-${e.entryId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 text-destructive" />}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      <tr key={`${p.plantTypeId}-add`} className="border-b even:bg-primary-light">
-                        {p.entries.length === 0 && (
-                          <>
-                            <td className="px-3 py-2 font-mono align-top" rowSpan={1}>{p.code}</td>
-                            <td className="px-3 py-2 align-top" rowSpan={1}>{p.name}</td>
-                          </>
-                        )}
-                        <td className="px-2 py-2">
-                          <Combobox
-                            items={staffOptions}
-                            value={addStaffOption[p.plantTypeId] ?? null}
-                            isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-                            onValueChange={(v) => setAddStaffOption((prev) => ({ ...prev, [p.plantTypeId]: v as ComboOption | null }))}
-                          >
-                            <ComboboxInputGroup className="w-48 h-9">
-                              <ComboboxInput placeholder="Gõ mã/tên NV…" />
-                              <ComboboxTrigger />
-                            </ComboboxInputGroup>
-                            <ComboboxContent>
-                              <ComboboxEmpty>Không tìm thấy NV</ComboboxEmpty>
-                              <ComboboxList>
-                                {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                              </ComboboxList>
-                            </ComboboxContent>
-                          </Combobox>
-                        </td>
-                        <td className="px-2 py-2">
-                          <Input
-                            type="number" min={0}
-                            placeholder="Số lượng"
-                            value={addQuantity[p.plantTypeId] ?? ""}
-                            onChange={(ev) => setAddQuantity((prev) => ({ ...prev, [p.plantTypeId]: ev.target.value }))}
-                            className="w-28 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <Button
-                            type="button" size="sm" variant="outline"
-                            disabled={busyKey === `add-${p.plantTypeId}` || staffOptions.length === 0}
-                            onClick={() => addEntry(p.plantTypeId)}
-                          >
-                            {busyKey === `add-${p.plantTypeId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
-                            Thêm NV
-                          </Button>
-                        </td>
-                      </tr>
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <Button type="button" variant="outline" size="sm" onClick={() => setDraftRows((prev) => [...prev, newDraftRow()])}>
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm dòng
+        </Button>
       </CardContent>
     </Card>
   );

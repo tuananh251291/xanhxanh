@@ -47,7 +47,15 @@ export async function PATCH(req: NextRequest) {
   }
   const { plantTypeId, assignedStaffId, quantity } = parsed.data;
 
-  const staff = await prisma.user.findUnique({ where: { id: assignedStaffId }, select: { role: true, isActive: true } });
+  // NV tự gõ chọn mã cây/NV cấy mô (không còn danh sách cố định điền sẵn) — phải tự validate cả 2 thay vì
+  // tin tưởng client như trước.
+  const [plantType, staff] = await Promise.all([
+    prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { isActive: true } }),
+    prisma.user.findUnique({ where: { id: assignedStaffId }, select: { role: true, isActive: true } }),
+  ]);
+  if (!plantType || !plantType.isActive) {
+    return NextResponse.json({ message: "Mã cây không hợp lệ" }, { status: 400 });
+  }
   if (!staff || staff.role !== "CAY_MO" || !staff.isActive) {
     return NextResponse.json({ message: "NV cấy mô không hợp lệ" }, { status: 400 });
   }

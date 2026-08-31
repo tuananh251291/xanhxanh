@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
 
 // Nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" cho NV Kỹ thuật — mỗi cơ sở sản xuất (Warehouse SAN_XUAT,
-// gán qua User.workplaceWarehouseId) có 1 vòng nhập liệu/tháng, NV điền số cây ra rễ dự kiến đáp ứng được
-// THÁNG KẾ TIẾP, cho từng mã cây đang hoạt động tại cơ sở đó — MỖI mã cây có thể gán cho NHIỀU NV cấy mô
-// khác nhau (mỗi người 1 dòng riêng, xem RootingForecastEntry). Hạn hoàn thành ngày 15 của taskMonth (dời
-// sang 16 nếu 15 là Chủ nhật). Không có bảng "Task" riêng lưu trạng thái — mọi thứ tính LIVE từ
-// RootingForecastEntry (xem prisma/schema.prisma), giống triết lý getKyThuatStats
-// (src/app/(dashboard)/dashboard/page.tsx).
+// gán qua User.workplaceWarehouseId) có 1 vòng nhập liệu/tháng, NV TỰ NHẬP (không có danh sách mã cây cố
+// định điền sẵn) từng dòng (mã cây, NV cấy mô, số lượng dự kiến đáp ứng THÁNG KẾ TIẾP) — 1 mã cây có thể
+// gắn nhiều NV cấy mô, 1 NV cấy mô có thể gắn nhiều mã cây (không giới hạn tổ hợp, chỉ duy nhất theo đúng
+// từng cặp mã cây + NV, xem @@unique). Hạn hoàn thành ngày 15 của taskMonth (dời sang 16 nếu 15 là Chủ
+// nhật). Không có bảng "Task" riêng lưu trạng thái — mọi thứ tính LIVE từ RootingForecastEntry (xem
+// prisma/schema.prisma): hoàn thành ngay khi đã lưu ÍT NHẤT 1 dòng hợp lệ trong tháng.
 
 // yyyy-MM-01 UTC-midnight của tháng chứa `date` — cùng kỹ thuật với toStoredWeekStart
 // (src/lib/week-rotation.ts) để so khớp đúng dù server ở múi giờ nào.
@@ -22,25 +22,6 @@ export function getForecastDeadline(taskMonth: Date): Date {
   return getDay(day15) === 0 ? addDays(day15, 1) : day15;
 }
 
-// Mã cây đang hoạt động tại 1 cơ sở sản xuất — cùng cách lọc đã có tiền lệ ở getRelevantPlantTypeIds
-// (src/lib/mother-stock-growth-report.ts): union giữa lô MAU_ME đã lên giàn Phòng mẫu mẹ + lô ACTIVE còn
-// ở Phòng tối (chưa lên giàn) của đúng cơ sở đó.
-async function getActivePlantTypeIds(warehouseId: string): Promise<string[]> {
-  const [shelved, unshelved] = await Promise.all([
-    prisma.lot.findMany({
-      where: { stage: "MAU_ME", shelf: { warehouseId, room: { type: "PHONG_MAU_ME" } } },
-      distinct: ["plantTypeId"],
-      select: { plantTypeId: true },
-    }),
-    prisma.lot.findMany({
-      where: { stage: "MAU_ME", status: "ACTIVE", room: { warehouseId, type: "PHONG_TOI" } },
-      distinct: ["plantTypeId"],
-      select: { plantTypeId: true },
-    }),
-  ]);
-  return Array.from(new Set([...shelved, ...unshelved].map((r) => r.plantTypeId)));
-}
-
 // NV cấy mô đang làm việc tại đúng cơ sở đó — danh sách gợi ý cho NV Kỹ thuật chọn khi gán (không ràng
 // buộc cứng ở DB, chỉ gợi ý ở UI — xem comment RootingForecastEntry.assignedStaffId).
 export async function getAvailableStaff(warehouseId: string): Promise<{ id: string; code: string; name: string }[]> {
@@ -51,12 +32,16 @@ export async function getAvailableStaff(warehouseId: string): Promise<{ id: stri
   });
 }
 
-export type ForecastEntryRow = { entryId: string; assignedStaffId: string; staffCode: string; staffName: string; quantity: number };
-export type ForecastPlantTypeRow = { plantTypeId: string; code: string; name: string; entries: ForecastEntryRow[]; totalQuantity: number };
+export type ForecastEntryRow = {
+  entryId: string;
+  plantTypeId: string; plantTypeCode: string; plantTypeName: string;
+  assignedStaffId: string; staffCode: string; staffName: string;
+  quantity: number;
+};
 export type ForecastStatus = {
   taskMonth: Date;
   deadline: Date;
-  plantTypes: ForecastPlantTypeRow[];
+  entries: ForecastEntryRow[];
   availableStaff: { id: string; code: string; name: string }[];
   isComplete: boolean;
   completedAt: Date | null;
@@ -64,58 +49,36 @@ export type ForecastStatus = {
 };
 
 export async function getForecastStatus(warehouseId: string, taskMonth: Date): Promise<ForecastStatus> {
-  const [plantTypeIds, entries, availableStaff] = await Promise.all([
-    getActivePlantTypeIds(warehouseId),
+  const [entries, availableStaff] = await Promise.all([
     prisma.rootingForecastEntry.findMany({
       where: { warehouseId, taskMonth },
       select: {
         id: true, plantTypeId: true, quantity: true, enteredAt: true, assignedStaffId: true,
+        plantType: { select: { code: true, name: true } },
         assignedStaff: { select: { code: true, name: true } },
       },
-      orderBy: { assignedStaff: { code: "asc" } },
+      orderBy: { enteredAt: "asc" },
     }),
     getAvailableStaff(warehouseId),
   ]);
 
-  const plantTypes =
-    plantTypeIds.length > 0
-      ? await prisma.plantType.findMany({
-          where: { id: { in: plantTypeIds } },
-          select: { id: true, code: true, name: true },
-          orderBy: { code: "asc" },
-        })
-      : [];
+  const rows: ForecastEntryRow[] = entries.map((e) => ({
+    entryId: e.id,
+    plantTypeId: e.plantTypeId, plantTypeCode: e.plantType.code, plantTypeName: e.plantType.name,
+    assignedStaffId: e.assignedStaffId, staffCode: e.assignedStaff.code, staffName: e.assignedStaff.name,
+    quantity: e.quantity,
+  }));
 
-  const entriesByPlantType = new Map<string, typeof entries>();
-  for (const e of entries) {
-    const list = entriesByPlantType.get(e.plantTypeId) ?? [];
-    list.push(e);
-    entriesByPlantType.set(e.plantTypeId, list);
-  }
-
-  const rows: ForecastPlantTypeRow[] = plantTypes.map((pt) => {
-    const ptEntries = entriesByPlantType.get(pt.id) ?? [];
-    return {
-      plantTypeId: pt.id,
-      code: pt.code,
-      name: pt.name,
-      entries: ptEntries.map((e) => ({
-        entryId: e.id,
-        assignedStaffId: e.assignedStaffId,
-        staffCode: e.assignedStaff.code,
-        staffName: e.assignedStaff.name,
-        quantity: e.quantity,
-      })),
-      totalQuantity: ptEntries.reduce((s, e) => s + e.quantity, 0),
-    };
-  });
-
-  const isComplete = rows.length > 0 && rows.every((r) => r.entries.length > 0);
-  const completedAt = isComplete ? new Date(Math.max(...entries.map((e) => e.enteredAt.getTime()))) : null;
+  // "Hoàn thành" = đã lưu ít nhất 1 dòng hợp lệ trong tháng — không còn danh sách mã cây cố định cần điền
+  // đủ (NV tự nhập tự do). completedAt lấy dòng SỚM NHẤT hiện còn (entries đã orderBy enteredAt asc) —
+  // đúng thời điểm ngưỡng "có ít nhất 1 dòng" được thoả lần đầu (nếu sau đó xoá hết rồi nhập lại thì tính
+  // lại từ dòng mới, chấp nhận sai số nhỏ này, giống các chỗ khác trong dự án không lưu lịch sử đầy đủ).
+  const isComplete = rows.length > 0;
+  const completedAt = isComplete ? entries[0].enteredAt : null;
   const deadline = getForecastDeadline(taskMonth);
   const isOnTime = completedAt ? completedAt.getTime() <= deadline.getTime() : null;
 
-  return { taskMonth, deadline, plantTypes: rows, availableStaff, isComplete, completedAt, isOnTime };
+  return { taskMonth, deadline, entries: rows, availableStaff, isComplete, completedAt, isOnTime };
 }
 
 // Gọi lazy từ layout (giống mọi ensureXxx khác, xem src/app/(dashboard)/layout.tsx) — CHỈ gửi nhắc từ
@@ -145,7 +108,7 @@ export async function ensureRootingForecastReminder(warehouseId: string | null):
     await createAlert({
       type: "ROOTING_FORECAST_MONTHLY_DUE",
       title: "Nhắc hạn: Dự kiến đáp ứng cây ra rễ",
-      message: `Cần điền xong số cây ra rễ dự kiến đáp ứng tháng tới cho mọi mã cây trước ${format(deadline, "dd/MM/yyyy")}.`,
+      message: `Cần nhập số cây ra rễ dự kiến đáp ứng tháng tới trước ${format(deadline, "dd/MM/yyyy")}.`,
       userId: s.id,
       relatedId,
       relatedType: "RootingForecastEntry",
