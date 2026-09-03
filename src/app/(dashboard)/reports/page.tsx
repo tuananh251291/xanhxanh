@@ -6,6 +6,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import ProductionReport from "./production-report";
 import ContaminationReport from "./contamination-report";
 import PlanVsActualReport from "./plan-vs-actual-report";
+import InstructionPlanVsActualReport from "./instruction-plan-vs-actual-report";
 import InventoryLifecycleReport from "./inventory-lifecycle-report";
 import ChecklistReport from "./checklist-report";
 
@@ -28,6 +29,7 @@ export default async function ReportsPage() {
             <TabsTrigger value="production" className="whitespace-nowrap">Sản lượng</TabsTrigger>
             <TabsTrigger value="contamination" className="whitespace-nowrap">Tỉ lệ nhiễm</TabsTrigger>
             <TabsTrigger value="plan" className="whitespace-nowrap">Kế hoạch vs thực tế</TabsTrigger>
+            <TabsTrigger value="instruction-data" className="whitespace-nowrap">Dữ liệu chỉ định cấy</TabsTrigger>
             <TabsTrigger value="inventory" className="whitespace-nowrap">Tồn kho & vòng đời</TabsTrigger>
             <TabsTrigger value="checklist" className="whitespace-nowrap">Checklist</TabsTrigger>
           </TabsList>
@@ -41,6 +43,9 @@ export default async function ReportsPage() {
         </TabsContent>
         <TabsContent value="plan" className="mt-4">
           <PlanVsActualReport />
+        </TabsContent>
+        <TabsContent value="instruction-data" className="mt-4">
+          <InstructionPlanVsActualReport />
         </TabsContent>
         <TabsContent value="inventory" className="mt-4">
           <InventoryLifecycleReport />
