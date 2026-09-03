@@ -14,7 +14,8 @@ const ALL_FINISHED_STAGE_CODES = ["T01", "T05", "T10"];
 // bàn giao, Phòng mẫu mẹ, Phòng ra rễ — 2 phòng sau là "kho sáng"), không giới hạn theo NV/phòng cụ thể
 // nào. Lot.quantity đã tự trừ hàng nhiễm ngay lúc kiểm tra (xem PATCH /api/lot-inspections — trừ thẳng
 // contaminatedQuantity khỏi quantity), nên chỉ cần status: ACTIVE là đã loại hàng nhiễm, không cần thêm
-// điều kiện gì khác.
+// điều kiện gì khác. warehouseId/plantTypeId = "ALL" (chọn từ FE) nghĩa là không lọc theo field đó —
+// gộp toàn bộ, kèm breakdown byWarehouse/byPlantType tương ứng để số liệu vẫn có ý nghĩa.
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -30,26 +31,50 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Thiếu khu sản xuất/mã cây/quy cách" }, { status: 400 });
   }
   const isAllFinished = stageCode === "ALL_FINISHED";
+  const isAllWarehouses = warehouseId === "ALL";
+  const isAllPlantTypes = plantTypeId === "ALL";
 
   const lots = await prisma.lot.findMany({
     where: {
       status: "ACTIVE",
-      plantTypeId,
+      plantTypeId: isAllPlantTypes ? undefined : plantTypeId,
       stageCode: isAllFinished ? { in: ALL_FINISHED_STAGE_CODES } : stageCode,
-      shelf: { room: { warehouseId } },
+      shelf: { room: { warehouseId: isAllWarehouses ? undefined : warehouseId } },
     },
-    select: { quantity: true, stageCode: true, shelf: { select: { room: { select: { type: true } } } } },
+    select: {
+      quantity: true,
+      stageCode: true,
+      shelf: { select: { room: { select: { type: true, warehouse: { select: { code: true, name: true } } } } } },
+      plantType: { select: { code: true, name: true } },
+    },
   });
 
   const byRoomType: Partial<Record<RoomType, number>> = {};
   const byStageCode: Record<string, number> = {};
+  const byWarehouse: Record<string, number> = {};
+  const byPlantType: Record<string, number> = {};
   let total = 0;
   for (const lot of lots) {
     const type = lot.shelf?.room?.type;
     total += lot.quantity;
     if (type) byRoomType[type] = (byRoomType[type] ?? 0) + lot.quantity;
     if (isAllFinished) byStageCode[lot.stageCode] = (byStageCode[lot.stageCode] ?? 0) + lot.quantity;
+    if (isAllWarehouses) {
+      const w = lot.shelf?.room?.warehouse;
+      const label = w ? `${w.code} — ${w.name}` : "Khác";
+      byWarehouse[label] = (byWarehouse[label] ?? 0) + lot.quantity;
+    }
+    if (isAllPlantTypes) {
+      const label = `${lot.plantType.code} — ${lot.plantType.name}`;
+      byPlantType[label] = (byPlantType[label] ?? 0) + lot.quantity;
+    }
   }
 
-  return NextResponse.json({ total, byRoomType, ...(isAllFinished ? { byStageCode } : {}) });
+  return NextResponse.json({
+    total,
+    byRoomType,
+    ...(isAllFinished ? { byStageCode } : {}),
+    ...(isAllWarehouses ? { byWarehouse } : {}),
+    ...(isAllPlantTypes ? { byPlantType } : {}),
+  });
 }

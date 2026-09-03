@@ -21,7 +21,13 @@ import { ROOM_TYPE_LABELS } from "@/types";
 type Warehouse = { id: string; code: string; name: string };
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
-type CheckResult = { total: number; byRoomType: Record<string, number>; byStageCode?: Record<string, number> };
+type CheckResult = {
+  total: number;
+  byRoomType: Record<string, number>;
+  byStageCode?: Record<string, number>;
+  byWarehouse?: Record<string, number>;
+  byPlantType?: Record<string, number>;
+};
 
 const STAGE_OPTIONS = [
   { value: "M05", label: "M05 — Mẫu mẹ (túi 5 cụm)" },
@@ -34,10 +40,12 @@ const STAGE_OPTIONS = [
 ];
 
 // "Kiểm tra nhanh sản lượng" — bổ sung dưới biểu đồ sản lượng ở tab Sản lượng (/reports). Gộp số lượng
-// ACTIVE của đúng 1 (khu sản xuất, mã cây, quy cách) trên TOÀN khu — Phòng tối cá nhân từng NV (hàng
-// chưa bàn giao) + Phòng mẫu mẹ + Phòng ra rễ (2 phòng sau gọi chung là "kho sáng") — xem GET
-// /api/reports/quick-stock-check. Không tự tải lại khi đổi bộ lọc — chỉ bấm "Kiểm tra" mới gọi API, vì
-// đây là công cụ tra cứu tại 1 THỜI ĐIỂM, không phải biểu đồ theo dõi liên tục.
+// ACTIVE của (khu sản xuất, mã cây, quy cách) — mỗi bộ lọc khu sản xuất/mã cây chọn được đúng 1 giá trị
+// hoặc "Tất cả" (value "ALL", server bỏ điều kiện lọc field đó và trả thêm breakdown byWarehouse/
+// byPlantType) — trên TOÀN khu: Phòng tối cá nhân từng NV (hàng chưa bàn giao) + Phòng mẫu mẹ + Phòng ra
+// rễ (2 phòng sau gọi chung là "kho sáng") — xem GET /api/reports/quick-stock-check. Không tự tải lại
+// khi đổi bộ lọc — chỉ bấm "Kiểm tra" mới gọi API, vì đây là công cụ tra cứu tại 1 THỜI ĐIỂM, không phải
+// biểu đồ theo dõi liên tục.
 export default function ProductionQuickCheck() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
@@ -59,8 +67,14 @@ export default function ProductionQuickCheck() {
       .then((d) => setPlantTypes(Array.isArray(d) ? d : []));
   }, []);
 
-  const warehouseOptions = useMemo(() => warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })), [warehouses]);
-  const plantTypeOptions = useMemo(() => plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })), [plantTypes]);
+  const warehouseOptions = useMemo(
+    () => [{ value: "ALL", label: "Tất cả khu sản xuất" }, ...warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` }))],
+    [warehouses]
+  );
+  const plantTypeOptions = useMemo(
+    () => [{ value: "ALL", label: "Tất cả các loại cây" }, ...plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))],
+    [plantTypes]
+  );
 
   const canCheck = !!warehouseId && !!plantTypeOption && !!stageCode;
 
@@ -159,6 +173,24 @@ export default function ProductionQuickCheck() {
                 {Object.entries(result.byStageCode).map(([code, qty]) => (
                   <span key={code}>
                     {code}: <strong className="text-foreground">{qty.toLocaleString("vi-VN")}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
+            {result.byWarehouse && Object.keys(result.byWarehouse).length > 0 && (
+              <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
+                {Object.entries(result.byWarehouse).map(([label, qty]) => (
+                  <span key={label}>
+                    {label}: <strong className="text-foreground">{qty.toLocaleString("vi-VN")}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
+            {result.byPlantType && Object.keys(result.byPlantType).length > 0 && (
+              <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
+                {Object.entries(result.byPlantType).map(([label, qty]) => (
+                  <span key={label}>
+                    {label}: <strong className="text-foreground">{qty.toLocaleString("vi-VN")}</strong>
                   </span>
                 ))}
               </div>
