@@ -361,14 +361,22 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
 
-  const transfersToday = await prisma.transfer.findMany({
-    where: {
-      toUserId: null,
-      fromRoom: { type: "PHONG_TOI", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
-      createdAt: { gte: todayStart, lte: todayEnd },
-    },
-    select: { status: true },
-  });
+  const [transfersToday, editCountToday] = await Promise.all([
+    prisma.transfer.findMany({
+      where: {
+        toUserId: null,
+        fromRoom: { type: "PHONG_TOI", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+        createdAt: { gte: todayStart, lte: todayEnd },
+      },
+      select: { status: true },
+    }),
+    // Số lần chính NV kho mô này đã sửa lại nhật ký cấy của NV cấy mô hôm nay (mỗi lần sửa cũng +1 vào
+    // weeklyCorrectionCount của NV cấy mô bị sửa, xem getCayMoStats/PATCH /api/daily-records/[id]) — hiện
+    // ra để NV kho mô tự theo dõi số lần mình đã can thiệp trong ngày.
+    prisma.dailyRecordEdit.count({
+      where: { editedById: userId, createdAt: { gte: todayStart, lte: todayEnd } },
+    }),
+  ]);
 
   const receiveTotal = transfersToday.length;
   const receiveDone = transfersToday.filter((t) => t.status === "CONFIRMED").length;
@@ -411,6 +419,7 @@ async function getKhoMoDailyStats(workplaceWarehouseId: string | null, userId: s
     receiveDone, receiveTotal, receivePercent,
     mediumDone, mediumTotal, mediumPercent,
     darkRoomCheckItemId: darkRoomCheckItem?.id ?? null, darkRoomCheckPercent, darkRoomSubTasksDone,
+    editCountToday,
   };
 }
 
@@ -911,6 +920,20 @@ function KhoMoTaskDashboard({
         <p className="text-text-secondary text-sm mt-1">Nhân viên kho mô</p>
       </div>
       <GreetingBanner />
+
+      {dailyStats.editCountToday > 0 && (
+        <Card className="border border-info-light bg-info-light">
+          <CardContent className="py-4 flex items-center gap-3">
+            <PenLine className="w-5 h-5 text-info-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-info-foreground">
+                Bạn đã sửa nhật ký cấy của NV cấy mô {dailyStats.editCountToday} lần hôm nay
+              </p>
+              <p className="text-xs text-info-foreground/80">Mỗi lần sửa cũng được tính vào số lần nhập sai của NV cấy mô đó</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">
