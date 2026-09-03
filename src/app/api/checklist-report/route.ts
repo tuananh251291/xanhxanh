@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   const [items, thresholds] = await Promise.all([
     prisma.checklistItem.findMany({
       where: {
+        user: { isActive: true },
         OR: [
           { completed: false, assignedDate: { lte: endOfDay(date) } },
           { completedAt: { gte: startOfDay(date), lte: endOfDay(date) } },
