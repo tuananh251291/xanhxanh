@@ -26,9 +26,9 @@ type Row = {
   id: string;
   code: string;
   createdAt: string;
+  firstRecordDate: string | null;
   plantType: { code: string; name: string };
   assignedTo: { code: string; name: string } | null;
-  warehouseLabel: string | null;
   inputMotherQuantity: number;
   expectedMotherOutput: number | null;
   expectedFinishedOutput: number | null;
@@ -244,11 +244,9 @@ export default function InstructionPlanVsActualReport() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-primary-light text-primary-strong">
-                    <th className="px-3 py-2 text-left font-bold text-base">Mã chỉ định</th>
-                    <th className="px-3 py-2 text-left font-bold text-base">Loại cây</th>
-                    <th className="px-3 py-2 text-left font-bold text-base">Khu sản xuất</th>
-                    <th className="px-3 py-2 text-left font-bold text-base">NV cấy mô</th>
-                    <th className="px-3 py-2 text-left font-bold text-base">Ngày tạo</th>
+                    <th className="px-3 py-2 text-left font-bold text-base">Chỉ định</th>
+                    <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
+                    <th className="px-3 py-2 text-left font-bold text-base">Ngày</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Dòng</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL mẫu mẹ</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL thành phẩm</th>
@@ -263,11 +261,15 @@ export default function InstructionPlanVsActualReport() {
                     return (
                       <Fragment key={r.id}>
                         <tr className="border-t-2 border-divider">
-                          <td className="px-3 py-2 font-medium" rowSpan={2}>{r.code}</td>
-                          <td className="px-3 py-2" rowSpan={2}>{r.plantType.code} — {r.plantType.name}</td>
-                          <td className="px-3 py-2" rowSpan={2}>{r.warehouseLabel ?? "—"}</td>
-                          <td className="px-3 py-2" rowSpan={2}>{r.assignedTo ? `${r.assignedTo.code} — ${r.assignedTo.name}` : "—"}</td>
-                          <td className="px-3 py-2" rowSpan={2}>{new Date(r.createdAt).toLocaleDateString("vi-VN")}</td>
+                          <td className="px-3 py-2" rowSpan={2}>
+                            <div className="font-medium">{r.code}</div>
+                            <div className="text-xs text-text-secondary">{r.assignedTo ? `${r.assignedTo.code} — ${r.assignedTo.name}` : "—"}</div>
+                          </td>
+                          <td className="px-3 py-2" rowSpan={2}>{r.plantType.code}</td>
+                          <td className="px-3 py-2" rowSpan={2}>
+                            <div>{new Date(r.createdAt).toLocaleDateString("vi-VN")}</div>
+                            <div className="text-xs text-text-secondary">{r.firstRecordDate ? new Date(r.firstRecordDate).toLocaleDateString("vi-VN") : "—"}</div>
+                          </td>
                           <td className="px-3 py-2 text-text-secondary">Chỉ định</td>
                           <td className="px-3 py-2 text-center tabular-nums">{r.expectedMotherOutput === null ? "—" : fmt(r.expectedMotherOutput)}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{r.expectedFinishedOutput === null ? "—" : fmt(r.expectedFinishedOutput)}</td>

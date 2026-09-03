@@ -19,6 +19,8 @@ const MAX_ROWS = 300;
 // null), instructionId (tuỳ chọn — chọn đúng 1 chỉ định từ ô tìm kiếm mã chỉ định ở FE).
 // codeOptions trả về tính theo warehouseId/plantTypeId/period NHƯNG bỏ qua instructionId (giống
 // availablePlantTypes ở planting-log-summary/route.ts) để ô tìm kiếm luôn giữ đủ danh sách gợi ý.
+// firstRecordDate = "ngày thực hiện" (FE) = recordDate nhỏ nhất trong các DailyRecord của chỉ định, null
+// nếu chưa có bản ghi cấy nào — khác createdAt là ngày KHỞI TẠO chỉ định (có thể tạo trước, cấy sau).
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -57,8 +59,7 @@ export async function GET(req: NextRequest) {
         expectedFinishedOutput: true,
         plantType: { select: { code: true, name: true } },
         assignedTo: { select: { code: true, name: true } },
-        items: { select: { shelf: { select: { warehouse: { select: { code: true, name: true } } } } }, take: 1 },
-        dailyRecords: { select: { items: { select: { stage: true, quantityCreated: true } } } },
+        dailyRecords: { select: { recordDate: true, items: { select: { stage: true, quantityCreated: true } } } },
       },
       orderBy: { createdAt: "desc" },
       take: MAX_ROWS,
@@ -74,20 +75,21 @@ export async function GET(req: NextRequest) {
   const rows = instructions.map((inst) => {
     let actualMotherOutput = 0;
     let actualFinishedOutput = 0;
+    let firstRecordDate: Date | null = null;
     for (const rec of inst.dailyRecords) {
+      if (!firstRecordDate || rec.recordDate < firstRecordDate) firstRecordDate = rec.recordDate;
       for (const item of rec.items) {
         if (item.stage === "MAU_ME") actualMotherOutput += item.quantityCreated;
         else actualFinishedOutput += item.quantityCreated;
       }
     }
-    const warehouse = inst.items[0]?.shelf?.warehouse ?? null;
     return {
       id: inst.id,
       code: inst.code,
       createdAt: inst.createdAt,
+      firstRecordDate,
       plantType: inst.plantType,
       assignedTo: inst.assignedTo,
-      warehouseLabel: warehouse ? `${warehouse.code} — ${warehouse.name}` : null,
       inputMotherQuantity: inst.inputMotherQuantity,
       expectedMotherOutput: inst.expectedMotherOutput,
       expectedFinishedOutput: inst.expectedFinishedOutput,
