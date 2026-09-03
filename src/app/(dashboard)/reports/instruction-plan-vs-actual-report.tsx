@@ -16,6 +16,7 @@ import {
   ComboboxTrigger,
 } from "@/components/ui/combobox";
 import { Loader2 } from "lucide-react";
+import Link from "next/link";
 
 type Warehouse = { id: string; code: string; name: string };
 type PlantType = { id: string; code: string; name: string };
@@ -30,6 +31,7 @@ type Row = {
   plantType: { code: string; name: string };
   assignedTo: { code: string; name: string } | null;
   inputMotherQuantity: number;
+  contaminatedQuantity: number;
   expectedMotherOutput: number | null;
   expectedFinishedOutput: number | null;
   actualMotherOutput: number;
@@ -37,6 +39,7 @@ type Row = {
 };
 type Totals = {
   inputMotherQuantity: number;
+  contaminatedQuantity: number;
   expectedMotherOutput: number;
   expectedFinishedOutput: number;
   actualMotherOutput: number;
@@ -247,6 +250,8 @@ export default function InstructionPlanVsActualReport() {
                     <th className="px-3 py-2 text-left font-bold text-base">Chỉ định</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Ngày</th>
+                    <th className="px-3 py-2 text-center font-bold text-base">SL bàn giao</th>
+                    <th className="px-3 py-2 text-center font-bold text-base">SL nhiễm</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Dòng</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL mẫu mẹ</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL thành phẩm</th>
@@ -262,7 +267,9 @@ export default function InstructionPlanVsActualReport() {
                       <Fragment key={r.id}>
                         <tr className="border-t-2 border-divider">
                           <td className="px-3 py-2" rowSpan={2}>
-                            <div className="font-medium">{r.code}</div>
+                            <Link href={`/instructions/${r.id}`} className="font-medium text-info-foreground underline underline-offset-2">
+                              {r.code}
+                            </Link>
                             <div className="text-xs text-text-secondary">{r.assignedTo ? `${r.assignedTo.code} — ${r.assignedTo.name}` : "—"}</div>
                           </td>
                           <td className="px-3 py-2" rowSpan={2}>{r.plantType.code}</td>
@@ -270,6 +277,8 @@ export default function InstructionPlanVsActualReport() {
                             <div>{new Date(r.createdAt).toLocaleDateString("vi-VN")}</div>
                             <div className="text-xs text-text-secondary">{r.firstRecordDate ? new Date(r.firstRecordDate).toLocaleDateString("vi-VN") : "—"}</div>
                           </td>
+                          <td className="px-3 py-2 text-center tabular-nums" rowSpan={2}>{fmt(r.inputMotherQuantity)}</td>
+                          <td className="px-3 py-2 text-center tabular-nums" rowSpan={2}>{r.contaminatedQuantity > 0 ? <span className="text-destructive font-semibold">{fmt(r.contaminatedQuantity)}</span> : fmt(r.contaminatedQuantity)}</td>
                           <td className="px-3 py-2 text-text-secondary">Chỉ định</td>
                           <td className="px-3 py-2 text-center tabular-nums">{r.expectedMotherOutput === null ? "—" : fmt(r.expectedMotherOutput)}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{r.expectedFinishedOutput === null ? "—" : fmt(r.expectedFinishedOutput)}</td>

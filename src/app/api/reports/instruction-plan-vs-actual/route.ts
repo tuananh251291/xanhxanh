@@ -21,6 +21,11 @@ const MAX_ROWS = 300;
 // availablePlantTypes ở planting-log-summary/route.ts) để ô tìm kiếm luôn giữ đủ danh sách gợi ý.
 // firstRecordDate = "ngày thực hiện" (FE) = recordDate nhỏ nhất trong các DailyRecord của chỉ định, null
 // nếu chưa có bản ghi cấy nào — khác createdAt là ngày KHỞI TẠO chỉ định (có thể tạo trước, cấy sau).
+// inputMotherQuantity = "SL bàn giao" (mẫu mẹ Kho mô đã giao cho NV cấy mô, xem "Số lượng bàn giao" ở
+// phiếu in instructions/[id]/page.tsx). contaminatedQuantity = "SL nhiễm" = tổng DailyRecord.
+// motherContaminatedM05 của chỉ định — CÙNG nguồn dữ liệu nhiễm đang dùng ở mọi báo cáo khác (xem comment
+// đầu contamination-report.tsx), KHÔNG dùng ContaminationRecord vì model đó chưa NV nào thao tác tới,
+// luôn ra 0.
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -59,7 +64,9 @@ export async function GET(req: NextRequest) {
         expectedFinishedOutput: true,
         plantType: { select: { code: true, name: true } },
         assignedTo: { select: { code: true, name: true } },
-        dailyRecords: { select: { recordDate: true, items: { select: { stage: true, quantityCreated: true } } } },
+        dailyRecords: {
+          select: { recordDate: true, motherContaminatedM05: true, items: { select: { stage: true, quantityCreated: true } } },
+        },
       },
       orderBy: { createdAt: "desc" },
       take: MAX_ROWS,
@@ -75,9 +82,11 @@ export async function GET(req: NextRequest) {
   const rows = instructions.map((inst) => {
     let actualMotherOutput = 0;
     let actualFinishedOutput = 0;
+    let contaminatedQuantity = 0;
     let firstRecordDate: Date | null = null;
     for (const rec of inst.dailyRecords) {
       if (!firstRecordDate || rec.recordDate < firstRecordDate) firstRecordDate = rec.recordDate;
+      contaminatedQuantity += rec.motherContaminatedM05;
       for (const item of rec.items) {
         if (item.stage === "MAU_ME") actualMotherOutput += item.quantityCreated;
         else actualFinishedOutput += item.quantityCreated;
@@ -91,6 +100,7 @@ export async function GET(req: NextRequest) {
       plantType: inst.plantType,
       assignedTo: inst.assignedTo,
       inputMotherQuantity: inst.inputMotherQuantity,
+      contaminatedQuantity,
       expectedMotherOutput: inst.expectedMotherOutput,
       expectedFinishedOutput: inst.expectedFinishedOutput,
       actualMotherOutput,
@@ -101,12 +111,13 @@ export async function GET(req: NextRequest) {
   const totals = rows.reduce(
     (s, r) => ({
       inputMotherQuantity: s.inputMotherQuantity + r.inputMotherQuantity,
+      contaminatedQuantity: s.contaminatedQuantity + r.contaminatedQuantity,
       expectedMotherOutput: s.expectedMotherOutput + (r.expectedMotherOutput ?? 0),
       expectedFinishedOutput: s.expectedFinishedOutput + (r.expectedFinishedOutput ?? 0),
       actualMotherOutput: s.actualMotherOutput + r.actualMotherOutput,
       actualFinishedOutput: s.actualFinishedOutput + r.actualFinishedOutput,
     }),
-    { inputMotherQuantity: 0, expectedMotherOutput: 0, expectedFinishedOutput: 0, actualMotherOutput: 0, actualFinishedOutput: 0 }
+    { inputMotherQuantity: 0, contaminatedQuantity: 0, expectedMotherOutput: 0, expectedFinishedOutput: 0, actualMotherOutput: 0, actualFinishedOutput: 0 }
   );
 
   const codeOptions = codeOptionRows.map((r) => ({ id: r.id, code: r.code, plantTypeCode: r.plantType.code }));
