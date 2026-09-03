@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { BarChart3, TrendingUp, Gauge, Images, ChevronRight, ArrowLeftRight, Sprout, BookOpen } from "lucide-react";
+import { BarChart3, TrendingUp, Gauge, Images, ChevronRight, ArrowLeftRight, Sprout, BookOpen, ClipboardList } from "lucide-react";
 import { isAdminRole } from "@/types";
 
 // Hub liên kết nhẹ (KHÔNG dùng Tabs) — 2/3 trang báo cáo gốc đã bị tách riêng CÓ CHỦ ĐÍCH trước đây (xem
@@ -21,6 +21,7 @@ export default async function ReportCenterPage() {
     { href: "/reports/inventory-flow-summary", icon: ArrowLeftRight, title: "Tổng hợp Nhập - Xuất", description: "Tổng số lượng nhập (theo NCC) và xuất (đơn hàng, khu sản xuất, trồng/hủy), lọc theo thời gian." },
     { href: "/reports/mother-stock-growth", icon: Sprout, title: "Mẫu mẹ gia tăng", description: "Sản lượng mẫu mẹ 1 cơ sở sản xuất làm tăng thêm, lọc theo mã cây và khoảng tuần." },
     { href: "/reports/planting-log-summary", icon: BookOpen, title: "Dữ liệu nhật ký cấy", description: "Số cây được cấy, cấy ra mẫu mẹ và thành phẩm theo NV, lọc theo khu sản xuất/nhân sự/mã cây/tuần hoặc tháng." },
+    { href: "/reports/instruction-plan-vs-actual", icon: ClipboardList, title: "Dữ liệu chỉ định cấy", description: "So sánh số kỳ vọng lúc tạo chỉ định với thực tế đã cấy ra, lọc theo khu sản xuất/mã cây/mã chỉ định/tháng." },
     { href: "/mother-photo-update/view", icon: Images, title: "Xem dữ liệu hình ảnh", description: "Ảnh cập nhật tình trạng mẫu mẹ theo giàn kệ/mã cây." },
   ];
 
