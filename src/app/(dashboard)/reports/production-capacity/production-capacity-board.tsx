@@ -16,7 +16,6 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Loader2, X } from "lucide-react";
 import { setISOWeek, setISOWeekYear, startOfISOWeek, format as formatDate } from "date-fns";
 import ReportLineChart from "../charts/report-line-chart";
@@ -52,7 +51,7 @@ export default function ProductionCapacityBoard() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
 
   const [unit, setUnit] = useState<Unit>("week");
-  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
+  const [plantTypeOption, setPlantTypeOption] = useState<ComboOption | null>(null);
   const [scopeKind, setScopeKind] = useState<ScopeKind>("all");
   const [scopeOption, setScopeOption] = useState<ComboOption | null>(null);
   // Quãng thời gian tự nhập (tuỳ chọn) — để trống cả 2 thì API tự dùng mặc định 10 kỳ gần nhất + 1 kỳ
@@ -80,15 +79,19 @@ export default function ProductionCapacityBoard() {
     fetch("/api/users").then((r) => r.json()).then((d) => setStaffList(Array.isArray(d) ? d.filter((u: Staff) => u.role === "CAY_MO") : []));
   }, []);
 
+  const plantTypeOptions = useMemo(
+    () => plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })),
+    [plantTypes]
+  );
   const warehouseOptions = useMemo(() => warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })), [warehouses]);
   const staffOptions = useMemo(() => staffList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })), [staffList]);
 
   const load = useCallback(async () => {
-    if (selectedPlantTypeIds.length === 0) { setData([]); return; }
+    if (!plantTypeOption) { setData([]); return; }
     if (scopeKind !== "all" && !scopeOption) { setData([]); return; }
     setLoading(true);
     try {
-      const params = new URLSearchParams({ unit, plantTypeIds: selectedPlantTypeIds.join(","), scope: scopeKind });
+      const params = new URLSearchParams({ unit, plantTypeId: plantTypeOption.value, scope: scopeKind });
       if (scopeKind !== "all" && scopeOption) params.set("scopeId", scopeOption.value);
       const fromStr = periodValueToDateStr(fromPeriod, unit);
       const toStr = periodValueToDateStr(toPeriod, unit);
@@ -106,7 +109,7 @@ export default function ProductionCapacityBoard() {
     } finally {
       setLoading(false);
     }
-  }, [unit, selectedPlantTypeIds, scopeKind, scopeOption, fromPeriod, toPeriod]);
+  }, [unit, plantTypeOption, scopeKind, scopeOption, fromPeriod, toPeriod]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -234,12 +237,23 @@ export default function ProductionCapacityBoard() {
 
             <div className="space-y-1">
               <Label className="text-xs">Mã sản phẩm</Label>
-              <PlantTypeMultiFilter
-                plantTypes={plantTypes}
-                selectedIds={selectedPlantTypeIds}
-                onChange={setSelectedPlantTypeIds}
-                emptyLabel="Chọn mã sản phẩm…"
-              />
+              <Combobox
+                items={plantTypeOptions}
+                value={plantTypeOption}
+                isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                onValueChange={setPlantTypeOption}
+              >
+                <ComboboxInputGroup className="w-56 h-9">
+                  <ComboboxInput placeholder="Chọn mã cây…" />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
             </div>
 
             <div className="space-y-1">
@@ -307,7 +321,7 @@ export default function ProductionCapacityBoard() {
         </div>
       </CardHeader>
       <CardContent>
-        {selectedPlantTypeIds.length === 0 ? (
+        {!plantTypeOption ? (
           <p className="text-sm text-text-muted text-center py-12">Chọn mã sản phẩm để xem biểu đồ</p>
         ) : loading ? (
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
