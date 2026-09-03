@@ -14,11 +14,14 @@ const MAX_ROWS = 300;
 // (DailyRecordItem.quantityCreated, gộp mọi DailyRecord của chỉ định đó bất kể ngày cấy — cùng công thức
 // đang dùng ở trang chi tiết chỉ định src/app/(dashboard)/instructions/[id]/page.tsx).
 // Query params: warehouseId ("ALL"/bỏ trống = mọi khu — lọc qua items.some.shelf.warehouseId vì
-// PlantingInstruction không có FK kho trực tiếp), plantTypeId ("ALL"/bỏ trống = mọi loại), period=all|month
-// (mặc định "all" = toàn bộ thời gian, không lọc ngày), month (yyyy-MM, dùng khi period=month — lọc theo
-// PlantingInstruction.createdAt vì đây là field ngày tháng duy nhất luôn có giá trị, weekStart có thể
-// null), instructionId (tuỳ chọn — chọn đúng 1 chỉ định từ ô tìm kiếm mã chỉ định ở FE).
-// codeOptions trả về tính theo warehouseId/plantTypeId/period NHƯNG bỏ qua instructionId (giống
+// PlantingInstruction không có FK kho trực tiếp), plantTypeIds (danh sách id nối bằng dấu phẩy, bỏ trống
+// = mọi loại — FE cho tích chọn nhiều loại cây cùng lúc, xem PlantTypeMultiFilter ở
+// instruction-plan-vs-actual-report.tsx; cùng idiom "shelfIds" nối chuỗi đang dùng ở
+// transfers/finished/review), period=all|month (mặc định "all" = toàn bộ thời gian, không lọc ngày), month
+// (yyyy-MM, dùng khi period=month — lọc theo PlantingInstruction.createdAt vì đây là field ngày tháng duy
+// nhất luôn có giá trị, weekStart có thể null), instructionId (tuỳ chọn — chọn đúng 1 chỉ định từ ô tìm
+// kiếm mã chỉ định ở FE).
+// codeOptions trả về tính theo warehouseId/plantTypeIds/period NHƯNG bỏ qua instructionId (giống
 // availablePlantTypes ở planting-log-summary/route.ts) để ô tìm kiếm luôn giữ đủ danh sách gợi ý.
 // firstRecordDate = "Ngày sản xuất" (FE) = recordDate nhỏ nhất trong các DailyRecord của chỉ định — ngày
 // bắt đầu CÓ DỮ LIỆU cấy thật, null nếu chưa có bản ghi nào (khác PlantingInstruction.createdAt là ngày
@@ -39,7 +42,9 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const warehouseId = searchParams.get("warehouseId") || null;
-  const plantTypeId = searchParams.get("plantTypeId") || null;
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const period = searchParams.get("period") === "month" ? "month" : "all";
   const monthParam = searchParams.get("month");
   const instructionId = searchParams.get("instructionId") || null;
@@ -51,7 +56,7 @@ export async function GET(req: NextRequest) {
   }
 
   const baseWhere: Prisma.PlantingInstructionWhereInput = {
-    ...(plantTypeId && plantTypeId !== "ALL" ? { plantTypeId } : {}),
+    ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
     ...(warehouseId && warehouseId !== "ALL" ? { items: { some: { shelf: { warehouseId } } } } : {}),
     ...dateWhere,
   };

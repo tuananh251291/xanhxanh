@@ -15,7 +15,9 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Loader2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, ChevronDownIcon } from "lucide-react";
 import Link from "next/link";
 
 type Warehouse = { id: string; code: string; name: string };
@@ -49,7 +51,6 @@ type CodeOption = { id: string; code: string; plantTypeCode: string };
 type ReportData = { rows: Row[]; totals: Totals; codeOptions: CodeOption[]; truncated: boolean };
 
 const ALL_WAREHOUSE = "ALL";
-const ALL_PLANT_TYPE: ComboOption = { value: "ALL", label: "Tất cả loại cây" };
 
 function fmt(n: number): string {
   return n.toLocaleString("vi-VN");
@@ -85,7 +86,7 @@ export default function InstructionPlanVsActualReport() {
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
 
   const [warehouseId, setWarehouseId] = useState(ALL_WAREHOUSE);
-  const [plantTypeOption, setPlantTypeOption] = useState<ComboOption>(ALL_PLANT_TYPE);
+  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [period, setPeriod] = useState<Period>("all");
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [codeOption, setCodeOption] = useState<ComboOption | null>(null);
@@ -99,17 +100,13 @@ export default function InstructionPlanVsActualReport() {
   }, []);
 
   const warehouseOptions = useMemo(() => warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })), [warehouses]);
-  const plantTypeOptions = useMemo(
-    () => [ALL_PLANT_TYPE, ...plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))],
-    [plantTypes]
-  );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ period });
       if (warehouseId !== ALL_WAREHOUSE) params.set("warehouseId", warehouseId);
-      if (plantTypeOption.value !== "ALL") params.set("plantTypeId", plantTypeOption.value);
+      if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
       if (period === "month") params.set("month", month);
       if (codeOption) params.set("instructionId", codeOption.value);
       const res = await fetch(`/api/reports/instruction-plan-vs-actual?${params}`);
@@ -123,7 +120,7 @@ export default function InstructionPlanVsActualReport() {
     } finally {
       setLoading(false);
     }
-  }, [warehouseId, plantTypeOption, period, month, codeOption]);
+  }, [warehouseId, selectedPlantTypeIds, period, month, codeOption]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -159,23 +156,7 @@ export default function InstructionPlanVsActualReport() {
 
           <div className="space-y-1">
             <Label className="text-xs">Loại cây</Label>
-            <Combobox
-              items={plantTypeOptions}
-              value={plantTypeOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => setPlantTypeOption((v as ComboOption) ?? ALL_PLANT_TYPE)}
-            >
-              <ComboboxInputGroup className="w-56 h-9">
-                <ComboboxInput placeholder="Gõ mã hoặc tên cây…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <PlantTypeMultiFilter plantTypes={plantTypes} selectedIds={selectedPlantTypeIds} onChange={setSelectedPlantTypeIds} />
           </div>
 
           <div className="space-y-1">
@@ -322,5 +303,70 @@ export default function InstructionPlanVsActualReport() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Ô tích nhiều loại cây cùng lúc (khác Combobox 1 lựa chọn dùng ở "Tìm mã chỉ định") — [] nghĩa là
+// "Tất cả loại cây", giống quy ước ALL của bộ lọc khu sản xuất. Dùng DropdownMenu chỉ để làm khung
+// popup/định vị; nội dung bên trong là ô tìm + danh sách nhãn/checkbox thường (cùng kiểu đang dùng ở
+// dark-room-inspection-dialog.tsx), không dùng DropdownMenuCheckboxItem để tránh phím tắt điều hướng
+// menu can thiệp vào việc gõ tìm kiếm.
+function PlantTypeMultiFilter({
+  plantTypes, selectedIds, onChange,
+}: {
+  plantTypes: PlantType[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return plantTypes;
+    return plantTypes.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+  }, [plantTypes, search]);
+
+  const toggle = (id: string) => {
+    onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
+  };
+
+  const triggerLabel = selectedIds.length === 0 ? "Tất cả loại cây" : `${selectedIds.length} loại cây đã chọn`;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="flex h-9 w-56 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 text-sm">
+        <span className="truncate">{triggerLabel}</span>
+        <ChevronDownIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-64 p-2" align="start">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Gõ mã hoặc tên cây…"
+          className="h-8 mb-2"
+        />
+        <div className="max-h-64 overflow-y-auto space-y-0.5">
+          {filtered.length === 0 ? (
+            <p className="text-xs text-text-muted text-center py-3">Không tìm thấy mã cây</p>
+          ) : (
+            filtered.map((p) => (
+              <label key={p.id} className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-accent cursor-pointer">
+                <Checkbox checked={selectedIds.includes(p.id)} onCheckedChange={() => toggle(p.id)} />
+                <span className="truncate">{p.code} — {p.name}</span>
+              </label>
+            ))
+          )}
+        </div>
+        {selectedIds.length > 0 && (
+          <button
+            type="button"
+            className="mt-2 w-full text-center text-xs text-info-foreground underline underline-offset-2"
+            onClick={() => onChange([])}
+          >
+            Bỏ chọn tất cả
+          </button>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
