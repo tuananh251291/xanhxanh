@@ -5,10 +5,12 @@ import { isAdminRole } from "@/types";
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, parse, isValid } from "date-fns";
 
 // Báo cáo "Dữ liệu nhật ký cấy" — Admin/Admin cấp cao + NV Kỹ thuật. Lọc theo khu sản xuất
-// (User.workplaceWarehouseId của NV cấy mô), nhân sự, mã cây (lọc ở mức DailyRecordItem qua
-// Lot.plantTypeId — 1 DailyRecord coi như 1 mã cây, chỉ cần CÓ dòng khớp là tính cả motherUsed của record
-// đó, xem vòng lặp bên dưới), và khoảng thời gian theo TUẦN (Thứ 2 - Chủ nhật, weekStartsOn:1 — khớp quy
-// ước tuần dùng chung toàn hệ thống, KHÔNG dùng số tuần ISO) hoặc THÁNG (lịch).
+// (User.workplaceWarehouseId của NV cấy mô), nhân sự, mã cây — plantTypeIds nhận danh sách id nối dấu
+// phẩy (tích chọn nhiều mã cùng lúc, xem PlantTypeMultiFilter), lọc ở mức DailyRecordItem qua
+// Lot.plantTypeId — 1 DailyRecord coi như 1 mã cây, chỉ cần CÓ dòng khớp BẤT KỲ mã nào trong danh sách là
+// tính cả motherUsed của record đó, xem vòng lặp bên dưới), và khoảng thời gian theo TUẦN (Thứ 2 - Chủ
+// nhật, weekStartsOn:1 — khớp quy ước tuần dùng chung toàn hệ thống, KHÔNG dùng số tuần ISO) hoặc THÁNG
+// (lịch).
 // - "Mẫu mẹ sử dụng" = DailyRecord.motherUsed (mẫu mẹ đưa vào cấy).
 // - "Cấy ra mẫu mẹ" = DailyRecordItem.quantityCreated tổng theo stage=MAU_ME.
 // - "Thành phẩm" = DailyRecordItem.quantityCreated tổng theo stage=THANH_PHAM.
@@ -25,7 +27,9 @@ export async function GET(req: NextRequest) {
   const monthParam = searchParams.get("month");
   const warehouseId = searchParams.get("warehouseId") || undefined;
   const staffId = searchParams.get("staffId") || undefined;
-  const plantTypeId = searchParams.get("plantTypeId") || undefined;
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
 
   let rangeStart: Date;
   let rangeEnd: Date;
@@ -50,7 +54,7 @@ export async function GET(req: NextRequest) {
           role: "CAY_MO",
           ...(warehouseId ? { workplaceWarehouseId: warehouseId } : {}),
         },
-        ...(plantTypeId ? { items: { some: { lot: { plantTypeId } } } } : {}),
+        ...(plantTypeIds.length > 0 ? { items: { some: { lot: { plantTypeId: { in: plantTypeIds } } } } } : {}),
       },
       select: {
         staffId: true,
@@ -90,7 +94,7 @@ export async function GET(req: NextRequest) {
     entry.recordCount += 1;
     entry.motherUsed += r.motherUsed;
     for (const item of r.items) {
-      if (plantTypeId && item.lot.plantTypeId !== plantTypeId) continue;
+      if (plantTypeIds.length > 0 && !plantTypeIds.includes(item.lot.plantTypeId)) continue;
       if (item.stage === "MAU_ME") entry.motherOut += item.quantityCreated;
       else entry.finishedOut += item.quantityCreated;
     }

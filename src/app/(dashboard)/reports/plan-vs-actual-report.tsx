@@ -17,6 +17,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Loader2, X, ListChecks } from "lucide-react";
 import { setISOWeek, setISOWeekYear, startOfISOWeek, format as formatDate } from "date-fns";
 import ReportBarChart from "./charts/report-bar-chart";
@@ -30,8 +31,6 @@ type Scope = "all" | "warehouse";
 type PeriodRow = { period: string; "Kế hoạch": number; "Thực tế": number };
 type StaffRow = { staffId: string; code: string; name: string; actual: number; percentOfPlan: number | null };
 type ReportData = { data: PeriodRow[]; totalPlan: number; totalActual: number; percentAchieved: number | null; staffBreakdown: StaffRow[] };
-
-const ALL_PLANT_TYPE: ComboOption = { value: "ALL", label: "Tất cả mã cây" };
 
 function periodValueToDateStr(value: string, unit: Unit): string {
   if (!value) return "";
@@ -63,7 +62,7 @@ export default function PlanVsActualReport() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
   const [unit, setUnit] = useState<Unit>("week");
-  const [plantTypeOption, setPlantTypeOption] = useState<ComboOption>(ALL_PLANT_TYPE);
+  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [scope, setScope] = useState<Scope>("all");
   const [warehouseOption, setWarehouseOption] = useState<ComboOption | null>(null);
   const [fromPeriod, setFromPeriod] = useState("");
@@ -78,10 +77,6 @@ export default function PlanVsActualReport() {
     fetch("/api/warehouses?type=SAN_XUAT").then((r) => r.json()).then((d) => setWarehouses(Array.isArray(d) ? d : []));
   }, []);
 
-  const plantTypeOptions = useMemo(
-    () => [ALL_PLANT_TYPE, ...plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))],
-    [plantTypes]
-  );
   const warehouseOptions = useMemo(() => warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })), [warehouses]);
 
   const load = useCallback(async () => {
@@ -90,7 +85,7 @@ export default function PlanVsActualReport() {
     try {
       const params = new URLSearchParams({ unit, scope });
       if (scope === "warehouse" && warehouseOption) params.set("warehouseId", warehouseOption.value);
-      if (plantTypeOption.value !== "ALL") params.set("plantTypeId", plantTypeOption.value);
+      if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
       const fromStr = periodValueToDateStr(fromPeriod, unit);
       const toStr = periodValueToDateStr(toPeriod, unit);
       if (fromStr && toStr) { params.set("from", fromStr); params.set("to", toStr); }
@@ -100,7 +95,7 @@ export default function PlanVsActualReport() {
     } finally {
       setLoading(false);
     }
-  }, [unit, plantTypeOption, scope, warehouseOption, fromPeriod, toPeriod]);
+  }, [unit, selectedPlantTypeIds, scope, warehouseOption, fromPeriod, toPeriod]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -151,23 +146,7 @@ export default function PlanVsActualReport() {
 
           <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
-            <Combobox
-              items={plantTypeOptions}
-              value={plantTypeOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => setPlantTypeOption((v as ComboOption) ?? ALL_PLANT_TYPE)}
-            >
-              <ComboboxInputGroup className="w-56 h-9">
-                <ComboboxInput placeholder="Chọn mã cây…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <PlantTypeMultiFilter plantTypes={plantTypes} selectedIds={selectedPlantTypeIds} onChange={setSelectedPlantTypeIds} />
           </div>
 
           <div className="space-y-1">

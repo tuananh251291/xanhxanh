@@ -28,7 +28,7 @@ function expiryClass(expectedMoveAt: Date | null): string {
 export default async function KhoSangPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plantTypeId?: string; enteredWeekFrom?: string; enteredWeekTo?: string; warehouseId?: string }>;
+  searchParams: Promise<{ plantTypeIds?: string; enteredWeekFrom?: string; enteredWeekTo?: string; warehouseId?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -38,11 +38,14 @@ export default async function KhoSangPage({
   if (role === "KHO_THANH_PHAM") redirect("/dashboard");
 
   const sp = await searchParams;
-  const rawPlantTypeId = sp.plantTypeId?.trim() || null;
-  // "__ALL__" = mục "Chọn tất cả mã cây" trong RootingPlantSearch — không lọc theo mã cây (giống null)
-  // nhưng vẫn bật bảng tổng hợp chi tiết theo mã cây + quy cách (xem finishedByPlantStageRows dưới).
-  const isAllRooting = rawPlantTypeId === "__ALL__";
-  const rootingPlantTypeId = isAllRooting ? null : rawPlantTypeId;
+  // RootingPlantSearch cho tích chọn NHIỀU mã cây (PlantTypeMultiFilter) — [] nghĩa là "Tất cả mã cây".
+  // Bảng "Tổng hợp cây ra rễ tại kho sáng" (theo mã cây + quy cách, showPlantBreakdown dưới) hiện khi số
+  // mã KHÁC ĐÚNG 1 (0 = tất cả, 2+ = nhiều mã tường minh) — thay cho sentinel "__ALL__" cũ của Combobox 1
+  // lựa chọn, cùng quy ước "0 hoặc 2+ mới cần breakdown" đang dùng ở mọi bộ lọc mã cây khác trong hệ thống.
+  const rootingPlantTypeIds = Array.from(
+    new Set((sp.plantTypeIds ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
+  const showPlantBreakdown = rootingPlantTypeIds.length !== 1;
   // Khoảng "Tuần nhập lên kho sáng" (input type="week", "YYYY-Www") — lọc thành phẩm Phòng ra rễ theo
   // đúng Lot.enteredAt (ngày lên kệ kho sáng, xem commitShelfPlacements) từ tuần này ĐẾN tuần kia (2 mốc
   // độc lập, chỉ nhập 1 trong 2 vẫn lọc được 1 phía). null/không hợp lệ = không lọc theo mốc đó.
@@ -131,10 +134,6 @@ export default async function KhoSangPage({
     }
     return Object.values(byType);
   })();
-  const rootingPlantTypeOptions = plantTypeNames
-    .map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
   // Danh sách kho sản xuất cho ô chọn của Quản lý kho thành phẩm (RootingPlantSearch) — chỉ cần tải khi
   // onlyRootingRoom, NV kho mô/kỹ thuật không thấy ô chọn này nên khỏi tốn truy vấn.
   const rootingWarehouseOptions = onlyRootingRoom
@@ -150,14 +149,14 @@ export default async function KhoSangPage({
   // Phòng ra rễ (chỉ KHO_MO xem, KY_THUAT không có) vẫn hiển thị dạng thẻ theo kệ như cũ, ít kệ hơn nhiều
   // so với Phòng mẫu mẹ nên chưa cần phân trang — tải riêng, không dính vào query rooms ở trên nữa.
   const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE").map((r) => r.id);
-  // Tìm theo mã cây (RootingPlantSearch, ?plantTypeId=) — lọc NGAY ở query: chỉ tải kệ có ít nhất 1 lô
-  // đúng mã cây đó (bớt hẳn kệ khác trong danh sách thay vì hiện "Trống" gây rối), và trong 1 kệ có
-  // nhiều mã cây khác nhau (Phòng ra rễ không có plantTypeId cố định như Phòng mẫu mẹ) chỉ hiện đúng lô
-  // khớp mã cây đang tìm, không lẫn lô mã cây khác trên cùng kệ.
+  // Tìm theo mã cây (RootingPlantSearch, ?plantTypeIds=) — lọc NGAY ở query: chỉ tải kệ có ít nhất 1 lô
+  // khớp 1 trong các mã cây đó (bớt hẳn kệ khác trong danh sách thay vì hiện "Trống" gây rối), và trong 1
+  // kệ có nhiều mã cây khác nhau (Phòng ra rễ không có plantTypeId cố định như Phòng mẫu mẹ) chỉ hiện
+  // đúng lô khớp bộ mã đang tìm, không lẫn lô mã cây khác trên cùng kệ.
   const raReLotFilter = {
     status: "ACTIVE" as const,
     quantity: { gt: 0 },
-    ...(rootingPlantTypeId ? { plantTypeId: rootingPlantTypeId } : {}),
+    ...(rootingPlantTypeIds.length > 0 ? { plantTypeId: { in: rootingPlantTypeIds } } : {}),
     ...(enteredAtFilter ? { enteredAt: enteredAtFilter } : {}),
   };
   const raReShelves = raReRoomIds.length
@@ -165,7 +164,7 @@ export default async function KhoSangPage({
         where: {
           roomId: { in: raReRoomIds },
           isActive: true,
-          ...((rootingPlantTypeId || enteredAtFilter) ? { lots: { some: raReLotFilter } } : {}),
+          ...((rootingPlantTypeIds.length > 0 || enteredAtFilter) ? { lots: { some: raReLotFilter } } : {}),
         },
         include: {
           plantType: { select: { id: true, code: true, name: true } },
@@ -191,8 +190,8 @@ export default async function KhoSangPage({
   // Tổng hợp theo QUY CÁCH (stageCode, VD T01/T05/T10) — không phân biệt theo giàn kệ, đúng dạng "danh
   // sách" NV cần khi xem theo khoảng tuần (1 khoảng tuần có thể trải hàng chục giàn, gộp lại mới hữu ích).
   const finishedByStageCode = new Map<string, { quantity: number; lotCount: number }>();
-  // Tổng hợp theo MÃ CÂY + quy cách — dùng cho box "Tổng hợp cây ra rễ tại kho sáng" khi chọn "Chọn tất
-  // cả mã cây" (isAllRooting), vì lúc đó bảng theo quy cách ở trên gộp lẫn nhiều mã cây khác nhau.
+  // Tổng hợp theo MÃ CÂY + quy cách — dùng cho box "Tổng hợp cây ra rễ tại kho sáng" khi showPlantBreakdown
+  // (0 hoặc 2+ mã cây đang lọc), vì lúc đó bảng theo quy cách đơn giản sẽ gộp lẫn nhiều mã cây khác nhau.
   const finishedByPlantStage = new Map<string, { plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; lotCount: number }>();
   for (const shelf of raReShelves) {
     const list = raReShelvesByRoom.get(shelf.roomId!) ?? [];
@@ -225,7 +224,6 @@ export default async function KhoSangPage({
     .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode) || a.stageCode.localeCompare(b.stageCode));
   const filteredFinishedTotal = finishedByStageCodeRows.reduce((s, r) => s + r.quantity, 0);
   const filteredFinishedLotCount = finishedByStageCodeRows.reduce((s, r) => s + r.lotCount, 0);
-  const hasRootingFilter = !!rootingPlantTypeId || !!enteredAtFilter;
 
   const motherRoomIds = rooms.filter((r) => r.type === "PHONG_MAU_ME").map((r) => r.id);
   const [assignedCounts, unassignedCounts] = await Promise.all([
@@ -266,8 +264,8 @@ export default async function KhoSangPage({
       {!onlyMotherRoom && (
         <div className="space-y-3">
           {onlyRootingRoom && <WarehouseSelect warehouseOptions={rootingWarehouseOptions} />}
-          <RootingPlantSearch plantTypeOptions={rootingPlantTypeOptions} />
-          {!isAllRooting && hasRootingFilter && (
+          <RootingPlantSearch plantTypes={plantTypeNames} />
+          {!showPlantBreakdown && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Tổng hợp theo quy cách</CardTitle>
@@ -302,7 +300,7 @@ export default async function KhoSangPage({
               </CardContent>
             </Card>
           )}
-          {isAllRooting && (
+          {showPlantBreakdown && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Tổng hợp cây ra rễ tại kho sáng</CardTitle>

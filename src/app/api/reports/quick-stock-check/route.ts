@@ -14,8 +14,10 @@ const ALL_FINISHED_STAGE_CODES = ["T01", "T05", "T10"];
 // bàn giao, Phòng mẫu mẹ, Phòng ra rễ — 2 phòng sau là "kho sáng"), không giới hạn theo NV/phòng cụ thể
 // nào. Lot.quantity đã tự trừ hàng nhiễm ngay lúc kiểm tra (xem PATCH /api/lot-inspections — trừ thẳng
 // contaminatedQuantity khỏi quantity), nên chỉ cần status: ACTIVE là đã loại hàng nhiễm, không cần thêm
-// điều kiện gì khác. warehouseId/plantTypeId = "ALL" (chọn từ FE) nghĩa là không lọc theo field đó —
-// gộp toàn bộ, kèm breakdown byWarehouse/byPlantType tương ứng để số liệu vẫn có ý nghĩa.
+// điều kiện gì khác. warehouseId = "ALL" (chọn từ FE) nghĩa là không lọc theo kho — gộp toàn bộ, kèm
+// breakdown byWarehouse. plantTypeIds (danh sách id nối dấu phẩy, bỏ trống = mọi loại — FE cho tích chọn
+// nhiều loại cây, xem PlantTypeMultiFilter) — breakdown byPlantType hiện khi số loại KHÁC ĐÚNG 1 (0 =
+// tất cả, 2+ = nhiều loại tường minh), cùng quy ước với instruction-plan-vs-actual/route.ts.
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -25,19 +27,21 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const warehouseId = searchParams.get("warehouseId");
-  const plantTypeId = searchParams.get("plantTypeId");
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const stageCode = searchParams.get("stageCode");
-  if (!warehouseId || !plantTypeId || !stageCode) {
-    return NextResponse.json({ message: "Thiếu khu sản xuất/mã cây/quy cách" }, { status: 400 });
+  if (!warehouseId || !stageCode) {
+    return NextResponse.json({ message: "Thiếu khu sản xuất/quy cách" }, { status: 400 });
   }
   const isAllFinished = stageCode === "ALL_FINISHED";
   const isAllWarehouses = warehouseId === "ALL";
-  const isAllPlantTypes = plantTypeId === "ALL";
+  const needsPlantTypeBreakdown = plantTypeIds.length !== 1;
 
   const lots = await prisma.lot.findMany({
     where: {
       status: "ACTIVE",
-      plantTypeId: isAllPlantTypes ? undefined : plantTypeId,
+      plantTypeId: plantTypeIds.length > 0 ? { in: plantTypeIds } : undefined,
       stageCode: isAllFinished ? { in: ALL_FINISHED_STAGE_CODES } : stageCode,
       shelf: { room: { warehouseId: isAllWarehouses ? undefined : warehouseId } },
     },
@@ -64,7 +68,7 @@ export async function GET(req: NextRequest) {
       const label = w ? `${w.code} — ${w.name}` : "Khác";
       byWarehouse[label] = (byWarehouse[label] ?? 0) + lot.quantity;
     }
-    if (isAllPlantTypes) {
+    if (needsPlantTypeBreakdown) {
       const label = `${lot.plantType.code} — ${lot.plantType.name}`;
       byPlantType[label] = (byPlantType[label] ?? 0) + lot.quantity;
     }
@@ -75,6 +79,6 @@ export async function GET(req: NextRequest) {
     byRoomType,
     ...(isAllFinished ? { byStageCode } : {}),
     ...(isAllWarehouses ? { byWarehouse } : {}),
-    ...(isAllPlantTypes ? { byPlantType } : {}),
+    ...(needsPlantTypeBreakdown ? { byPlantType } : {}),
   });
 }

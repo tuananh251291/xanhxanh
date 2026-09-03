@@ -6,22 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxInputGroup,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-} from "@/components/ui/combobox";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Loader2, Filter } from "lucide-react";
 import { getISOWeek, getISOWeekYear, subWeeks } from "date-fns";
 
 type PlantType = { id: string; code: string; name: string };
 type Warehouse = { id: string; code: string; name: string };
-type ComboOption = { value: string; label: string };
 type GrowthRow = {
   plantTypeId: string;
   code: string;
@@ -33,8 +23,6 @@ type GrowthRow = {
   unshelvedInDarkRoom: number;
   growth: number;
 };
-
-const ALL_PLANT_TYPE: ComboOption = { value: "ALL", label: "Tất cả mã cây" };
 
 function dateToIsoWeekValue(date: Date): string {
   const year = getISOWeekYear(date);
@@ -51,7 +39,7 @@ export default function MotherStockGrowthBoard() {
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
 
   const [warehouseId, setWarehouseId] = useState("");
-  const [plantTypeOption, setPlantTypeOption] = useState<ComboOption>(ALL_PLANT_TYPE);
+  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [fromWeek, setFromWeek] = useState(() => dateToIsoWeekValue(subWeeks(new Date(), 4)));
   const [toWeek, setToWeek] = useState(() => dateToIsoWeekValue(new Date()));
 
@@ -71,11 +59,6 @@ export default function MotherStockGrowthBoard() {
     fetch("/api/plant-types").then((r) => r.json()).then((d) => setPlantTypes(Array.isArray(d) ? d : []));
   }, []);
 
-  const plantTypeOptions = useMemo(
-    () => [ALL_PLANT_TYPE, ...plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))],
-    [plantTypes]
-  );
-
   const load = useCallback(async () => {
     if (!warehouseId || !fromWeek || !toWeek) { setRows([]); return; }
     setHasSearched(true);
@@ -83,7 +66,7 @@ export default function MotherStockGrowthBoard() {
     setError("");
     try {
       const params = new URLSearchParams({ warehouseId, fromWeek, toWeek });
-      if (plantTypeOption.value !== "ALL") params.set("plantTypeId", plantTypeOption.value);
+      if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
       const res = await fetch(`/api/reports/mother-stock-growth?${params}`);
       const data = await res.json();
       if (!res.ok) { setError(data?.message ?? "Không tải được báo cáo"); setRows([]); return; }
@@ -91,7 +74,7 @@ export default function MotherStockGrowthBoard() {
     } finally {
       setLoading(false);
     }
-  }, [warehouseId, plantTypeOption, fromWeek, toWeek]);
+  }, [warehouseId, selectedPlantTypeIds, fromWeek, toWeek]);
 
   const total = useMemo(
     () =>
@@ -129,23 +112,7 @@ export default function MotherStockGrowthBoard() {
 
           <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
-            <Combobox
-              items={plantTypeOptions}
-              value={plantTypeOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => setPlantTypeOption((v as ComboOption) ?? ALL_PLANT_TYPE)}
-            >
-              <ComboboxInputGroup className="w-64 h-9">
-                <ComboboxInput placeholder="Chọn mã cây…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <PlantTypeMultiFilter plantTypes={plantTypes} selectedIds={selectedPlantTypeIds} onChange={setSelectedPlantTypeIds} />
           </div>
 
           <div className="space-y-1">

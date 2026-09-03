@@ -4,23 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxInputGroup,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-} from "@/components/ui/combobox";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search } from "lucide-react";
 import { ROOM_TYPE_LABELS } from "@/types";
 
 type Warehouse = { id: string; code: string; name: string };
 type PlantType = { id: string; code: string; name: string };
-type ComboOption = { value: string; label: string };
 type CheckResult = {
   total: number;
   byRoomType: Record<string, number>;
@@ -40,18 +30,19 @@ const STAGE_OPTIONS = [
 ];
 
 // "Kiểm tra nhanh sản lượng" — bổ sung dưới biểu đồ sản lượng ở tab Sản lượng (/reports). Gộp số lượng
-// ACTIVE của (khu sản xuất, mã cây, quy cách) — mỗi bộ lọc khu sản xuất/mã cây chọn được đúng 1 giá trị
-// hoặc "Tất cả" (value "ALL", server bỏ điều kiện lọc field đó và trả thêm breakdown byWarehouse/
-// byPlantType) — trên TOÀN khu: Phòng tối cá nhân từng NV (hàng chưa bàn giao) + Phòng mẫu mẹ + Phòng ra
-// rễ (2 phòng sau gọi chung là "kho sáng") — xem GET /api/reports/quick-stock-check. Không tự tải lại
-// khi đổi bộ lọc — chỉ bấm "Kiểm tra" mới gọi API, vì đây là công cụ tra cứu tại 1 THỜI ĐIỂM, không phải
-// biểu đồ theo dõi liên tục.
+// ACTIVE của (khu sản xuất, mã cây, quy cách) — khu sản xuất chọn đúng 1 giá trị hoặc "Tất cả" (value
+// "ALL"), mã cây tích chọn được NHIỀU giá trị cùng lúc (PlantTypeMultiFilter, [] = "Tất cả" — server bỏ
+// điều kiện lọc field đó và trả thêm breakdown byWarehouse/byPlantType khi khớp nhiều hơn 1 loại) — trên
+// TOÀN khu: Phòng tối cá nhân từng NV (hàng chưa bàn giao) + Phòng mẫu mẹ + Phòng ra rễ (2 phòng sau gọi
+// chung là "kho sáng") — xem GET /api/reports/quick-stock-check. Không tự tải lại khi đổi bộ lọc — chỉ
+// bấm "Kiểm tra" mới gọi API, vì đây là công cụ tra cứu tại 1 THỜI ĐIỂM, không phải biểu đồ theo dõi
+// liên tục.
 export default function ProductionQuickCheck() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
 
   const [warehouseId, setWarehouseId] = useState("");
-  const [plantTypeOption, setPlantTypeOption] = useState<ComboOption | null>(null);
+  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [stageCode, setStageCode] = useState("");
 
   const [result, setResult] = useState<CheckResult | null>(null);
@@ -71,18 +62,15 @@ export default function ProductionQuickCheck() {
     () => [{ value: "ALL", label: "Tất cả khu sản xuất" }, ...warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` }))],
     [warehouses]
   );
-  const plantTypeOptions = useMemo(
-    () => [{ value: "ALL", label: "Tất cả các loại cây" }, ...plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }))],
-    [plantTypes]
-  );
 
-  const canCheck = !!warehouseId && !!plantTypeOption && !!stageCode;
+  const canCheck = !!warehouseId && !!stageCode;
 
   const check = async () => {
     if (!canCheck) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ warehouseId, plantTypeId: plantTypeOption!.value, stageCode });
+      const params = new URLSearchParams({ warehouseId, stageCode });
+      if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
       const res = await fetch(`/api/reports/quick-stock-check?${params}`);
       const json = await res.json();
       if (!res.ok) { setResult(null); return; }
@@ -116,23 +104,7 @@ export default function ProductionQuickCheck() {
 
           <div className="space-y-1">
             <Label className="text-xs">Loại cây</Label>
-            <Combobox
-              items={plantTypeOptions}
-              value={plantTypeOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={setPlantTypeOption}
-            >
-              <ComboboxInputGroup className="w-56 h-9">
-                <ComboboxInput placeholder="Gõ mã hoặc tên cây…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <PlantTypeMultiFilter plantTypes={plantTypes} selectedIds={selectedPlantTypeIds} onChange={setSelectedPlantTypeIds} />
           </div>
 
           <div className="space-y-1">

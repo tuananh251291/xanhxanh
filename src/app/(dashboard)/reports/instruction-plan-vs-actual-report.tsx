@@ -15,9 +15,8 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } from "@/components/ui/dropdown-menu";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, ChevronDownIcon } from "lucide-react";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 
 type Warehouse = { id: string; code: string; name: string };
@@ -303,70 +302,5 @@ export default function InstructionPlanVsActualReport() {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-// Ô tích nhiều loại cây cùng lúc (khác Combobox 1 lựa chọn dùng ở "Tìm mã chỉ định") — [] nghĩa là
-// "Tất cả loại cây", giống quy ước ALL của bộ lọc khu sản xuất. Dùng DropdownMenu chỉ để làm khung
-// popup/định vị; nội dung bên trong là ô tìm + danh sách nhãn/checkbox thường (cùng kiểu đang dùng ở
-// dark-room-inspection-dialog.tsx), không dùng DropdownMenuCheckboxItem để tránh phím tắt điều hướng
-// menu can thiệp vào việc gõ tìm kiếm.
-function PlantTypeMultiFilter({
-  plantTypes, selectedIds, onChange,
-}: {
-  plantTypes: PlantType[];
-  selectedIds: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const [search, setSearch] = useState("");
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return plantTypes;
-    return plantTypes.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
-  }, [plantTypes, search]);
-
-  const toggle = (id: string) => {
-    onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
-  };
-
-  const triggerLabel = selectedIds.length === 0 ? "Tất cả loại cây" : `${selectedIds.length} loại cây đã chọn`;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className="flex h-9 w-56 items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 text-sm">
-        <span className="truncate">{triggerLabel}</span>
-        <ChevronDownIcon className="w-4 h-4 text-muted-foreground shrink-0" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-64 p-2" align="start">
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Gõ mã hoặc tên cây…"
-          className="h-8 mb-2"
-        />
-        <div className="max-h-64 overflow-y-auto space-y-0.5">
-          {filtered.length === 0 ? (
-            <p className="text-xs text-text-muted text-center py-3">Không tìm thấy mã cây</p>
-          ) : (
-            filtered.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-accent cursor-pointer">
-                <Checkbox checked={selectedIds.includes(p.id)} onCheckedChange={() => toggle(p.id)} />
-                <span className="truncate">{p.code} — {p.name}</span>
-              </label>
-            ))
-          )}
-        </div>
-        {selectedIds.length > 0 && (
-          <button
-            type="button"
-            className="mt-2 w-full text-center text-xs text-info-foreground underline underline-offset-2"
-            onClick={() => onChange([])}
-          >
-            Bỏ chọn tất cả
-          </button>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import StaffCombobox from "@/components/shared/staff-combobox";
+import StaffMultiFilter from "@/components/shared/staff-multi-filter";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { format, addWeeks, startOfWeek } from "date-fns";
 import { vi } from "date-fns/locale";
 
 const STAGE_CODES = ["M05", "T05", "T01"] as const;
-const ALL_STAFF = "ALL";
 
 type Staff = { id: string; name: string; code: string };
 
@@ -35,7 +34,7 @@ const fmt = (n: number) => n.toLocaleString("vi-VN");
 export default function DarkRoomContaminationByInstructionSection() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [staffId, setStaffId] = useState<string>(ALL_STAFF);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,11 +51,11 @@ export default function DarkRoomContaminationByInstructionSection() {
       });
   }, []);
 
-  const load = useCallback(async (ws: Date, staff: string) => {
+  const load = useCallback(async (ws: Date, staffIds: string[]) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ weekStart: format(ws, "yyyy-MM-dd") });
-      if (staff !== ALL_STAFF) params.set("staffId", staff);
+      if (staffIds.length > 0) params.set("staffIds", staffIds.join(","));
       const res = await fetch(`/api/reports/dark-room-contamination-by-instruction?${params}`);
       const data = await res.json();
       setRows(Array.isArray(data.rows) ? data.rows : []);
@@ -66,12 +65,7 @@ export default function DarkRoomContaminationByInstructionSection() {
     }
   }, []);
 
-  useEffect(() => { load(weekStart, staffId); }, [weekStart, staffId, load]);
-
-  const staffOptions = useMemo(
-    () => [{ value: ALL_STAFF, label: "Toàn hệ thống" }, ...staffList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))],
-    [staffList]
-  );
+  useEffect(() => { load(weekStart, selectedStaffIds); }, [weekStart, selectedStaffIds, load]);
 
   const weekEnd = addWeeks(weekStart, 1);
   const weekEndDisplay = new Date(weekEnd.getTime() - 24 * 60 * 60 * 1000);
@@ -90,7 +84,7 @@ export default function DarkRoomContaminationByInstructionSection() {
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Nhân viên</Label>
-              <StaffCombobox options={staffOptions} value={staffId} onChange={setStaffId} />
+              <StaffMultiFilter staffList={staffList} selectedIds={selectedStaffIds} onChange={setSelectedStaffIds} />
             </div>
             <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addWeeks(w, -1))}>
               <ChevronLeft className="w-4 h-4" />

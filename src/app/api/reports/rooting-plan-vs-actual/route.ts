@@ -16,8 +16,8 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // — cùng quy ước đã có ở src/lib/production-capacity.ts (lọc theo cơ sở qua NV cấy mô đang gán
 // workplaceWarehouseId đúng cơ sở đó, không có FK kho trực tiếp trên PlantingInstruction/DailyRecord).
 // Query params: unit=week|month, from/to (tuỳ chọn yyyy-MM-dd, có cả 2 mới dùng quãng tự nhập),
-// scope=all|warehouse, warehouseId (bắt buộc nếu scope=warehouse), plantTypeId (tuỳ chọn, bỏ trống =
-// "Tất cả").
+// scope=all|warehouse, warehouseId (bắt buộc nếu scope=warehouse), plantTypeIds (danh sách id nối dấu
+// phẩy, tuỳ chọn, bỏ trống = "Tất cả" — FE cho tích chọn nhiều mã cây, xem PlantTypeMultiFilter).
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
   const unit = searchParams.get("unit") === "month" ? "month" : "week";
   const scopeParam = searchParams.get("scope");
   const warehouseId = searchParams.get("warehouseId");
-  const plantTypeId = searchParams.get("plantTypeId") || null;
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
 
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest) {
         where: {
           taskMonth: { in: uniqueTaskMonths },
           ...(scopeWarehouseId ? { warehouseId: scopeWarehouseId } : {}),
-          ...(plantTypeId ? { plantTypeId } : {}),
+          ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
         },
         _sum: { quantity: true },
       })
@@ -74,7 +76,7 @@ export async function GET(req: NextRequest) {
     where: {
       recordDate: { gte: buckets[0].start, lte: buckets[buckets.length - 1].end },
       instruction: {
-        ...(plantTypeId ? { plantTypeId } : {}),
+        ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
         assignedToId: scopedStaffIds ? { in: scopedStaffIds } : { not: null },
       },
     },

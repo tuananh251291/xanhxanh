@@ -5,15 +5,18 @@ import { isoWeekStringToMonday } from "@/lib/week-rotation";
 import { computeMotherStockGrowth } from "@/lib/mother-stock-growth-report";
 
 // Báo cáo "Số lượng mẫu mẹ gia tăng" (Admin, xem report-center). Query params: warehouseId (bắt buộc, 1 kho
-// sản xuất), plantTypeId (tuỳ chọn — bỏ trống = "Tất cả", trả về theo từng mã cây), fromWeek/toWeek
-// (bắt buộc, "YYYY-Www" từ input type="week" — tuần n và tuần n+x của khoảng đang xem).
+// sản xuất), plantTypeIds (tuỳ chọn — danh sách id nối dấu phẩy, bỏ trống = "Tất cả", trả về theo từng mã
+// cây — FE tích chọn nhiều mã cùng lúc, xem PlantTypeMultiFilter), fromWeek/toWeek (bắt buộc, "YYYY-Www"
+// từ input type="week" — tuần n và tuần n+x của khoảng đang xem).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const warehouseId = searchParams.get("warehouseId");
-  const plantTypeId = searchParams.get("plantTypeId") || null;
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const fromWeek = searchParams.get("fromWeek");
   const toWeek = searchParams.get("toWeek");
 
@@ -26,6 +29,6 @@ export async function GET(req: NextRequest) {
 
   const [weekNStart, weekNPlusXStart] = fromMonday <= toMonday ? [fromMonday, toMonday] : [toMonday, fromMonday];
 
-  const rows = await computeMotherStockGrowth(warehouseId, plantTypeId, weekNStart, weekNPlusXStart);
+  const rows = await computeMotherStockGrowth(warehouseId, plantTypeIds, weekNStart, weekNPlusXStart);
   return NextResponse.json({ rows });
 }

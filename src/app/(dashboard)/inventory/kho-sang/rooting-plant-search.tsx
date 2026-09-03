@@ -7,42 +7,31 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, X } from "lucide-react";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxInputGroup,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-} from "@/components/ui/combobox";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 
-type Option = { value: string; label: string };
+type PlantType = { id: string; code: string; name: string };
 
-// Mục đặc biệt "Chọn tất cả" — chọn mục này để xem bảng tổng hợp toàn bộ thành phẩm Phòng ra rễ theo mã
-// cây + quy cách (xem box "Tổng hợp cây ra rễ tại kho sáng" ở page.tsx), thay vì lọc còn 1 mã cây.
-const ALL_OPTION: Option = { value: "__ALL__", label: "— Chọn tất cả —" };
-
-// Bộ lọc Phòng ra rễ — mã cây (gõ tự gợi ý) + khoảng tuần nhập lên kho sáng (2 ô input type="week",
-// "YYYY-Www", độc lập nhau — chỉ nhập 1 trong 2 vẫn lọc được 1 phía). Dạng box giống "Tổng hợp theo loại
-// cây" ở trên — chỉ ĐỔI Ô NHẬP tại chỗ, KHÔNG lọc lại dữ liệu ngay, phải bấm "Xem dữ liệu" mới thật sự đẩy
-// lên URL (?plantTypeId=, ?enteredWeekFrom=, ?enteredWeekTo=) để page.tsx (server component) query lại —
-// tránh query lại kho hàng chục nghìn lô mỗi lần gõ dở. Ô "Kho sản xuất" (WarehouseSelect, đặt riêng ở
-// page.tsx) áp dụng NGAY khi chọn (khác box này) — chỉ đọc lại ?warehouseId= hiện có để GIỮ NGUYÊN khi bấm
-// "Xem dữ liệu"/"Xoá lọc" ở đây, không tự ý xoá lựa chọn kho đang xem.
-export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOptions: Option[] }) {
+// Bộ lọc Phòng ra rễ — mã cây (tích chọn nhiều, xem PlantTypeMultiFilter) + khoảng tuần nhập lên kho sáng
+// (2 ô input type="week", "YYYY-Www", độc lập nhau — chỉ nhập 1 trong 2 vẫn lọc được 1 phía). KHÔNG lọc
+// lại dữ liệu ngay, phải bấm "Xem dữ liệu" mới thật sự đẩy lên URL (?plantTypeIds=, ?enteredWeekFrom=,
+// ?enteredWeekTo=) để page.tsx (server component) query lại — tránh query lại kho hàng chục nghìn lô mỗi
+// lần tích/bỏ tích 1 ô. selectedIds rỗng = "Tất cả mã cây" (thay cho sentinel "__ALL__" cũ của Combobox 1
+// lựa chọn — page.tsx coi 0 mã và 2+ mã đều cần bảng tổng hợp CHI TIẾT theo mã cây + quy cách, chỉ đúng 1
+// mã mới dùng bảng gộp đơn giản theo quy cách, xem finishedByPlantStageRows/showPlantBreakdown ở đó). Ô
+// "Kho sản xuất" (WarehouseSelect, đặt riêng ở page.tsx) áp dụng NGAY khi chọn (khác box này) — chỉ đọc
+// lại ?warehouseId= hiện có để GIỮ NGUYÊN khi bấm "Xem dữ liệu"/"Xoá lọc" ở đây, không tự ý xoá lựa chọn
+// kho đang xem.
+export default function RootingPlantSearch({ plantTypes }: { plantTypes: PlantType[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const comboboxItems = [ALL_OPTION, ...plantTypeOptions];
 
-  const urlPlantTypeId = searchParams.get("plantTypeId");
+  const urlPlantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const urlWeekFrom = searchParams.get("enteredWeekFrom") ?? "";
   const urlWeekTo = searchParams.get("enteredWeekTo") ?? "";
 
-  const [pendingPlantType, setPendingPlantType] = useState<Option | null>(
-    () => comboboxItems.find((o) => o.value === urlPlantTypeId) ?? null
-  );
+  const [pendingPlantTypeIds, setPendingPlantTypeIds] = useState<string[]>(urlPlantTypeIds);
   const [pendingWeekFrom, setPendingWeekFrom] = useState(urlWeekFrom);
   const [pendingWeekTo, setPendingWeekTo] = useState(urlWeekTo);
 
@@ -50,21 +39,21 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
     const params = new URLSearchParams();
     const urlWarehouseId = searchParams.get("warehouseId");
     if (urlWarehouseId) params.set("warehouseId", urlWarehouseId);
-    if (pendingPlantType) params.set("plantTypeId", pendingPlantType.value);
+    if (pendingPlantTypeIds.length > 0) params.set("plantTypeIds", pendingPlantTypeIds.join(","));
     if (pendingWeekFrom) params.set("enteredWeekFrom", pendingWeekFrom);
     if (pendingWeekTo) params.set("enteredWeekTo", pendingWeekTo);
     router.push(`?${params.toString()}`);
   };
 
   const clearFilter = () => {
-    setPendingPlantType(null);
+    setPendingPlantTypeIds([]);
     setPendingWeekFrom("");
     setPendingWeekTo("");
     const urlWarehouseId = searchParams.get("warehouseId");
     router.push(urlWarehouseId ? `?warehouseId=${urlWarehouseId}` : "?");
   };
 
-  const hasAppliedFilter = !!urlPlantTypeId || !!urlWeekFrom || !!urlWeekTo;
+  const hasAppliedFilter = urlPlantTypeIds.length > 0 || !!urlWeekFrom || !!urlWeekTo;
 
   return (
     <Card>
@@ -73,25 +62,9 @@ export default function RootingPlantSearch({ plantTypeOptions }: { plantTypeOpti
       </CardHeader>
       <CardContent>
         <div className="flex items-end gap-3 flex-wrap">
-          <div className="space-y-1 w-64">
+          <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
-            <Combobox
-              items={comboboxItems}
-              value={pendingPlantType}
-              isItemEqualToValue={(a: Option, b: Option) => a.value === b.value}
-              onValueChange={(v) => setPendingPlantType(v as Option | null)}
-            >
-              <ComboboxInputGroup className="h-9">
-                <ComboboxInput placeholder="Gõ mã hoặc tên cây…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: Option) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <PlantTypeMultiFilter plantTypes={plantTypes} selectedIds={pendingPlantTypeIds} onChange={setPendingPlantTypeIds} />
           </div>
 
           <div className="space-y-1">

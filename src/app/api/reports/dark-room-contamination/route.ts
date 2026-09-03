@@ -20,7 +20,9 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const staffId = searchParams.get("staffId") || undefined;
+  const staffIds = Array.from(
+    new Set((searchParams.get("staffIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
   const parsedFrom = fromParam ? parseISO(fromParam) : null;
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
   const inspections = await prisma.lotInspection.findMany({
     where: {
       createdAt: { gte: from, lte: to },
-      ...(staffId ? { staffId } : {}),
+      ...(staffIds.length > 0 ? { staffId: { in: staffIds } } : {}),
     },
     select: {
       createdAt: true,

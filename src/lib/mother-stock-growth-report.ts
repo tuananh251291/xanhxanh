@@ -231,9 +231,10 @@ async function getRelevantPlantTypeIds(warehouseId: string): Promise<string[]> {
 }
 
 // `weekNStart` = Thứ 2 đầu tuần n, `weekNPlusXStart` = Thứ 2 đầu tuần n+x (tuần cuối của khoảng đang xem).
+// `plantTypeIds` rỗng = "Tất cả" (mọi mã cây liên quan tới kho này) — FE cho tích chọn nhiều mã cùng lúc.
 export async function computeMotherStockGrowth(
   warehouseId: string,
-  plantTypeId: string | null,
+  plantTypeIds: string[],
   weekNStart: Date,
   weekNPlusXStart: Date
 ): Promise<PlantTypeGrowthRow[]> {
@@ -242,11 +243,11 @@ export async function computeMotherStockGrowth(
   // dùng getWeekBucketsInRange đã có sẵn week-math, không viết lại).
   const rangeWeekEndDates = getWeekBucketsInRange(weekNStart, weekNPlusXStart).map((b) => endOfWeek(b.start, { weekStartsOn: 1 }));
 
-  const plantTypeIds = plantTypeId ? [plantTypeId] : await getRelevantPlantTypeIds(warehouseId);
-  if (plantTypeIds.length === 0) return [];
+  const resolvedPlantTypeIds = plantTypeIds.length > 0 ? plantTypeIds : await getRelevantPlantTypeIds(warehouseId);
+  if (resolvedPlantTypeIds.length === 0) return [];
 
   const plantTypes = await prisma.plantType.findMany({
-    where: { id: { in: plantTypeIds } },
+    where: { id: { in: resolvedPlantTypeIds } },
     select: { id: true, code: true, name: true },
     orderBy: { code: "asc" },
   });

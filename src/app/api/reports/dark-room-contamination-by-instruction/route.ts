@@ -23,7 +23,9 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const weekStartParam = searchParams.get("weekStart");
-  const staffId = searchParams.get("staffId");
+  const staffIds = Array.from(
+    new Set((searchParams.get("staffIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const anchor = weekStartParam ? new Date(weekStartParam) : new Date();
   const weekStart = startOfWeek(anchor, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(anchor, { weekStartsOn: 1 });
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
   const items = await prisma.lotInspectionItem.findMany({
     where: {
       inspection: { createdAt: { gte: weekStart, lte: weekEnd } },
-      ...(staffId ? { lot: { instruction: { assignedToId: staffId } } } : {}),
+      ...(staffIds.length > 0 ? { lot: { instruction: { assignedToId: { in: staffIds } } } } : {}),
     },
     select: {
       stageCode: true,

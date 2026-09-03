@@ -16,6 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -49,7 +50,7 @@ export default function PlantingLogSummaryBoard({
   const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
   const [warehouseId, setWarehouseId] = useState(ALL);
   const [staffId, setStaffId] = useState(ALL);
-  const [plantTypeId, setPlantTypeId] = useState(ALL);
+  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rangeLabel, setRangeLabel] = useState("");
@@ -69,12 +70,14 @@ export default function PlantingLogSummaryBoard({
   }, [staffOptionsForWarehouse, staffId]);
   const staffOptions: ComboOption[] = staffOptionsForWarehouse.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
 
-  // Mã cây đang chọn không còn nằm trong danh sách đã cấy thật (VD vừa đổi nhân sự/thời gian) → bỏ chọn
-  // về "Tất cả mã cây" thay vì giữ lựa chọn không còn khớp.
+  // Mã cây đang chọn không còn nằm trong danh sách đã cấy thật (VD vừa đổi nhân sự/thời gian) → bỏ những
+  // mã không còn khớp, giữ lại phần vẫn còn hợp lệ thay vì xoá sạch lựa chọn.
   useEffect(() => {
-    if (plantTypeId !== ALL && !availablePlantTypes.some((p) => p.id === plantTypeId)) setPlantTypeId(ALL);
-  }, [availablePlantTypes, plantTypeId]);
-  const plantTypeOptions: ComboOption[] = availablePlantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
+    setSelectedPlantTypeIds((prev) => {
+      const filtered = prev.filter((id) => availablePlantTypes.some((p) => p.id === id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [availablePlantTypes]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,7 +86,7 @@ export default function PlantingLogSummaryBoard({
       if (mode === "week") params.set("date", date); else params.set("month", month);
       if (warehouseId !== ALL) params.set("warehouseId", warehouseId);
       if (staffId !== ALL) params.set("staffId", staffId);
-      if (plantTypeId !== ALL) params.set("plantTypeId", plantTypeId);
+      if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
       const res = await fetch(`/api/reports/planting-log-summary?${params}`);
       const data = await res.json();
       setRows(Array.isArray(data.rows) ? data.rows : []);
@@ -95,7 +98,7 @@ export default function PlantingLogSummaryBoard({
     } finally {
       setLoading(false);
     }
-  }, [mode, date, month, warehouseId, staffId, plantTypeId]);
+  }, [mode, date, month, warehouseId, staffId, selectedPlantTypeIds]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -161,24 +164,7 @@ export default function PlantingLogSummaryBoard({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Mã cây</Label>
-            <Combobox
-              items={plantTypeOptions}
-              value={plantTypeOptions.find((o) => o.value === plantTypeId) ?? null}
-              isItemEqualToValue={(a, b) => a.value === b.value}
-              onValueChange={(v) => setPlantTypeId(v?.value ?? ALL)}
-            >
-              <ComboboxInputGroup className="w-56">
-                <ComboboxInput placeholder="Tất cả mã cây — gõ để tìm mã/tên…" />
-                <ComboboxClear />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy mã cây</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+            <PlantTypeMultiFilter plantTypes={availablePlantTypes} selectedIds={selectedPlantTypeIds} onChange={setSelectedPlantTypeIds} />
           </div>
           {rangeLabel && (
             <p className="text-sm text-text-secondary">

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import StaffCombobox from "@/components/shared/staff-combobox";
+import StaffMultiFilter from "@/components/shared/staff-multi-filter";
 import { Loader2 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -29,11 +29,9 @@ type Summary = {
   redFlowRatePct: number;
 };
 
-const ALL_STAFF = "ALL";
-
 export default function DarkRoomContaminationReport() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [staffId, setStaffId] = useState<string>(ALL_STAFF);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [from, setFrom] = useState(format(subDays(new Date(), 14), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [rows, setRows] = useState<Row[]>([]);
@@ -56,7 +54,7 @@ export default function DarkRoomContaminationReport() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ from, to });
-      if (staffId !== ALL_STAFF) params.set("staffId", staffId);
+      if (selectedStaffIds.length > 0) params.set("staffIds", selectedStaffIds.join(","));
       const res = await fetch(`/api/reports/dark-room-contamination?${params}`);
       const data = await res.json();
       setRows(Array.isArray(data.rows) ? data.rows : []);
@@ -64,14 +62,9 @@ export default function DarkRoomContaminationReport() {
     } finally {
       setLoading(false);
     }
-  }, [staffId, from, to]);
+  }, [selectedStaffIds, from, to]);
 
   useEffect(() => { load(); }, [load]);
-
-  const staffOptions = useMemo(
-    () => [{ value: ALL_STAFF, label: "Toàn hệ thống" }, ...staffList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }))],
-    [staffList]
-  );
 
   return (
     <Card>
@@ -86,7 +79,7 @@ export default function DarkRoomContaminationReport() {
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
               <Label className="text-xs">Nhân viên</Label>
-              <StaffCombobox options={staffOptions} value={staffId} onChange={setStaffId} />
+              <StaffMultiFilter staffList={staffList} selectedIds={selectedStaffIds} onChange={setSelectedStaffIds} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Từ ngày</Label>

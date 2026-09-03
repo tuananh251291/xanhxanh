@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
-import { computeActualSeries, simulateWeeklyForecast, computeAverageRatios, type CapacityScope } from "@/lib/production-capacity";
+import {
+  computeActualSeries, simulateWeeklyForecast, computeAverageRatios,
+  type CapacityScope, type ActualPoint, type WeeklyForecastPoint,
+} from "@/lib/production-capacity";
 import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -25,8 +28,16 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // thể đạt nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy xu hướng quá khứ) nên ĐỘ DỐC (không
 // phải giá trị tuyệt đối, vì đã lũy kế từ cùng 1 điểm nối) có thể lệch hẳn nhau ngay sau điểm nối. Query
 // params: unit=week|month,
-// plantTypeId (bắt buộc), scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ
+// plantTypeIds (bắt buộc, ít nhất 1 — danh sách id nối dấu phẩy, FE cho tích chọn nhiều mã cùng lúc, xem
+// PlantTypeMultiFilter), scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ
 // chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường dự kiến).
+// Chọn NHIỀU mã cây — chạy computeActualSeries/simulateWeeklyForecast/computeAverageRatios RIÊNG cho từng
+// mã (mỗi mã có transferWaitWeeks/tỉ lệ/Nhóm tuần rotation RIÊNG, không thể trộn chung 1 lượt mô phỏng mà
+// vẫn đúng), rồi CỘNG DỒN actualPoints theo từng kỳ và weeklyForecast theo từng weekStart — số lượng lũy
+// kế/dự báo là phép cộng nên gộp đúng. avgRatioMM/avgRatioTP/avgMotherPerStaffDay trả về là trung bình
+// cộng ĐƠN GIẢN giữa các mã đã chọn (không có ý nghĩa vật lý chính xác khi có 2+ mã khác hệ số hẳn nhau)
+// — CHỈ dùng cho công cụ "Dự kiến theo số nhân sự thực tế" (kịch bản NV tự nhập ở production-capacity-
+// board.tsx), KHÔNG ảnh hưởng biểu đồ chính (đã cộng đúng theo từng mã trước khi gộp).
 // Response còn thêm `staffing` — mỗi kỳ TƯƠNG LAI cần bao nhiêu ngày công NV cấy để đạt đúng kịch bản tối
 // đa ở "data" (kịch bản đó ngầm giả định không giới hạn nhân sự) — FE tự chia tiếp cho tham số "số ngày
 // làm việc" NV nhập để ra số nhân sự cần (xem phần "Dự đoán theo kịch bản" ở production-capacity-board.tsx).
@@ -36,13 +47,15 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get("unit") === "month" ? "month" : "week";
-  const plantTypeId = searchParams.get("plantTypeId");
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const scopeParam = searchParams.get("scope");
   const scopeId = searchParams.get("scopeId");
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
 
-  if (!plantTypeId) return NextResponse.json({ message: "Thiếu mã sản phẩm" }, { status: 400 });
+  if (plantTypeIds.length === 0) return NextResponse.json({ message: "Thiếu mã sản phẩm" }, { status: 400 });
 
   let scope: CapacityScope = { kind: "ALL" };
   if (scopeParam === "warehouse") {
@@ -77,14 +90,46 @@ export async function GET(req: NextRequest) {
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const futureBuckets = buckets.filter((b) => b.start > todayBucket.start);
-  const [actualPoints, weeklyForecast, ratios] = await Promise.all([
-    computeActualSeries(plantTypeId, historyBuckets, scope),
-    futureBuckets.length > 0
-      ? simulateWeeklyForecast(plantTypeId, scope, now, futureBuckets[futureBuckets.length - 1].end)
-      : Promise.resolve([]),
-    computeAverageRatios(plantTypeId, now, scope),
-  ]);
-  const { avgRatioMM, avgRatioTP, avgMotherPerStaffDay } = ratios;
+
+  // Chạy riêng cho TỪNG mã cây đã chọn rồi cộng dồn — xem giải thích ở comment đầu file.
+  const perType = await Promise.all(
+    plantTypeIds.map(async (ptId) => {
+      const [typeActualPoints, typeWeeklyForecast, typeRatios] = await Promise.all([
+        computeActualSeries(ptId, historyBuckets, scope),
+        futureBuckets.length > 0
+          ? simulateWeeklyForecast(ptId, scope, now, futureBuckets[futureBuckets.length - 1].end)
+          : Promise.resolve([]),
+        computeAverageRatios(ptId, now, scope),
+      ]);
+      return { actualPoints: typeActualPoints, weeklyForecast: typeWeeklyForecast, ratios: typeRatios };
+    })
+  );
+
+  const actualPoints: ActualPoint[] = historyBuckets.map(() => ({ motherOutput: 0, finishedOutput: 0 }));
+  for (const p of perType) {
+    p.actualPoints.forEach((pt, i) => {
+      actualPoints[i].motherOutput += pt.motherOutput;
+      actualPoints[i].finishedOutput += pt.finishedOutput;
+    });
+  }
+
+  const weeklyForecastByWeek = new Map<number, WeeklyForecastPoint>();
+  for (const p of perType) {
+    for (const wf of p.weeklyForecast) {
+      const key = wf.weekStart.getTime();
+      const merged = weeklyForecastByWeek.get(key) ?? { weekStart: wf.weekStart, motherForecast: 0, finishedForecast: 0, motherProcessed: 0 };
+      merged.motherForecast += wf.motherForecast;
+      merged.finishedForecast += wf.finishedForecast;
+      merged.motherProcessed += wf.motherProcessed;
+      weeklyForecastByWeek.set(key, merged);
+    }
+  }
+  const weeklyForecast = Array.from(weeklyForecastByWeek.values()).sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime());
+
+  const avg = (values: number[]) => (values.length === 0 ? 0 : values.reduce((s, v) => s + v, 0) / values.length);
+  const avgRatioMM = avg(perType.map((p) => p.ratios.avgRatioMM));
+  const avgRatioTP = avg(perType.map((p) => p.ratios.avgRatioTP));
+  const avgMotherPerStaffDay = avg(perType.map((p) => p.ratios.avgMotherPerStaffDay));
 
   const SPECS = [
     { label: "Mẫu mẹ", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput },
