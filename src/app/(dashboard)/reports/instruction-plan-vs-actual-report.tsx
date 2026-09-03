@@ -67,6 +67,15 @@ function pctColorClass(p: number | null): string {
   return "text-destructive";
 }
 
+// Ngược hướng với pctColorClass — % nhiễm CÀNG THẤP càng tốt, ngưỡng khớp ALERT_THRESHOLD_PCT (20%) đang
+// dùng ở contamination-report.tsx.
+function contaminationPctColorClass(p: number | null): string {
+  if (p === null) return "text-text-muted";
+  if (p >= 20) return "text-destructive";
+  if (p >= 10) return "text-warning-foreground";
+  return "text-success-foreground";
+}
+
 // Tab "Dữ liệu chỉ định cấy" ở /reports (Admin/Admin cấp cao + NV Kỹ thuật) — mỗi chỉ định hiện 2 dòng
 // trên/dưới: dòng "Chỉ định" (kỳ vọng KY_THUAT đã tính lúc tạo) và dòng "Thực tế" (cộng dồn nhật ký cấy
 // của toàn bộ chỉ định đó, không lọc theo ngày cấy — chỉ lọc THỜI ĐIỂM TẠO chỉ định theo tháng/toàn bộ
@@ -252,6 +261,7 @@ export default function InstructionPlanVsActualReport() {
                     <th className="px-3 py-2 text-left font-bold text-base">Ngày sản xuất</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL bàn giao</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL nhiễm</th>
+                    <th className="px-3 py-2 text-center font-bold text-base">% nhiễm</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Dòng</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL mẫu mẹ</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL thành phẩm</th>
@@ -263,6 +273,7 @@ export default function InstructionPlanVsActualReport() {
                   {report.rows.map((r) => {
                     const motherPct = pct(r.actualMotherOutput, r.expectedMotherOutput);
                     const finishedPct = pct(r.actualFinishedOutput, r.expectedFinishedOutput);
+                    const contaminationPct = pct(r.contaminatedQuantity, r.inputMotherQuantity);
                     return (
                       <Fragment key={r.id}>
                         <tr className="border-t-2 border-divider">
@@ -285,6 +296,9 @@ export default function InstructionPlanVsActualReport() {
                           </td>
                           <td className="px-3 py-2 text-center tabular-nums" rowSpan={2}>{fmt(r.inputMotherQuantity)}</td>
                           <td className="px-3 py-2 text-center tabular-nums" rowSpan={2}>{r.contaminatedQuantity > 0 ? <span className="text-destructive font-semibold">{fmt(r.contaminatedQuantity)}</span> : fmt(r.contaminatedQuantity)}</td>
+                          <td className={`px-3 py-2 text-center tabular-nums font-semibold ${contaminationPctColorClass(contaminationPct)}`} rowSpan={2}>
+                            {contaminationPct === null ? "—" : `${contaminationPct}%`}
+                          </td>
                           <td className="px-3 py-2 text-text-secondary">Chỉ định</td>
                           <td className="px-3 py-2 text-center tabular-nums">{r.expectedMotherOutput === null ? "—" : fmt(r.expectedMotherOutput)}</td>
                           <td className="px-3 py-2 text-center tabular-nums">{r.expectedFinishedOutput === null ? "—" : fmt(r.expectedFinishedOutput)}</td>
