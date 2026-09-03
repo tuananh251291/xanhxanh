@@ -657,8 +657,26 @@ export default function DailyRecordPage() {
               <TriangleAlert className="w-5 h-5 shrink-0" /> Xác nhận trước khi lưu
             </DialogTitle>
           </DialogHeader>
+          <div className="rounded-lg border border-border p-3 space-y-1.5 text-sm">
+            <p className="font-semibold text-foreground">Dữ liệu bạn đã nhập hôm nay</p>
+            {(
+              [
+                ["MM nhiễm (cụm)", form.motherContaminatedM05],
+                ["MM sử dụng (cụm)", form.motherUsed],
+                ["MM đã kiểm tra (cụm)", form.motherChecked],
+                ["M05 (cụm)", form.m05],
+                ["T05 (cây)", form.t05],
+                ["T01 (cây)", form.t01],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="flex justify-between">
+                <span className="text-text-secondary">{label}</span>
+                <span className="font-medium text-foreground">{fmt(Number(value) || 0)}</span>
+              </div>
+            ))}
+          </div>
           <div className="rounded-lg bg-warning-light p-3 text-sm font-medium text-warning-foreground">
-            Hãy kiểm tra lại số liệu chính xác trước khi nhập — dữ liệu đã lưu sẽ KHÔNG tự sửa lại được.
+            Bạn hãy kiểm tra lại số liệu ở trên một lần trước khi bấm Xác nhận lưu — dữ liệu đã lưu sẽ KHÔNG tự sửa lại được.
             <br />
             Lưu ý: các ô số lượng đang nhập là SỐ CỤM, không phải số túi.
           </div>
