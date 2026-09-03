@@ -26,8 +26,8 @@ type Period = "all" | "month";
 type Row = {
   id: string;
   code: string;
-  createdAt: string;
   firstRecordDate: string | null;
+  firstRecordWeek: number | null;
   plantType: { code: string; name: string };
   assignedTo: { code: string; name: string } | null;
   inputMotherQuantity: number;
@@ -249,7 +249,7 @@ export default function InstructionPlanVsActualReport() {
                   <tr className="bg-primary-light text-primary-strong">
                     <th className="px-3 py-2 text-left font-bold text-base">Chỉ định</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
-                    <th className="px-3 py-2 text-left font-bold text-base">Ngày</th>
+                    <th className="px-3 py-2 text-left font-bold text-base">Ngày sản xuất</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL bàn giao</th>
                     <th className="px-3 py-2 text-center font-bold text-base">SL nhiễm</th>
                     <th className="px-3 py-2 text-left font-bold text-base">Dòng</th>
@@ -274,8 +274,14 @@ export default function InstructionPlanVsActualReport() {
                           </td>
                           <td className="px-3 py-2" rowSpan={2}>{r.plantType.code}</td>
                           <td className="px-3 py-2" rowSpan={2}>
-                            <div>{new Date(r.createdAt).toLocaleDateString("vi-VN")}</div>
-                            <div className="text-xs text-text-secondary">{r.firstRecordDate ? new Date(r.firstRecordDate).toLocaleDateString("vi-VN") : "—"}</div>
+                            {r.firstRecordDate ? (
+                              <>
+                                <div>{new Date(r.firstRecordDate).toLocaleDateString("vi-VN")}</div>
+                                <div className="text-xs text-text-secondary">Tuần {r.firstRecordWeek}</div>
+                              </>
+                            ) : (
+                              <div className="text-text-muted">—</div>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-center tabular-nums" rowSpan={2}>{fmt(r.inputMotherQuantity)}</td>
                           <td className="px-3 py-2 text-center tabular-nums" rowSpan={2}>{r.contaminatedQuantity > 0 ? <span className="text-destructive font-semibold">{fmt(r.contaminatedQuantity)}</span> : fmt(r.contaminatedQuantity)}</td>

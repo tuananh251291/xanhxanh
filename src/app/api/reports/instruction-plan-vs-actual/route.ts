@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { startOfMonth, endOfMonth, parse, isValid } from "date-fns";
+import { getCalendarWeekNumber } from "@/lib/week-rotation";
 import type { Prisma } from "@prisma/client";
 
 const MAX_ROWS = 300;
@@ -19,8 +20,11 @@ const MAX_ROWS = 300;
 // null), instructionId (tuỳ chọn — chọn đúng 1 chỉ định từ ô tìm kiếm mã chỉ định ở FE).
 // codeOptions trả về tính theo warehouseId/plantTypeId/period NHƯNG bỏ qua instructionId (giống
 // availablePlantTypes ở planting-log-summary/route.ts) để ô tìm kiếm luôn giữ đủ danh sách gợi ý.
-// firstRecordDate = "ngày thực hiện" (FE) = recordDate nhỏ nhất trong các DailyRecord của chỉ định, null
-// nếu chưa có bản ghi cấy nào — khác createdAt là ngày KHỞI TẠO chỉ định (có thể tạo trước, cấy sau).
+// firstRecordDate = "Ngày sản xuất" (FE) = recordDate nhỏ nhất trong các DailyRecord của chỉ định — ngày
+// bắt đầu CÓ DỮ LIỆU cấy thật, null nếu chưa có bản ghi nào (khác PlantingInstruction.createdAt là ngày
+// KHỞI TẠO chỉ định, có thể tạo trước rồi cấy sau — không hiển thị ở đây nữa). firstRecordWeek = số tuần
+// lịch của firstRecordDate (getCalendarWeekNumber — CÙNG công thức "Tuần X" đang dùng ở mã lô/Cập nhật
+// hình ảnh định kỳ, xem src/lib/week-rotation.ts), null nếu firstRecordDate null.
 // inputMotherQuantity = "SL bàn giao" (mẫu mẹ Kho mô đã giao cho NV cấy mô, xem "Số lượng bàn giao" ở
 // phiếu in instructions/[id]/page.tsx). contaminatedQuantity = "SL nhiễm" = tổng DailyRecord.
 // motherContaminatedM05 của chỉ định — CÙNG nguồn dữ liệu nhiễm đang dùng ở mọi báo cáo khác (xem comment
@@ -58,7 +62,6 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         code: true,
-        createdAt: true,
         inputMotherQuantity: true,
         expectedMotherOutput: true,
         expectedFinishedOutput: true,
@@ -95,8 +98,8 @@ export async function GET(req: NextRequest) {
     return {
       id: inst.id,
       code: inst.code,
-      createdAt: inst.createdAt,
       firstRecordDate,
+      firstRecordWeek: firstRecordDate ? getCalendarWeekNumber(firstRecordDate) : null,
       plantType: inst.plantType,
       assignedTo: inst.assignedTo,
       inputMotherQuantity: inst.inputMotherQuantity,
