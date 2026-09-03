@@ -86,12 +86,14 @@ export default function ChecklistReport() {
                     <th className="py-2 pr-4 font-bold text-base">Hoàn thành</th>
                     <th className="py-2 pr-4 font-bold text-base">Tỉ lệ</th>
                     <th className="py-2 pr-4 font-bold text-base">Ngưỡng</th>
-                    <th className="py-2 font-bold text-base">Trạng thái</th>
+                    <th className="py-2 pr-4 font-bold text-base">Trạng thái</th>
+                    <th className="py-2 font-bold text-base">Nhiệm vụ chưa hoàn thành</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => {
                     const expanded = expandedUserId === r.userId;
+                    const incompleteTitles = r.items.filter((it) => !it.completed).map((it) => it.title);
                     return (
                       <Fragment key={r.userId}>
                         <tr
@@ -106,7 +108,7 @@ export default function ChecklistReport() {
                           <td className="py-2 pr-4">{r.completed}/{r.total}</td>
                           <td className="py-2 pr-4 font-medium">{r.percent}%</td>
                           <td className="py-2 pr-4 text-text-secondary">{r.thresholdPercent}%</td>
-                          <td className="py-2">
+                          <td className="py-2 pr-4">
                             {r.belowThreshold ? (
                               <Badge className="bg-danger-light text-destructive gap-1">
                                 <AlertTriangle className="w-3 h-3" /> Không đạt
@@ -115,11 +117,18 @@ export default function ChecklistReport() {
                               <Badge className="bg-primary-light text-primary-strong">Đạt</Badge>
                             )}
                           </td>
+                          <td className="py-2 max-w-xs">
+                            {incompleteTitles.length > 0 ? (
+                              <span className="text-xs text-foreground">{incompleteTitles.join(", ")}</span>
+                            ) : (
+                              <span className="text-xs text-text-muted">—</span>
+                            )}
+                          </td>
                         </tr>
                         {expanded && (
                           <tr className="border-b last:border-0">
                             <td></td>
-                            <td colSpan={6} className="pb-3 pr-4">
+                            <td colSpan={7} className="pb-3 pr-4">
                               <div className="rounded-lg border border-divider bg-card divide-y divide-divider">
                                 {r.items.map((it) => (
                                   <div key={it.id} className="px-3 py-2">
