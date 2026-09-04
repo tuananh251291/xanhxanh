@@ -18,6 +18,8 @@ type Row = {
   code: string;
   status: InstructionStatus;
   weekStart: string | null;
+  plantTypeCode: string;
+  plantTypeName: string;
   staffId: string | null;
   staffName: string | null;
   staffCode: string | null;
@@ -108,6 +110,7 @@ export default function MotherContaminationReport() {
               <thead>
                 <tr className="bg-primary-light text-left text-primary-strong">
                   <th className="py-2 px-3 font-bold text-base">Chỉ định</th>
+                  <th className="py-2 px-3 font-bold text-base">Mã cây</th>
                   <th className="py-2 px-3 font-bold text-base">NV cấy mô</th>
                   <th className="py-2 px-3 font-bold text-base">Tuần</th>
                   <th className="py-2 px-3 font-bold text-base">Trạng thái</th>
@@ -120,6 +123,7 @@ export default function MotherContaminationReport() {
                 {rows.map((r) => (
                   <tr key={r.instructionId} className="border-b last:border-0 even:bg-primary-light/30">
                     <td className="py-2 px-3 font-mono text-info-foreground">{r.code}</td>
+                    <td className="py-2 px-3 whitespace-nowrap" title={r.plantTypeName}>{r.plantTypeCode}</td>
                     <td className="py-2 px-3">{r.staffName ? `${r.staffName} (${r.staffCode})` : "—"}</td>
                     <td className="py-2 px-3 text-text-secondary whitespace-nowrap">
                       {r.weekStart ? format(new Date(r.weekStart), "dd/MM/yyyy", { locale: vi }) : "—"}
