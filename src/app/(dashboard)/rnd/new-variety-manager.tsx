@@ -178,7 +178,7 @@ function CreateVarietyDialog({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Nguồn gốc</Label>
-            <Input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="VD: Sưu tầm từ vườn X, tỉnh Y" />
+            <Input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="VD: Từ loại cây nào" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Mô tả</Label>
