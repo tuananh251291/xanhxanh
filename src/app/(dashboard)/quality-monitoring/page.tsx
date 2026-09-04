@@ -12,7 +12,9 @@ import TaskCompletionReportBoard from "../task-completion-report/task-completion
 export default async function QualityMonitoringPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role)) redirect("/dashboard");
+  // Admin kỹ thuật KHÔNG có trang này dù isAdminRole trả về true cho role đó (xem comment
+  // UserRole.ADMIN_KY_THUAT ở schema.prisma).
+  if (!isAdminRole(role) || role === "ADMIN_KY_THUAT") redirect("/dashboard");
 
   return (
     <div className="space-y-6">

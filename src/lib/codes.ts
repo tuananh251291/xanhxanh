@@ -7,6 +7,7 @@ import type { UserRole, Prisma } from "@prisma/client";
 const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   SUPER_ADMIN: { prefix: "AD", pad: 2 },
   ADMIN: { prefix: "AD", pad: 2 },
+  ADMIN_KY_THUAT: { prefix: "AD", pad: 2 },
   KY_THUAT: { prefix: "NVKT", pad: 2 },
   CAY_MO: { prefix: "NVCM", pad: 3 },
   KHO_MO: { prefix: "NVK", pad: 2 },

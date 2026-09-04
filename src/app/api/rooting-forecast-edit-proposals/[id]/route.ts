@@ -15,7 +15,10 @@ const patchSchema = z.object({
 // RootingForecastEntry (qua applyForecastEntry), gửi lúc tạo đề xuất KHÔNG tự đổi dữ liệu chính.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!isAdminRole(session?.user?.role)) {
+  const role = session?.user?.role;
+  // Admin kỹ thuật không có trang "Duyệt đề xuất cây ra rễ" nên cũng không được gọi thẳng API này dù
+  // isAdminRole trả về true (xem comment UserRole.ADMIN_KY_THUAT ở schema.prisma).
+  if (!isAdminRole(role) || role === "ADMIN_KY_THUAT") {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 

@@ -13,6 +13,11 @@ datasource db {
 enum UserRole {
   SUPER_ADMIN
   ADMIN
+  // Admin kỹ thuật — cùng quyền trang/tính năng như Admin thường (isAdminRole, xem types/index.ts) TRỪ 3
+  // trang: Cài đặt CSDL chung hệ thống (/master-data), Giám sát & vi phạm (/quality-monitoring), Duyệt đề
+  // xuất cây ra rễ (/rooting-forecast-requests) — 3 trang này chặn riêng ADMIN_KY_THUAT ngay tại page.tsx
+  // dù isAdminRole trả về true. Có thêm mục R&D (/rnd) riêng không role nào khác có.
+  ADMIN_KY_THUAT
   KY_THUAT
   CAY_MO
   KHO_MO

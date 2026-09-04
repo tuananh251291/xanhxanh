@@ -6,7 +6,10 @@ import RootingForecastRequestsBoard from "./rooting-forecast-requests-board";
 
 export default async function RootingForecastRequestsPage() {
   const session = await auth();
-  if (!isAdminRole(session?.user?.role)) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  // Admin kỹ thuật KHÔNG có trang này dù isAdminRole trả về true cho role đó (xem comment
+  // UserRole.ADMIN_KY_THUAT ở schema.prisma).
+  if (!isAdminRole(role) || role === "ADMIN_KY_THUAT") redirect("/dashboard");
 
   return (
     <div className="space-y-6">

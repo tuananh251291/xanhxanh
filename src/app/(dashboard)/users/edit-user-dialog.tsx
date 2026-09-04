@@ -19,7 +19,7 @@ import { Pencil, Loader2 } from "lucide-react";
 import { ROLE_LABELS } from "@/types";
 import { toast } from "sonner";
 
-const ASSIGNABLE_ROLES = ["ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON"] as const;
+const ASSIGNABLE_ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON"] as const;
 const ASSIGNABLE_ROLE_LABELS = Object.fromEntries(
   ASSIGNABLE_ROLES.map((r) => [r, ROLE_LABELS[r]])
 ) as Record<(typeof ASSIGNABLE_ROLES)[number], string>;

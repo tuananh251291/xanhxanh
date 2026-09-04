@@ -5,6 +5,7 @@ export type { UserRole, EmploymentType, CustomerGroup };
 export const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: "Admin cấp cao",
   ADMIN: "Admin",
+  ADMIN_KY_THUAT: "Admin kỹ thuật",
   KY_THUAT: "NV Kỹ thuật",
   CAY_MO: "NV Cấy mô",
   KHO_MO: "NV Kho",
@@ -21,6 +22,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export const ROLE_COLORS: Record<UserRole, string> = {
   SUPER_ADMIN: "bg-red-200 text-red-900",
   ADMIN: "bg-red-100 text-red-800",
+  ADMIN_KY_THUAT: "bg-rose-100 text-rose-800",
   KY_THUAT: "bg-purple-100 text-purple-800",
   CAY_MO: "bg-green-100 text-green-800",
   KHO_MO: "bg-blue-100 text-blue-800",
@@ -46,8 +48,11 @@ export const INSPECTION_LANE_COLORS = {
 } as const;
 
 // ADMIN và SUPER_ADMIN đều có full quyền trang/tính năng — chỉ khác ở quyền duyệt tài khoản mới (chỉ SUPER_ADMIN).
+// ADMIN_KY_THUAT cũng coi là admin (qua hàm này) để tự động có quyền ở MỌI nơi đang gọi isAdminRole — trừ
+// đúng 3 trang chặn riêng ngay tại page.tsx (master-data, quality-monitoring, rooting-forecast-requests,
+// xem comment ở UserRole.ADMIN_KY_THUAT trong schema.prisma) dù hàm này vẫn trả về true cho role đó.
 export function isAdminRole(role: UserRole | null | undefined): boolean {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+  return role === "ADMIN" || role === "SUPER_ADMIN" || role === "ADMIN_KY_THUAT";
 }
 
 // Loại hợp đồng — chỉ áp dụng cho NV cấy mô (CAY_MO), xem User.employmentType.
@@ -97,10 +102,10 @@ export function canManageEmploymentStatus(role: UserRole | null | undefined): bo
 // vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
-  "ADMIN", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
+  "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
   "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
 ];
-export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN");
+export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN" && r !== "ADMIN_KY_THUAT");
 
 export function creatableRolesFor(actorRole: UserRole | null | undefined): UserRole[] {
   if (isAdminRole(actorRole)) return ALL_ASSIGNABLE_ROLES;
@@ -491,6 +496,22 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
     { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
     { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
+    { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
+    { href: "/settings", label: "Cài đặt", icon: "Settings" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  // Admin kỹ thuật — y hệt ADMIN ở trên, TRỪ 3 mục: Cài đặt CSDL chung hệ thống, Giám sát & vi phạm, Duyệt
+  // đề xuất cây ra rễ (chặn thêm ngay tại page.tsx của 3 trang đó dù isAdminRole trả về true cho role
+  // này — xem comment UserRole.ADMIN_KY_THUAT ở schema.prisma). Có thêm mục R&D (/rnd) riêng.
+  ADMIN_KY_THUAT: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/users", label: "Người dùng", icon: "Users" },
+    { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
+    { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
+    { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
+    { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
+    { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
+    { href: "/rnd", label: "R&D", icon: "FlaskConical" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
