@@ -61,7 +61,9 @@ export default async function ContaminationReport() {
     .map((e) => ({
       "Nhân viên": e.name,
       "Tỉ lệ nhiễm": Math.round((e.contaminated / e.checked) * 1000) / 10,
-    }));
+    }))
+    // Nhiễm nhiều nhất lên đầu.
+    .sort((a, b) => b["Tỉ lệ nhiễm"] - a["Tỉ lệ nhiễm"]);
 
   return (
     <div className="space-y-4">

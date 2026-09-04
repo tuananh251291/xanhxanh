@@ -51,24 +51,27 @@ export async function GET(req: NextRequest) {
     orderBy: { weekStart: "desc" },
   });
 
-  const rows = instructions.map((inst) => {
-    const totalChecked = inst.dailyRecords.reduce((s, r) => s + r.motherChecked, 0);
-    const totalContaminated = inst.dailyRecords.reduce((s, r) => s + r.motherContaminatedM05, 0);
-    const ratePct = inst.inputMotherQuantity > 0 ? (totalContaminated / inst.inputMotherQuantity) * 100 : 0;
-    return {
-      instructionId: inst.id,
-      code: inst.code,
-      status: inst.status,
-      weekStart: inst.weekStart,
-      staffId: inst.assignedTo?.id ?? null,
-      staffName: inst.assignedTo?.name ?? null,
-      staffCode: inst.assignedTo?.code ?? null,
-      inputMotherQuantity: inst.inputMotherQuantity,
-      totalChecked,
-      totalContaminated,
-      ratePct: Math.round(ratePct * 10) / 10,
-    };
-  });
+  const rows = instructions
+    .map((inst) => {
+      const totalChecked = inst.dailyRecords.reduce((s, r) => s + r.motherChecked, 0);
+      const totalContaminated = inst.dailyRecords.reduce((s, r) => s + r.motherContaminatedM05, 0);
+      const ratePct = inst.inputMotherQuantity > 0 ? (totalContaminated / inst.inputMotherQuantity) * 100 : 0;
+      return {
+        instructionId: inst.id,
+        code: inst.code,
+        status: inst.status,
+        weekStart: inst.weekStart,
+        staffId: inst.assignedTo?.id ?? null,
+        staffName: inst.assignedTo?.name ?? null,
+        staffCode: inst.assignedTo?.code ?? null,
+        inputMotherQuantity: inst.inputMotherQuantity,
+        totalChecked,
+        totalContaminated,
+        ratePct: Math.round(ratePct * 10) / 10,
+      };
+    })
+    // Nhiễm nhiều nhất lên đầu — DB orderBy weekStart ở trên chỉ để fetch, không phải thứ tự hiển thị.
+    .sort((a, b) => b.ratePct - a.ratePct);
 
   const totalContaminated = rows.reduce((s, r) => s + r.totalContaminated, 0);
   const totalInput = rows.reduce((s, r) => s + r.inputMotherQuantity, 0);

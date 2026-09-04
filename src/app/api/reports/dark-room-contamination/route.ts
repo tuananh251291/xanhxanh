@@ -107,12 +107,13 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = Array.from(byDay.values())
-    .sort((a, b) => a.date.localeCompare(b.date))
     .map((b) => ({
       ...b,
       selfRatePct: b.totalCreated > 0 ? Math.round((b.selfContaminated / b.totalCreated) * 1000) / 10 : 0,
       redFlowRatePct: b.redFlowHandedOver > 0 ? Math.round((b.redFlowContaminated / b.redFlowHandedOver) * 1000) / 10 : 0,
-    }));
+    }))
+    // Nhiễm nhiều nhất (tự phát hiện) lên đầu — trước đây sắp theo ngày tăng dần.
+    .sort((a, b) => b.selfRatePct - a.selfRatePct);
 
   const totalCreated = rows.reduce((s, r) => s + r.totalCreated, 0);
   const selfContaminated = rows.reduce((s, r) => s + r.selfContaminated, 0);
