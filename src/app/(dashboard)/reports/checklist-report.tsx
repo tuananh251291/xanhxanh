@@ -5,21 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, XCircle } from "lucide-react";
 import { format } from "date-fns";
-import { vi } from "date-fns/locale";
 import { ROLE_LABELS } from "@/types";
 import type { UserRole } from "@prisma/client";
 
-type ItemLog = { completed: boolean; changedAt: string };
-type Item = {
-  id: string;
-  title: string;
-  completed: boolean;
-  assignedDate: string;
-  completedAt: string | null;
-  logs: ItemLog[];
-};
+type Item = { title: string; completed: boolean };
 type Row = {
   userId: string;
   userName: string;
@@ -61,7 +52,7 @@ export default function ChecklistReport() {
             <div>
               <CardTitle className="text-base">Hoàn thành checklist theo ngày</CardTitle>
               <p className="text-sm text-text-secondary mt-1">
-                {rows.length} nhân viên có đầu việc {belowCount > 0 && <span className="text-destructive font-medium">· {belowCount} chưa đạt ngưỡng</span>}
+                {rows.length} nhân viên có nhiệm vụ đến hạn {belowCount > 0 && <span className="text-destructive font-medium">· {belowCount} chưa đạt ngưỡng</span>}
               </p>
             </div>
             <div className="space-y-1">
@@ -74,7 +65,7 @@ export default function ChecklistReport() {
           {loading ? (
             <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
           ) : rows.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-8">Không có đầu việc nào được giao trong ngày này</p>
+            <p className="text-sm text-text-muted text-center py-8">Không có nhân viên nào có nhiệm vụ đến hạn trong ngày này</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -130,24 +121,14 @@ export default function ChecklistReport() {
                             <td></td>
                             <td colSpan={7} className="pb-3 pr-4">
                               <div className="rounded-lg border border-divider bg-card divide-y divide-divider">
-                                {r.items.map((it) => (
-                                  <div key={it.id} className="px-3 py-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className={it.completed ? "text-text-secondary" : "text-foreground font-medium"}>{it.title}</span>
-                                      <span className="text-xs text-text-muted whitespace-nowrap">
-                                        Giao {format(new Date(it.assignedDate), "dd/MM", { locale: vi })}
-                                        {it.completedAt && ` · Xong ${format(new Date(it.completedAt), "dd/MM HH:mm", { locale: vi })}`}
-                                      </span>
-                                    </div>
-                                    {it.logs.length > 0 && (
-                                      <ul className="mt-1 text-xs text-text-muted space-y-0.5">
-                                        {it.logs.map((log, i) => (
-                                          <li key={i}>
-                                            {format(new Date(log.changedAt), "dd/MM/yyyy HH:mm", { locale: vi })} — {log.completed ? "đánh dấu hoàn thành" : "bỏ đánh dấu"}
-                                          </li>
-                                        ))}
-                                      </ul>
+                                {r.items.map((it, i) => (
+                                  <div key={i} className="px-3 py-2 flex items-center gap-2">
+                                    {it.completed ? (
+                                      <CheckCircle2 className="w-4 h-4 text-primary-strong shrink-0" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-destructive shrink-0" />
                                     )}
+                                    <span className={it.completed ? "text-text-secondary" : "text-foreground font-medium"}>{it.title}</span>
                                   </div>
                                 ))}
                               </div>

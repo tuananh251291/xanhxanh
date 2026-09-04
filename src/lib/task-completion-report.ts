@@ -3,7 +3,7 @@ import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import {
-  startOfDay, endOfDay, endOfWeek, addDays, addWeeks, isSameDay, format, isBefore, isAfter,
+  startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, format, isBefore, isAfter,
 } from "date-fns";
 
 // Báo cáo "Số ngày không hoàn thành nhiệm vụ" cho Admin + Kho mô — tính lại từ dữ liệu giao dịch gốc
@@ -23,9 +23,14 @@ import {
 export type TaskCompletionDay = {
   date: string; // yyyy-MM-dd
   missedTasks: string[];
+  completedTasks: string[];
   exempted: boolean;
   exemptionReason: string | null;
 };
+
+// 1 đầu việc được đánh giá trong ngày/hạn đó, kèm đã xong hay chưa — dùng để build cả missedTasks lẫn
+// completedTasks (xem buildDay) mà không phải lặp lại điều kiện 2 lần.
+type EvaluatedTask = { title: string; done: boolean };
 
 export type TaskCompletionStaffRow = {
   staffId: string;
@@ -50,9 +55,15 @@ async function loadExemptions(staffIds: string[], weekStart: Date, weekEnd: Date
   return new Map(rows.map((r) => [exemptionKey(r.staffId, r.date), r.reason]));
 }
 
-function buildDay(date: Date, missed: string[], exemptions: ExemptionMap, staffId: string): TaskCompletionDay {
+function buildDay(date: Date, evaluated: EvaluatedTask[], exemptions: ExemptionMap, staffId: string): TaskCompletionDay {
   const reason = exemptions.get(exemptionKey(staffId, date)) ?? null;
-  return { date: format(date, "yyyy-MM-dd"), missedTasks: missed, exempted: reason !== null, exemptionReason: reason };
+  return {
+    date: format(date, "yyyy-MM-dd"),
+    missedTasks: evaluated.filter((t) => !t.done).map((t) => t.title),
+    completedTasks: evaluated.filter((t) => t.done).map((t) => t.title),
+    exempted: reason !== null,
+    exemptionReason: reason,
+  };
 }
 
 function countNotCompleted(days: TaskCompletionDay[]): number {
@@ -106,11 +117,12 @@ async function buildCayMoRows(
     const days: TaskCompletionDay[] = [];
     for (let d = weekStart; !isAfter(d, evalEnd); d = addDays(d, 1)) {
       if (isBefore(d, startOfDay(staff.createdAt))) continue; // chưa vào làm ngày đó
-      const missed: string[] = [];
-      if (!dailyRecords.some((r) => r.staffId === staff.id && isSameDay(r.recordDate, d))) missed.push("Cập nhật số liệu cấy");
-      if (!handovers.some((t) => t.fromUserId === staff.id && isSameDay(t.createdAt, d))) missed.push("Bàn giao sản phẩm");
-      if (isSameDay(d, today) && overdueStaffIds.has(staff.id)) missed.push("Kiểm tra nhiễm phòng tối");
-      days.push(buildDay(d, missed, exemptions, staff.id));
+      const evaluated: EvaluatedTask[] = [
+        { title: "Cập nhật số liệu cấy", done: dailyRecords.some((r) => r.staffId === staff.id && isSameDay(r.recordDate, d)) },
+        { title: "Bàn giao sản phẩm", done: handovers.some((t) => t.fromUserId === staff.id && isSameDay(t.createdAt, d)) },
+      ];
+      if (isSameDay(d, today)) evaluated.push({ title: "Kiểm tra nhiễm phòng tối", done: !overdueStaffIds.has(staff.id) });
+      days.push(buildDay(d, evaluated, exemptions, staff.id));
     }
     return {
       staffId: staff.id, staffCode: staff.code, staffName: staff.name, role: "CAY_MO" as const,
@@ -214,22 +226,22 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
         const dueLotIds = dueLotIdsByStaff.get(staff.id) ?? [];
         const instructionOk = dueLotIds.every((id) => handledLotIdSet.has(id));
         const backupOk = (backupCountByStaff.get(staff.id) ?? 0) >= MIN_BACKUP_INSTRUCTION_COUNT;
-        const missed: string[] = [];
-        if (!instructionOk) missed.push("Tạo chỉ định cấy");
-        if (!backupOk) missed.push("Tạo chỉ định cấy dự phòng");
-        days.push(buildDay(thursdayDeadline, missed, exemptions, staff.id));
+        days.push(buildDay(thursdayDeadline, [
+          { title: "Tạo chỉ định cấy", done: instructionOk },
+          { title: "Tạo chỉ định cấy dự phòng", done: backupOk },
+        ], exemptions, staff.id));
       }
 
       if (!isAfter(tuesdayDeadline, evalEnd) && !isBefore(tuesdayDeadline, startOfDay(staff.createdAt))) {
         const photoSet = photoPlantTypesByStaff.get(staff.id) ?? new Set<string>();
         const motherPhotoOk = motherPhotoTotal === 0 || photoSet.size >= motherPhotoTotal;
-        days.push(buildDay(tuesdayDeadline, motherPhotoOk ? [] : ["Cập nhật hình ảnh định kì"], exemptions, staff.id));
+        days.push(buildDay(tuesdayDeadline, [{ title: "Cập nhật hình ảnh định kì", done: motherPhotoOk }], exemptions, staff.id));
       }
 
       if (!isAfter(sundayDeadline, evalEnd) && !isBefore(sundayDeadline, startOfDay(staff.createdAt))) {
         const alerts = deviationAlertsByStaff.get(staff.id) ?? [];
         const checkOk = alerts.length === 0 || alerts.every((a) => a.cause !== null);
-        days.push(buildDay(sundayDeadline, checkOk ? [] : ["Kiểm tra tình trạng cấy"], exemptions, staff.id));
+        days.push(buildDay(sundayDeadline, [{ title: "Kiểm tra tình trạng cấy", done: checkOk }], exemptions, staff.id));
       }
 
       return {
@@ -244,14 +256,14 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
 // ghi nhận ai xử lý từng phiếu) — theo lựa chọn của người dùng, phần việc chung tính 1 lần/kho rồi áp
 // dụng GIỐNG NHAU cho mọi NV kho mô cùng kho, cộng thêm phần cá nhân của riêng từng người.
 // ============================================================
-async function buildKhoMoSharedMissedByDay(
+async function buildKhoMoSharedEvaluatedByDay(
   warehouseId: string, weekStart: Date, weekEnd: Date, evalEnd: Date, isCurrentWeek: boolean,
-): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>();
-  const addMissed = (date: Date, task: string) => {
+): Promise<Map<string, EvaluatedTask[]>> {
+  const result = new Map<string, EvaluatedTask[]>();
+  const addEvaluated = (date: Date, task: string, done: boolean) => {
     const key = format(date, "yyyy-MM-dd");
     if (!result.has(key)) result.set(key, []);
-    result.get(key)!.push(task);
+    result.get(key)!.push({ title: task, done });
   };
 
   const [
@@ -315,7 +327,7 @@ async function buildKhoMoSharedMissedByDay(
     const dayEnd = endOfDay(d);
     const dayTransfers = receiveTransfers.filter((t) => isSameDay(t.createdAt, d));
     const allConfirmedInTime = dayTransfers.every((t) => t.confirmedAt !== null && !isAfter(t.confirmedAt, dayEnd));
-    if (dayTransfers.length > 0 && !allConfirmedInTime) addMissed(d, "Nhận bàn giao từ kho tối");
+    if (dayTransfers.length > 0) addEvaluated(d, "Nhận bàn giao từ kho tối", allConfirmedInTime);
   }
 
   // Việc tuần: "Giao mẫu mẹ theo chỉ định cấy" — hạn Thứ 2 đầu tuần đang xem (cho các chỉ định tạo trước
@@ -323,17 +335,17 @@ async function buildKhoMoSharedMissedByDay(
   if (!isAfter(weekStart, evalEnd)) {
     const mondayEnd = endOfDay(weekStart);
     const allHandedOverInTime = mondayHandoverInstructions.every((i) => i.handedOverAt !== null && !isAfter(i.handedOverAt, mondayEnd));
-    if (mondayHandoverInstructions.length > 0 && !allHandedOverInTime) addMissed(weekStart, "Giao mẫu mẹ theo chỉ định cấy");
+    if (mondayHandoverInstructions.length > 0) addEvaluated(weekStart, "Giao mẫu mẹ theo chỉ định cấy", allHandedOverInTime);
   }
 
   // 2 việc còn lại (hạn cố định trong tuần): hạn Chủ nhật cuối tuần đang xem.
   if (!isAfter(weekEnd, evalEnd)) {
     const sundayEnd = endOfDay(weekEnd);
-    if (finishedTransfers.length > 0 && !finishedTransfers.every((t) => t.confirmedAt !== null && !isAfter(t.confirmedAt, sundayEnd))) {
-      addMissed(weekEnd, "Bàn giao thành phẩm");
+    if (finishedTransfers.length > 0) {
+      addEvaluated(weekEnd, "Bàn giao thành phẩm", finishedTransfers.every((t) => t.confirmedAt !== null && !isAfter(t.confirmedAt, sundayEnd)));
     }
-    if (mediumDays.length > 0 && !mediumDays.every((d) => d.confirmedAt !== null && !isAfter(d.confirmedAt, sundayEnd))) {
-      addMissed(weekEnd, "Nhận môi trường");
+    if (mediumDays.length > 0) {
+      addEvaluated(weekEnd, "Nhận môi trường", mediumDays.every((d) => d.confirmedAt !== null && !isAfter(d.confirmedAt, sundayEnd)));
     }
   }
 
@@ -346,13 +358,13 @@ async function buildKhoMoSharedMissedByDay(
     const thursdayDeadline = addDays(weekStart, 3);
     if (!isAfter(thursdayDeadline, evalEnd)) {
       const outstanding = contaminationLots.reduce((s, l) => s + l.quantity, 0);
-      if (outstanding > 0 && contaminationSubmission === null) addMissed(thursdayDeadline, "Gửi đề xuất Trồng/Hủy");
+      if (outstanding > 0) addEvaluated(thursdayDeadline, "Gửi đề xuất Trồng/Hủy", contaminationSubmission !== null);
     }
 
     const fridayDeadline = addDays(weekStart, 4);
     if (!isAfter(fridayDeadline, evalEnd)) {
       const outstandingReplant = unbundledReplantCount > 0 || pendingReplantHandover !== null;
-      if (outstandingReplant && confirmedReplantHandover === null) addMissed(fridayDeadline, "Bàn giao cây trồng");
+      if (outstandingReplant) addEvaluated(fridayDeadline, "Bàn giao cây trồng", confirmedReplantHandover !== null);
     }
   }
 
@@ -377,7 +389,7 @@ async function buildKhoMoRows(
       where: { userId: { in: staffIds }, kind: "DARK_ROOM_CHECK", assignedDate: { gte: weekStart, lte: evalEnd } },
       select: { userId: true, assignedDate: true, completed: true },
     }),
-    Promise.all(warehouseIds.map(async (wid) => [wid, await buildKhoMoSharedMissedByDay(wid, weekStart, weekEnd, evalEnd, isCurrentWeek)] as const)),
+    Promise.all(warehouseIds.map(async (wid) => [wid, await buildKhoMoSharedEvaluatedByDay(wid, weekStart, weekEnd, evalEnd, isCurrentWeek)] as const)),
   ]);
   const sharedByWarehouse = new Map(sharedByWarehouseEntries);
 
@@ -386,10 +398,10 @@ async function buildKhoMoRows(
     const days: TaskCompletionDay[] = [];
     for (let d = weekStart; !isAfter(d, evalEnd); d = addDays(d, 1)) {
       if (isBefore(d, startOfDay(staff.createdAt))) continue;
-      const missed: string[] = [...(shared?.get(format(d, "yyyy-MM-dd")) ?? [])];
+      const evaluated: EvaluatedTask[] = [...(shared?.get(format(d, "yyyy-MM-dd")) ?? [])];
       const item = checklistItems.find((c) => c.userId === staff.id && isSameDay(c.assignedDate, d));
-      if (item && !item.completed) missed.push("Kiểm tra kho tối");
-      days.push(buildDay(d, missed, exemptions, staff.id));
+      if (item) evaluated.push({ title: "Kiểm tra kho tối", done: item.completed });
+      days.push(buildDay(d, evaluated, exemptions, staff.id));
     }
     return {
       staffId: staff.id, staffCode: staff.code, staffName: staff.name, role: "KHO_MO" as const,
@@ -415,4 +427,34 @@ export async function getTaskCompletionReport(
   ]);
 
   return [...kyThuat, ...cayMo, ...khoMo];
+}
+
+export type DailyChecklistRow = {
+  userId: string;
+  userName: string;
+  role: "KY_THUAT" | "CAY_MO" | "KHO_MO";
+  items: { title: string; completed: boolean }[];
+};
+
+// Dùng lại getTaskCompletionReport (đã tái tạo đúng nhiệm vụ thật của KY_THUAT/CAY_MO/KHO_MO cho bất kỳ
+// ngày nào) để phục vụ báo cáo "Hoàn thành checklist theo ngày" (/api/checklist-report) — khác
+// getTaskCompletionReport ở chỗ trả về CẢ việc đã xong lẫn chưa xong trong ngày (không chỉ việc thiếu),
+// và chỉ 1 ngày thay vì cả tuần. Bỏ qua NV không có nhiệm vụ nào đến hạn đúng ngày đó (VD KY_THUAT ngoài
+// Thứ 3/5/CN, hoặc ngày trước khi NV vào làm).
+export async function getDailyTaskChecklist(date: Date): Promise<DailyChecklistRow[]> {
+  const weekStart = startOfWeek(startOfDay(date), { weekStartsOn: 1 });
+  const rows = await getTaskCompletionReport(weekStart, null);
+  const dateKey = format(startOfDay(date), "yyyy-MM-dd");
+
+  return rows
+    .map((r) => {
+      const day = r.days.find((d) => d.date === dateKey);
+      if (!day || (day.completedTasks.length === 0 && day.missedTasks.length === 0)) return null;
+      const items = [
+        ...day.completedTasks.map((title) => ({ title, completed: true })),
+        ...day.missedTasks.map((title) => ({ title, completed: false })),
+      ];
+      return { userId: r.staffId, userName: r.staffName, role: r.role, items };
+    })
+    .filter((r): r is DailyChecklistRow => r !== null);
 }
