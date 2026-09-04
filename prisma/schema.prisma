@@ -398,6 +398,9 @@ model User {
   salesManagerAssignmentsAsSales       SalesManagerAssignment[]     @relation("SalesManagerAssignmentSales")
   salesManagerAssignmentsAsManager     SalesManagerAssignment[]     @relation("SalesManagerAssignmentManager")
   motherPhotos                         MotherPhoto[]
+  trialVarietiesCreated                TrialVariety[]
+  trialVarietyPhotosUploaded           TrialVarietyPhoto[]
+  trialCultivationRoundsCreated        TrialCultivationRound[]
   taskCompletionExemptions             TaskCompletionExemption[]    @relation("TaskExemptionStaff")
   taskCompletionExemptionsCreated      TaskCompletionExemption[]    @relation("TaskExemptionCreatedBy")
   violationRecordsAsStaff              ViolationRecord[]            @relation("ViolationRecordStaff")
@@ -1250,6 +1253,79 @@ model MotherPhoto {
   @@index([lotId])
   @@index([takenById, weekStart])
   @@map("mother_photos")
+}
+
+// ============================================================
+// TRIAL VARIETIES (R&D — riêng Admin kỹ thuật, /rnd) — theo dõi giống cây MỚI đang thử nghiệm, TÁCH
+// HOÀN TOÀN khỏi hệ thống kho/kệ/lô thật (PlantType/Lot/Shelf) — không tính vào tồn kho sản xuất, không
+// cần chọn kho/kệ. Lịch nhắc "đến tuổi cấy" dùng số tuần chờ Admin tự nhập theo từng lượt cấy (không
+// dùng Nhóm tuần xoay vòng như mẫu mẹ thật).
+// ============================================================
+
+// Giống cây mới đang thử nghiệm. code sinh tự động giảm dần từ "TN999" (xem generateTrialVarietyCode,
+// src/lib/codes.ts) — KHÁC hẳn PlantType.code (2 ký tự nhóm + 3 ký tự NV tự gõ) để không thể nhầm với mã
+// cây SẢN XUẤT thật, phòng trường hợp sau này giống được đưa vào sản xuất đại trà thì tạo PlantType mới
+// hoàn toàn, không tái dùng bản ghi này.
+model TrialVariety {
+  id          String                  @id @default(cuid())
+  code        String                  @unique
+  name        String
+  // "Loại cây" — nhãn tự do (chi/họ cây, VD "Alocasia"), KHÔNG phải khoá ngoại tới PlantCategory vì
+  // giống mới có thể thuộc 1 chi/loài chưa từng có trong danh mục hệ thống.
+  plantGroup  String
+  description String?                 @db.Text
+  origin      String?
+  createdById String
+  createdBy   User                    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  photos      TrialVarietyPhoto[]
+  rounds      TrialCultivationRound[]
+
+  @@map("trial_varieties")
+}
+
+// 1 đợt cập nhật ảnh (tối đa 2 ảnh/đợt, giống form tạo giống mới) — không giới hạn số đợt, mỗi đợt tự có
+// mốc thời gian riêng để xem lại tiến trình phát triển của giống theo thời gian.
+model TrialVarietyPhoto {
+  id             String       @id @default(cuid())
+  trialVarietyId String
+  trialVariety   TrialVariety @relation(fields: [trialVarietyId], references: [id])
+  // Public URL từ Supabase Storage bucket "trial-variety-photos" — xem src/lib/trial-variety-storage.ts.
+  photoUrl1      String
+  photoUrl2      String?
+  note           String?
+  uploadedById   String
+  uploadedBy     User         @relation(fields: [uploadedById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@index([trialVarietyId])
+  @@map("trial_variety_photos")
+}
+
+// 1 lượt cấy thử nghiệm của 1 giống — Admin nhập mẫu mẹ đưa vào + số tuần chờ lúc bắt đầu lượt, hệ thống
+// tự tính expectedReadyAt để gợi ý "đến tuổi cấy" (xem GET /api/trial-varieties/due-rounds); Admin quay
+// lại nhập outputQuantity khi thực sự đã cấy xong lượt đó. outputQuantity null = lượt đang chờ tới hạn
+// hoặc đã quá hạn nhưng CHƯA ghi nhận kết quả.
+model TrialCultivationRound {
+  id                  String       @id @default(cuid())
+  trialVarietyId      String
+  trialVariety        TrialVariety @relation(fields: [trialVarietyId], references: [id])
+  motherInputQuantity Int
+  waitWeeks           Int
+  plantedAt           DateTime     @default(now())
+  expectedReadyAt     DateTime
+  outputQuantity      Int?
+  recordedAt          DateTime?
+  notes               String?
+  createdById         String
+  createdBy           User         @relation(fields: [createdById], references: [id])
+  createdAt           DateTime     @default(now())
+
+  @@index([trialVarietyId])
+  @@index([expectedReadyAt])
+  @@map("trial_cultivation_rounds")
 }
 
 // ============================================================

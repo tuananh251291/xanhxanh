@@ -169,6 +169,18 @@ export async function generateWarehouseCode(type: "SAN_XUAT" | "THANH_PHAM"): Pr
   return candidate;
 }
 
+// Mã giống thử nghiệm (R&D, Admin kỹ thuật) = "TN" + số GIẢM DẦN từ 999 — tìm số lớn nhất còn trống thay
+// vì luôn lấy 999 (999 đã dùng thì thử 998...), KHÁC hẳn mọi mã khác trong file này (đều tăng dần từ 1)
+// để không thể nhầm giống thử nghiệm với mã cây sản xuất thật (PlantType.code).
+export async function generateTrialVarietyCode(): Promise<string> {
+  for (let n = 999; n >= 1; n--) {
+    const candidate = `TN${n}`;
+    const existing = await prisma.trialVariety.findUnique({ where: { code: candidate } });
+    if (!existing) return candidate;
+  }
+  throw new Error("Đã đạt giới hạn giống thử nghiệm (TN999-TN1)");
+}
+
 // Mã nhà cung cấp = "NCC" + số thứ tự 2 chữ số, chạy NCC01 - NCC99 (tối đa 99 nhà cung cấp). Tìm ô
 // trống nhỏ nhất thay vì chỉ +1 từ mã lớn nhất, để mã của nhà cung cấp đã xóa cứng được cấp lại cho
 // nhà cung cấp mới thay vì bỏ trống vĩnh viễn.
