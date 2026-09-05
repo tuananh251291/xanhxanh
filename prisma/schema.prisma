@@ -49,10 +49,13 @@ enum WarehouseType {
   THANH_PHAM
 }
 
-// Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem User.inspectionLane), dùng để phân
-// loại NV cấy mô theo mức độ cần kiểm tra khi kho mô xử lý/nhận bàn giao.
+// Luồng kiểm tra gắn theo NV cấy mô — HỆ THỐNG TỰ TÍNH mỗi tháng từ tỉ lệ nhiễm tháng trước (xem
+// User.inspectionLane, src/lib/inspection-lane.ts) — Kho mô KHÔNG còn tự cài đặt tay được nữa (bỏ PATCH
+// /api/users/[id] nhánh inspectionLane cũ). Dùng để phân loại NV cấy mô theo mức độ cần kiểm tra khi
+// kho mô xử lý/nhận bàn giao — VANG xử lý giống hệt DO (đều phải kiểm tra lại), chỉ khác nhãn hiển thị.
 enum InspectionLane {
   XANH
+  VANG
   DO
 }
 
@@ -317,9 +320,11 @@ model User {
   // được tài khoản. SUPER_ADMIN/HANH_CHINH_NHAN_SU được sửa field này (xem canAssignWorkplace).
   workplaceWarehouseId String?
   workplaceWarehouse   Warehouse?      @relation(fields: [workplaceWarehouseId], references: [id])
-  // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), do NV kho mô phụ trách cùng kho sản xuất cài
-  // đặt (xem /api/users/[id] PATCH). Null = chưa cài đặt.
+  // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), HỆ THỐNG TỰ TÍNH lại đầu mỗi tháng từ tỉ lệ
+  // nhiễm tháng trước (xem ensureMonthlyInspectionLaneUpdate, src/lib/inspection-lane.ts) — không ai
+  // được sửa tay. Null = chưa từng được tính (NV mới, hoặc trước khi tính năng này ra đời).
   inspectionLane       InspectionLane?
+  inspectionLaneMonthlyResults InspectionLaneMonthlyResult[]
   // Năng lực cấy — chỉ áp dụng cho NV cấy mô (CAY_MO): số cụm mẫu mẹ NV đó dùng hết trong 1 tuần
   // (thể hiện tốc độ cấy), chỉ ADMIN/SUPER_ADMIN cài đặt được (xem /api/users/[id] PATCH).
   plantingCapacity     Int             @default(1920)
@@ -2074,6 +2079,40 @@ model LotInspectionItem {
   passedQuantity       Int
 
   @@map("lot_inspection_items")
+}
+
+// Kết quả phân loại "luồng kiểm tra" (Xanh/Vàng/Đỏ) TỰ TÍNH mỗi tháng cho 1 NV cấy mô — xem
+// ensureMonthlyInspectionLaneUpdate (src/lib/inspection-lane.ts). `applyMonth` là tháng ÁP DỤNG kết quả
+// (= dataMonth + 1 tháng), `dataMonth` là tháng LẤY SỐ LIỆU để tính — 1 dòng/NV/applyMonth (dedup, chỉ
+// tính 1 lần, không tính lại dù chạy job nhiều lần trong cùng tháng). Lưu lại cả 2 tỉ lệ thành phần
+// (darkRoom/brightRoom) để NV/Admin xem lại được cách ra kết quả, không chỉ mỗi lane cuối cùng.
+model InspectionLaneMonthlyResult {
+  id      String @id @default(cuid())
+  staffId String
+  staff   User   @relation(fields: [staffId], references: [id])
+
+  applyMonth DateTime @db.Date
+  dataMonth  DateTime @db.Date
+
+  // A — trung bình tỉ lệ nhiễm ủ tối (LotInspection tự kiểm tra) theo TỪNG PHIẾU BÀN GIAO phòng tối →
+  // kho sáng đã CONFIRMED trong dataMonth (không theo chỉ định) — darkRoomSampleCount = số phiếu dùng
+  // để tính trung bình, 0 nếu tháng đó không có phiếu nào.
+  darkRoomRatePct     Float
+  darkRoomSampleCount Int
+  // B — trung bình tỉ lệ nhiễm mẫu mẹ bàn giao (DailyRecord.motherContaminatedM05 / inputMotherQuantity,
+  // giống công thức /api/reports/mother-contamination) theo TỪNG CHỈ ĐỊNH (không tính chỉ định dự phòng
+  // — PlantingInstruction.isBackup — và không tính Chỉ định cấy xử lý vì đó là model RepackInstruction
+  // riêng, không nằm trong PlantingInstruction) có weekStart trong dataMonth, gán đúng NV này.
+  brightRoomRatePct     Float
+  brightRoomSampleCount Int
+  // = darkRoomRatePct + brightRoomRatePct — dùng để xếp lane (< 10% Xanh, 10-15% Vàng, > 15% Đỏ).
+  combinedRatePct Float
+  lane            InspectionLane
+
+  computedAt DateTime @default(now())
+
+  @@unique([staffId, applyMonth])
+  @@map("inspection_lane_monthly_results")
 }
 
 // ============================================================

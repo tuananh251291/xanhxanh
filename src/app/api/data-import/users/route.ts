@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
     role: UserRole;
     workplaceWarehouseId?: string;
     plantingCapacity?: number;
-    inspectionLane?: "XANH" | "DO";
+    inspectionLane?: "XANH" | "VANG" | "DO";
   };
   const validRows: ValidRow[] = [];
   const claimedCodes = new Set<string>();
@@ -220,13 +220,17 @@ export async function POST(req: NextRequest) {
       plantingCapacity = Math.round(n);
     }
 
-    let inspectionLane: "XANH" | "DO" | undefined;
+    // Chỉ dùng làm giá trị KHỞI TẠO lúc tạo tài khoản mới (chưa có dữ liệu tháng trước để hệ thống tự
+    // tính) — từ tháng sau, ensureMonthlyInspectionLaneUpdate sẽ tự tính lại và ghi đè giá trị này, xem
+    // src/lib/inspection-lane.ts.
+    let inspectionLane: "XANH" | "VANG" | "DO" | undefined;
     if (role === "CAY_MO" && parsed.lane) {
       const laneText = parsed.lane.toLowerCase();
       if (laneText === "xanh") inspectionLane = "XANH";
+      else if (laneText === "vàng" || laneText === "vang") inspectionLane = "VANG";
       else if (laneText === "đỏ" || laneText === "do") inspectionLane = "DO";
       else {
-        errors.push({ row: parsed.row, label: parsed.code, message: `Luồng kiểm tra "${parsed.lane}" không hợp lệ (Xanh/Đỏ)` });
+        errors.push({ row: parsed.row, label: parsed.code, message: `Luồng kiểm tra "${parsed.lane}" không hợp lệ (Xanh/Vàng/Đỏ)` });
         continue;
       }
     }

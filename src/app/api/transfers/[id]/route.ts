@@ -129,9 +129,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const warehouseId = transfer.fromRoom?.warehouseId ?? transfer.fromWarehouseId;
     if (!warehouseId) return NextResponse.json({ message: "Không xác định được kho nguồn" }, { status: 400 });
 
-    // NV không thuộc luồng Xanh (Đỏ/chưa cài đặt) bắt buộc phải qua bước Kiểm tra ở
+    // NV không thuộc luồng Xanh (Đỏ/Vàng/chưa có dữ liệu) bắt buộc phải qua bước Kiểm tra ở
     // /transfers/receive-phong-toi trước — chốt chặn phòng thủ, luồng UI bình thường không còn
-    // đường nào gọi tới đây cho phiếu Đỏ nữa (trang cũ đã lọc, trang mới dùng endpoint riêng).
+    // đường nào gọi tới đây cho phiếu Đỏ/Vàng nữa (trang cũ đã lọc, trang mới dùng endpoint riêng).
     if (!isSurplusTransfer && transfer.fromUser.inspectionLane !== "XANH") {
       const inspection = await prisma.transferInspection.findUnique({ where: { transferId: id } });
       if (!inspection) return NextResponse.json({ message: "Cần kiểm tra trước khi xác nhận nhận hàng" }, { status: 400 });

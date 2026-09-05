@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 
-// Danh sách phiếu bàn giao Phòng tối đang chờ của NV luồng Đỏ/chưa cài đặt luồng — gộp theo TỪNG
-// PHIẾU (khác luồng Xanh gộp theo NV), vì bước kiểm tra nhiễm áp dụng riêng cho từng đợt bàn giao.
+// Danh sách phiếu bàn giao Phòng tối đang chờ của NV luồng Đỏ/Vàng/chưa có dữ liệu luồng — gộp theo
+// TỪNG PHIẾU (khác luồng Xanh gộp theo NV), vì bước kiểm tra nhiễm áp dụng riêng cho từng đợt bàn giao.
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "KHO_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -17,7 +17,7 @@ export async function GET() {
       fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId },
       // Cùng mẫu liệt kê rõ ràng đã dùng ở nơi khác (transfers/route.ts) — không dùng `not: "XANH"`
       // để tránh phụ thuộc cách Prisma xử lý null trong so sánh bất đẳng thức trên field nullable.
-      OR: [{ fromUser: { inspectionLane: "DO" } }, { fromUser: { inspectionLane: null } }],
+      OR: [{ fromUser: { inspectionLane: { in: ["DO", "VANG"] } } }, { fromUser: { inspectionLane: null } }],
       // notes nullable — `not`/`NOT` dịch sang SQL `<>` sẽ loại luôn cả dòng NULL (đa số phiếu
       // thường không phải surplus nên notes luôn null). Đã gặp đúng bug này lúc build luồng Xanh.
       AND: [{ OR: [{ notes: null }, { notes: { not: SURPLUS_TRANSFER_TAG } }] }],

@@ -3,17 +3,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Flag } from "lucide-react";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
-import InspectionLaneCell from "./inspection-lane-cell";
 
-// Tách khỏi page.tsx để dùng lại được y hệt ở cả route gốc (/inspection-lane) lẫn tab "Cài đặt luồng
-// kiểm tra" trong hub "Cài đặt thủ công" của Kho mô (/manual-settings) — xem plan gộp menu Kho mô.
+// Tách khỏi page.tsx để dùng lại được y hệt ở cả route gốc (/inspection-lane) lẫn tab "Luồng kiểm tra"
+// trong hub "Cài đặt thủ công" của Kho mô (/manual-settings) — xem plan gộp menu Kho mô.
+// CHỈ XEM — hệ thống tự tính lại luồng mỗi tháng (xem ensureMonthlyInspectionLaneUpdate,
+// src/lib/inspection-lane.ts), Kho mô không còn sửa tay được nữa (đã bỏ InspectionLaneCell + PATCH
+// /api/users/[id] nhánh inspectionLane cũ).
 export default async function InspectionLaneBoard({ workplaceWarehouseId }: { workplaceWarehouseId: string | null }) {
   if (!workplaceWarehouseId) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Flag className="w-6 h-6 text-info-foreground" /> Cài đặt luồng kiểm tra
+            <Flag className="w-6 h-6 text-info-foreground" /> Luồng kiểm tra
           </h1>
         </div>
         <Card><CardContent className="py-12 text-center text-text-muted">
@@ -33,9 +35,13 @@ export default async function InspectionLaneBoard({ workplaceWarehouseId }: { wo
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Flag className="w-6 h-6 text-info-foreground" /> Cài đặt luồng kiểm tra
+          <Flag className="w-6 h-6 text-info-foreground" /> Luồng kiểm tra
         </h1>
-        <p className="text-text-secondary text-sm mt-1">{staff.length} nhân viên cấy mô thuộc kho sản xuất bạn đang làm việc</p>
+        <p className="text-text-secondary text-sm mt-1">
+          {staff.length} nhân viên cấy mô thuộc kho sản xuất bạn đang làm việc — hệ thống tự tính lại luồng
+          đầu mỗi tháng từ tỉ lệ nhiễm tháng trước, không cài đặt tay được nữa. Vàng và Đỏ đều phải kiểm
+          tra lại khi nhận bàn giao như nhau.
+        </p>
       </div>
 
       {staff.length === 0 ? (
@@ -52,7 +58,6 @@ export default async function InspectionLaneBoard({ workplaceWarehouseId }: { wo
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã NV</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên NV</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Luồng hiện tại</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Cài đặt</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -64,11 +69,8 @@ export default async function InspectionLaneBoard({ workplaceWarehouseId }: { wo
                         {u.inspectionLane ? (
                           <Badge className={INSPECTION_LANE_COLORS[u.inspectionLane]}>{INSPECTION_LANE_LABELS[u.inspectionLane]}</Badge>
                         ) : (
-                          <Badge variant="secondary">Chưa cài đặt</Badge>
+                          <Badge variant="secondary">Chưa có dữ liệu</Badge>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <InspectionLaneCell userId={u.id} currentLane={u.inspectionLane} />
                       </td>
                     </tr>
                   ))}

@@ -620,9 +620,11 @@ function CayMoDashboard({
           {stats.inspectionLane && (
             <div className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
               <span
-                className={`w-2.5 h-2.5 rounded-full ${stats.inspectionLane === "XANH" ? "bg-success" : "bg-destructive"}`}
+                className={`w-2.5 h-2.5 rounded-full ${
+                  stats.inspectionLane === "XANH" ? "bg-success" : stats.inspectionLane === "VANG" ? "bg-warning" : "bg-destructive"
+                }`}
               />
-              Bạn thuộc luồng {INSPECTION_LANE_LABELS[stats.inspectionLane]}
+              Tháng thực tế này bạn đang thuộc luồng {INSPECTION_LANE_LABELS[stats.inspectionLane]}
             </div>
           )}
         </div>

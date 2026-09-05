@@ -27,7 +27,6 @@ const patchSchema = z.union([
   // xem DELETE bên dưới) nhưng tách hẳn khỏi nhánh "name" (sửa tài khoản đầy đủ, chỉ SUPER_ADMIN) để
   // NV Hành chính nhân sự thao tác được qua đúng 1 hành động rõ nghĩa, có xác nhận riêng ở client.
   z.object({ resign: z.boolean() }),
-  z.object({ inspectionLane: z.enum(["XANH", "DO"]).nullable() }),
   z.object({ plantingCapacity: z.number().int().positive() }),
   z.object({ holdDays: z.number().int().positive().nullable() }),
   z.object({ employmentType: z.enum(["CHINH_THUC", "THU_VIEC"]).nullable() }),
@@ -118,30 +117,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  // Luồng kiểm tra — NV kho mô cài đặt cho đúng NV cấy mô thuộc cùng kho sản xuất mình đang làm việc.
-  if ("inspectionLane" in parsed.data) {
-    if (session?.user?.role !== "KHO_MO") {
-      return NextResponse.json({ message: "Chỉ NV kho mô mới có quyền cài đặt luồng kiểm tra" }, { status: 403 });
-    }
-    if (!session.user.workplaceWarehouseId) {
-      return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc — không thể cài đặt" }, { status: 403 });
-    }
-    const target = await prisma.user.findUnique({ where: { id }, select: { role: true, workplaceWarehouseId: true } });
-    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
-    if (target.role !== "CAY_MO") {
-      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
-    }
-    if (target.workplaceWarehouseId !== session.user.workplaceWarehouseId) {
-      return NextResponse.json({ message: "Chỉ được cài đặt cho NV cấy mô thuộc cùng kho sản xuất bạn đang làm việc" }, { status: 403 });
-    }
-    const { inspectionLane } = parsed.data;
-    const updated = await prisma.user.update({
-      where: { id },
-      data: { inspectionLane },
-      select: { id: true, code: true, name: true, inspectionLane: true },
-    });
-    return NextResponse.json(updated);
-  }
 
   // Năng lực cấy — số cụm mẫu mẹ 1 NV cấy mô dùng hết trong 1 tuần, chỉ ADMIN/SUPER_ADMIN cài đặt được.
   if ("plantingCapacity" in parsed.data) {

@@ -36,14 +36,17 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
 };
 
-// Luồng kiểm tra gắn theo NV cấy mô — do NV kho mô cài đặt (xem /inspection-lane).
+// Luồng kiểm tra gắn theo NV cấy mô — hệ thống tự tính mỗi tháng (xem src/lib/inspection-lane.ts),
+// không còn do Kho mô cài đặt tay. Vàng/Đỏ xử lý bàn giao giống hệt nhau (đều phải kiểm tra lại).
 export const INSPECTION_LANE_LABELS = {
   XANH: "Xanh",
+  VANG: "Vàng",
   DO: "Đỏ",
 } as const;
 
 export const INSPECTION_LANE_COLORS = {
   XANH: "bg-primary-light text-primary-strong",
+  VANG: "bg-warning-light text-warning-foreground",
   DO: "bg-danger-light text-destructive",
 } as const;
 

@@ -31,7 +31,7 @@ export default async function ManualSettingsPage() {
         <TabsList>
           <TabsTrigger value="nhap-kho">Nhập kho thủ công</TabsTrigger>
           <TabsTrigger value="shelf-assign">Gán mã cây & NV mẫu mẹ</TabsTrigger>
-          <TabsTrigger value="inspection-lane">Cài đặt luồng kiểm tra</TabsTrigger>
+          <TabsTrigger value="inspection-lane">Luồng kiểm tra</TabsTrigger>
         </TabsList>
 
         <TabsContent value="nhap-kho" className="mt-4">

@@ -11,7 +11,7 @@ import { format, parse, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
 
-type MissingStaff = { id: string; code: string; name: string; inspectionLane: "XANH" | "DO" | null };
+type MissingStaff = { id: string; code: string; name: string; inspectionLane: "XANH" | "VANG" | "DO" | null };
 
 export default function CheckHandoverStatusDialog() {
   const [open, setOpen] = useState(false);
