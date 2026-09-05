@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, PRODUCTION_SITE_ROLES } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, canEditEmployeeName, PRODUCTION_SITE_ROLES } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -34,6 +34,7 @@ const patchSchema = z.union([
   z.object({ isTrainee: z.boolean() }),
   z.object({ unlockAccount: z.literal(true) }),
   z.object({ code: z.string().min(1, "Nhập mã nhân viên") }),
+  z.object({ name: z.string().min(2, "Tên tối thiểu 2 ký tự") }),
   z.object({
     name: z.string().min(2),
     email: z.string().email(),
@@ -240,6 +241,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
+  // Sửa RIÊNG "Tên" (không kèm email/vai trò) — Admin cao nhất/NV Hành chính nhân sự (xem
+  // canEditEmployeeName). Object.keys length === 1 để không lẫn với nhánh "name" bên dưới (sửa tài khoản
+  // đầy đủ, chỉ SUPER_ADMIN) cũng có field name.
+  if (Object.keys(parsed.data).length === 1 && "name" in parsed.data) {
+    if (!canEditEmployeeName(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất/NV Hành chính nhân sự mới có quyền sửa tên nhân viên" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role === "SUPER_ADMIN") {
+      return NextResponse.json({ message: "Không thể sửa tài khoản Admin cao nhất qua đây" }, { status: 403 });
+    }
+    if (session?.user?.role === "HANH_CHINH_NHAN_SU" && target.role && isAdminRole(target.role)) {
+      return NextResponse.json({ message: "NV Hành chính nhân sự không có quyền sửa tài khoản Admin" }, { status: 403 });
+    }
+    const { name } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { name },
+      select: { id: true, code: true, name: true },
+    });
+    return NextResponse.json(updated);
+  }
+
   // Sửa RIÊNG "Mã nhân viên" (không kèm tên/email/vai trò) cho NV thuộc cơ sở sản xuất — Admin cao nhất/
   // NV Hành chính nhân sự (xem canEditEmployeeCode). Object.keys length === 1 để không lẫn với nhánh
   // "name" bên dưới (sửa tài khoản đầy đủ) cũng có field code.
@@ -265,8 +290,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  // Sửa thông tin chung tài khoản (tên/email/vai trò/kích hoạt/đổi mật khẩu) — chỉ Admin cao nhất.
-  if ("name" in parsed.data) {
+  // Sửa thông tin chung tài khoản (tên/email/vai trò/kích hoạt/đổi mật khẩu) — chỉ Admin cao nhất. Check
+  // "email" (không phải "name") để phân biệt với nhánh sửa riêng "Tên" ở trên — cả 2 variant zod đều có
+  // field name nên "name" in parsed.data không đủ để TS thu hẹp đúng kiểu.
+  if ("email" in parsed.data) {
     if (session?.user?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ message: "Chỉ Admin cao nhất mới có quyền sửa tài khoản" }, { status: 403 });
     }

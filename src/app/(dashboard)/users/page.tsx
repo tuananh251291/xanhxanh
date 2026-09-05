@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, PRODUCTION_SITE_ROLES, creatableRolesFor } from "@/types";
+import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, canEditEmployeeName, PRODUCTION_SITE_ROLES, creatableRolesFor } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import { getSystemConfig } from "@/lib/inventory";
@@ -18,7 +18,7 @@ import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
 import UserEditableFields from "./user-editable-fields";
 import EmploymentStatusCell from "./employment-status-cell";
-import EmployeeCodeCell from "./employee-code-cell";
+import UserInlineFieldCell from "./user-inline-field-cell";
 
 // NV/Quản lý kho thành phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao
 // tác — xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
@@ -39,6 +39,7 @@ export default async function UsersPage({
   const canEditWorkplace = canAssignWorkplace(session?.user?.role);
   const canManageStatus = canManageEmploymentStatus(session?.user?.role);
   const canEditCode = canEditEmployeeCode(session?.user?.role);
+  const canEditName = canEditEmployeeName(session?.user?.role);
   const assignableRoles = creatableRolesFor(session?.user?.role);
   // "Phân quyền truy cập trang theo vai trò" chỉ Admin/Admin cấp cao — NV Hành chính nhân sự KHÔNG được
   // xem/sửa (chỉ /api/permissions PATCH chặn ghi, ẩn hẳn tab này khỏi HR để tránh hiểu nhầm là dùng được).
@@ -158,14 +159,28 @@ export default async function UsersPage({
                     {users.map((user) => (
                       <tr key={user.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
                         <td className="px-4 py-3">
-                          <EmployeeCodeCell
+                          <UserInlineFieldCell
                             userId={user.id}
-                            code={user.code}
+                            field="code"
+                            value={user.code}
                             canEdit={canEditCode && !!user.role && PRODUCTION_SITE_ROLES.includes(user.role as UserRole)}
+                            monospace
+                            emptyErrorMessage="Mã nhân viên không được để trống"
+                            successMessage="Đã cập nhật mã nhân viên"
+                            editTitle="Sửa mã nhân viên"
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm font-medium text-foreground">{user.name}</p>
+                          <UserInlineFieldCell
+                            userId={user.id}
+                            field="name"
+                            value={user.name}
+                            canEdit={canEditName && user.role !== "SUPER_ADMIN"}
+                            textClassName="text-sm font-medium text-foreground"
+                            emptyErrorMessage="Tên không được để trống"
+                            successMessage="Đã cập nhật tên nhân viên"
+                            editTitle="Sửa tên nhân viên"
+                          />
                           <p className="text-xs text-text-secondary">{user.email}</p>
                         </td>
                         <td className="px-4 py-3">

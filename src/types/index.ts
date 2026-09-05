@@ -111,6 +111,14 @@ export function canEditEmployeeCode(role: UserRole | null | undefined): boolean 
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Ai được sửa riêng "Tên" NV — giống canEditEmployeeCode nhưng KHÔNG giới hạn PRODUCTION_SITE_ROLES (NV
+// Hành chính nhân sự vốn không thấy được tài khoản Admin/Admin cao nhất trong danh sách — xem
+// adminExclusion ở users/page.tsx — nên phạm vi thực tế đã tự loại trừ nhóm đó mà không cần thêm điều
+// kiện role ở đây, khớp đúng "sửa được như Admin cao nhất" cho mọi NV còn lại).
+export function canEditEmployeeName(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
+}
+
 // Vai trò được phép gán khi tạo tài khoản mới, theo vai trò người tạo — Admin/Admin cấp cao tạo được mọi
 // vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
