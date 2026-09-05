@@ -15,6 +15,8 @@ import RepackInstructionsBoard from "../repack-instructions/repack-instructions-
 // tạp, tránh đụng vào để không rủi ro regress, giống cách đã làm ở production-management/page.tsx).
 // Tab "Chỉ định cấy xử lý" nhúng thẳng RepackInstructionsBoard (đã tách khỏi /repack-instructions/page.tsx
 // để dùng chung — route gốc vẫn hoạt động độc lập như cũ, KY_THUAT/Admin vẫn thấy riêng).
+// Tab "Chỉ định cấy đã tạo" — liên kết nhẹ sang /instructions/list (giống KY_THUAT), trang đó tự lọc lại
+// đúng kho của NV Kho mô đang xem (xem where ở instructions/list/page.tsx), KHÔNG thấy được kho khác.
 // SUPER_ADMIN không cần hub này nên vẫn giữ nguyên hành vi cũ (chỉ thấy thẳng bảng sửa số lượng).
 export default async function InstructionQuantityEditPage() {
   const session = await auth();
@@ -36,6 +38,7 @@ export default async function InstructionQuantityEditPage() {
           <TabsTrigger value="instructions">Chỉ định cấy chưa bàn giao</TabsTrigger>
           <TabsTrigger value="quantity-edit">Sửa SL chỉ định cấy</TabsTrigger>
           <TabsTrigger value="repack">Chỉ định cấy xử lý</TabsTrigger>
+          <TabsTrigger value="list">Chỉ định cấy đã tạo</TabsTrigger>
         </TabsList>
 
         <TabsContent value="instructions" className="mt-4">
@@ -62,6 +65,25 @@ export default async function InstructionQuantityEditPage() {
         </TabsContent>
         <TabsContent value="repack" className="mt-4">
           <RepackInstructionsBoard role={role} userId={session!.user.id} workplaceWarehouseId={session!.user.workplaceWarehouseId} />
+        </TabsContent>
+        <TabsContent value="list" className="mt-4">
+          <Card>
+            <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+              <ClipboardList className="w-8 h-8 text-primary-strong" />
+              <div>
+                <p className="font-medium text-foreground">Chỉ định cấy đã tạo</p>
+                <p className="text-sm text-text-secondary mt-1">
+                  Xem toàn bộ chỉ định cấy đã tạo cho kho mình phụ trách — lọc theo mã, ngày, giàn kệ, mã cây, NV cấy
+                </p>
+              </div>
+              <Link
+                href="/instructions/list"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-strong hover:underline"
+              >
+                Mở trang Chỉ định cấy đã tạo <ArrowRight className="w-4 h-4" />
+              </Link>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

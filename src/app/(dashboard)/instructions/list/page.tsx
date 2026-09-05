@@ -34,13 +34,16 @@ export default async function InstructionsListPage({
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
+  const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
   if (!(await isPageAllowed(role, "/instructions"))) redirect("/dashboard");
-  // Trang danh sách chi tiết này chỉ dành cho vai trò có thể tạo chỉ định (KY_THUAT/Admin) —
-  // các vai trò khác (KHO_MO, CAY_MO...) vẫn thao tác trên bảng inline ở /instructions.
-  if (!(isAdminRole(role) || role === "KY_THUAT")) redirect("/instructions");
-  // ADMIN (khác SUPER_ADMIN) chỉ được XEM ở trang này — không sửa/hủy chỉ định (ẩn hẳn 2 nút thao tác
-  // bên dưới), giữ nguyên quyền đầy đủ cho KY_THUAT (người tạo/quản lý chỉ định hàng ngày).
-  const viewOnly = role === "ADMIN";
+  // Trang danh sách chi tiết này dành cho vai trò có thể tạo chỉ định (KY_THUAT/Admin) và KHO_MO (xem
+  // qua tab "Chỉ định cấy đã tạo" ở hub /instruction-quantity-edit, giới hạn đúng kho mình phụ trách —
+  // xem lọc where bên dưới) — các vai trò khác (CAY_MO...) vẫn thao tác trên bảng inline ở /instructions.
+  if (!(isAdminRole(role) || role === "KY_THUAT" || role === "KHO_MO")) redirect("/instructions");
+  // ADMIN (khác SUPER_ADMIN) và KHO_MO chỉ được XEM ở trang này — không sửa/hủy chỉ định (ẩn hẳn 2 nút
+  // thao tác bên dưới), giữ nguyên quyền đầy đủ cho KY_THUAT (người tạo/quản lý chỉ định hàng ngày).
+  const viewOnly = role === "ADMIN" || role === "KHO_MO";
+  const backHref = role === "KHO_MO" ? "/instruction-quantity-edit" : "/instructions";
 
   const sp = await searchParams;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
@@ -61,17 +64,18 @@ export default async function InstructionsListPage({
   if (plantCodeFilter) {
     where.plantType = { code: { contains: plantCodeFilter, mode: "insensitive" } };
   }
+  // KHO_MO chỉ xem chỉ định dùng giàn kệ thuộc kho mình phụ trách — gộp chung điều kiện shelf với bộ lọc
+  // "Giàn kệ" (cả 2 đều nằm trong items.some.shelf, không thể tách where riêng).
+  const shelfWhere: Record<string, unknown> = {};
+  if (role === "KHO_MO" && workplaceWarehouseId) shelfWhere.warehouseId = workplaceWarehouseId;
   if (shelfFilter) {
-    where.items = {
-      some: {
-        shelf: {
-          OR: [
-            { code: { contains: shelfFilter, mode: "insensitive" } },
-            { name: { contains: shelfFilter, mode: "insensitive" } },
-          ],
-        },
-      },
-    };
+    shelfWhere.OR = [
+      { code: { contains: shelfFilter, mode: "insensitive" } },
+      { name: { contains: shelfFilter, mode: "insensitive" } },
+    ];
+  }
+  if (Object.keys(shelfWhere).length > 0) {
+    where.items = { some: { shelf: shelfWhere } };
   }
   if (staffFilter) {
     where.assignedToId = staffFilter;
@@ -90,7 +94,11 @@ export default async function InstructionsListPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    prisma.user.findMany({ where: { role: "CAY_MO" }, select: { id: true, name: true, code: true }, orderBy: { name: "asc" } }),
+    prisma.user.findMany({
+      where: { role: "CAY_MO", ...(role === "KHO_MO" && workplaceWarehouseId ? { workplaceWarehouseId } : {}) },
+      select: { id: true, name: true, code: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const staffOptions = staff.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
@@ -113,7 +121,7 @@ export default async function InstructionsListPage({
     <div className="space-y-6">
       <div>
         <Link
-          href="/instructions"
+          href={backHref}
           className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-foreground mb-2"
         >
           <ArrowLeft className="w-4 h-4" /> Quay lại
