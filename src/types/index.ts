@@ -547,6 +547,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // "Chỉ định cấy xử lý" gộp vào tab trong hub này (xem instruction-quantity-edit/page.tsx) — route
     // /repack-instructions vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/instruction-quantity-edit", label: "Chỉ định cấy", icon: "ClipboardList" },
+    // Sửa/bù nhật ký cấy hộ NV cấy mô (đúng kho mình làm việc, xem canManageDailyRecords) — vi phạm nhập
+    // sai vẫn tính đúng cho NV cấy mô bất kể KHO_MO hay Admin sửa, xem PATCH /api/daily-records/[id].
+    { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
     { href: "/transfers/receive-phong-toi", label: "Nhận bàn giao từ kho tối", icon: "PackageCheck" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },

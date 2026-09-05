@@ -24,7 +24,7 @@ export default async function InstructionEditPage() {
         <InstructionQuantityEditBoard role="SUPER_ADMIN" />
       </TabsContent>
       <TabsContent value="daily" className="mt-4">
-        <DailyRecordEditBoard />
+        <DailyRecordEditBoard isAdminUser />
       </TabsContent>
     </Tabs>
   );

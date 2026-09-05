@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2, PenLine } from "lucide-react";
-import { format, addDays, isSameDay, startOfWeek } from "date-fns";
+import { format, addDays, isSameDay, startOfWeek, endOfWeek } from "date-fns";
 import EditDailyRecordDialog from "../instructions/edit-daily-record-dialog";
 import AddDailyRecordDialog from "../instructions/add-daily-record-dialog";
 
@@ -34,8 +34,11 @@ const fmt = (n: number | null | undefined) => (n === null || n === undefined ? "
 // nhập) — cùng cột, cùng cách gộp M05/T05/T01, nhưng KHÔNG giới hạn "chỉ hôm nay mới nhập được" như bên
 // đó. Việc sửa/bù dữ liệu dùng lại NGUYÊN VẸN EditDailyRecordDialog/AddDailyRecordDialog (đã dùng ở
 // /instructions/[id]) thay vì viết lại — 2 dialog đó đã xử lý đủ ràng buộc an toàn (khoá khi lô đã bị
-// động tới nơi khác qua bàn giao/kiểm tra nhiễm, chỉ cho bù dữ liệu ngày còn thiếu trong TUẦN HIỆN TẠI).
-export default function DailyRecordEditBoard() {
+// động tới nơi khác qua bàn giao/kiểm tra nhiễm). isAdminUser (page.tsx truyền xuống) quyết định thêm 1
+// ràng buộc RIÊNG cho "bù mới" (canAdd dưới đây): Admin/Admin cấp cao bù được chỉ định của TUẦN BẤT KỲ,
+// KHO_MO chỉ bù được khi chỉ định thuộc ĐÚNG TUẦN HIỆN TẠI — khớp đúng ràng buộc server ở POST
+// /api/daily-records (nhánh !isAdmin), tránh hiện nút bù rồi bấm mới báo lỗi.
+export default function DailyRecordEditBoard({ isAdminUser }: { isAdminUser: boolean }) {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [matches, setMatches] = useState<Instruction[]>([]);
@@ -87,6 +90,10 @@ export default function DailyRecordEditBoard() {
   const weekStart = selected?.weekStart ? startOfWeek(new Date(selected.weekStart), { weekStartsOn: 1 }) : null;
   const days = weekStart ? Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)) : [];
   const today = new Date();
+  // KHO_MO chỉ bù được chỉ định thuộc ĐÚNG tuần hiện tại (server chặn ở POST /api/daily-records, xem
+  // comment đầu file) — Admin/Admin cấp cao không bị giới hạn này.
+  const isCurrentWeek = !!weekStart && weekStart >= startOfWeek(today, { weekStartsOn: 1 }) && weekStart <= endOfWeek(today, { weekStartsOn: 1 });
+  const canAddThisInstruction = isAdminUser || isCurrentWeek;
 
   const recordForDay = (day: Date) => records.find((r) => isSameDay(new Date(r.recordDate), day));
   const rowValues = (rec: DailyRecord) => {
@@ -202,11 +209,11 @@ export default function DailyRecordEditBoard() {
                       const rec = recordForDay(day);
                       const values = rec ? rowValues(rec) : null;
                       const isToday = isSameDay(day, today);
-                      // Chỉ được BÙ MỚI (chưa có bản ghi) khi ngày không sau hôm nay và chỉ định đã có NV
-                      // được gán — khớp đúng ràng buộc server ở POST /api/daily-records (nhánh Admin,
-                      // KHÔNG giới hạn đúng tuần hiện tại — trang này chỉ Admin mới vào được, xem page.tsx),
+                      // Chỉ được BÙ MỚI (chưa có bản ghi) khi ngày không sau hôm nay, chỉ định đã có NV
+                      // được gán, và (Admin/Admin cấp cao HOẶC chỉ định thuộc đúng tuần hiện tại — xem
+                      // canAddThisInstruction) — khớp đúng ràng buộc server ở POST /api/daily-records,
                       // tránh bấm được nút rồi mới báo lỗi.
-                      const canAdd = !rec && day <= today && !!selected.assignedTo;
+                      const canAdd = !rec && day <= today && !!selected.assignedTo && canAddThisInstruction;
                       return (
                         <tr key={day.toISOString()} className={`border-b ${isToday ? "bg-primary-light" : idx % 2 === 0 ? "bg-primary-light/60" : "bg-white"}`}>
                           <td className="px-3 py-2 font-medium whitespace-nowrap">
