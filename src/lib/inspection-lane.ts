@@ -23,11 +23,21 @@ import type { InspectionLane } from "@prisma/client";
 //       tra" vì phần đó vẫn có; chỉ riêng phần "Kho mô phát hiện thêm" là 0 với luồng Xanh (không kiểm lại).
 //       Tháng có sản xuất nhưng KHÔNG ngày nào phát hiện nhiễm → A = 0% (thành tích tốt, KHÔNG phải thiếu
 //       dữ liệu) — chỉ coi là "thiếu dữ liệu" khi tháng đó NV không hề có ngày sản xuất nào.
-//   B = trung bình cộng tỉ lệ nhiễm của TỪNG CHỈ ĐỊNH CẤY (không tính chỉ định dự phòng — isBackup, và
-//       không tính Chỉ định cấy xử lý vì đó là model RepackInstruction riêng) có weekStart trong tháng,
-//       gán cho đúng NV này — tỉ lệ 1 chỉ định = tổng DailyRecord.motherContaminatedM05 / inputMotherQuantity
-//       của chỉ định đó (cùng công thức /api/reports/mother-contamination) — cũng là số NV tự nhập hàng
-//       ngày, không phụ thuộc luồng.
+//   B = trung bình cộng tỉ lệ nhiễm của TỪNG CHỈ ĐỊNH CẤY có weekStart trong tháng, gán cho đúng NV này —
+//       tỉ lệ 1 chỉ định = tổng DailyRecord.motherContaminatedM05 / inputMotherQuantity của chỉ định đó
+//       (cùng công thức /api/reports/mother-contamination) — cũng là số NV tự nhập hàng ngày, không phụ
+//       thuộc luồng.
+//
+// CẢ A và B chỉ tính chỉ định LẤY NGUỒN TỪ GIÀN KỆ ĐÃ GÁN RIÊNG cho đúng NV đó (PlantingInstructionItem
+// → Shelf.assignedStaffId === staffId, MỌI dòng quy cách nguồn của chỉ định đều phải khớp) — loại 2 nhóm:
+//   1. Chỉ định dự phòng (isBackup) — theo định nghĩa LUÔN lấy từ kệ "chung" chưa chia (assignedStaffId
+//      null) nên tự động bị loại bởi điều kiện trên, không cần lọc isBackup riêng.
+//   2. Chỉ định THƯỜNG nhưng lấy nguồn từ kệ "chung"/kệ của NV khác (không phải isBackup, nhưng
+//      assignedStaffId không khớp) — VẪN LOẠI, vì không phản ánh đúng hiệu suất/trách nhiệm của riêng NV
+//      này trên giàn kệ họ quản lý (phát hiện thực tế: 2/7 chỉ định "thường" của 1 NV hoá ra lấy từ kệ
+//      chung, xác nhận với Admin ngày 05/09/2026 — cần loại).
+// Chỉ định xử lý (RepackInstruction) là model HOÀN TOÀN RIÊNG, không nằm trong PlantingInstruction nên
+// không bao giờ lọt vào 2 hàm dưới đây, không cần loại thêm.
 //
 // Cả A và B đều lấy trung bình CỘNG các tỉ lệ (không lấy tổng nhiễm/tổng số rồi chia 1 lần) — 1 ngày/1
 // chỉ định nhỏ vẫn có trọng số ngang 1 ngày/1 chỉ định lớn, đúng theo ví dụ Admin đưa ra.
@@ -39,6 +49,13 @@ export function classifyLane(combinedRatePct: number): InspectionLane {
   if (combinedRatePct < LOW_THRESHOLD_PCT) return "XANH";
   if (combinedRatePct <= HIGH_THRESHOLD_PCT) return "VANG";
   return "DO";
+}
+
+// Chỉ định có "lấy nguồn từ giàn kệ đã gán RIÊNG cho đúng NV này" hay không — xem giải thích ở đầu file.
+// null = lô không gắn chỉ định nào (hiếm, VD nhập kho thủ công) → không tính.
+function isFromOwnShelf(instruction: { items: { shelf: { assignedStaffId: string | null } }[] } | null, staffId: string): boolean {
+  if (!instruction) return false;
+  return instruction.items.length > 0 && instruction.items.every((it) => it.shelf.assignedStaffId === staffId);
 }
 
 type MonthlyContaminationStats = {
@@ -69,7 +86,7 @@ async function computeDarkRoomRate(
           lotId: true,
           stageCode: true,
           contaminatedQuantity: true,
-          lot: { select: { instruction: { select: { isBackup: true } } } },
+          lot: { select: { instruction: { select: { items: { select: { shelf: { select: { assignedStaffId: true } } } } } } } },
         },
       },
     },
@@ -91,16 +108,16 @@ async function computeDarkRoomRate(
   const rates: number[] = [];
   let hadProductionData = false;
   for (const insp of inspections) {
-    // Bỏ hẳn ngày nào TOÀN BỘ là lô từ chỉ định dự phòng — xem lưu ý ở đầu file. Thực tế 1 NV chỉ làm 1
-    // chỉ định/ngày nên hiếm khi có ngày trộn lẫn dự phòng + chỉ định thường.
-    if (insp.items.every((it) => it.lot.instruction?.isBackup)) continue;
+    // Bỏ hẳn ngày nào TOÀN BỘ lô không lấy từ giàn kệ riêng của NV này — xem giải thích ở đầu file. Thực
+    // tế 1 NV chỉ làm 1 chỉ định/ngày nên hiếm khi có ngày trộn lẫn.
+    if (insp.items.every((it) => !isFromOwnShelf(it.lot.instruction, staffId))) continue;
     if (insp.totalQuantity <= 0) continue;
     hadProductionData = true;
 
     let selfContaminated = 0;
     let khoMoAdditional = 0;
     for (const item of insp.items) {
-      if (item.lot.instruction?.isBackup) continue;
+      if (!isFromOwnShelf(item.lot.instruction, staffId)) continue;
       selfContaminated += item.contaminatedQuantity;
       const redFlowItems = redFlowItemsByLotId.get(item.lotId);
       const matches = redFlowItems?.filter((r) => r.stageCode === item.stageCode) ?? [];
@@ -120,13 +137,19 @@ async function computeBrightRoomRate(staffId: string, dataMonthStart: Date, data
   const instructions = await prisma.plantingInstruction.findMany({
     where: {
       assignedToId: staffId,
-      isBackup: false,
       weekStart: { gte: dataMonthStart, lte: dataMonthEnd },
     },
-    select: { inputMotherQuantity: true, dailyRecords: { select: { motherContaminatedM05: true } } },
+    select: {
+      inputMotherQuantity: true,
+      dailyRecords: { select: { motherContaminatedM05: true } },
+      items: { select: { shelf: { select: { assignedStaffId: true } } } },
+    },
   });
   const rates: number[] = [];
   for (const inst of instructions) {
+    // Chỉ tính chỉ định lấy nguồn từ giàn kệ đã gán RIÊNG cho đúng NV này — xem giải thích ở đầu file
+    // (tự loại cả chỉ định dự phòng lẫn chỉ định thường nhưng lấy từ kệ chung).
+    if (!isFromOwnShelf(inst, staffId)) continue;
     if (inst.inputMotherQuantity <= 0) continue;
     const totalContaminated = inst.dailyRecords.reduce((s, r) => s + r.motherContaminatedM05, 0);
     rates.push((totalContaminated / inst.inputMotherQuantity) * 100);

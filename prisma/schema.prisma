@@ -2102,9 +2102,11 @@ model InspectionLaneMonthlyResult {
   darkRoomRatePct     Float
   darkRoomSampleCount Int
   // B — trung bình tỉ lệ nhiễm mẫu mẹ bàn giao (DailyRecord.motherContaminatedM05 / inputMotherQuantity,
-  // giống công thức /api/reports/mother-contamination) theo TỪNG CHỈ ĐỊNH (không tính chỉ định dự phòng
-  // — PlantingInstruction.isBackup — và không tính Chỉ định cấy xử lý vì đó là model RepackInstruction
-  // riêng, không nằm trong PlantingInstruction) có weekStart trong dataMonth, gán đúng NV này.
+  // giống công thức /api/reports/mother-contamination) theo TỪNG CHỈ ĐỊNH có weekStart trong dataMonth,
+  // gán đúng NV này — CHỈ tính chỉ định lấy nguồn từ giàn kệ ĐÃ GÁN RIÊNG cho đúng NV đó (xem isFromOwnShelf,
+  // src/lib/inspection-lane.ts) — tự loại cả chỉ định dự phòng (isBackup, luôn lấy từ kệ chung) lẫn chỉ
+  // định thường nhưng lấy từ kệ chung/kệ NV khác. Chỉ định xử lý là model RepackInstruction riêng, không
+  // nằm trong PlantingInstruction nên không lọt vào đây.
   brightRoomRatePct     Float
   brightRoomSampleCount Int
   // = darkRoomRatePct + brightRoomRatePct — dùng để xếp lane (< 10% Xanh, 10-15% Vàng, > 15% Đỏ).
