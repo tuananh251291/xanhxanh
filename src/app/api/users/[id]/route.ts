@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
-import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, PRODUCTION_SITE_ROLES } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -33,6 +33,7 @@ const patchSchema = z.union([
   z.object({ employmentType: z.enum(["CHINH_THUC", "THU_VIEC"]).nullable() }),
   z.object({ isTrainee: z.boolean() }),
   z.object({ unlockAccount: z.literal(true) }),
+  z.object({ code: z.string().min(1, "Nhập mã nhân viên") }),
   z.object({
     name: z.string().min(2),
     email: z.string().email(),
@@ -235,6 +236,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { lockedAt: null, failedLoginAttempts: 0 },
       select: { id: true, code: true, name: true, lockedAt: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Sửa RIÊNG "Mã nhân viên" (không kèm tên/email/vai trò) cho NV thuộc cơ sở sản xuất — Admin cao nhất/
+  // NV Hành chính nhân sự (xem canEditEmployeeCode). Object.keys length === 1 để không lẫn với nhánh
+  // "name" bên dưới (sửa tài khoản đầy đủ) cũng có field code.
+  if (Object.keys(parsed.data).length === 1 && "code" in parsed.data) {
+    if (!canEditEmployeeCode(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất/NV Hành chính nhân sự mới có quyền sửa mã nhân viên" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (!target.role || !PRODUCTION_SITE_ROLES.includes(target.role)) {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV thuộc cơ sở sản xuất (kho mô, cấy mô, môi trường, kỹ thuật, NV sản xuất)" }, { status: 400 });
+    }
+    const { code } = parsed.data;
+    const codeOwner = await prisma.user.findUnique({ where: { code } });
+    if (codeOwner && codeOwner.id !== id) {
+      return NextResponse.json({ message: "Mã nhân viên đã được dùng cho tài khoản khác" }, { status: 409 });
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { code },
+      select: { id: true, code: true, name: true },
     });
     return NextResponse.json(updated);
   }

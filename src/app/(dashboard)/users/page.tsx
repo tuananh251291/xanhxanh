@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, creatableRolesFor } from "@/types";
+import { ROLE_LABELS, ROLE_COLORS, isAdminRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, PRODUCTION_SITE_ROLES, creatableRolesFor } from "@/types";
 import type { UserRole, Prisma } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import { getSystemConfig } from "@/lib/inventory";
@@ -18,6 +18,7 @@ import PendingApprovals from "./pending-approvals";
 import PermissionMatrix from "./permission-matrix";
 import UserEditableFields from "./user-editable-fields";
 import EmploymentStatusCell from "./employment-status-cell";
+import EmployeeCodeCell from "./employee-code-cell";
 
 // NV/Quản lý kho thành phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao
 // tác — xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
@@ -37,6 +38,7 @@ export default async function UsersPage({
   const canEditEmployment = canEditEmploymentType(session?.user?.role);
   const canEditWorkplace = canAssignWorkplace(session?.user?.role);
   const canManageStatus = canManageEmploymentStatus(session?.user?.role);
+  const canEditCode = canEditEmployeeCode(session?.user?.role);
   const assignableRoles = creatableRolesFor(session?.user?.role);
   // "Phân quyền truy cập trang theo vai trò" chỉ Admin/Admin cấp cao — NV Hành chính nhân sự KHÔNG được
   // xem/sửa (chỉ /api/permissions PATCH chặn ghi, ẩn hẳn tab này khỏi HR để tránh hiểu nhầm là dùng được).
@@ -155,7 +157,13 @@ export default async function UsersPage({
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
-                        <td className="px-4 py-3 text-sm font-mono text-text-secondary">{user.code}</td>
+                        <td className="px-4 py-3">
+                          <EmployeeCodeCell
+                            userId={user.id}
+                            code={user.code}
+                            canEdit={canEditCode && !!user.role && PRODUCTION_SITE_ROLES.includes(user.role as UserRole)}
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-foreground">{user.name}</p>
                           <p className="text-xs text-text-secondary">{user.email}</p>

@@ -98,6 +98,19 @@ export function canManageEmploymentStatus(role: UserRole | null | undefined): bo
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Vai trò thuộc "cơ sở sản xuất" (kho sản xuất, khác kho thành phẩm/SALE) — dùng để giới hạn phạm vi
+// canEditEmployeeCode bên dưới, khớp nhóm "sanXuatWarehouses" ở edit-user-dialog.tsx/users/page.tsx.
+export const PRODUCTION_SITE_ROLES: UserRole[] = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "NHAN_VIEN_SAN_XUAT"];
+
+// Ai được sửa riêng "Mã nhân viên" của NV thuộc cơ sở sản xuất (PRODUCTION_SITE_ROLES) — trước đây chỉ
+// sửa được qua "Sửa tài khoản" đầy đủ (chỉ SUPER_ADMIN, xem EditUserDialog), giờ mở thêm ô sửa nhanh
+// riêng mã ở bảng Người dùng cho NV Hành chính nhân sự tự cập nhật theo thực tế nhân sự tại từng cơ sở,
+// không cần quyền sửa tên/email/vai trò/mật khẩu — cùng phạm vi role với canEditEmploymentType/
+// canAssignWorkplace (SUPER_ADMIN + NV Hành chính nhân sự).
+export function canEditEmployeeCode(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
+}
+
 // Vai trò được phép gán khi tạo tài khoản mới, theo vai trò người tạo — Admin/Admin cấp cao tạo được mọi
 // vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
