@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import StaffMultiFilter from "@/components/shared/staff-multi-filter";
+import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Loader2 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -13,6 +14,7 @@ import { INSTRUCTION_STATUS_LABELS } from "@/types";
 import type { InstructionStatus } from "@prisma/client";
 
 type Staff = { id: string; name: string; code: string };
+type PlantType = { id: string; code: string; name: string };
 type Row = {
   instructionId: string;
   code: string;
@@ -33,6 +35,8 @@ type Summary = { totalContaminated: number; totalInput: number; overallRatePct: 
 export default function MotherContaminationReport() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
+  const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [from, setFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [rows, setRows] = useState<Row[]>([]);
@@ -51,11 +55,16 @@ export default function MotherContaminationReport() {
       });
   }, []);
 
+  useEffect(() => {
+    fetch("/api/plant-types").then((r) => r.json()).then((d) => setPlantTypes(Array.isArray(d) ? d : []));
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ from, to });
       if (selectedStaffIds.length > 0) params.set("staffIds", selectedStaffIds.join(","));
+      if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
       const res = await fetch(`/api/reports/mother-contamination?${params}`);
       const data = await res.json();
       setRows(Array.isArray(data.rows) ? data.rows : []);
@@ -63,7 +72,7 @@ export default function MotherContaminationReport() {
     } finally {
       setLoading(false);
     }
-  }, [selectedStaffIds, from, to]);
+  }, [selectedStaffIds, selectedPlantTypeIds, from, to]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -81,6 +90,10 @@ export default function MotherContaminationReport() {
             <div className="space-y-1">
               <Label className="text-xs">Nhân viên</Label>
               <StaffMultiFilter staffList={staffList} selectedIds={selectedStaffIds} onChange={setSelectedStaffIds} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Mã cây</Label>
+              <PlantTypeMultiFilter plantTypes={plantTypes} selectedIds={selectedPlantTypeIds} onChange={setSelectedPlantTypeIds} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Từ ngày</Label>

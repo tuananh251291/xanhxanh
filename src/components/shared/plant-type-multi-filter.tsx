@@ -49,9 +49,12 @@ export default function PlantTypeMultiFilter({
         <ChevronDownIcon className="w-4 h-4 text-muted-foreground shrink-0" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-64 p-2" align="start">
+        {/* onKeyDown chặn nổi bọt lên Popup — base-ui Menu tự bắt phím ký tự đơn để "gõ nhảy tới mục" (typeahead)
+            và preventDefault(), nếu không chặn thì gõ chữ vào ô này sẽ không hiện ra được. */}
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => e.stopPropagation()}
           placeholder="Gõ mã hoặc tên cây…"
           className="h-8 mb-2"
         />

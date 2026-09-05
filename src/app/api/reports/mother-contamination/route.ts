@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
   const staffIds = Array.from(
     new Set((searchParams.get("staffIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
   );
+  const plantTypeIds = Array.from(
+    new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+  );
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
   const parsedFrom = fromParam ? parseISO(fromParam) : null;
@@ -38,6 +41,7 @@ export async function GET(req: NextRequest) {
     where: {
       weekStart: { gte: from, lte: to },
       ...(staffIds.length > 0 ? { assignedToId: { in: staffIds } } : {}),
+      ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
     },
     select: {
       id: true,
