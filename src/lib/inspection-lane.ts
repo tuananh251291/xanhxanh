@@ -9,19 +9,24 @@ import type { InspectionLane } from "@prisma/client";
 //
 // Tỉ lệ nhiễm TỔNG HỢP = A (tỉ lệ nhiễm ủ tối) + B (tỉ lệ nhiễm mẫu mẹ bàn giao), tính RIÊNG rồi CỘNG LẠI
 // (không gộp chung tử/mẫu số):
-//   A = trung bình cộng tỉ lệ nhiễm của TỪNG PHIẾU BÀN GIAO (Transfer phòng tối → kho sáng, đã CONFIRMED)
-//       trong tháng — mỗi phiếu tự có 1 tỉ lệ = tổng contaminatedQuantity / tổng initialQuantity của các
-//       LotInspectionItem (NV tự kiểm tra sau đủ ngày ủ tối) thuộc các lô trong phiếu đó. Đây là số liệu
-//       NV cấy mô tự nhập/tự kiểm tra — có sẵn cho MỌI luồng (kể cả Xanh, vì bước tự kiểm tra trước bàn
-//       giao là bắt buộc với mọi lô, không phụ thuộc luồng) nên không sợ "Xanh mãi không ai kiểm tra".
+//   A = trung bình cộng tỉ lệ nhiễm của TỪNG NGÀY SẢN XUẤT trong tháng — 1 "ngày sản xuất" = 1 LotInspection
+//       (đúng 1 lần NV tự kiểm tra, gộp mọi quy cách M05/T01/T05 sinh ra trong 1 lần nhập số liệu cấy, xem
+//       comment model LotInspection). Tỉ lệ của 1 ngày =
+//         (số lượng NV cấy mô tự lọc ra nhiễm trước khi bàn giao [LotInspectionItem.contaminatedQuantity]
+//          + số lượng Kho mô phát hiện THÊM lúc nhận bàn giao [TransferInspectionItem.contaminatedQuantity,
+//            khớp qua lotId → TransferItem → Transfer.inspection, theo stageCode — CHỈ có với luồng
+//            Vàng/Đỏ/chưa có dữ liệu, luồng Xanh không bị kiểm tra lại nên phần này luôn = 0])
+//         / tổng số lượng SẢN XUẤT RA của đúng ngày đó [LotInspection.totalQuantity].
+//       Phần tự kiểm tra là số NV cấy mô tự nhập — có sẵn cho MỌI luồng, không sợ "Xanh mãi không ai kiểm
+//       tra" vì phần đó vẫn có; chỉ riêng phần "Kho mô phát hiện thêm" là 0 với luồng Xanh (không kiểm lại).
 //   B = trung bình cộng tỉ lệ nhiễm của TỪNG CHỈ ĐỊNH CẤY (không tính chỉ định dự phòng — isBackup, và
 //       không tính Chỉ định cấy xử lý vì đó là model RepackInstruction riêng) có weekStart trong tháng,
 //       gán cho đúng NV này — tỉ lệ 1 chỉ định = tổng DailyRecord.motherContaminatedM05 / inputMotherQuantity
 //       của chỉ định đó (cùng công thức /api/reports/mother-contamination) — cũng là số NV tự nhập hàng
 //       ngày, không phụ thuộc luồng.
 //
-// Cả A và B đều lấy trung bình CỘNG các tỉ lệ (không lấy tổng nhiễm/tổng số rồi chia 1 lần) — 1 phiếu/1
-// chỉ định nhỏ vẫn có trọng số ngang 1 phiếu/1 chỉ định lớn, đúng theo ví dụ Admin đưa ra.
+// Cả A và B đều lấy trung bình CỘNG các tỉ lệ (không lấy tổng nhiễm/tổng số rồi chia 1 lần) — 1 ngày/1
+// chỉ định nhỏ vẫn có trọng số ngang 1 ngày/1 chỉ định lớn, đúng theo ví dụ Admin đưa ra.
 
 const LOW_THRESHOLD_PCT = 10; // < 10% = Xanh
 const HIGH_THRESHOLD_PCT = 15; // 10-15% = Vàng (bao gồm đúng 15%), > 15% = Đỏ
@@ -41,45 +46,53 @@ type MonthlyContaminationStats = {
   hasData: boolean;
 };
 
-// A — xem giải thích ở đầu file. `dataMonthStart`/`dataMonthEnd` là 1 tháng dương lịch trọn vẹn.
+// A — xem giải thích ở đầu file. `dataMonthStart`/`dataMonthEnd` là 1 tháng dương lịch trọn vẹn. 1 "ngày
+// sản xuất" = 1 LotInspection (staffId = đúng NV này, createdAt trong tháng).
 async function computeDarkRoomRate(staffId: string, dataMonthStart: Date, dataMonthEnd: Date): Promise<{ ratePct: number; sampleCount: number }> {
-  const transfers = await prisma.transfer.findMany({
-    where: {
-      status: "CONFIRMED",
-      fromUserId: staffId,
-      fromRoom: { type: "PHONG_TOI" },
-      confirmedAt: { gte: dataMonthStart, lte: dataMonthEnd },
+  const inspections = await prisma.lotInspection.findMany({
+    where: { staffId, createdAt: { gte: dataMonthStart, lte: dataMonthEnd } },
+    select: {
+      totalQuantity: true,
+      items: {
+        select: {
+          lotId: true,
+          stageCode: true,
+          contaminatedQuantity: true,
+          lot: { select: { instruction: { select: { isBackup: true } } } },
+        },
+      },
     },
-    select: { items: { select: { lotId: true } } },
   });
-  if (transfers.length === 0) return { ratePct: 0, sampleCount: 0 };
+  if (inspections.length === 0) return { ratePct: 0, sampleCount: 0 };
 
-  const allLotIds = Array.from(new Set(transfers.flatMap((t) => t.items.map((i) => i.lotId))));
-  const inspectionItems = await prisma.lotInspectionItem.findMany({
-    where: { lotId: { in: allLotIds } },
-    select: { lotId: true, initialQuantity: true, contaminatedQuantity: true, lot: { select: { instruction: { select: { isBackup: true } } } } },
-  });
-  const byLotId = new Map<string, { initial: number; contaminated: number }>();
-  for (const item of inspectionItems) {
-    // Bỏ qua lô từ chỉ định dự phòng — xem lưu ý ở đầu file.
-    if (item.lot.instruction?.isBackup) continue;
-    const entry = byLotId.get(item.lotId) ?? { initial: 0, contaminated: 0 };
-    entry.initial += item.initialQuantity;
-    entry.contaminated += item.contaminatedQuantity;
-    byLotId.set(item.lotId, entry);
-  }
+  // Kho mô phát hiện THÊM lúc nhận bàn giao — khớp qua lotId → TransferItem → Transfer.inspection, theo
+  // stageCode (cùng cách khớp đã dùng ở /api/reports/dark-room-contamination) — CHỈ có dữ liệu với
+  // luồng Vàng/Đỏ/chưa có dữ liệu (luồng Xanh không bị Kho mô kiểm tra lại nên không có TransferInspection).
+  const allLotIds = Array.from(new Set(inspections.flatMap((i) => i.items.map((it) => it.lotId))));
+  const transferItems = allLotIds.length
+    ? await prisma.transferItem.findMany({
+        where: { lotId: { in: allLotIds } },
+        select: { lotId: true, transfer: { select: { inspection: { select: { items: { select: { stageCode: true, contaminatedQuantity: true } } } } } } },
+      })
+    : [];
+  const redFlowItemsByLotId = new Map(transferItems.map((ti) => [ti.lotId, ti.transfer.inspection?.items ?? null]));
 
   const rates: number[] = [];
-  for (const t of transfers) {
-    let initial = 0;
-    let contaminated = 0;
-    for (const item of t.items) {
-      const found = byLotId.get(item.lotId);
-      if (!found) continue; // lô dự phòng đã bị loại ở trên, hoặc chưa có dữ liệu tự kiểm tra
-      initial += found.initial;
-      contaminated += found.contaminated;
+  for (const insp of inspections) {
+    // Bỏ hẳn ngày nào TOÀN BỘ là lô từ chỉ định dự phòng — xem lưu ý ở đầu file. Thực tế 1 NV chỉ làm 1
+    // chỉ định/ngày nên hiếm khi có ngày trộn lẫn dự phòng + chỉ định thường.
+    if (insp.items.every((it) => it.lot.instruction?.isBackup)) continue;
+
+    let selfContaminated = 0;
+    let khoMoAdditional = 0;
+    for (const item of insp.items) {
+      if (item.lot.instruction?.isBackup) continue;
+      selfContaminated += item.contaminatedQuantity;
+      const redFlowItems = redFlowItemsByLotId.get(item.lotId);
+      const matches = redFlowItems?.filter((r) => r.stageCode === item.stageCode) ?? [];
+      for (const m of matches) khoMoAdditional += m.contaminatedQuantity;
     }
-    if (initial > 0) rates.push((contaminated / initial) * 100);
+    if (insp.totalQuantity > 0) rates.push(((selfContaminated + khoMoAdditional) / insp.totalQuantity) * 100);
   }
   if (rates.length === 0) return { ratePct: 0, sampleCount: 0 };
   return { ratePct: rates.reduce((s, r) => s + r, 0) / rates.length, sampleCount: rates.length };
