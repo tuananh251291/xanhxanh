@@ -9,9 +9,11 @@ import type { InspectionLane } from "@prisma/client";
 //
 // Tỉ lệ nhiễm TỔNG HỢP = A (tỉ lệ nhiễm ủ tối) + B (tỉ lệ nhiễm mẫu mẹ bàn giao), tính RIÊNG rồi CỘNG LẠI
 // (không gộp chung tử/mẫu số):
-//   A = trung bình cộng tỉ lệ nhiễm của TỪNG NGÀY SẢN XUẤT trong tháng — 1 "ngày sản xuất" = 1 LotInspection
-//       (đúng 1 lần NV tự kiểm tra, gộp mọi quy cách M05/T01/T05 sinh ra trong 1 lần nhập số liệu cấy, xem
-//       comment model LotInspection). Tỉ lệ của 1 ngày =
+//   A = trung bình cộng tỉ lệ nhiễm của TỪNG NGÀY CÓ PHÁT HIỆN NHIỄM trong tháng (KHÔNG chia cho tổng số
+//       ngày sản xuất — ngày nào 0% nhiễm thì KHÔNG tính vào mẫu số trung bình, chỉ ngày nào có nhiễm mới
+//       được cộng vào rồi chia đúng cho số ngày đó). 1 "ngày sản xuất" = 1 LotInspection (đúng 1 lần NV tự
+//       kiểm tra, gộp mọi quy cách M05/T01/T05 sinh ra trong 1 lần nhập số liệu cấy, xem comment model
+//       LotInspection). Tỉ lệ của 1 ngày có phát hiện nhiễm =
 //         (số lượng NV cấy mô tự lọc ra nhiễm trước khi bàn giao [LotInspectionItem.contaminatedQuantity]
 //          + số lượng Kho mô phát hiện THÊM lúc nhận bàn giao [TransferInspectionItem.contaminatedQuantity,
 //            khớp qua lotId → TransferItem → Transfer.inspection, theo stageCode — CHỈ có với luồng
@@ -19,6 +21,8 @@ import type { InspectionLane } from "@prisma/client";
 //         / tổng số lượng SẢN XUẤT RA của đúng ngày đó [LotInspection.totalQuantity].
 //       Phần tự kiểm tra là số NV cấy mô tự nhập — có sẵn cho MỌI luồng, không sợ "Xanh mãi không ai kiểm
 //       tra" vì phần đó vẫn có; chỉ riêng phần "Kho mô phát hiện thêm" là 0 với luồng Xanh (không kiểm lại).
+//       Tháng có sản xuất nhưng KHÔNG ngày nào phát hiện nhiễm → A = 0% (thành tích tốt, KHÔNG phải thiếu
+//       dữ liệu) — chỉ coi là "thiếu dữ liệu" khi tháng đó NV không hề có ngày sản xuất nào.
 //   B = trung bình cộng tỉ lệ nhiễm của TỪNG CHỈ ĐỊNH CẤY (không tính chỉ định dự phòng — isBackup, và
 //       không tính Chỉ định cấy xử lý vì đó là model RepackInstruction riêng) có weekStart trong tháng,
 //       gán cho đúng NV này — tỉ lệ 1 chỉ định = tổng DailyRecord.motherContaminatedM05 / inputMotherQuantity
@@ -47,8 +51,15 @@ type MonthlyContaminationStats = {
 };
 
 // A — xem giải thích ở đầu file. `dataMonthStart`/`dataMonthEnd` là 1 tháng dương lịch trọn vẹn. 1 "ngày
-// sản xuất" = 1 LotInspection (staffId = đúng NV này, createdAt trong tháng).
-async function computeDarkRoomRate(staffId: string, dataMonthStart: Date, dataMonthEnd: Date): Promise<{ ratePct: number; sampleCount: number }> {
+// sản xuất" = 1 LotInspection (staffId = đúng NV này, createdAt trong tháng). `hadProductionData` = có ít
+// nhất 1 ngày sản xuất hợp lệ trong tháng hay không — TÁCH RIÊNG khỏi sampleCount (số ngày CÓ nhiễm) vì
+// sampleCount = 0 có thể là "không có ngày nào sản xuất" (thiếu dữ liệu) HOẶC "có sản xuất nhưng không
+// ngày nào nhiễm" (A = 0% hợp lệ) — 2 trường hợp cần phân biệt để không mặc định nhầm Vàng.
+async function computeDarkRoomRate(
+  staffId: string,
+  dataMonthStart: Date,
+  dataMonthEnd: Date
+): Promise<{ ratePct: number; sampleCount: number; hadProductionData: boolean }> {
   const inspections = await prisma.lotInspection.findMany({
     where: { staffId, createdAt: { gte: dataMonthStart, lte: dataMonthEnd } },
     select: {
@@ -63,7 +74,7 @@ async function computeDarkRoomRate(staffId: string, dataMonthStart: Date, dataMo
       },
     },
   });
-  if (inspections.length === 0) return { ratePct: 0, sampleCount: 0 };
+  if (inspections.length === 0) return { ratePct: 0, sampleCount: 0, hadProductionData: false };
 
   // Kho mô phát hiện THÊM lúc nhận bàn giao — khớp qua lotId → TransferItem → Transfer.inspection, theo
   // stageCode (cùng cách khớp đã dùng ở /api/reports/dark-room-contamination) — CHỈ có dữ liệu với
@@ -78,10 +89,13 @@ async function computeDarkRoomRate(staffId: string, dataMonthStart: Date, dataMo
   const redFlowItemsByLotId = new Map(transferItems.map((ti) => [ti.lotId, ti.transfer.inspection?.items ?? null]));
 
   const rates: number[] = [];
+  let hadProductionData = false;
   for (const insp of inspections) {
     // Bỏ hẳn ngày nào TOÀN BỘ là lô từ chỉ định dự phòng — xem lưu ý ở đầu file. Thực tế 1 NV chỉ làm 1
     // chỉ định/ngày nên hiếm khi có ngày trộn lẫn dự phòng + chỉ định thường.
     if (insp.items.every((it) => it.lot.instruction?.isBackup)) continue;
+    if (insp.totalQuantity <= 0) continue;
+    hadProductionData = true;
 
     let selfContaminated = 0;
     let khoMoAdditional = 0;
@@ -92,10 +106,13 @@ async function computeDarkRoomRate(staffId: string, dataMonthStart: Date, dataMo
       const matches = redFlowItems?.filter((r) => r.stageCode === item.stageCode) ?? [];
       for (const m of matches) khoMoAdditional += m.contaminatedQuantity;
     }
-    if (insp.totalQuantity > 0) rates.push(((selfContaminated + khoMoAdditional) / insp.totalQuantity) * 100);
+    // Chỉ đưa vào mẫu số trung bình những ngày THỰC SỰ có nhiễm — ngày 0% nhiễm không kéo tụt trung bình
+    // xuống (không tính là 1 "mẫu" 0%), theo đúng yêu cầu chỉ chia cho số ngày phát hiện nhiễm.
+    const numerator = selfContaminated + khoMoAdditional;
+    if (numerator > 0) rates.push((numerator / insp.totalQuantity) * 100);
   }
-  if (rates.length === 0) return { ratePct: 0, sampleCount: 0 };
-  return { ratePct: rates.reduce((s, r) => s + r, 0) / rates.length, sampleCount: rates.length };
+  if (rates.length === 0) return { ratePct: 0, sampleCount: 0, hadProductionData };
+  return { ratePct: rates.reduce((s, r) => s + r, 0) / rates.length, sampleCount: rates.length, hadProductionData };
 }
 
 // B — xem giải thích ở đầu file.
@@ -131,7 +148,9 @@ export async function computeMonthlyContaminationStats(staffId: string, dataMont
     brightRoomRatePct: brightRoom.ratePct,
     brightRoomSampleCount: brightRoom.sampleCount,
     combinedRatePct: darkRoom.ratePct + brightRoom.ratePct,
-    hasData: darkRoom.sampleCount > 0 || brightRoom.sampleCount > 0,
+    // darkRoom.sampleCount = 0 KHÔNG có nghĩa là thiếu dữ liệu (có thể là tháng sạch, không ngày nào
+    // nhiễm) — phải xét hadProductionData riêng, xem computeDarkRoomRate.
+    hasData: darkRoom.hadProductionData || brightRoom.sampleCount > 0,
   };
 }
 

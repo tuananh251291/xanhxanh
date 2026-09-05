@@ -2094,10 +2094,11 @@ model InspectionLaneMonthlyResult {
   applyMonth DateTime @db.Date
   dataMonth  DateTime @db.Date
 
-  // A — trung bình tỉ lệ nhiễm ủ tối theo TỪNG NGÀY SẢN XUẤT (1 ngày = 1 LotInspection) trong dataMonth —
-  // (NV tự lọc nhiễm + Kho mô phát hiện thêm lúc nhận bàn giao) / tổng số lượng sản xuất ra ngày đó, xem
-  // computeDarkRoomRate (src/lib/inspection-lane.ts). darkRoomSampleCount = số ngày dùng để tính trung
-  // bình, 0 nếu tháng đó không có ngày nào.
+  // A — trung bình tỉ lệ nhiễm ủ tối theo TỪNG NGÀY CÓ PHÁT HIỆN NHIỄM (1 ngày = 1 LotInspection) trong
+  // dataMonth — (NV tự lọc nhiễm + Kho mô phát hiện thêm lúc nhận bàn giao) / tổng số lượng sản xuất ra
+  // ngày đó, xem computeDarkRoomRate (src/lib/inspection-lane.ts). Ngày 0% nhiễm KHÔNG tính vào mẫu số.
+  // darkRoomSampleCount = số ngày CÓ nhiễm dùng để tính trung bình — 0 có thể là tháng sạch (không ngày
+  // nào nhiễm, darkRoomRatePct vẫn = 0% hợp lệ) hoặc thiếu dữ liệu hoàn toàn, xem hasData/hadProductionData.
   darkRoomRatePct     Float
   darkRoomSampleCount Int
   // B — trung bình tỉ lệ nhiễm mẫu mẹ bàn giao (DailyRecord.motherContaminatedM05 / inputMotherQuantity,
