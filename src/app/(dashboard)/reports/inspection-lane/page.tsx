@@ -9,6 +9,10 @@ import { format } from "date-fns";
 
 const fmtPct = (n: number) => `${n.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
 
+// Đỏ trước, đến Vàng, rồi Xanh — chưa có dữ liệu xếp cuối cùng. Trong cùng 1 luồng, % nhiễm tổng hợp
+// cao xếp lên đầu (NV cần chú ý nhất luôn nổi lên trên, dù đang ở luồng nào).
+const LANE_SORT_PRIORITY: Record<"DO" | "VANG" | "XANH", number> = { DO: 0, VANG: 1, XANH: 2 };
+
 // Báo cáo "Phân loại luồng kiểm tra theo cơ sở" — xem NV cấy mô nào đang thuộc luồng Xanh/Vàng/Đỏ, gộp
 // theo TỪNG khu sản xuất. Admin xem được MỌI cơ sở; NV Kỹ thuật/Kho mô chỉ xem đúng cơ sở mình đang được
 // gán (workplaceWarehouseId) — cùng quy ước phạm vi xem đã dùng ở rooting-forecast/production-capacity.
@@ -63,6 +67,16 @@ export default async function InspectionLaneReportPage() {
     const list = staffByWarehouse.get(s.workplaceWarehouseId) ?? [];
     list.push(s);
     staffByWarehouse.set(s.workplaceWarehouseId, list);
+  }
+  for (const list of staffByWarehouse.values()) {
+    list.sort((a, b) => {
+      const pa = a.inspectionLane ? LANE_SORT_PRIORITY[a.inspectionLane] : 3;
+      const pb = b.inspectionLane ? LANE_SORT_PRIORITY[b.inspectionLane] : 3;
+      if (pa !== pb) return pa - pb;
+      const ra = a.inspectionLaneMonthlyResults[0]?.combinedRatePct ?? -1;
+      const rb = b.inspectionLaneMonthlyResults[0]?.combinedRatePct ?? -1;
+      return rb - ra;
+    });
   }
 
   return (
