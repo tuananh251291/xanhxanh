@@ -7,11 +7,13 @@ import { z } from "zod";
 const itemSchema = z.object({
   plantTypeId: z.string().min(1),
   assignedStaffId: z.string().min(1),
-  quantity: z.number().int().min(0),
+  quantity1: z.number().int().min(0),
+  quantity2: z.number().int().min(0),
+  quantity3: z.number().int().min(0),
 });
 const submitSchema = z.object({ items: z.array(itemSchema).min(1, "Cần điền ít nhất 1 dòng") });
 
-// Nộp "Dự kiến đáp ứng cây ra rễ" LẦN ĐẦU (và DUY NHẤT) cho tháng hiện tại — tạo hết các dòng
+// Nộp "Dự kiến đáp ứng cây ra rễ" LẦN ĐẦU (và DUY NHẤT) cho lộ trình 3 tháng hiện tại — tạo hết các dòng
 // RootingForecastEntry rồi khoá lại bằng RootingForecastSubmission trong CÙNG 1 transaction (atomic: hoặc
 // nộp trót lọt hết, hoặc không có gì được lưu). Gọi lại (khi đã khoá) trả 409 — muốn sửa sau khi khoá phải
 // qua POST /api/rooting-forecast-edit-proposals.
@@ -57,7 +59,10 @@ export async function POST(req: NextRequest) {
 
   await prisma.$transaction(async (tx) => {
     for (const item of items) {
-      await applyForecastEntry(tx, { warehouseId, plantTypeId: item.plantTypeId, taskMonth, assignedStaffId: item.assignedStaffId, quantity: item.quantity, enteredById: session.user!.id });
+      await applyForecastEntry(tx, {
+        warehouseId, plantTypeId: item.plantTypeId, taskMonth, assignedStaffId: item.assignedStaffId,
+        quantity1: item.quantity1, quantity2: item.quantity2, quantity3: item.quantity3, enteredById: session.user!.id,
+      });
     }
     await tx.rootingForecastSubmission.create({ data: { warehouseId, taskMonth, submittedById: session.user!.id } });
   });

@@ -7,7 +7,7 @@ import { getTaskMonth } from "@/lib/rooting-forecast";
 import { z } from "zod";
 
 const itemSelect = {
-  id: true, plantTypeId: true, quantity: true, assignedStaffId: true,
+  id: true, plantTypeId: true, quantity1: true, quantity2: true, quantity3: true, assignedStaffId: true,
   plantType: { select: { code: true, name: true } },
   assignedStaff: { select: { code: true, name: true } },
 } as const;
@@ -41,7 +41,9 @@ export async function GET() {
 const itemSchema = z.object({
   plantTypeId: z.string().min(1),
   assignedStaffId: z.string().min(1),
-  quantity: z.number().int().min(0),
+  quantity1: z.number().int().min(0),
+  quantity2: z.number().int().min(0),
+  quantity3: z.number().int().min(0),
 });
 const createSchema = z.object({
   reason: z.string().trim().min(1, "Cần nhập lý do"),
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
   const proposal = await prisma.rootingForecastEditProposal.create({
     data: {
       warehouseId, taskMonth, reason, requestedById: session.user.id,
-      items: { create: items.map((i) => ({ plantTypeId: i.plantTypeId, assignedStaffId: i.assignedStaffId, quantity: i.quantity })) },
+      items: { create: items.map((i) => ({ plantTypeId: i.plantTypeId, assignedStaffId: i.assignedStaffId, quantity1: i.quantity1, quantity2: i.quantity2, quantity3: i.quantity3 })) },
     },
     select: proposalSelect,
   });

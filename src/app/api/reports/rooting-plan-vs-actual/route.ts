@@ -9,10 +9,13 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 
 // Báo cáo "Kế hoạch vs thực tế — Cây ra rễ" (tab "Kế hoạch vs thực tế" của Admin/Admin cấp cao, và trang
 // riêng /reports/rooting-plan-vs-actual cho NV Kỹ thuật — xem cùng 1 dữ liệu, không giới hạn phạm vi xem
-// theo cơ sở của chính NV). Kế hoạch lấy từ RootingForecastEntry (nhiệm vụ tháng NV Kỹ thuật nhập, xem
-// src/lib/rooting-forecast.ts) — 1 dòng taskMonth=M là dự báo cho THÁNG KẾ TIẾP M+1, nên kế hoạch cho 1 kỳ
-// hiển thị T phải lấy đúng dòng có taskMonth = T trừ 1 tháng; xem theo tuần thì lấy kế hoạch THÁNG chứa
-// tuần đó rồi chia 4. Thực tế = sản lượng thành phẩm (DailyRecordItem.quantityCreated, stage THANH_PHAM)
+// theo cơ sở của chính NV). Kế hoạch lấy từ RootingForecastEntry (nhiệm vụ 3 tháng/lần NV Kỹ thuật nhập,
+// xem src/lib/rooting-forecast.ts) — 1 dòng taskMonth=M có quantity1/2/3 lần lượt là dự báo cho 3 tháng
+// M+1/M+2/M+3, nên kế hoạch cho 1 kỳ hiển thị T phải cộng cả 3 khả năng: quantity1 của dòng taskMonth=T-1,
+// quantity2 của dòng taskMonth=T-2, quantity3 của dòng taskMonth=T-3 — do các taskMonth cách nhau ĐÚNG 3
+// tháng nên chỉ ĐÚNG 1 trong 3 khả năng này thực sự tồn tại dữ liệu, cộng cả 3 (mặc định 0) vẫn ra đúng
+// số duy nhất. Xem theo tuần thì lấy kế hoạch THÁNG chứa tuần đó rồi chia 4. Thực tế = sản lượng thành
+// phẩm (DailyRecordItem.quantityCreated, stage THANH_PHAM)
 // — cùng quy ước đã có ở src/lib/production-capacity.ts (lọc theo cơ sở qua NV cấy mô đang gán
 // workplaceWarehouseId đúng cơ sở đó, không có FK kho trực tiếp trên PlantingInstruction/DailyRecord).
 // Query params: unit=week|month, from/to (tuỳ chọn yyyy-MM-dd, có cả 2 mới dùng quãng tự nhập),
@@ -49,10 +52,13 @@ export async function GET(req: NextRequest) {
     buckets = unit === "month" ? getMonthBuckets(DEFAULT_HISTORY_BUCKETS) : getWeekBuckets(DEFAULT_HISTORY_BUCKETS);
   }
 
-  // Kế hoạch — gom mọi taskMonth cần dùng (tháng chứa mỗi bucket, trừ 1 tháng) rồi 1 lần groupBy, tránh
-  // query lặp lại cho từng bucket.
-  const taskMonthForBucket = buckets.map((b) => subMonths(startOfMonth(b.start), 1));
-  const uniqueTaskMonths = Array.from(new Set(taskMonthForBucket.map((d) => format(d, "yyyy-MM-dd")))).map((s) => new Date(s));
+  // Kế hoạch — gom mọi taskMonth cần dùng (tháng chứa mỗi bucket, trừ 1/2/3 tháng — 3 khả năng vì chu kỳ
+  // nhập 3 tháng/lần) rồi 1 lần groupBy, tránh query lặp lại cho từng bucket.
+  const candidateTaskMonthsForBucket = buckets.map((b) => {
+    const displayMonth = startOfMonth(b.start);
+    return [subMonths(displayMonth, 1), subMonths(displayMonth, 2), subMonths(displayMonth, 3)];
+  });
+  const uniqueTaskMonths = Array.from(new Set(candidateTaskMonthsForBucket.flat().map((d) => format(d, "yyyy-MM-dd")))).map((s) => new Date(s));
   const planRows = uniqueTaskMonths.length
     ? await prisma.rootingForecastEntry.groupBy({
         by: ["taskMonth"],
@@ -61,10 +67,12 @@ export async function GET(req: NextRequest) {
           ...(scopeWarehouseId ? { warehouseId: scopeWarehouseId } : {}),
           ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
         },
-        _sum: { quantity: true },
+        _sum: { quantity1: true, quantity2: true, quantity3: true },
       })
     : [];
-  const planByTaskMonth = new Map(planRows.map((r) => [format(r.taskMonth, "yyyy-MM-dd"), r._sum.quantity ?? 0]));
+  const planByTaskMonth = new Map(
+    planRows.map((r) => [format(r.taskMonth, "yyyy-MM-dd"), { q1: r._sum.quantity1 ?? 0, q2: r._sum.quantity2 ?? 0, q3: r._sum.quantity3 ?? 0 }])
+  );
 
   // Thực tế + breakdown nhân sự — 1 query phủ trọn khoảng hiển thị, tự bucket + tự gộp theo staffId cùng
   // lúc (giống fetchDailyRecords/computeActualSeries ở src/lib/production-capacity.ts).
@@ -89,8 +97,11 @@ export async function GET(req: NextRequest) {
   });
 
   const data = buckets.map((b, i) => {
-    const taskMonthKey = format(taskMonthForBucket[i], "yyyy-MM-dd");
-    const monthPlan = planByTaskMonth.get(taskMonthKey) ?? 0;
+    const [t1, t2, t3] = candidateTaskMonthsForBucket[i];
+    const monthPlan =
+      (planByTaskMonth.get(format(t1, "yyyy-MM-dd"))?.q1 ?? 0) +
+      (planByTaskMonth.get(format(t2, "yyyy-MM-dd"))?.q2 ?? 0) +
+      (planByTaskMonth.get(format(t3, "yyyy-MM-dd"))?.q3 ?? 0);
     const bucketPlan = unit === "week" ? monthPlan / 4 : monthPlan;
     return { period: b.label, "Kế hoạch": Math.round(bucketPlan), "Thực tế": 0 };
   });

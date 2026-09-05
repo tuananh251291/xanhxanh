@@ -10,7 +10,10 @@ import { Loader2, Check, X } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { toast } from "sonner";
 
-type ProposalItem = { id: string; plantTypeId: string; quantity: number; plantType: { code: string; name: string }; assignedStaff: { code: string; name: string } };
+type ProposalItem = {
+  id: string; plantTypeId: string; quantity1: number; quantity2: number; quantity3: number;
+  plantType: { code: string; name: string }; assignedStaff: { code: string; name: string };
+};
 type Proposal = {
   id: string; taskMonth: string; reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
@@ -78,7 +81,8 @@ function ProposalCard({ proposal, processing, onReview }: {
         <div className="flex items-start justify-between flex-wrap gap-2">
           <div>
             <p className="font-bold text-primary-strong">
-              {proposal.warehouse.code} — {proposal.warehouse.name} · Tháng {format(addMonths(new Date(proposal.taskMonth), 1), "MM/yyyy")}
+              {proposal.warehouse.code} — {proposal.warehouse.name} · Tháng{" "}
+              {[1, 2, 3].map((n) => format(addMonths(new Date(proposal.taskMonth), n), "MM/yyyy")).join(", ")}
             </p>
             <p className="text-xs text-text-muted">
               NV đề xuất: {proposal.requestedBy.code} — {proposal.requestedBy.name} · {format(new Date(proposal.createdAt), "dd/MM/yyyy HH:mm")}
@@ -103,7 +107,11 @@ function ProposalCard({ proposal, processing, onReview }: {
               <tr className="bg-primary-light">
                 <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã cây</th>
                 <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">NV cấy mô</th>
-                <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Số lượng</th>
+                {[1, 2, 3].map((n) => (
+                  <th key={n} className="text-right px-3 py-2 text-primary-strong font-bold text-base">
+                    SL — Th.{format(addMonths(new Date(proposal.taskMonth), n), "MM/yyyy")}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -111,7 +119,9 @@ function ProposalCard({ proposal, processing, onReview }: {
                 <tr key={item.id} className="border-b border-divider last:border-0 even:bg-background">
                   <td className="px-3 py-2 font-mono text-foreground">{item.plantType.code} — {item.plantType.name}</td>
                   <td className="px-3 py-2 text-foreground">{item.assignedStaff.code} — {item.assignedStaff.name}</td>
-                  <td className="px-3 py-2 text-right font-medium text-foreground">{item.quantity.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-right font-medium text-foreground">{item.quantity1.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-right font-medium text-foreground">{item.quantity2.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-right font-medium text-foreground">{item.quantity3.toLocaleString("vi-VN")}</td>
                 </tr>
               ))}
             </tbody>

@@ -18,18 +18,19 @@ import {
 } from "@/components/ui/combobox";
 import { Loader2, Trash2, Plus, Send, AlertTriangle, PenLine } from "lucide-react";
 import { toast } from "sonner";
-import { format, addMonths } from "date-fns";
+import { format } from "date-fns";
 
 type ForecastEntryRow = {
   entryId: string;
   plantTypeId: string; plantTypeCode: string; plantTypeName: string;
   assignedStaffId: string; staffCode: string; staffName: string;
-  quantity: number;
+  quantity1: number; quantity2: number; quantity3: number;
 };
 type AvailableStaff = { id: string; code: string; name: string };
 type PlantType = { id: string; code: string; name: string };
 type ForecastStatus = {
   taskMonth: string;
+  targetMonths: [string, string, string];
   deadline: string;
   entries: ForecastEntryRow[];
   availableStaff: AvailableStaff[];
@@ -39,7 +40,10 @@ type ForecastStatus = {
 };
 type ComboOption = { value: string; label: string };
 
-type ProposalItem = { id: string; plantTypeId: string; quantity: number; plantType: { code: string; name: string }; assignedStaff: { code: string; name: string } };
+type ProposalItem = {
+  id: string; plantTypeId: string; quantity1: number; quantity2: number; quantity3: number;
+  plantType: { code: string; name: string }; assignedStaff: { code: string; name: string };
+};
 type Proposal = {
   id: string; taskMonth: string; reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
@@ -50,12 +54,17 @@ type Proposal = {
   items: ProposalItem[];
 };
 
+const monthLabel = (iso: string) => format(new Date(iso), "MM/yyyy");
+
 const DEFAULT_BLANK_ROWS = 10;
 
-type DraftRow = { key: string; plantTypeOption: ComboOption | null; staffOption: ComboOption | null; quantity: string };
+type DraftRow = {
+  key: string; plantTypeOption: ComboOption | null; staffOption: ComboOption | null;
+  quantity1: string; quantity2: string; quantity3: string;
+};
 
 function newDraftRow(): DraftRow {
-  return { key: `draft-${Math.random().toString(36).slice(2)}`, plantTypeOption: null, staffOption: null, quantity: "" };
+  return { key: `draft-${Math.random().toString(36).slice(2)}`, plantTypeOption: null, staffOption: null, quantity1: "", quantity2: "", quantity3: "" };
 }
 
 function StatusBadge({ status }: { status: ForecastStatus }) {
@@ -84,13 +93,16 @@ function ProposalStatusBadge({ status }: { status: Proposal["status"] }) {
 
 // 1 bảng dòng (mã cây / NV cấy mô / số lượng / xoá) dùng chung cho cả form nộp lần đầu lẫn form đề xuất
 // chỉnh sửa — khác nhau ở dữ liệu rows/setRows truyền vào.
+const QUANTITY_KEYS = ["quantity1", "quantity2", "quantity3"] as const;
+
 function EntryRowsTable({
-  rows, setRows, plantTypeOptions, staffOptions,
+  rows, setRows, plantTypeOptions, staffOptions, targetMonths,
 }: {
   rows: DraftRow[];
   setRows: React.Dispatch<React.SetStateAction<DraftRow[]>>;
   plantTypeOptions: ComboOption[];
   staffOptions: ComboOption[];
+  targetMonths: [string, string, string];
 }) {
   return (
     <div className="overflow-x-auto">
@@ -99,7 +111,9 @@ function EntryRowsTable({
           <tr className="bg-primary-light text-primary-strong">
             <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
             <th className="px-3 py-2 text-left font-bold text-base">NV cấy mô</th>
-            <th className="px-3 py-2 text-center font-bold text-base">Số lượng dự kiến</th>
+            {targetMonths.map((m, i) => (
+              <th key={i} className="px-3 py-2 text-center font-bold text-base">SL dự kiến — Th.{monthLabel(m)}</th>
+            ))}
             <th className="px-3 py-2 text-center font-bold text-base">Thao tác</th>
           </tr>
         </thead>
@@ -144,15 +158,17 @@ function EntryRowsTable({
                   </ComboboxContent>
                 </Combobox>
               </td>
-              <td className="px-2 py-2">
-                <Input
-                  type="number" min={0}
-                  placeholder="Số lượng"
-                  value={row.quantity}
-                  onChange={(ev) => setRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, quantity: ev.target.value } : r)))}
-                  className="w-28 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-              </td>
+              {QUANTITY_KEYS.map((key) => (
+                <td key={key} className="px-2 py-2">
+                  <Input
+                    type="number" min={0}
+                    placeholder="Số lượng"
+                    value={row[key]}
+                    onChange={(ev) => setRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, [key]: ev.target.value } : r)))}
+                    className="w-24 text-center mx-auto block [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </td>
+              ))}
               <td className="px-3 py-2 text-center">
                 <Button type="button" size="icon-sm" variant="ghost" onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}>
                   <Trash2 className="w-3.5 h-3.5 text-destructive" />
@@ -166,23 +182,24 @@ function EntryRowsTable({
   );
 }
 
-// Lọc còn các dòng ĐÃ ĐIỀN ĐỦ 3 trường, báo lỗi nếu có dòng điền dở (1-2 trong 3 trường) — dòng trống hoàn
-// toàn thì bỏ qua coi như chưa dùng tới.
-function collectValidRows(rows: DraftRow[]): { plantTypeId: string; assignedStaffId: string; quantity: number }[] | null {
-  const result: { plantTypeId: string; assignedStaffId: string; quantity: number }[] = [];
+// Lọc còn các dòng ĐÃ ĐIỀN ĐỦ 5 trường (mã cây, NV, 3 số lượng), báo lỗi nếu có dòng điền dở — dòng trống
+// hoàn toàn thì bỏ qua coi như chưa dùng tới.
+function collectValidRows(rows: DraftRow[]): { plantTypeId: string; assignedStaffId: string; quantity1: number; quantity2: number; quantity3: number }[] | null {
+  const result: { plantTypeId: string; assignedStaffId: string; quantity1: number; quantity2: number; quantity3: number }[] = [];
   for (const row of rows) {
-    const filledCount = [row.plantTypeOption, row.staffOption, row.quantity.trim() !== ""].filter(Boolean).length;
+    const filledFlags = [row.plantTypeOption, row.staffOption, row.quantity1.trim() !== "", row.quantity2.trim() !== "", row.quantity3.trim() !== ""];
+    const filledCount = filledFlags.filter(Boolean).length;
     if (filledCount === 0) continue;
-    if (filledCount < 3 || !row.plantTypeOption || !row.staffOption) {
-      toast.error("Có dòng điền chưa đủ (thiếu mã cây/NV cấy mô/số lượng) — điền đủ hoặc xoá dòng đó");
+    if (filledCount < filledFlags.length || !row.plantTypeOption || !row.staffOption) {
+      toast.error("Có dòng điền chưa đủ (thiếu mã cây/NV cấy mô/số lượng của cả 3 tháng) — điền đủ hoặc xoá dòng đó");
       return null;
     }
-    const quantity = Number(row.quantity);
-    if (!Number.isInteger(quantity) || quantity < 0) {
+    const quantities = [row.quantity1, row.quantity2, row.quantity3].map(Number);
+    if (quantities.some((q) => !Number.isInteger(q) || q < 0)) {
       toast.error("Số lượng phải là số nguyên, không âm");
       return null;
     }
-    result.push({ plantTypeId: row.plantTypeOption.value, assignedStaffId: row.staffOption.value, quantity });
+    result.push({ plantTypeId: row.plantTypeOption.value, assignedStaffId: row.staffOption.value, quantity1: quantities[0], quantity2: quantities[1], quantity3: quantities[2] });
   }
   return result;
 }
@@ -292,8 +309,8 @@ export default function RootingForecastBoard() {
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <p className="text-sm text-text-secondary">
-              Đang dự kiến sản lượng cho <strong className="text-primary-strong">THÁNG SAU — tháng {format(addMonths(new Date(status.taskMonth), 1), "MM/yyyy")}</strong>
-              {" "}· Hạn hoàn thành (của tháng hiện tại): <strong className="text-foreground">{format(new Date(status.deadline), "dd/MM/yyyy")}</strong>
+              Đang dự kiến sản lượng cho <strong className="text-primary-strong">3 THÁNG SAU — tháng {status.targetMonths.map(monthLabel).join(", ")}</strong>
+              {" "}· Hạn hoàn thành lộ trình này: <strong className="text-foreground">{format(new Date(status.deadline), "dd/MM/yyyy")}</strong>
             </p>
             <StatusBadge status={status} />
           </div>
@@ -316,7 +333,7 @@ export default function RootingForecastBoard() {
                 </p>
               </div>
 
-              <EntryRowsTable rows={draftRows} setRows={setDraftRows} plantTypeOptions={plantTypeOptions} staffOptions={staffOptions} />
+              <EntryRowsTable rows={draftRows} setRows={setDraftRows} plantTypeOptions={plantTypeOptions} staffOptions={staffOptions} targetMonths={status.targetMonths} />
 
               <div className="flex items-center gap-3">
                 <Button type="button" variant="outline" size="sm" onClick={() => setDraftRows((prev) => [...prev, newDraftRow()])}>
@@ -336,7 +353,9 @@ export default function RootingForecastBoard() {
                     <tr className="bg-primary-light text-primary-strong">
                       <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
                       <th className="px-3 py-2 text-left font-bold text-base">NV cấy mô</th>
-                      <th className="px-3 py-2 text-center font-bold text-base">Số lượng dự kiến</th>
+                      {status.targetMonths.map((m, i) => (
+                        <th key={i} className="px-3 py-2 text-center font-bold text-base">SL dự kiến — Th.{monthLabel(m)}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -344,7 +363,9 @@ export default function RootingForecastBoard() {
                       <tr key={e.entryId} className="border-b last:border-0 even:bg-primary-light">
                         <td className="px-3 py-2 font-mono">{e.plantTypeCode} — {e.plantTypeName}</td>
                         <td className="px-3 py-2 text-text-secondary">{e.staffCode} — {e.staffName}</td>
-                        <td className="px-3 py-2 text-center tabular-nums">{e.quantity.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-2 text-center tabular-nums">{e.quantity1.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-2 text-center tabular-nums">{e.quantity2.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-2 text-center tabular-nums">{e.quantity3.toLocaleString("vi-VN")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -361,7 +382,7 @@ export default function RootingForecastBoard() {
                     Thêm dòng mới hoặc dòng cần sửa số lượng — gửi Admin duyệt, chỉ khi Admin Duyệt thì dữ
                     liệu chính mới thực sự thay đổi.
                   </p>
-                  <EntryRowsTable rows={editRows} setRows={setEditRows} plantTypeOptions={plantTypeOptions} staffOptions={staffOptions} />
+                  <EntryRowsTable rows={editRows} setRows={setEditRows} plantTypeOptions={plantTypeOptions} staffOptions={staffOptions} targetMonths={status.targetMonths} />
                   <Button type="button" variant="outline" size="sm" onClick={() => setEditRows((prev) => [...prev, newDraftRow()])}>
                     <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm dòng
                   </Button>
@@ -408,7 +429,9 @@ export default function RootingForecastBoard() {
                         <tr key={item.id} className="border-b last:border-0">
                           <td className="py-1 pr-3">{item.plantType.code} — {item.plantType.name}</td>
                           <td className="py-1 pr-3 text-text-secondary">{item.assignedStaff.code} — {item.assignedStaff.name}</td>
-                          <td className="py-1 text-right tabular-nums">{item.quantity.toLocaleString("vi-VN")}</td>
+                          <td className="py-1 pr-3 text-right tabular-nums">{item.quantity1.toLocaleString("vi-VN")}</td>
+                          <td className="py-1 pr-3 text-right tabular-nums">{item.quantity2.toLocaleString("vi-VN")}</td>
+                          <td className="py-1 text-right tabular-nums">{item.quantity3.toLocaleString("vi-VN")}</td>
                         </tr>
                       ))}
                     </tbody>

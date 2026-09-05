@@ -44,7 +44,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       for (const item of proposal.items) {
         await applyForecastEntry(tx, {
           warehouseId: proposal.warehouseId, plantTypeId: item.plantTypeId, taskMonth: proposal.taskMonth,
-          assignedStaffId: item.assignedStaffId, quantity: item.quantity, enteredById: proposal.requestedById,
+          assignedStaffId: item.assignedStaffId,
+          quantity1: item.quantity1, quantity2: item.quantity2, quantity3: item.quantity3,
+          enteredById: proposal.requestedById,
         });
       }
       await tx.rootingForecastEditProposal.update({

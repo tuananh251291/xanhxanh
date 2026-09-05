@@ -224,9 +224,11 @@ enum AlertType {
   // Admin có ghi) để sửa số lượng/loại/ghi chú rồi gửi lại — xem PATCH /api/contamination-proposals/[id]
   // nhánh reject + nhánh resubmit.
   CONTAMINATION_PROPOSAL_REJECTED
-  // Nhắc nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" (xem ensureRootingForecastReminder,
-  // src/lib/rooting-forecast.ts) chưa hoàn thành, tới hạn nhắc ngày 15 (dời ngày 16 nếu 15 là Chủ nhật) —
-  // báo cho đúng NV Kỹ thuật đang gán cơ sở sản xuất đó (userId), 1 lần/tháng/cơ sở.
+  // Báo nhiệm vụ "Dự kiến đáp ứng cây ra rễ" (lộ trình 3 tháng/lần, xem ensureRootingForecastReminder,
+  // src/lib/rooting-forecast.ts) đã MỞ và chưa nộp — gửi từ ngày 5 của taskMonth (đầu tháng cuối cùng
+  // trong lộ trình 3 tháng trước đó), hạn nộp ngày 15 (dời ngày 16 nếu 15 là Chủ nhật) — báo cho đúng NV
+  // Kỹ thuật đang gán cơ sở sản xuất đó (userId), 1 lần/chu kỳ 3 tháng/cơ sở. Tên hằng số giữ nguyên
+  // "MONTHLY" dù chu kỳ đã đổi sang 3 tháng — đổi tên sẽ phải migrate dữ liệu Alert cũ, không cần thiết.
   ROOTING_FORECAST_MONTHLY_DUE
   // NV Kỹ thuật gửi đề xuất chỉnh sửa "Dự kiến đáp ứng cây ra rễ" (sau khi đã khoá) — báo Admin/Admin cấp
   // cao (targetRole) vào duyệt, xem POST /api/rooting-forecast-edit-proposals.
@@ -2508,15 +2510,21 @@ model RootingForecastEntry {
   warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
   plantTypeId     String
   plantType       PlantType @relation(fields: [plantTypeId], references: [id])
-  // Ngày 1 đầu THÁNG NHIỆM VỤ xuất hiện (hạn ngày 15/16 của CHÍNH tháng này) — số quantity là dự báo cho
-  // THÁNG KẾ TIẾP taskMonth.
+  // Ngày 1 đầu THÁNG NHIỆM VỤ (chu kỳ 3 tháng/lần, mở từ ngày 5, hạn ngày 15/16 của CHÍNH tháng này —
+  // xem getTaskMonth/getForecastOpensAt/getForecastDeadline ở src/lib/rooting-forecast.ts). quantity1/2/3
+  // là dự báo cho LẦN LƯỢT 3 THÁNG KẾ TIẾP taskMonth (taskMonth+1, +2, +3) — "lộ trình 3 tháng" nộp 1 lần.
   taskMonth       DateTime  @db.Date
   // NV cấy mô dự kiến đảm nhiệm phần số lượng này (bắt buộc — mỗi dòng gắn đúng 1 NV, không có dòng
   // "chung chung không rõ ai làm"). Không ràng buộc cứng NV này phải cùng cơ sở với warehouseId ở trên
   // (NV Kỹ thuật tự chịu trách nhiệm chọn đúng), nhưng UI chỉ gợi ý NV cấy mô cùng cơ sở.
   assignedStaffId String
   assignedStaff   User      @relation("RootingForecastAssignedStaff", fields: [assignedStaffId], references: [id])
-  quantity        Int
+  // Dự báo cho taskMonth+1/+2/+3 — TÁCH 3 CỘT (không phải mảng) vì Postgres/Prisma ở đây không dùng kiểu
+  // mảng cho các field số liệu khác trong toàn schema, giữ nhất quán + dễ groupBy/_sum riêng từng tháng ở
+  // báo cáo Kế hoạch vs thực tế (xem /api/reports/rooting-plan-vs-actual).
+  quantity1       Int
+  quantity2       Int
+  quantity3       Int
   enteredById     String
   enteredBy       User      @relation("RootingForecastEnteredBy", fields: [enteredById], references: [id])
   enteredAt       DateTime  @default(now())
@@ -2571,7 +2579,7 @@ model RootingForecastEditProposal {
   @@map("rooting_forecast_edit_proposals")
 }
 
-// 1 dòng đề xuất thêm/sửa — cùng hình dạng (mã cây, NV cấy mô, số lượng) với RootingForecastEntry.
+// 1 dòng đề xuất thêm/sửa — cùng hình dạng (mã cây, NV cấy mô, quantity1/2/3) với RootingForecastEntry.
 model RootingForecastEditProposalItem {
   id              String   @id @default(cuid())
   proposalId      String
@@ -2580,7 +2588,9 @@ model RootingForecastEditProposalItem {
   plantType       PlantType @relation(fields: [plantTypeId], references: [id])
   assignedStaffId String
   assignedStaff   User      @relation("RootingForecastEditProposalItemStaff", fields: [assignedStaffId], references: [id])
-  quantity        Int
+  quantity1       Int
+  quantity2       Int
+  quantity3       Int
 
   @@map("rooting_forecast_edit_proposal_items")
 }
