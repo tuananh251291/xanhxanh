@@ -9,7 +9,7 @@ import {
   PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
   FlaskConical, Bell, ShieldPlus, LayoutList, Camera, Sprout, type LucideIcon,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS, ADMIN_DASHBOARD_ALERT_TYPES } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format, differenceInCalendarDays } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -23,14 +23,17 @@ import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 
-async function getAdminStats() {
+async function getAdminStats(role: "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT") {
   const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
     prisma.lot.count(),
     prisma.lot.count({ where: { status: "ACTIVE" } }),
     prisma.order.count({ where: { status: { in: ["HELD", "CONFIRMED"] } } }),
     prisma.user.count({ where: { isActive: true } }),
     prisma.alert.findMany({
-      where: { status: "UNREAD" },
+      // Lọc theo đúng loại cảnh báo phù hợp vai trò Admin đang xem (xem ADMIN_DASHBOARD_ALERT_TYPES) —
+      // trước đây lấy nguyên 5 cảnh báo UNREAD gần nhất bất kỳ, lẫn cả cảnh báo cá nhân của NV khác không
+      // liên quan (VD nhắc Sale cập nhật khách hàng).
+      where: { status: "UNREAD", type: { in: ADMIN_DASHBOARD_ALERT_TYPES[role] } },
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
@@ -462,7 +465,7 @@ export default async function DashboardPage() {
   const userId = session?.user?.id ?? "";
 
   if (isAdminRole(role)) {
-    const stats = await getAdminStats();
+    const stats = await getAdminStats(role as "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT");
     return <AdminDashboard stats={stats} />;
   }
 

@@ -1,6 +1,6 @@
-import type { UserRole, EmploymentType, CustomerGroup } from "@prisma/client";
+import type { UserRole, EmploymentType, CustomerGroup, AlertType } from "@prisma/client";
 
-export type { UserRole, EmploymentType, CustomerGroup };
+export type { UserRole, EmploymentType, CustomerGroup, AlertType };
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: "Admin cấp cao",
@@ -382,6 +382,29 @@ export const ALERT_TYPE_LABELS = {
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
+};
+
+// Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
+// (SUPER_ADMIN/ADMIN/ADMIN_KY_THUAT), không phải lấy nguyên trạng thái UNREAD gần nhất bất kỳ như trước
+// (xem getAdminStats, dashboard/page.tsx) — người dùng tự chốt danh sách theo từng vai trò cần quan tâm
+// gì, KHÔNG cần khớp với targetRole/userId thật của Alert (nhiều loại ở đây vốn gửi cá nhân cho NV khác,
+// Admin chỉ xem để giám sát, không phải người xử lý — widget này chỉ hiển thị, không có nút xử lý).
+export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT", AlertType[]> = {
+  SUPER_ADMIN: [
+    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED",
+    "STOCK_LOW", "LOT_READY_TRANSFER", "ORDER_PENDING_PACK", "MEDIUM_HANDOVER_READY", "ROOTING_LOT_READY",
+    "CONTAMINATION_PROPOSAL", "INSPECTION_RESULT_READY", "ACCOUNT_LOCKED", "PASSWORD_RESET_REQUESTED",
+    "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
+    "ROOTING_FORECAST_MONTHLY_DUE", "ROOTING_FORECAST_EDIT_PROPOSAL",
+  ],
+  ADMIN: [
+    "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED", "STOCK_LOW", "ORDER_PENDING_PACK",
+    "CONTAMINATION_PROPOSAL", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
+  ],
+  ADMIN_KY_THUAT: [
+    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
+    "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "ROOTING_FORECAST_MONTHLY_DUE",
+  ],
 };
 
 // Nhiệm vụ nhỏ "Kiểm tra kho cá nhân" (thuộc checklist "Kiểm tra kho tối" của Kho mô) chỉ cho chọn lỗi vi
