@@ -21,18 +21,18 @@ export default function TrialRoundTaskCard({ rounds }: { rounds: DueTrialRound[]
   if (rounds.length === 0) return null;
 
   return (
-    <Card className="border border-warning bg-warning-light">
+    <Card className="border border-primary-light bg-primary-light">
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2 text-warning-foreground">
+        <CardTitle className="text-base flex items-center gap-2 text-primary-strong">
           <Sprout className="w-4 h-4" /> Nhiệm vụ cần hoàn thành — Cấy chuyển giống thử nghiệm
         </CardTitle>
-        <p className="text-sm text-warning-foreground/80">
+        <p className="text-sm text-primary-strong/80">
           {rounds.length} giống sắp/đã đến hạn cấy (trong 3 ngày tới), cần Cập nhật dữ liệu cấy.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
         {rounds.map((r) => (
-          <div key={r.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-warning-light bg-white flex-wrap">
+          <div key={r.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-primary-light bg-white flex-wrap">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">
                 Giống <Link href={`/rnd/${r.trialVariety.id}`} className="text-info-foreground underline underline-offset-2">{r.trialVariety.name} ({r.trialVariety.code})</Link>
