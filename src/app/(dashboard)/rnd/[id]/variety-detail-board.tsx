@@ -17,7 +17,9 @@ import { vi } from "date-fns/locale";
 type Photo = { id: string; photoUrl1: string; photoUrl2: string | null; note: string | null; createdAt: string; uploadedBy: { name: string } };
 type Round = {
   id: string; motherInputQuantity: number; waitWeeks: number; plantedAt: string; expectedReadyAt: string;
-  outputQuantity: number | null; recordedAt: string | null; notes: string | null;
+  motherContaminatedM05: number | null; motherUsed: number | null; motherChecked: number | null;
+  m05Quantity: number | null; t05Quantity: number | null; t01Quantity: number | null;
+  recordedAt: string | null; notes: string | null;
 };
 type VarietyDetail = {
   id: string; code: string; name: string; plantGroup: string; description: string | null; origin: string | null;
@@ -124,7 +126,11 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                     <th className="py-2 px-3 font-bold text-base text-center">Mẫu mẹ đưa vào</th>
                     <th className="py-2 px-3 font-bold text-base text-center">Số tuần chờ</th>
                     <th className="py-2 px-3 font-bold text-base">Dự kiến sẵn sàng</th>
-                    <th className="py-2 px-3 font-bold text-base text-center">Cây trả ra</th>
+                    <th className="py-2 px-3 font-bold text-base text-center">MM nhiễm</th>
+                    <th className="py-2 px-3 font-bold text-base text-center">MM sử dụng</th>
+                    <th className="py-2 px-3 font-bold text-base text-center">M05</th>
+                    <th className="py-2 px-3 font-bold text-base text-center">T05</th>
+                    <th className="py-2 px-3 font-bold text-base text-center">T01</th>
                     <th className="py-2 px-3 font-bold text-base">Ghi chú</th>
                   </tr>
                 </thead>
@@ -135,13 +141,17 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                       <td className="py-2 px-3 text-center tabular-nums">{r.motherInputQuantity.toLocaleString("vi-VN")}</td>
                       <td className="py-2 px-3 text-center tabular-nums">{r.waitWeeks}</td>
                       <td className="py-2 px-3 whitespace-nowrap">{format(new Date(r.expectedReadyAt), "dd/MM/yyyy", { locale: vi })}</td>
-                      <td className="py-2 px-3 text-center">
-                        {r.outputQuantity === null ? (
-                          <Badge variant="in-progress">Chưa nhập</Badge>
-                        ) : (
-                          <span className="font-semibold text-primary-strong tabular-nums">{r.outputQuantity.toLocaleString("vi-VN")}</span>
-                        )}
-                      </td>
+                      {r.recordedAt === null ? (
+                        <td className="py-2 px-3 text-center" colSpan={5}><Badge variant="in-progress">Chưa nhập</Badge></td>
+                      ) : (
+                        <>
+                          <td className="py-2 px-3 text-center tabular-nums">{r.motherContaminatedM05?.toLocaleString("vi-VN") ?? "—"}</td>
+                          <td className="py-2 px-3 text-center tabular-nums">{r.motherUsed?.toLocaleString("vi-VN") ?? "—"}</td>
+                          <td className="py-2 px-3 text-center tabular-nums">{r.m05Quantity?.toLocaleString("vi-VN") ?? "—"}</td>
+                          <td className="py-2 px-3 text-center tabular-nums">{r.t05Quantity?.toLocaleString("vi-VN") ?? "—"}</td>
+                          <td className="py-2 px-3 text-center tabular-nums">{r.t01Quantity?.toLocaleString("vi-VN") ?? "—"}</td>
+                        </>
+                      )}
                       <td className="py-2 px-3 text-text-secondary">{r.notes ?? "—"}</td>
                     </tr>
                   ))}

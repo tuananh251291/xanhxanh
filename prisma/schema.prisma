@@ -408,6 +408,7 @@ model User {
   trialVarietiesCreated                TrialVariety[]
   trialVarietyPhotosUploaded           TrialVarietyPhoto[]
   trialCultivationRoundsCreated        TrialCultivationRound[]
+  trialCultivationRoundsRecorded       TrialCultivationRound[]      @relation("TrialRoundRecordedBy")
   taskCompletionExemptions             TaskCompletionExemption[]    @relation("TaskExemptionStaff")
   taskCompletionExemptionsCreated      TaskCompletionExemption[]    @relation("TaskExemptionCreatedBy")
   violationRecordsAsStaff              ViolationRecord[]            @relation("ViolationRecordStaff")
@@ -1328,12 +1329,25 @@ model TrialCultivationRound {
   waitWeeks           Int
   plantedAt           DateTime     @default(now())
   expectedReadyAt     DateTime
-  outputQuantity      Int?
-  recordedAt          DateTime?
-  notes               String?
-  createdById         String
-  createdBy           User         @relation(fields: [createdById], references: [id])
-  createdAt           DateTime     @default(now())
+
+  // Kết quả cấy — nhập 1 LẦN khi hoàn thành nhiệm vụ (xem PATCH /api/trial-cultivation-rounds/[id]), NULL
+  // = chưa nhập. Cùng hình dạng DailyRecord/DailyRecordItem thật (MM nhiễm/MM sử dụng/MM đã kiểm tra +
+  // M05/T05/T01) để form "Cập nhật dữ liệu cấy" giống hệt giao diện NV cấy mô — nhưng KHÔNG đụng gì tới
+  // Lot/tồn kho/lương thật, chỉ lưu số liệu tham khảo cho R&D.
+  motherContaminatedM05 Int?
+  motherUsed            Int?
+  motherChecked         Int?
+  m05Quantity           Int?
+  t05Quantity           Int?
+  t01Quantity           Int?
+  recordedAt   DateTime?
+  recordedById String?
+  recordedBy   User?     @relation("TrialRoundRecordedBy", fields: [recordedById], references: [id])
+
+  notes       String?
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
 
   @@index([trialVarietyId])
   @@index([expectedReadyAt])

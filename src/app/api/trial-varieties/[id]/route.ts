@@ -29,7 +29,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         orderBy: { createdAt: "desc" },
         select: {
           id: true, motherInputQuantity: true, waitWeeks: true, plantedAt: true, expectedReadyAt: true,
-          outputQuantity: true, recordedAt: true, notes: true,
+          motherContaminatedM05: true, motherUsed: true, motherChecked: true,
+          m05Quantity: true, t05Quantity: true, t01Quantity: true,
+          recordedAt: true, notes: true,
         },
       },
     },

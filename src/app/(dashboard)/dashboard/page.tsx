@@ -12,6 +12,7 @@ import {
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS, ADMIN_DASHBOARD_ALERT_TYPES } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format, differenceInCalendarDays } from "date-fns";
+import TrialRoundTaskCard from "@/app/(dashboard)/rnd/trial-round-task-card";
 import { vi } from "date-fns/locale";
 import { ensureTodayChecklist } from "@/lib/checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
@@ -23,8 +24,26 @@ import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 
+// Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
+// Admin kỹ thuật (R&D là mục riêng của role này, xem ROLE_NAV.ADMIN_KY_THUAT) — cùng nguồn dữ liệu với
+// GET /api/trial-varieties/due-rounds (query trực tiếp ở đây để khỏi round-trip fetch nội bộ).
+async function getDueTrialRounds() {
+  return prisma.trialCultivationRound.findMany({
+    where: { recordedAt: null, expectedReadyAt: { lte: addDays(new Date(), 3) } },
+    select: {
+      id: true,
+      motherInputQuantity: true,
+      waitWeeks: true,
+      plantedAt: true,
+      expectedReadyAt: true,
+      trialVariety: { select: { id: true, code: true, name: true } },
+    },
+    orderBy: { expectedReadyAt: "asc" },
+  });
+}
+
 async function getAdminStats(role: "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT") {
-  const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts] = await Promise.all([
+  const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts, dueTrialRounds] = await Promise.all([
     prisma.lot.count(),
     prisma.lot.count({ where: { status: "ACTIVE" } }),
     prisma.order.count({ where: { status: { in: ["HELD", "CONFIRMED"] } } }),
@@ -37,8 +56,9 @@ async function getAdminStats(role: "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT") {
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
+    role === "ADMIN_KY_THUAT" ? getDueTrialRounds() : Promise.resolve([]),
   ]);
-  return { totalLots, activeLots, pendingOrders, totalUsers, recentAlerts };
+  return { totalLots, activeLots, pendingOrders, totalUsers, recentAlerts, dueTrialRounds };
 }
 
 async function getSaleStats(userId: string, workplaceWarehouseId: string | null) {
@@ -525,6 +545,7 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
         <p className="text-text-secondary text-sm mt-1">Quản trị hệ thống</p>
       </div>
       <GreetingBanner />
+      {stats.dueTrialRounds.length > 0 && <TrialRoundTaskCard rounds={stats.dueTrialRounds} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Lô cây đang lưu" value={stats.activeLots} icon={Leaf} color="green" />
         <StatCard title="Tổng lô cây" value={stats.totalLots} icon={Package} color="blue" />

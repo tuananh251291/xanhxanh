@@ -31,7 +31,7 @@ type VarietyRow = {
   createdAt: string;
   photoCount: number;
   roundCount: number;
-  latestRound: { expectedReadyAt: string; outputQuantity: number | null } | null;
+  latestRound: { expectedReadyAt: string; recordedAt: string | null } | null;
 };
 
 // Tab "Quản lý giống mới" (R&D, /rnd) — tạo giống thử nghiệm mới (2 ảnh + mô tả, mã tự sinh) + danh sách
@@ -118,7 +118,9 @@ export default function NewVarietyManager() {
 }
 
 type ComboOption = { value: string; label: string };
-type PlantCategory = { id: string; code: string; name: string; isActive: boolean };
+type PlantCategory = { id: string; code: string; name: string; isActive: boolean; plantTypes: { seq: number; transferWaitWeeks: number }[] };
+
+const DEFAULT_TRANSFER_WAIT_WEEKS = 4; // khớp default của PlantType.transferWaitWeeks khi Loại cây chưa có mã cây nào
 
 function CreateVarietyDialog({
   open, onOpenChange, onCreated,
@@ -130,6 +132,8 @@ function CreateVarietyDialog({
   const [name, setName] = useState("");
   const [categoryOption, setCategoryOption] = useState<ComboOption | null>(null);
   const [categories, setCategories] = useState<PlantCategory[]>([]);
+  const [motherInputQuantity, setMotherInputQuantity] = useState("");
+  const [transferWaitWeeks, setTransferWaitWeeks] = useState("");
   const [description, setDescription] = useState("");
   const [origin, setOrigin] = useState("");
   const [photo1, setPhoto1] = useState<string | null>(null);
@@ -145,11 +149,21 @@ function CreateVarietyDialog({
 
   const categoryOptions: ComboOption[] = categories.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }));
 
-  const reset = () => {
-    setName(""); setCategoryOption(null); setDescription(""); setOrigin(""); setPhoto1(null); setPhoto2(null);
+  // Mặc định "Thời gian cấy chuyển" theo mã cây có sẵn (seq nhỏ nhất) của đúng Loại cây vừa chọn — Admin
+  // kỹ thuật vẫn sửa lại được ngay sau đó, không khoá.
+  const onCategoryChange = (val: ComboOption | null) => {
+    setCategoryOption(val);
+    const category = categories.find((c) => c.id === val?.value);
+    const firstType = [...(category?.plantTypes ?? [])].sort((a, b) => a.seq - b.seq)[0];
+    setTransferWaitWeeks(String(firstType?.transferWaitWeeks ?? DEFAULT_TRANSFER_WAIT_WEEKS));
   };
 
-  const canSubmit = name.trim() && categoryOption && photo1 && !saving;
+  const reset = () => {
+    setName(""); setCategoryOption(null); setMotherInputQuantity(""); setTransferWaitWeeks("");
+    setDescription(""); setOrigin(""); setPhoto1(null); setPhoto2(null);
+  };
+
+  const canSubmit = name.trim() && categoryOption && motherInputQuantity.trim() && transferWaitWeeks.trim() && photo1 && !saving;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -161,6 +175,8 @@ function CreateVarietyDialog({
         body: JSON.stringify({
           name: name.trim(),
           plantCategoryId: categoryOption.value,
+          motherInputQuantity: Number(motherInputQuantity),
+          transferWaitWeeks: Number(transferWaitWeeks),
           description: description.trim() || undefined,
           origin: origin.trim() || undefined,
           photo1,
@@ -201,7 +217,7 @@ function CreateVarietyDialog({
               items={categoryOptions}
               value={categoryOption}
               isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(val) => setCategoryOption(val as ComboOption | null)}
+              onValueChange={(val) => onCategoryChange(val as ComboOption | null)}
             >
               <ComboboxInputGroup>
                 <ComboboxInput placeholder="Gõ mã/tên loại cây…" />
@@ -214,6 +230,19 @@ function CreateVarietyDialog({
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Số lượng mẫu mẹ đưa vào cấy <span className="text-destructive">*</span></Label>
+              <Input type="number" min={1} value={motherInputQuantity} onChange={(e) => setMotherInputQuantity(e.target.value)} placeholder="VD: 10" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Thời gian cấy chuyển (tuần) <span className="text-destructive">*</span></Label>
+              <Input type="number" min={1} value={transferWaitWeeks} onChange={(e) => setTransferWaitWeeks(e.target.value)} placeholder="VD: 4" />
+              {categoryOption && (
+                <p className="text-xs text-text-muted">Mặc định theo Loại cây đã chọn — sửa lại được nếu cần.</p>
+              )}
+            </div>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Nguồn gốc</Label>
