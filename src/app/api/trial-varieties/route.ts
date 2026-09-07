@@ -18,7 +18,7 @@ export async function GET() {
     select: {
       id: true, code: true, name: true, plantGroup: true, createdAt: true,
       _count: { select: { photos: true, rounds: true } },
-      rounds: { orderBy: { createdAt: "desc" }, take: 1, select: { expectedReadyAt: true, recordedAt: true, m05Quantity: true, t05Quantity: true, t01Quantity: true } },
+      rounds: { orderBy: { createdAt: "desc" }, take: 1, select: { plantedAt: true, expectedReadyAt: true, recordedAt: true, m05Quantity: true, t05Quantity: true, t01Quantity: true } },
     },
     orderBy: { createdAt: "desc" },
   });
