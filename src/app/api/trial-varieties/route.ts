@@ -44,16 +44,17 @@ const photoField = z
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Nhập tên cây"),
-  plantGroup: z.string().trim().min(1, "Nhập loại cây"),
+  plantCategoryId: z.string().min(1, "Cần chọn loại cây"),
   description: z.string().trim().optional(),
   origin: z.string().trim().optional(),
   photo1: photoField,
   photo2: photoField.optional(),
 });
 
-// Tạo giống mới — sinh mã tự động (generateTrialVarietyCode, "TN999" giảm dần) + 2 ảnh ban đầu (photo2
-// tuỳ chọn) ghi luôn thành đợt ảnh ĐẦU TIÊN của giống (TrialVarietyPhoto) — trang chi tiết chỉ cần đọc
-// photos, không cần phân biệt "ảnh lúc tạo" với "ảnh cập nhật sau".
+// Tạo giống mới — sinh mã tự động theo Loại cây đã chọn (generateTrialVarietyCode, category.code + số
+// giảm dần từ 999) + 2 ảnh ban đầu (photo2 tuỳ chọn) ghi luôn thành đợt ảnh ĐẦU TIÊN của giống
+// (TrialVarietyPhoto) — trang chi tiết chỉ cần đọc photos, không cần phân biệt "ảnh lúc tạo" với "ảnh
+// cập nhật sau".
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -63,10 +64,13 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
-  const { name, plantGroup, description, origin, photo1, photo2 } = parsed.data;
+  const { name, plantCategoryId, description, origin, photo1, photo2 } = parsed.data;
+
+  const category = await prisma.plantCategory.findUnique({ where: { id: plantCategoryId } });
+  if (!category) return NextResponse.json({ message: "Không tìm thấy loại cây" }, { status: 400 });
 
   try {
-    const code = await generateTrialVarietyCode();
+    const code = await generateTrialVarietyCode(category.code);
     const basePath = `${code}/${Date.now()}`;
     const photoUrl1 = await uploadTrialVarietyPhoto(photo1, `${basePath}-1`);
     const photoUrl2 = photo2 ? await uploadTrialVarietyPhoto(photo2, `${basePath}-2`) : null;
@@ -75,7 +79,8 @@ export async function POST(req: NextRequest) {
       data: {
         code,
         name,
-        plantGroup,
+        plantCategoryId,
+        plantGroup: category.name,
         description: description || null,
         origin: origin || null,
         createdById: session!.user!.id,

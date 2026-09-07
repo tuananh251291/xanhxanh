@@ -638,7 +638,8 @@ model PlantCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  plantTypes PlantType[]
+  plantTypes     PlantType[]
+  trialVarieties TrialVariety[]
 
   @@map("plant_categories")
 }
@@ -1277,8 +1278,12 @@ model TrialVariety {
   id          String                  @id @default(cuid())
   code        String                  @unique
   name        String
-  // "Loại cây" — nhãn tự do (chi/họ cây, VD "Alocasia"), KHÔNG phải khoá ngoại tới PlantCategory vì
-  // giống mới có thể thuộc 1 chi/loài chưa từng có trong danh mục hệ thống.
+  // "Loại cây" — chọn từ danh mục Loại cây có sẵn (PlantCategory), dùng để sinh mã (category.code + số
+  // thứ tự, xem generateTrialVarietyCode) — KHÁC trước đây (nhãn tự do, mã luôn "TN" + số). plantGroup
+  // vẫn giữ lại làm nhãn hiển thị, denormalize = category.name TẠI LÚC TẠO — không tự đổi theo sau dù
+  // category bị đổi tên, cùng quy ước denormalize khác trong schema này.
+  plantCategoryId String
+  plantCategory   PlantCategory         @relation(fields: [plantCategoryId], references: [id])
   plantGroup  String
   description String?                 @db.Text
   origin      String?

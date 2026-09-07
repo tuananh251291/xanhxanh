@@ -7,6 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import PhotoCaptureSlot from "@/components/shared/photo-capture-slot";
 import { Loader2, Plus, Sprout } from "lucide-react";
 import { toast } from "sonner";
@@ -107,6 +117,9 @@ export default function NewVarietyManager() {
   );
 }
 
+type ComboOption = { value: string; label: string };
+type PlantCategory = { id: string; code: string; name: string; isActive: boolean };
+
 function CreateVarietyDialog({
   open, onOpenChange, onCreated,
 }: {
@@ -115,18 +128,28 @@ function CreateVarietyDialog({
   onCreated: () => void;
 }) {
   const [name, setName] = useState("");
-  const [plantGroup, setPlantGroup] = useState("");
+  const [categoryOption, setCategoryOption] = useState<ComboOption | null>(null);
+  const [categories, setCategories] = useState<PlantCategory[]>([]);
   const [description, setDescription] = useState("");
   const [origin, setOrigin] = useState("");
   const [photo1, setPhoto1] = useState<string | null>(null);
   const [photo2, setPhoto2] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/plant-categories")
+      .then((r) => r.json())
+      .then((data: PlantCategory[]) => setCategories(Array.isArray(data) ? data.filter((c) => c.isActive) : []));
+  }, [open]);
+
+  const categoryOptions: ComboOption[] = categories.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }));
+
   const reset = () => {
-    setName(""); setPlantGroup(""); setDescription(""); setOrigin(""); setPhoto1(null); setPhoto2(null);
+    setName(""); setCategoryOption(null); setDescription(""); setOrigin(""); setPhoto1(null); setPhoto2(null);
   };
 
-  const canSubmit = name.trim() && plantGroup.trim() && photo1 && !saving;
+  const canSubmit = name.trim() && categoryOption && photo1 && !saving;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -137,7 +160,7 @@ function CreateVarietyDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          plantGroup: plantGroup.trim(),
+          plantCategoryId: categoryOption.value,
           description: description.trim() || undefined,
           origin: origin.trim() || undefined,
           photo1,
@@ -174,7 +197,23 @@ function CreateVarietyDialog({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Loại cây <span className="text-destructive">*</span></Label>
-            <Input value={plantGroup} onChange={(e) => setPlantGroup(e.target.value)} placeholder="VD: Alocasia" />
+            <Combobox
+              items={categoryOptions}
+              value={categoryOption}
+              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+              onValueChange={(val) => setCategoryOption(val as ComboOption | null)}
+            >
+              <ComboboxInputGroup>
+                <ComboboxInput placeholder="Gõ mã/tên loại cây…" />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy loại cây</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Nguồn gốc</Label>
@@ -190,7 +229,7 @@ function CreateVarietyDialog({
               className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
           </div>
-          <p className="text-xs text-text-muted">Mã giống sẽ được hệ thống tự sinh (VD: TN999) sau khi tạo.</p>
+          <p className="text-xs text-text-muted">Mã giống sẽ được hệ thống tự sinh theo Loại cây đã chọn (VD: AL999) sau khi tạo.</p>
           <Button type="button" className="w-full bg-primary hover:bg-primary-hover" disabled={!canSubmit} onClick={submit}>
             {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
             Tạo giống mới

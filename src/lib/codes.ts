@@ -169,16 +169,21 @@ export async function generateWarehouseCode(type: "SAN_XUAT" | "THANH_PHAM"): Pr
   return candidate;
 }
 
-// Mã giống thử nghiệm (R&D, Admin kỹ thuật) = "TN" + số GIẢM DẦN từ 999 — tìm số lớn nhất còn trống thay
-// vì luôn lấy 999 (999 đã dùng thì thử 998...), KHÁC hẳn mọi mã khác trong file này (đều tăng dần từ 1)
-// để không thể nhầm giống thử nghiệm với mã cây sản xuất thật (PlantType.code).
-export async function generateTrialVarietyCode(): Promise<string> {
+// Mã giống thử nghiệm (R&D, Admin kỹ thuật) = mã Loại cây đã chọn (category.code) + số GIẢM DẦN từ 999 —
+// tìm số lớn nhất còn trống thay vì luôn lấy 999 (999 đã dùng thì thử 998...). Trước đây luôn "TN" + số,
+// nay đổi theo đúng Loại cây để dễ nhận biết giống nào thuộc chi/loài nào — vẫn GIẢM DẦN từ 999 (khác mọi
+// mã khác trong file này, đều tăng dần từ 1) và tránh luôn cả mã cây sản xuất thật (PlantType.code) đã
+// tồn tại, để không nhầm giống thử nghiệm với cây sản xuất thật dù trùng tiền tố Loại cây.
+export async function generateTrialVarietyCode(categoryCode: string): Promise<string> {
   for (let n = 999; n >= 1; n--) {
-    const candidate = `TN${n}`;
-    const existing = await prisma.trialVariety.findUnique({ where: { code: candidate } });
-    if (!existing) return candidate;
+    const candidate = `${categoryCode}${n}`;
+    const existingTrial = await prisma.trialVariety.findUnique({ where: { code: candidate } });
+    if (existingTrial) continue;
+    const existingPlantType = await prisma.plantType.findFirst({ where: { code: candidate } });
+    if (existingPlantType) continue;
+    return candidate;
   }
-  throw new Error("Đã đạt giới hạn giống thử nghiệm (TN999-TN1)");
+  throw new Error(`Đã đạt giới hạn giống thử nghiệm cho loại cây ${categoryCode} (999-1)`);
 }
 
 // Mã nhà cung cấp = "NCC" + số thứ tự 2 chữ số, chạy NCC01 - NCC99 (tối đa 99 nhà cung cấp). Tìm ô
