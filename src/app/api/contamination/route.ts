@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { createAlert } from "@/lib/inventory";
+import { createAlertForWarehouseStaff } from "@/lib/inventory";
 import { z } from "zod";
 
 const schema = z.object({
@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
 
   const lot = await prisma.lot.findUnique({
     where: { id: lotId },
-    include: { instruction: { select: { assignedToId: true, code: true, inputMotherQuantity: true } } },
+    include: {
+      instruction: { select: { assignedToId: true, code: true, inputMotherQuantity: true } },
+      shelf: { select: { warehouseId: true } },
+    },
   });
   if (!lot) return NextResponse.json({ message: "Không tìm thấy lô" }, { status: 404 });
   if (quantity > lot.quantity) return NextResponse.json({ message: "Số lượng nhiễm vượt quá tồn kho" }, { status: 400 });
@@ -77,11 +80,12 @@ export async function POST(req: NextRequest) {
   const contaminationRate = totalContaminated / lot.initialQuantity;
 
   if (contaminationRate > 0.2) {
-    await createAlert({
+    await createAlertForWarehouseStaff({
+      role: "KY_THUAT",
+      warehouseId: lot.shelf?.warehouseId,
       type: "CONTAMINATION_HIGH",
       title: "Tỉ lệ nhiễm cao",
       message: `Lô ${lot.code}: ${Math.round(contaminationRate * 100)}% bị nhiễm`,
-      targetRole: "KY_THUAT",
       relatedId: lotId,
       relatedType: "Lot",
     });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
+import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { SURPLUS_TRANSFER_TAG, isKhoThanhPhamRole } from "@/types";
 import { format } from "date-fns";
@@ -262,13 +262,14 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
-  // Bàn giao từ Phòng tối → thông báo cho KHO_MO có phiếu chờ nhận.
+  // Bàn giao từ Phòng tối → thông báo cho đúng KHO_MO cùng kho nguồn có phiếu chờ nhận.
   if (isFromDarkRoom) {
-    await createAlert({
+    await createAlertForWarehouseStaff({
+      role: "KHO_MO",
+      warehouseId: fromWarehouseId,
       type: "LOT_READY_TRANSFER",
       title: "Có phiếu bàn giao từ phòng tối chờ nhận",
       message: `${session.user.name} đã gửi phiếu ${transfer.code} — ${items.length} lô từ phòng tối, chờ xác nhận nhập kho`,
-      targetRole: "KHO_MO",
       relatedId: transfer.id,
       relatedType: "Transfer",
     });

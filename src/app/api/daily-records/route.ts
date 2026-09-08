@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateProductLotCode } from "@/lib/codes";
-import { createAlert, getSystemConfig } from "@/lib/inventory";
+import { createAlert, createAlertForWarehouseStaff, getSystemConfig } from "@/lib/inventory";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { z } from "zod";
@@ -316,20 +316,18 @@ export async function POST(req: NextRequest) {
     // Chặn spam: mỗi chỉ định chỉ giữ tối đa 1 alert CHƯA ĐỌC loại này/người nhận tại 1 thời điểm — nếu
     // tỉ lệ nhiễm vẫn vượt ngưỡng ở lần lưu nhật ký tiếp theo (VD ngày sau) mà chưa kịp đọc alert cũ,
     // không tạo thêm bản ghi trùng; đọc/xử lý xong (đổi status khỏi UNREAD) thì lần lệch tiếp theo mới
-    // tạo alert mới.
-    const existingKhoMoAlert = await prisma.alert.findFirst({
-      where: { type: "MOTHER_CONTAMINATION_HIGH", relatedId: instructionId, targetRole: "KHO_MO", status: "UNREAD" },
+    // tạo alert mới. Chỉ báo cho đúng NV Kho mô đang được gán làm việc ở ĐÚNG kho của chỉ định này
+    // (skipIfUnreadExists thay cho việc tự query targetRole như trước — xem createAlertForWarehouseStaff).
+    await createAlertForWarehouseStaff({
+      role: "KHO_MO",
+      warehouseId,
+      type: "MOTHER_CONTAMINATION_HIGH",
+      title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
+      message: contaminationMessage,
+      relatedId: instructionId,
+      relatedType: "PlantingInstruction",
+      skipIfUnreadExists: true,
     });
-    if (!existingKhoMoAlert) {
-      await createAlert({
-        type: "MOTHER_CONTAMINATION_HIGH",
-        title: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng vượt ngưỡng",
-        message: contaminationMessage,
-        targetRole: "KHO_MO",
-        relatedId: instructionId,
-        relatedType: "PlantingInstruction",
-      });
-    }
 
     const existingKyThuatAlert = await prisma.alert.findFirst({
       where: { type: "MOTHER_CONTAMINATION_HIGH", relatedId: instructionId, userId: instruction.createdById, status: "UNREAD" },

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { createAlert } from "@/lib/inventory";
+import { createAlertForWarehouseStaff } from "@/lib/inventory";
 import { isSameVnCalendarDay } from "@/lib/medium-orders";
 import { isAdminRole } from "@/types";
 import { z } from "zod";
@@ -77,11 +77,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { handedOverAt: new Date() },
     });
     const order = await prisma.mediumOrder.findUnique({ where: { id }, select: { code: true } });
-    await createAlert({
+    // Chỉ báo cho đúng NV Kho mô cùng cơ sở với NV môi trường đang bàn giao (mỗi NV môi trường phục vụ
+    // đúng 1 kho sản xuất, xem WORKPLACE_ROLES ở /api/users/[id]).
+    await createAlertForWarehouseStaff({
+      role: "KHO_MO",
+      warehouseId: session?.user?.workplaceWarehouseId,
       type: "MEDIUM_HANDOVER_READY",
       title: "Môi trường sẵn sàng bàn giao",
       message: `Đơn ${order?.code} ngày ${day.date.toLocaleDateString("vi-VN")} đã bàn giao, chờ Kho mô xác nhận`,
-      targetRole: "KHO_MO",
       relatedId: id,
       relatedType: "MediumOrder",
     });

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { generateTransferCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
+import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 
 type RowError = { row: number; label: string; message: string };
@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
 
   // ---- Tạo hàng loạt trong 1 transaction — chỉ khi cả file không còn dòng lỗi nào ----
   let successCount = 0;
-  const createdForAlerts: { id: string; code: string; isFromDarkRoom: boolean; isFromRootingRoom: boolean; itemCount: number }[] = [];
+  const createdForAlerts: { id: string; code: string; isFromDarkRoom: boolean; isFromRootingRoom: boolean; itemCount: number; fromWarehouseId: string | null }[] = [];
   if (validGroups.length > 0 && errors.length === 0) {
     await prisma.$transaction(async (tx) => {
       for (const g of validGroups) {
@@ -350,7 +350,7 @@ export async function POST(req: NextRequest) {
             items: { create: g.items },
           },
         });
-        createdForAlerts.push({ id: transfer.id, code, isFromDarkRoom: g.isFromDarkRoom, isFromRootingRoom: g.isFromRootingRoom, itemCount: g.items.length });
+        createdForAlerts.push({ id: transfer.id, code, isFromDarkRoom: g.isFromDarkRoom, isFromRootingRoom: g.isFromRootingRoom, itemCount: g.items.length, fromWarehouseId: g.fromWarehouseId });
         successCount += g.items.length;
       }
     });
@@ -358,11 +358,13 @@ export async function POST(req: NextRequest) {
 
   for (const t of createdForAlerts) {
     if (t.isFromDarkRoom) {
-      await createAlert({
+      // Chỉ báo cho đúng NV Kho mô đang được gán làm việc ở ĐÚNG kho nguồn của phiếu này.
+      await createAlertForWarehouseStaff({
+        role: "KHO_MO",
+        warehouseId: t.fromWarehouseId,
         type: "LOT_READY_TRANSFER",
         title: "Có phiếu bàn giao từ phòng tối chờ nhận",
         message: `Đã nhập phiếu ${t.code} — ${t.itemCount} lô từ phòng tối, chờ xác nhận nhập kho`,
-        targetRole: "KHO_MO",
         relatedId: t.id,
         relatedType: "Transfer",
       });

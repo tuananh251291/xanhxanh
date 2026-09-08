@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateLotCode, generateTransferCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
+import { createAlertForWarehouseStaff } from "@/lib/inventory";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -118,11 +118,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   await prisma.plantingInstruction.update({ where: { id }, data: { surplusHandedOverAt: new Date() } });
 
-  await createAlert({
+  await createAlertForWarehouseStaff({
+    role: "KHO_MO",
+    warehouseId: fromWarehouseId,
     type: "LOT_READY_TRANSFER",
     title: "Có phiếu bàn giao MM dư chờ nhận",
     message: `${session.user.name} đã gửi phiếu ${code} — bàn giao ${surplus.toLocaleString("vi-VN")} mẫu mẹ dư từ chỉ định ${instruction.code} đã kết thúc`,
-    targetRole: "KHO_MO",
     relatedId: transfer.id,
     relatedType: "Transfer",
   });

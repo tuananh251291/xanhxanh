@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
-import { createAlert } from "@/lib/inventory";
+import { createAlertForWarehouseStaff } from "@/lib/inventory";
 import { z } from "zod";
 import { addDays, endOfWeek, startOfWeek, startOfDay, format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -153,13 +153,15 @@ export async function POST(req: NextRequest) {
     });
 
     const sessionLabel = expectedEndSession === "SANG" ? "sáng" : "chiều";
-    await createAlert({
+    // Chỉ báo cho đúng NV Kho mô cùng cơ sở với NV cấy mô đang gửi thông báo này.
+    await createAlertForWarehouseStaff({
+      role: "KHO_MO",
+      warehouseId: session.user.workplaceWarehouseId,
       type: "EXTRA_WORK_REQUEST",
       title: instruction ? "NV cấy mô báo hoàn thành sớm chỉ định" : "NV cấy mô báo sẵn sàng nhận thêm việc",
       message: instruction
         ? `${session.user.name} dự kiến hoàn thành sớm chỉ định ${instruction.code} vào ${sessionLabel} ${format(date, "dd/MM/yyyy", { locale: vi })}`
         : `${session.user.name} đã hoàn thành hết chỉ định hiện có, sẵn sàng nhận thêm việc từ ${sessionLabel} ${format(date, "dd/MM/yyyy", { locale: vi })}`,
-      targetRole: "KHO_MO",
       relatedId: request.id,
       relatedType: "ExtraWorkRequest",
     });
@@ -199,11 +201,12 @@ export async function POST(req: NextRequest) {
     parsed.data.purpose === "COMPLETE_MAIN_INSTRUCTION"
       ? "để hoàn thành chỉ định cấy chính được giao trong tuần"
       : "để gia tăng sản lượng";
-  await createAlert({
+  await createAlertForWarehouseStaff({
+    role: "KHO_MO",
+    warehouseId: session.user.workplaceWarehouseId,
     type: "EXTRA_WORK_REQUEST",
     title: "NV cấy mô đăng ký làm thêm ngoài giờ",
     message: `${session.user.name} đăng ký làm thêm ${parsedSlots.length} ngày trong tuần này (${purposeLabel}) — vào Đăng ký cấy thêm để xem chi tiết và duyệt`,
-    targetRole: "KHO_MO",
     relatedId: request.id,
     relatedType: "ExtraWorkRequest",
   });
