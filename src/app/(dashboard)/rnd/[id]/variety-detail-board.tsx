@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import PhotoCaptureSlot from "@/components/shared/photo-capture-slot";
-import { ArrowLeft, Camera, Loader2, Play, Sprout } from "lucide-react";
+import { ArrowLeft, Camera, Loader2, Play, Sprout, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -94,11 +94,14 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                       <div className="w-full aspect-square bg-muted" />
                     )}
                   </div>
-                  <div className="p-2.5">
-                    <p className="text-xs text-text-secondary">
-                      {format(new Date(p.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })} — {p.uploadedBy.name}
-                    </p>
-                    {p.note && <p className="text-xs text-foreground mt-1">{p.note}</p>}
+                  <div className="p-2.5 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-text-secondary">
+                        {format(new Date(p.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })} — {p.uploadedBy.name}
+                      </p>
+                      {p.note && <p className="text-xs text-foreground mt-1">{p.note}</p>}
+                    </div>
+                    <DeletePhotoButton varietyId={varietyId} photoId={p.id} onDeleted={load} />
                   </div>
                 </div>
               ))}
@@ -293,5 +296,36 @@ function StartRoundDialog({ varietyId, onStarted }: { varietyId: string; onStart
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DeletePhotoButton({ varietyId, photoId, onDeleted }: { varietyId: string; photoId: string; onDeleted: () => void }) {
+  const [deleting, setDeleting] = useState(false);
+
+  const onDelete = async () => {
+    if (!window.confirm("Xoá đợt ảnh này? Không thể hoàn tác.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/trial-varieties/${varietyId}/photos/${photoId}`, { method: "DELETE" });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Xoá ảnh thất bại"); return; }
+      toast.success("Đã xoá đợt ảnh");
+      onDeleted();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="text-destructive hover:bg-danger-light shrink-0"
+      disabled={deleting}
+      onClick={onDelete}
+      title="Xoá đợt ảnh"
+    >
+      {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+    </Button>
   );
 }

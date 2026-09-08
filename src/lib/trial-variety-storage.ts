@@ -42,3 +42,18 @@ export async function uploadTrialVarietyPhoto(dataUrl: string, path: string): Pr
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(`${path}.${normalizedExt}`);
   return data.publicUrl;
 }
+
+// Xoá hẳn 1 ảnh khỏi bucket (giải phóng dung lượng lưu trữ thật, không chỉ xoá bản ghi DB) — nhận thẳng
+// URL công khai đã lưu ở TrialVarietyPhoto.photoUrl1/2, tự suy ra lại path lưu trong bucket (mọi URL
+// public của Supabase Storage đều có dạng .../object/public/<bucket>/<path>). Bỏ qua êm nếu không suy ra
+// được path hoặc file đã không còn (không chặn xoá bản ghi DB chỉ vì lỗi dọn storage).
+export async function deleteTrialVarietyPhoto(publicUrl: string): Promise<void> {
+  const marker = `/object/public/${BUCKET}/`;
+  const idx = publicUrl.indexOf(marker);
+  if (idx === -1) return;
+  const path = decodeURIComponent(publicUrl.slice(idx + marker.length));
+  if (!path) return;
+
+  const supabase = getStorageClient();
+  await supabase.storage.from(BUCKET).remove([path]);
+}
