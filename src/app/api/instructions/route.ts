@@ -139,10 +139,20 @@ export async function POST(req: NextRequest) {
   const shelfIds = Array.from(new Set(shelfItems.map((item) => item.shelfId)));
   const validShelves = await prisma.shelf.findMany({
     where: { id: { in: shelfIds }, room: { type: "PHONG_MAU_ME", warehouse: { type: "SAN_XUAT" } } },
-    select: { id: true, code: true, assignedStaffId: true, warehouse: { select: { code: true } } },
+    select: { id: true, code: true, assignedStaffId: true, warehouse: { select: { id: true, code: true } } },
   });
   if (validShelves.length !== shelfIds.length) {
     return NextResponse.json({ message: "Chỉ được chọn kệ trong Phòng mẫu mẹ của Kho sản xuất" }, { status: 400 });
+  }
+  // NV Kỹ thuật chỉ được tạo chỉ định từ kệ thuộc đúng khu sản xuất mình đang làm việc — chặn ở server
+  // phòng khi client gửi thẳng lên (bỏ qua danh sách đã lọc sẵn ở /api/lots).
+  if (session!.user.role === "KY_THUAT") {
+    if (!session!.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Bạn chưa được gán khu sản xuất — không thể tạo chỉ định cấy" }, { status: 403 });
+    }
+    if (validShelves.some((s) => s.warehouse.id !== session!.user.workplaceWarehouseId)) {
+      return NextResponse.json({ message: "Chỉ được chọn kệ thuộc khu sản xuất bạn đang làm việc" }, { status: 403 });
+    }
   }
   // Chỉ định dự phòng bắt buộc nguồn là kệ "chung" chưa chia — chưa gắn NV cụ thể, để Kho mô tự gắn
   // đúng NV đã đăng ký làm thêm/hoàn thành sớm lúc bàn giao (xem PATCH /api/instructions/[id]).

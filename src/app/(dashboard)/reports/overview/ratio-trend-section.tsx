@@ -9,16 +9,22 @@ const HISTORY_WEEKS = 10;
 // (DailyRecord.recordDate), mục tiêu gộp theo TUẦN THỰC HIỆN của chỉ định (PlantingInstruction.weekStart)
 // vì mục tiêu là số KY_THUAT đặt sẵn lúc tạo chỉ định cho cả tuần, không phát sinh theo từng ngày nhập
 // liệu — 2 cách gộp xấp xỉ cùng 1 tuần lịch nên so sánh được, không cần quy đổi thêm.
-export default async function RatioTrendSection() {
+export default async function RatioTrendSection({ warehouseId }: { warehouseId: string | null }) {
   const buckets = getWeekBuckets(HISTORY_WEEKS);
 
   const [dailyRecords, instructions] = await Promise.all([
     prisma.dailyRecord.findMany({
-      where: { recordDate: { gte: buckets[0].start } },
+      where: {
+        recordDate: { gte: buckets[0].start },
+        ...(warehouseId ? { staff: { workplaceWarehouseId: warehouseId } } : {}),
+      },
       select: { recordDate: true, motherUsed: true, items: { select: { stage: true, quantityCreated: true } } },
     }),
     prisma.plantingInstruction.findMany({
-      where: { weekStart: { gte: buckets[0].start } },
+      where: {
+        weekStart: { gte: buckets[0].start },
+        ...(warehouseId ? { items: { some: { shelf: { warehouseId } } } } : {}),
+      },
       select: {
         weekStart: true,
         inputMotherQuantity: true,

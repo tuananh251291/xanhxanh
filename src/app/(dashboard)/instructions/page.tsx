@@ -48,7 +48,11 @@ export default async function InstructionsPage({
 
   const where: Record<string, unknown> = {};
   if (role === "CAY_MO") where.assignedToId = session!.user.id;
-  // Kỹ thuật xem toàn bộ chỉ định cấy trong hệ thống, không chỉ chỉ định do mình tạo.
+  // Kỹ thuật xem toàn bộ chỉ định cấy trong hệ thống ở NHÁNH NÀY — vô hại vì collapseList luôn true cho
+  // KY_THUAT (xem canCreateInstruction bên dưới) nên where này không thực sự dùng để hiện danh sách/đếm
+  // cho họ ở TRANG NÀY (đếm collapseList dùng {} riêng) — phạm vi thật theo khu sản xuất được lọc ở
+  // /instructions/list (trang xem chi tiết) và ở motherDueGroups bên dưới (nhóm mẫu mẹ đến hạn để tạo
+  // chỉ định mới).
   // Kho mô chỉ cần theo dõi chỉ định "chưa bàn giao" và "đã bàn giao/chưa xác nhận" — chỉ định đã
   // hoàn thành (NV cấy mô đã xác nhận nhận mẫu mẹ) không cần hiện lại trong danh sách này nữa. Chỉ định
   // đã bị KY_THUAT hủy (CANCELLED) cũng phải biến mất hẳn khỏi đây — motherReceivedAt vẫn null nên nếu
@@ -93,7 +97,16 @@ export default async function InstructionsPage({
   const motherDueGroups = canCreateInstruction
     ? summarizeMotherWeekGroups(
         await prisma.shelf.findMany({
-          where: { isActive: true, room: { type: "PHONG_MAU_ME" }, rotationGroupId: { not: null } },
+          where: {
+            isActive: true,
+            room: { type: "PHONG_MAU_ME" },
+            rotationGroupId: { not: null },
+            // NV Kỹ thuật chỉ thấy kệ đến hạn thuộc đúng khu sản xuất mình đang làm việc — Admin vẫn thấy
+            // mọi khu (đúng hành vi cũ).
+            ...(role === "KY_THUAT" && session?.user?.workplaceWarehouseId
+              ? { warehouseId: session.user.workplaceWarehouseId }
+              : {}),
+          },
           select: {
             id: true,
             code: true,

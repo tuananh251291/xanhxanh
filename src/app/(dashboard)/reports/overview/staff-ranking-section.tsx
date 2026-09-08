@@ -7,11 +7,14 @@ const HISTORY_WEEKS = 10;
 
 // Xếp hạng NV cấy mô theo tỉ lệ (không theo tổng sản lượng thô như leaderboard tuần hiện tại ở
 // /api/leaderboard/weekly — tỉ lệ mới phản ánh đúng hiệu suất, không ưu ái NV được cấp nhiều mẫu mẹ hơn).
-export default async function StaffRankingSection() {
+export default async function StaffRankingSection({ warehouseId }: { warehouseId: string | null }) {
   const buckets = getWeekBuckets(HISTORY_WEEKS);
 
   const records = await prisma.dailyRecord.findMany({
-    where: { recordDate: { gte: buckets[0].start } },
+    where: {
+      recordDate: { gte: buckets[0].start },
+      ...(warehouseId ? { staff: { workplaceWarehouseId: warehouseId } } : {}),
+    },
     select: {
       staffId: true,
       staff: { select: { name: true } },

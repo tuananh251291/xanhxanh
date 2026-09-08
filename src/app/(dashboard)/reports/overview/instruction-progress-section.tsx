@@ -11,16 +11,23 @@ const HISTORY_WEEKS = 10;
 // (ACTIVE/DRAFT) — cộng thêm xu hướng số chỉ định bị báo "cấy lệch tiến độ" (alert OUTPUT_DEVIATION,
 // xem POST /api/daily-records) theo thời gian, không tách theo NV kỹ thuật vì mục đích là xu hướng
 // chung, không phải xếp hạng.
-export default async function InstructionProgressSection() {
+export default async function InstructionProgressSection({ warehouseId }: { warehouseId: string | null }) {
   const buckets = getWeekBuckets(HISTORY_WEEKS);
 
   const [instructions, deviationAlerts] = await Promise.all([
     prisma.plantingInstruction.findMany({
-      where: { weekStart: { gte: buckets[0].start } },
+      where: {
+        weekStart: { gte: buckets[0].start },
+        ...(warehouseId ? { items: { some: { shelf: { warehouseId } } } } : {}),
+      },
       select: { createdById: true, createdBy: { select: { name: true } }, status: true, endReason: true },
     }),
     prisma.alert.findMany({
-      where: { type: "OUTPUT_DEVIATION", createdAt: { gte: buckets[0].start } },
+      where: {
+        type: "OUTPUT_DEVIATION",
+        createdAt: { gte: buckets[0].start },
+        ...(warehouseId ? { user: { workplaceWarehouseId: warehouseId } } : {}),
+      },
       select: { createdAt: true },
     }),
   ]);

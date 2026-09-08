@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const warehouseId = searchParams.get("warehouseId") || null;
+  // NV Kỹ thuật chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server, bỏ qua warehouseId
+  // client gửi lên (Admin/Admin cấp cao vẫn xem toàn hệ thống hoặc chọn cơ sở bất kỳ như cũ).
+  const warehouseId = role === "KY_THUAT" ? session!.user.workplaceWarehouseId ?? null : searchParams.get("warehouseId") || null;
   const plantTypeIds = Array.from(
     new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))
   );

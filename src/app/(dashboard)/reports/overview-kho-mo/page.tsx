@@ -134,7 +134,7 @@ export default async function ReportsOverviewKhoMoPage() {
         <MotherContaminationReport />
       </CollapsibleSection>
       <CollapsibleSection title="Mẫu mẹ dư được bàn giao lại" icon={<PackageCheck className="w-4 h-4 shrink-0" />}>
-        <SurplusMotherReturnedSection />
+        <SurplusMotherReturnedSection warehouseId={warehouseId} />
       </CollapsibleSection>
     </div>
   );

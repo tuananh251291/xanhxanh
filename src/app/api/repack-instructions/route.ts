@@ -73,6 +73,11 @@ export async function POST(req: NextRequest) {
   if (!shelf || !shelf.isActive || shelf.room?.type !== "PHONG_RA_RE") {
     return NextResponse.json({ message: "Kệ nguồn phải là 1 kệ đang hoạt động trong Phòng ra rễ" }, { status: 400 });
   }
+  // NV Kỹ thuật chỉ tạo được từ kệ thuộc đúng khu sản xuất mình đang làm việc — chặn ở server phòng khi
+  // client gửi thẳng lên (bỏ qua danh sách đã lọc sẵn ở /api/lots).
+  if (role === "KY_THUAT" && shelf.warehouseId !== session!.user.workplaceWarehouseId) {
+    return NextResponse.json({ message: "Chỉ được chọn kệ thuộc khu sản xuất bạn đang làm việc" }, { status: 403 });
+  }
 
   const lot = await prisma.lot.findUnique({
     where: { id: sourceLotId },

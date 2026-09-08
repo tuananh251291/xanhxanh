@@ -53,21 +53,44 @@ function StatCard({
 // cầu đặt ở 1 trang Dashboard mới riêng.
 export default async function ReportsOverviewPage() {
   const session = await auth();
-  if (!(await isPageAllowed(session?.user?.role ?? null, "/reports/overview"))) redirect("/dashboard");
+  const role = session?.user?.role ?? null;
+  if (!(await isPageAllowed(role, "/reports/overview"))) redirect("/dashboard");
+
+  // NV Kỹ thuật chỉ xem số liệu thuộc đúng khu sản xuất mình đang làm việc — null = không giới hạn
+  // (trang này chỉ dành cho KY_THUAT nên trong thực tế luôn có giá trị, trừ khi chưa được gán khu).
+  const warehouseId = role === "KY_THUAT" ? (session?.user?.workplaceWarehouseId ?? null) : null;
 
   const buckets = getWeekBuckets(HISTORY_WEEKS);
 
-  const [dailyRecords, contamRecords, pendingDeviationCount] = await Promise.all([
+  const [dailyRecords, contamRecords, pendingDeviationInstructionIds] = await Promise.all([
     prisma.dailyRecord.findMany({
-      where: { recordDate: { gte: buckets[0].start } },
+      where: {
+        recordDate: { gte: buckets[0].start },
+        ...(warehouseId ? { staff: { workplaceWarehouseId: warehouseId } } : {}),
+      },
       select: { motherUsed: true, items: { select: { stage: true, quantityCreated: true } } },
     }),
     prisma.contaminationRecord.aggregate({
-      where: { recordDate: { gte: buckets[0].start } },
+      where: {
+        recordDate: { gte: buckets[0].start },
+        ...(warehouseId ? { lot: { shelf: { warehouseId } } } : {}),
+      },
       _sum: { quantity: true },
     }),
-    prisma.alert.count({ where: { type: "OUTPUT_DEVIATION", status: { not: "RESOLVED" } } }),
+    warehouseId
+      ? prisma.plantingInstruction.findMany({
+          where: { items: { some: { shelf: { warehouseId } } } },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
   ]);
+  const pendingDeviationCount = await prisma.alert.count({
+    where: {
+      type: "OUTPUT_DEVIATION",
+      status: { not: "RESOLVED" },
+      ...(pendingDeviationInstructionIds ? { relatedId: { in: pendingDeviationInstructionIds.map((i) => i.id) } } : {}),
+    },
+  });
 
   let motherUsedTotal = 0, motherOutputTotal = 0, finishedOutputTotal = 0;
   for (const rec of dailyRecords) {
@@ -126,22 +149,22 @@ export default async function ReportsOverviewPage() {
       </div>
 
       <CollapsibleSection title="Xu hướng hệ số nhân MM / ra thành phẩm" icon={<TrendingUp className="w-4 h-4 shrink-0" />}>
-        <RatioTrendSection />
+        <RatioTrendSection warehouseId={warehouseId} />
       </CollapsibleSection>
       <CollapsibleSection title="Xếp hạng NV cấy mô theo tỉ lệ" icon={<Trophy className="w-4 h-4 shrink-0" />}>
-        <StaffRankingSection />
+        <StaffRankingSection warehouseId={warehouseId} />
       </CollapsibleSection>
       <CollapsibleSection title="Tỉ lệ nhiễm mẫu mẹ bàn giao" icon={<Leaf className="w-4 h-4 shrink-0" />}>
         <MotherContaminationReport />
       </CollapsibleSection>
       <CollapsibleSection title="Tiến độ chỉ định cấy" icon={<ClipboardList className="w-4 h-4 shrink-0" />}>
-        <InstructionProgressSection />
+        <InstructionProgressSection warehouseId={warehouseId} />
       </CollapsibleSection>
       <CollapsibleSection title="Nhiễm sau ủ tối theo chỉ định cấy" icon={<Moon className="w-4 h-4 shrink-0" />}>
         <DarkRoomContaminationByInstructionSection />
       </CollapsibleSection>
       <CollapsibleSection title="Mẫu mẹ dư được bàn giao lại" icon={<Package className="w-4 h-4 shrink-0" />}>
-        <SurplusMotherReturnedSection />
+        <SurplusMotherReturnedSection warehouseId={warehouseId} />
       </CollapsibleSection>
     </div>
   );

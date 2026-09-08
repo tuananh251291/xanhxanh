@@ -84,6 +84,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // KY_THUAT chỉ thấy lô thuộc đúng khu sản xuất mình đang làm việc (workplaceWarehouseId) — bọc AND
+  // quanh TOÀN BỘ where đã dựng ở trên thay vì gán thẳng where.shelf (sẽ đè mất điều kiện shelf đã có,
+  // VD rotationGroupId/roomType) để không phá các nhánh khác, áp dụng đồng nhất bất kể nhánh nào đã chạy.
+  let finalWhere: Record<string, unknown> = where;
+  if (role === "KY_THUAT" && session.user.workplaceWarehouseId) {
+    finalWhere = { AND: [where, { shelf: { warehouseId: session.user.workplaceWarehouseId } }] };
+  }
+
   // KHÔNG giới hạn take: 200 nữa — mẫu mẹ (MAU_ME) tồn tại nhiều tuần qua nhiều lần xoay vòng/chuyển giàn
   // (xem mother-stock-reshelf.ts, cố tình GIỮ NGUYÊN enteredAt gốc khi chuyển giàn, không cập nhật thành
   // "vừa chuyển"), nên 1 lô mẫu mẹ nhập kho lâu vẫn hoàn toàn hợp lệ/đang hoạt động nhưng dễ bị rớt khỏi
@@ -92,7 +100,7 @@ export async function GET(req: NextRequest) {
   // không lọc chính xác theo 1 kệ nên phụ thuộc thẳng vào cap này). Mọi nhánh where ở trên đều đã tự giới
   // hạn phạm vi (theo kho/phòng/kệ/Nhóm) nên bỏ cap không lo trả về toàn bộ hệ thống không kiểm soát.
   const lots = await prisma.lot.findMany({
-    where,
+    where: finalWhere,
     include: {
       plantType: { select: { code: true, name: true, category: { select: { code: true, name: true } } } },
       shelf: {

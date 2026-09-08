@@ -41,7 +41,7 @@ export default async function InstructionDetailPage({ params }: { params: Promis
       handedOverBy: { select: { name: true, workplaceWarehouse: { select: { name: true } } } },
       items: {
         include: {
-          shelf: { include: { warehouse: { select: { name: true } } } },
+          shelf: { include: { warehouse: { select: { id: true, name: true } } } },
           lot: { select: { code: true } },
           motherMedium: { select: { code: true, name: true } },
           finishedMedium: { select: { code: true, name: true } },
@@ -67,6 +67,10 @@ export default async function InstructionDetailPage({ params }: { params: Promis
 
   // Permission: CAY_MO can only see their own
   if (role === "CAY_MO" && inst.assignedToId !== session!.user.id) redirect("/my-instructions");
+  // NV Kỹ thuật chỉ xem được chỉ định thuộc đúng khu sản xuất mình đang làm việc.
+  if (role === "KY_THUAT" && inst.items.some((i) => i.shelf?.warehouse.id !== session?.user?.workplaceWarehouseId)) {
+    redirect("/instructions");
+  }
 
   const displayStatus = instructionDisplayStatus(inst.status, inst.handedOverAt);
 

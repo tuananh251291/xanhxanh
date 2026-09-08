@@ -12,9 +12,8 @@ export default async function PhongToiPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/phong-toi"))) redirect("/dashboard");
 
-  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật không
-  // bị giới hạn, làm việc được ở mọi kho.
-  const workplaceWarehouseId = role !== "KY_THUAT" ? session?.user?.workplaceWarehouseId : null;
+  // NV kho mô/cấy mô/kỹ thuật chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán).
+  const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
 
   // Phòng tối cá nhân giờ là 1 Room/NV cấy mô — liệt kê theo TỪNG kho sản xuất (không theo từng
   // phòng riêng lẻ nữa), mỗi kho có thể có rất nhiều phòng tối cá nhân bên trong.

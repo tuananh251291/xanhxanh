@@ -25,7 +25,9 @@ export async function GET(req: NextRequest) {
   const mode = searchParams.get("mode") === "week" ? "week" : "month";
   const dateParam = searchParams.get("date");
   const monthParam = searchParams.get("month");
-  const warehouseId = searchParams.get("warehouseId") || undefined;
+  // NV Kỹ thuật chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server, bỏ qua warehouseId
+  // client gửi lên (Admin/Admin cấp cao vẫn xem toàn hệ thống hoặc chọn cơ sở bất kỳ như cũ).
+  const warehouseId = role === "KY_THUAT" ? session!.user.workplaceWarehouseId ?? undefined : searchParams.get("warehouseId") || undefined;
   const staffId = searchParams.get("staffId") || undefined;
   const plantTypeIds = Array.from(
     new Set((searchParams.get("plantTypeIds") ?? "").split(",").map((id) => id.trim()).filter(Boolean))

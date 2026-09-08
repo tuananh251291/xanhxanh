@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
   if (scopeParam === "warehouse" && !warehouseId) {
     return NextResponse.json({ message: "Thiếu cơ sở sản xuất" }, { status: 400 });
   }
-  const scopeWarehouseId = scopeParam === "warehouse" ? warehouseId : null;
+  // NV Kỹ thuật chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server, bỏ qua scope/
+  // warehouseId client gửi lên (Admin/Admin cấp cao vẫn xem toàn hệ thống hoặc chọn cơ sở bất kỳ như cũ).
+  const scopeWarehouseId =
+    role === "KY_THUAT" ? session!.user.workplaceWarehouseId ?? null : scopeParam === "warehouse" ? warehouseId : null;
 
   let buckets: WeekBucket[];
   if (fromParam && toParam) {

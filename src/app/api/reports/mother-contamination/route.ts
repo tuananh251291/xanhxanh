@@ -37,11 +37,17 @@ export async function GET(req: NextRequest) {
   const from = parsedFrom && isValid(parsedFrom) ? startOfDay(parsedFrom) : startOfDay(subDays(new Date(), 30));
   const to = parsedTo && isValid(parsedTo) ? endOfDay(parsedTo) : endOfDay(new Date());
 
+  // NV Kỹ thuật chỉ xem được chỉ định thuộc đúng khu sản xuất mình đang làm việc — Admin/Kho mô vẫn xem
+  // toàn hệ thống như cũ (Kho mô cũng nhúng báo cáo này ở trang riêng nhưng chưa giới hạn theo kho, giữ
+  // nguyên hành vi cũ cho vai trò đó, ngoài phạm vi thay đổi lần này).
+  const kyThuatWarehouseId = role === "KY_THUAT" ? session?.user?.workplaceWarehouseId ?? null : null;
+
   const instructions = await prisma.plantingInstruction.findMany({
     where: {
       weekStart: { gte: from, lte: to },
       ...(staffIds.length > 0 ? { assignedToId: { in: staffIds } } : {}),
       ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
+      ...(kyThuatWarehouseId ? { items: { some: { shelf: { warehouseId: kyThuatWarehouseId } } } } : {}),
     },
     select: {
       id: true,

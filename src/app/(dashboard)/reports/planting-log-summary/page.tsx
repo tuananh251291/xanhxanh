@@ -11,10 +11,18 @@ export default async function PlantingLogSummaryPage() {
   const role = session?.user?.role ?? null;
   if (!isAdminRole(role) && role !== "KY_THUAT") redirect("/dashboard");
 
+  // NV Kỹ thuật chỉ chọn được đúng khu sản xuất mình đang làm việc — không tải/hiện danh sách kho khác
+  // hay NV cấy mô thuộc kho khác (khớp phần ép cứng warehouseId ở /api/reports/planting-log-summary).
+  const kyThuatWarehouseId = role === "KY_THUAT" ? (session?.user?.workplaceWarehouseId ?? null) : null;
+
   const [warehouses, staffList, plantTypes] = await Promise.all([
-    prisma.warehouse.findMany({ where: { type: "SAN_XUAT" }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.warehouse.findMany({
+      where: { type: "SAN_XUAT", ...(kyThuatWarehouseId ? { id: kyThuatWarehouseId } : {}) },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
     prisma.user.findMany({
-      where: { role: "CAY_MO", isActive: true },
+      where: { role: "CAY_MO", isActive: true, ...(kyThuatWarehouseId ? { workplaceWarehouseId: kyThuatWarehouseId } : {}) },
       select: { id: true, code: true, name: true, workplaceWarehouseId: true },
       orderBy: { name: "asc" },
     }),

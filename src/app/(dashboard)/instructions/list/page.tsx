@@ -64,10 +64,10 @@ export default async function InstructionsListPage({
   if (plantCodeFilter) {
     where.plantType = { code: { contains: plantCodeFilter, mode: "insensitive" } };
   }
-  // KHO_MO chỉ xem chỉ định dùng giàn kệ thuộc kho mình phụ trách — gộp chung điều kiện shelf với bộ lọc
-  // "Giàn kệ" (cả 2 đều nằm trong items.some.shelf, không thể tách where riêng).
+  // KHO_MO/KY_THUAT chỉ xem chỉ định dùng giàn kệ thuộc khu sản xuất mình phụ trách — gộp chung điều
+  // kiện shelf với bộ lọc "Giàn kệ" (cả 2 đều nằm trong items.some.shelf, không thể tách where riêng).
   const shelfWhere: Record<string, unknown> = {};
-  if (role === "KHO_MO" && workplaceWarehouseId) shelfWhere.warehouseId = workplaceWarehouseId;
+  if ((role === "KHO_MO" || role === "KY_THUAT") && workplaceWarehouseId) shelfWhere.warehouseId = workplaceWarehouseId;
   if (shelfFilter) {
     shelfWhere.OR = [
       { code: { contains: shelfFilter, mode: "insensitive" } },
@@ -95,7 +95,10 @@ export default async function InstructionsListPage({
       take: PAGE_SIZE,
     }),
     prisma.user.findMany({
-      where: { role: "CAY_MO", ...(role === "KHO_MO" && workplaceWarehouseId ? { workplaceWarehouseId } : {}) },
+      where: {
+        role: "CAY_MO",
+        ...((role === "KHO_MO" || role === "KY_THUAT") && workplaceWarehouseId ? { workplaceWarehouseId } : {}),
+      },
       select: { id: true, name: true, code: true },
       orderBy: { name: "asc" },
     }),

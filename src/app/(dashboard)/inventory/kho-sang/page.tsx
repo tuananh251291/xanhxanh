@@ -72,14 +72,14 @@ export default async function KhoSangPage({
   // NV Kho thành phẩm được xem Phòng ra rễ (chỉ xem, không sửa gì ở trang này — trang chỉ đọc) của TẤT
   // CẢ cơ sở sản xuất để chủ động theo dõi hàng sắp về, không xem Phòng mẫu mẹ (không thuộc phạm vi).
   const onlyRootingRoom = isKhoThanhPhamRole(role);
-  // NV kho mô/cấy mô chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV kỹ thuật và NV/Quản
-  // lý Kho thành phẩm không bị giới hạn theo 1 kho sản xuất (isKhoThanhPhamRole vốn chỉ gán 1 kho THÀNH
+  // NV kho mô/cấy mô/kỹ thuật chỉ làm việc với đúng 1 kho sản xuất (nếu đã được Admin gán) — NV/Quản lý
+  // Kho thành phẩm không bị giới hạn theo 1 kho sản xuất (isKhoThanhPhamRole vốn chỉ gán 1 kho THÀNH
   // PHẨM, không phải kho sản xuất, nên phải xem hết mọi kho sản xuất mới có ý nghĩa) — trừ khi Quản lý
   // kho thành phẩm chủ động chọn đúng 1 kho qua rawWarehouseId, lúc đó lọc y như đang làm việc tại kho đó
   // (cùng cơ chế viewOnly ShelfTable với NV kho mô, xem nhánh render bên dưới).
   const workplaceWarehouseId = onlyRootingRoom
     ? rawWarehouseId
-    : role !== "KY_THUAT" && !isKhoThanhPhamRole(role) ? session?.user?.workplaceWarehouseId : null;
+    : !isKhoThanhPhamRole(role) ? session?.user?.workplaceWarehouseId : null;
 
   const roomTypeFilter: RoomType | { in: RoomType[] } = onlyMotherRoom
     ? "PHONG_MAU_ME"

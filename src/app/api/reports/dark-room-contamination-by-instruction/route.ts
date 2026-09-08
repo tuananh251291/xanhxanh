@@ -30,10 +30,18 @@ export async function GET(req: NextRequest) {
   const weekStart = startOfWeek(anchor, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(anchor, { weekStartsOn: 1 });
 
+  // NV Kỹ thuật chỉ xem được số liệu thuộc đúng khu sản xuất mình đang làm việc.
+  const kyThuatWarehouseId = role === "KY_THUAT" ? session?.user?.workplaceWarehouseId ?? null : null;
+  // Gộp chung vào 1 object "lot" — 2 điều kiện (staffIds + kyThuatWarehouseId) có thể cùng đúng lúc,
+  // spread riêng lẻ sẽ khiến điều kiện sau đè mất điều kiện trước (cùng field "lot" ở where).
+  const lotWhere: Record<string, unknown> = {};
+  if (staffIds.length > 0) lotWhere.instruction = { assignedToId: { in: staffIds } };
+  if (kyThuatWarehouseId) lotWhere.shelf = { warehouseId: kyThuatWarehouseId };
+
   const items = await prisma.lotInspectionItem.findMany({
     where: {
       inspection: { createdAt: { gte: weekStart, lte: weekEnd } },
-      ...(staffIds.length > 0 ? { lot: { instruction: { assignedToId: { in: staffIds } } } } : {}),
+      ...(Object.keys(lotWhere).length > 0 ? { lot: lotWhere } : {}),
     },
     select: {
       stageCode: true,

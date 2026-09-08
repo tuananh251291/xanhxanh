@@ -378,9 +378,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const instruction = await prisma.plantingInstruction.findUnique({
       where: { id },
-      include: { items: { include: { lot: { select: { quantity: true } } } } },
+      include: { items: { include: { lot: { select: { quantity: true } }, shelf: { select: { warehouseId: true } } } } },
     });
     if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    // NV Kỹ thuật chỉ sửa được chỉ định thuộc đúng khu sản xuất mình đang làm việc — đồng nghiệp Kỹ
+    // thuật khác khu không được đụng vào (khớp phạm vi xem ở /instructions/list).
+    if (role === "KY_THUAT" && instruction.items.some((i) => i.shelf?.warehouseId !== session!.user.workplaceWarehouseId)) {
+      return NextResponse.json({ message: "Chỉ được sửa chỉ định thuộc khu sản xuất bạn đang làm việc" }, { status: 403 });
+    }
     // Chỉ sửa được TRƯỚC khi Kho mô bàn giao — bàn giao rồi coi như đã "chốt", NV cấy mô có thể đã bắt
     // đầu dựa theo số liệu cũ.
     if (instruction.handedOverAt) {
@@ -492,8 +497,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!(isAdminRole(role) || role === "KY_THUAT")) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     }
-    const instruction = await prisma.plantingInstruction.findUnique({ where: { id } });
+    const instruction = await prisma.plantingInstruction.findUnique({
+      where: { id },
+      include: { items: { select: { shelf: { select: { warehouseId: true } } } } },
+    });
     if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    // NV Kỹ thuật chỉ hủy được chỉ định thuộc đúng khu sản xuất mình đang làm việc.
+    if (role === "KY_THUAT" && instruction.items.some((i) => i.shelf?.warehouseId !== session!.user.workplaceWarehouseId)) {
+      return NextResponse.json({ message: "Chỉ được hủy chỉ định thuộc khu sản xuất bạn đang làm việc" }, { status: 403 });
+    }
     if (instruction.handedOverAt) {
       return NextResponse.json({ message: "Chỉ định đã bàn giao — không thể hủy nữa" }, { status: 400 });
     }

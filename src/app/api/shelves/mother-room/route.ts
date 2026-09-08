@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isPageAllowed } from "@/lib/permissions";
+import { isAdminRole } from "@/types";
 
 const PAGE_SIZE = 10;
 
@@ -27,8 +28,8 @@ export async function GET(req: NextRequest) {
   if (!room || room.type !== "PHONG_MAU_ME") {
     return NextResponse.json({ message: "Không tìm thấy Phòng mẫu mẹ" }, { status: 404 });
   }
-  // NV kho mô chỉ xem được đúng 1 kho sản xuất đã được gán — NV kỹ thuật không giới hạn.
-  const workplaceWarehouseId = role !== "KY_THUAT" ? session?.user?.workplaceWarehouseId : null;
+  // NV kho mô/kỹ thuật chỉ xem được đúng 1 kho sản xuất đã được gán — Admin không giới hạn.
+  const workplaceWarehouseId = !isAdminRole(role) ? session?.user?.workplaceWarehouseId : null;
   if (workplaceWarehouseId && room.warehouseId !== workplaceWarehouseId) {
     return NextResponse.json({ message: "Không có quyền xem kho này" }, { status: 403 });
   }

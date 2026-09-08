@@ -16,12 +16,16 @@ const STATUS_BADGE: Record<TransferStatus, "in-progress" | "completed" | "overdu
 // gian sử dụng — xem SURPLUS_TRANSFER_TAG, planSurplusPlacement ở shelf-assignment.ts) phát sinh trong
 // TUẦN NÀY (Thứ 2 - Chủ nhật) — giúp KY_THUAT nắm nhanh tuần này có bao nhiêu mẫu mẹ bị dư trả lại, của
 // NV nào, mã cây gì, không cần vào từng chỉ định để tra.
-export default async function SurplusMotherReturnedSection() {
+export default async function SurplusMotherReturnedSection({ warehouseId }: { warehouseId: string | null }) {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
   const transfers = await prisma.transfer.findMany({
-    where: { notes: SURPLUS_TRANSFER_TAG, createdAt: { gte: weekStart, lte: weekEnd } },
+    where: {
+      notes: SURPLUS_TRANSFER_TAG,
+      createdAt: { gte: weekStart, lte: weekEnd },
+      ...(warehouseId ? { fromWarehouseId: warehouseId } : {}),
+    },
     include: {
       fromUser: { select: { name: true, code: true } },
       items: {
