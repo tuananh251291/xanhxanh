@@ -40,6 +40,18 @@ export type PayrollBreakdown = {
   otherBonusAmount: number; // Các khoản khác
 
   totalIncome: number; // Tổng thu nhập
+
+  dailyDetail: PayrollDailyDetailEntry[]; // Chi tiết ghi nhận theo từng ngày trong kỳ
+};
+
+export type PayrollDailyDetailEntry = {
+  date: string; // yyyy-MM-dd
+  isSunday: boolean;
+  isHoliday: boolean;
+  active: boolean; // có nhật ký cấy hoặc bàn giao phòng tối trong ngày
+  recordedQuantity: number; // Số lượng ghi nhận (đã trừ không đạt/theo lô đã kiểm tra)
+  unqualifiedQuantity: number; // Số lượng không đạt (chỉ có ở luồng Xanh, luồng Đỏ/Vàng đã tách sẵn)
+  recordedAmount: number; // Giá trị quy đổi VNĐ trong ngày (theo đơn giá KPI của từng mã cây)
 };
 
 export type PayrollPeriodResult = {
@@ -142,6 +154,16 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   for (const r of dailyRecords) addActiveDay(r.staffId, r.recordDate);
   for (const t of transfers) addActiveDay(t.fromUserId, t.createdAt);
 
+  // Chi tiết theo ngày (dùng cho "xem chi tiết theo ngày" + xuất Excel) — gộp theo (staffId, ngày).
+  const dailyDetailMap = new Map<string, Map<string, { active: boolean; quantity: number; unqualified: number; amount: number }>>();
+  const ensureDayEntry = (staffId: string, day: string) => {
+    const staffMap = dailyDetailMap.get(staffId) ?? new Map<string, { active: boolean; quantity: number; unqualified: number; amount: number }>();
+    if (!staffMap.has(day)) staffMap.set(day, { active: false, quantity: 0, unqualified: 0, amount: 0 });
+    dailyDetailMap.set(staffId, staffMap);
+    return staffMap.get(day)!;
+  };
+  for (const r of dailyRecords) ensureDayEntry(r.staffId, dayKey(r.recordDate)).active = true;
+
   // "Sản lượng đủ điều kiện" theo mã cây — luồng Xanh tính trực tiếp từng dòng (đã tách sẵn theo lô/mã
   // cây); luồng Đỏ dùng thẳng TransferInspectionItem.plantTypeId (Kho mô kiểm tra đã tách riêng CREDIT
   // theo từng mã cây ngay từ lúc lưu, xem POST /api/transfers/receive-phong-toi/inspect/[transferId] —
@@ -152,21 +174,29 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     m.set(plantTypeId, (m.get(plantTypeId) ?? 0) + qty);
     recordedByStaffAndPlant.set(staffId, m);
   };
+  const plantRateMap = new Map(plantRates.map((r) => [r.plantTypeId, r.vndPerUnit]));
+
   for (const t of transfers) {
     const isXanh = laneByStaff.get(t.fromUserId) === "XANH";
+    const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
+    dayEntry.active = true;
     if (isXanh) {
       for (const item of t.items) {
-        addRecorded(t.fromUserId, item.lot.plantTypeId, item.quantity - item.unqualifiedQuantity);
+        const credited = item.quantity - item.unqualifiedQuantity;
+        addRecorded(t.fromUserId, item.lot.plantTypeId, credited);
+        dayEntry.quantity += credited;
+        dayEntry.unqualified += item.unqualifiedQuantity;
+        dayEntry.amount += credited * (plantRateMap.get(item.lot.plantTypeId) ?? 0);
       }
     } else if (t.inspection) {
       for (const insItem of t.inspection.items) {
         addRecorded(t.fromUserId, insItem.plantTypeId, insItem.creditedQuantity);
+        dayEntry.quantity += insItem.creditedQuantity;
+        dayEntry.amount += insItem.creditedQuantity * (plantRateMap.get(insItem.plantTypeId) ?? 0);
       }
     }
     // Luồng Đỏ chưa kiểm tra (t.inspection null): chưa ghi nhận được, bỏ qua (khớp handover-summary).
   }
-
-  const plantRateMap = new Map(plantRates.map((r) => [r.plantTypeId, r.vndPerUnit]));
 
   // Tỉ lệ nhiễm trong kỳ — CÙNG công thức đã sửa ở /api/reports/mother-contamination: tổng
   // motherContaminatedM05 / tổng inputMotherQuantity của các chỉ định có weekStart trong kỳ, theo từng NV.
@@ -232,6 +262,21 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
 
     const totalIncome = workSalary + complianceBonus + productionOverBonus + otherBonusAmount;
 
+    const staffDayMap = dailyDetailMap.get(s.id);
+    const dailyDetail: PayrollDailyDetailEntry[] = daysInPeriod.map((d) => {
+      const key = dayKey(d);
+      const entry = staffDayMap?.get(key);
+      return {
+        date: key,
+        isSunday: d.getDay() === 0,
+        isHoliday: holidayDayKeys.has(key),
+        active: entry?.active ?? false,
+        recordedQuantity: entry?.quantity ?? 0,
+        unqualifiedQuantity: entry?.unqualified ?? 0,
+        recordedAmount: entry ? Math.round(entry.amount) : 0,
+      };
+    });
+
     return {
       staffId: s.id,
       staffCode: s.code,
@@ -258,6 +303,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       productionKpiDisqualified,
       otherBonusAmount,
       totalIncome,
+      dailyDetail,
     };
   });
 

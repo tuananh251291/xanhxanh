@@ -3,14 +3,19 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { format } from "date-fns";
 import { EMPLOYMENT_TYPE_LABELS, EMPLOYMENT_TYPE_COLORS, TRAINEE_LABEL, TRAINEE_BADGE_COLOR, type EmploymentType } from "@/types";
 
 type Warehouse = { id: string; code: string; name: string };
+type DailyDetailEntry = {
+  date: string; isSunday: boolean; isHoliday: boolean; active: boolean;
+  recordedQuantity: number; unqualifiedQuantity: number; recordedAmount: number;
+};
 type Row = {
   staffId: string; staffCode: string; staffName: string; warehouseName: string | null;
   employmentType: EmploymentType | null; isTrainee: boolean;
@@ -21,6 +26,7 @@ type Row = {
   kpiDailyRate: number | null; kpiTargetAmount: number; eligibleProductionAmount: number;
   contaminationRatePct: number; productionOverBonus: number; productionKpiDisqualified: boolean;
   otherBonusAmount: number; totalIncome: number;
+  dailyDetail: DailyDetailEntry[];
 };
 
 const ALL_WAREHOUSE = "ALL";
@@ -56,6 +62,10 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
   const totalIncomeSum = rows.reduce((s, r) => s + r.totalIncome, 0);
   const selectedWarehouse = warehouseId !== ALL_WAREHOUSE ? warehouses.find((w) => w.id === warehouseId) : null;
 
+  const exportParams = new URLSearchParams({ month });
+  if (warehouseId !== ALL_WAREHOUSE) exportParams.set("warehouseId", warehouseId);
+  const exportHref = `/api/reports/payroll/export?${exportParams}`;
+
   return (
     <div className="space-y-4">
       <Card>
@@ -83,6 +93,11 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
               Kỳ đang xem: <strong className="text-foreground">{rangeLabel}</strong>
             </p>
           )}
+          <a href={exportHref} className="ml-auto">
+            <Button type="button" className="bg-primary hover:bg-primary-hover">
+              <Download className="w-3.5 h-3.5 mr-1.5" /> Xuất Excel
+            </Button>
+          </a>
         </CardContent>
       </Card>
 
@@ -212,6 +227,46 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                                   <p className={`font-medium tabular-nums ${r.contaminationRatePct > 5 ? "text-destructive" : ""}`}>
                                     {r.contaminationRatePct}%
                                   </p>
+                                </div>
+                              </div>
+
+                              <div className="mt-4">
+                                <p className="text-text-muted text-xs mb-2">Chi tiết ghi nhận theo ngày trong kỳ</p>
+                                <div className="max-h-72 overflow-y-auto border border-divider rounded-md">
+                                  <table className="w-full text-xs">
+                                    <thead className="sticky top-0 bg-primary-light">
+                                      <tr>
+                                        <th className="text-left px-3 py-2 text-primary-strong font-bold text-sm">Ngày</th>
+                                        <th className="text-left px-3 py-2 text-primary-strong font-bold text-sm">Trạng thái</th>
+                                        <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL ghi nhận</th>
+                                        <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL không đạt</th>
+                                        <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">Giá trị quy đổi</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {r.dailyDetail.map((d) => (
+                                        <tr key={d.date} className="border-t border-divider even:bg-background odd:bg-card">
+                                          <td className="px-3 py-1.5 tabular-nums">
+                                            {format(new Date(`${d.date}T00:00:00`), "dd/MM/yyyy")}
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            {d.isHoliday ? (
+                                              <Badge className="bg-info-light text-info-foreground">Ngày lễ</Badge>
+                                            ) : d.isSunday ? (
+                                              <Badge className="bg-violet-light text-violet-foreground">Chủ nhật</Badge>
+                                            ) : d.active ? (
+                                              <Badge className="bg-success-light text-success-foreground">Có ghi nhận</Badge>
+                                            ) : (
+                                              <Badge className="bg-danger-light text-destructive">Nghỉ</Badge>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-1.5 text-right tabular-nums">{d.recordedQuantity.toLocaleString("vi-VN")}</td>
+                                          <td className="px-3 py-1.5 text-right tabular-nums">{d.unqualifiedQuantity.toLocaleString("vi-VN")}</td>
+                                          <td className="px-3 py-1.5 text-right tabular-nums">{money(d.recordedAmount)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 </div>
                               </div>
                             </td>
