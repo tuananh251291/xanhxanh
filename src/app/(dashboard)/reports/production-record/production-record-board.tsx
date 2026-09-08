@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { format } from "date-fns";
 
 type Warehouse = { id: string; code: string; name: string };
@@ -46,6 +47,10 @@ export default function ProductionRecordBoard({ warehouses }: { warehouses: Ware
   const totalRecordedSum = rows.reduce((s, r) => s + r.totalRecordedQuantity, 0);
   const selectedWarehouse = warehouseId !== ALL_WAREHOUSE ? warehouses.find((w) => w.id === warehouseId) : null;
 
+  const exportParams = new URLSearchParams({ month });
+  if (warehouseId !== ALL_WAREHOUSE) exportParams.set("warehouseId", warehouseId);
+  const exportHref = `/api/reports/production-record/export?${exportParams}`;
+
   return (
     <div className="space-y-4">
       <Card>
@@ -70,6 +75,11 @@ export default function ProductionRecordBoard({ warehouses }: { warehouses: Ware
               </Select>
             </div>
           )}
+          <a href={exportHref} className="ml-auto">
+            <Button type="button" className="bg-primary hover:bg-primary-hover">
+              <Download className="w-3.5 h-3.5 mr-1.5" /> Xuất Excel
+            </Button>
+          </a>
         </CardContent>
       </Card>
 
