@@ -2,8 +2,8 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { BarChart3, TrendingUp, Gauge, Images, ChevronRight, ArrowLeftRight, Sprout, BookOpen, ClipboardList, Download, Flag } from "lucide-react";
-import { isAdminRole } from "@/types";
+import { BarChart3, TrendingUp, Gauge, Images, ChevronRight, ArrowLeftRight, Sprout, BookOpen, ClipboardList, Download, Flag, DollarSign } from "lucide-react";
+import { isAdminRole, canManagePayroll } from "@/types";
 
 // Hub liên kết nhẹ (KHÔNG dùng Tabs) — 2/3 trang báo cáo gốc đã bị tách riêng CÓ CHỦ ĐÍCH trước đây (xem
 // comment gốc ở reports/overview/page.tsx và reports/production-capacity/page.tsx, cái sau ghi rõ
@@ -25,6 +25,9 @@ export default async function ReportCenterPage() {
     { href: "/mother-photo-update/view", icon: Images, title: "Xem dữ liệu hình ảnh", description: "Ảnh cập nhật tình trạng mẫu mẹ theo giàn kệ/mã cây." },
     { href: "/reports/downloads", icon: Download, title: "Tải dữ liệu thống kê", description: "File Excel tồn kho mẫu mẹ/thành phẩm cuối kỳ hàng tháng, phân loại theo cơ sở." },
     { href: "/reports/inspection-lane", icon: Flag, title: "Phân loại luồng kiểm tra", description: "NV cấy mô nào đang thuộc luồng Xanh/Vàng/Đỏ, theo từng khu sản xuất." },
+    // Dữ liệu lương nhạy cảm — chỉ hiện thẻ này nếu role hiện tại thật sự xem được (xem canManagePayroll,
+    // hiện chỉ SUPER_ADMIN trong số các role admin, KHÔNG gồm ADMIN thường/ADMIN_KY_THUAT).
+    ...(canManagePayroll(role) ? [{ href: "/reports/payroll", icon: DollarSign, title: "Bảng lương", description: "Lương NV cấy mô tính theo kỳ lương, xuất Excel tổng hợp + chi tiết theo ngày." }] : []),
   ];
 
   return (
