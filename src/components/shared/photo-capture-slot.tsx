@@ -8,8 +8,9 @@ import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 
 // 1 ô chụp/chọn ảnh, tự nén trước khi trả về data URL — dùng ở form Tạo giống mới + Cập nhật ảnh (R&D,
-// /rnd). Reuse y hệt compressImageToDataUrl đang dùng ở Cập nhật hình ảnh định kỳ (mother-photo-update),
-// bấm mở thẳng camera điện thoại qua capture="environment".
+// /rnd). Reuse y hệt compressImageToDataUrl đang dùng ở Cập nhật hình ảnh định kỳ (mother-photo-update).
+// KHÔNG dùng capture="environment" (từng ép mở thẳng camera, bỏ qua hẳn lựa chọn ảnh có sẵn trên máy ở
+// nhiều trình duyệt di động) — để trống capture để trình duyệt tự hiện bảng chọn Camera/Thư viện ảnh.
 export default function PhotoCaptureSlot({
   label, dataUrl, onChange, required,
 }: {
@@ -42,7 +43,7 @@ export default function PhotoCaptureSlot({
         {label}
         {required && <span className="text-destructive"> *</span>}
       </Label>
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
       {dataUrl ? (
         <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-border">
           {/* eslint-disable-next-line @next/next/no-img-element -- data URL preview, không phải ảnh tĩnh trong dự án */}
@@ -65,7 +66,7 @@ export default function PhotoCaptureSlot({
           onClick={() => inputRef.current?.click()}
         >
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-          <span className="text-xs">Chụp ảnh</span>
+          <span className="text-xs">Chụp/Chọn ảnh</span>
         </Button>
       )}
     </div>

@@ -18,7 +18,7 @@ import {
   ComboboxTrigger,
 } from "@/components/ui/combobox";
 import PhotoCaptureSlot from "@/components/shared/photo-capture-slot";
-import { Loader2, Plus, Sprout } from "lucide-react";
+import { Loader2, Plus, Sprout, FolderPlus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -139,13 +139,25 @@ function CreateVarietyDialog({
   const [photo1, setPhoto1] = useState<string | null>(null);
   const [photo2, setPhoto2] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Loại cây" ở đây chỉ CHỌN từ danh sách có sẵn (PlantCategory) — Admin kỹ thuật không có mục /plant-types
+  // trong menu để tự thêm loại cây mới khi cần cho 1 giống thử nghiệm mới, nên cho thêm ngay tại đây
+  // (POST /api/plant-categories, chỉ 2 field mã+tên, không đụng tới "mã cây"/quy cách — việc đó vẫn chỉ
+  // làm được ở /plant-types).
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false);
+  const [newCategoryCode, setNewCategoryCode] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  const loadCategories = useCallback(async () => {
+    const data: PlantCategory[] = await fetch("/api/plant-categories").then((r) => r.json());
+    setCategories(Array.isArray(data) ? data.filter((c) => c.isActive) : []);
+    return Array.isArray(data) ? data : [];
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    fetch("/api/plant-categories")
-      .then((r) => r.json())
-      .then((data: PlantCategory[]) => setCategories(Array.isArray(data) ? data.filter((c) => c.isActive) : []));
-  }, [open]);
+    loadCategories();
+  }, [open, loadCategories]);
 
   const categoryOptions: ComboOption[] = categories.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }));
 
@@ -161,6 +173,39 @@ function CreateVarietyDialog({
   const reset = () => {
     setName(""); setCategoryOption(null); setMotherInputQuantity(""); setTransferWaitWeeks("");
     setDescription(""); setOrigin(""); setPhoto1(null); setPhoto2(null);
+    setNewCategoryOpen(false); setNewCategoryCode(""); setNewCategoryName("");
+  };
+
+  const createCategory = async () => {
+    const code = newCategoryCode.trim().toUpperCase();
+    const name = newCategoryName.trim();
+    if (code.length < 2 || code.length > 3 || !/^[A-Z]+$/.test(code)) {
+      toast.error("Mã loại cây phải 2-3 chữ cái");
+      return;
+    }
+    if (name.length < 2) {
+      toast.error("Nhập tên loại cây");
+      return;
+    }
+    setCreatingCategory(true);
+    try {
+      const res = await fetch("/api/plant-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.message ?? "Thêm loại cây thất bại"); return; }
+      toast.success(`Đã thêm loại cây ${data.code}`);
+      const list = await loadCategories();
+      const created = list.find((c) => c.id === data.id);
+      onCategoryChange(created ? { value: created.id, label: `${created.code} — ${created.name}` } : null);
+      setNewCategoryOpen(false);
+      setNewCategoryCode("");
+      setNewCategoryName("");
+    } finally {
+      setCreatingCategory(false);
+    }
   };
 
   const canSubmit = name.trim() && categoryOption && motherInputQuantity.trim() && transferWaitWeeks.trim() && photo1 && !saving;
@@ -230,7 +275,44 @@ function CreateVarietyDialog({
                 </ComboboxList>
               </ComboboxContent>
             </Combobox>
+            <button
+              type="button"
+              onClick={() => setNewCategoryOpen(true)}
+              className="inline-flex items-center gap-1 text-xs text-primary-strong hover:underline mt-1"
+            >
+              <FolderPlus className="w-3.5 h-3.5" /> Chưa có loại cây cần dùng? Thêm loại cây mới
+            </button>
           </div>
+
+          <Dialog open={newCategoryOpen} onOpenChange={setNewCategoryOpen}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Thêm loại cây mới</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 mt-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Mã loại cây (2-3 chữ cái) <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={newCategoryCode}
+                    onChange={(e) => setNewCategoryCode(e.target.value)}
+                    placeholder="VD: MT"
+                    maxLength={3}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Tên loại cây <span className="text-destructive">*</span></Label>
+                  <Input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="VD: Trầu bà" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => setNewCategoryOpen(false)}>Hủy</Button>
+                  <Button type="button" className="flex-1 bg-primary hover:bg-primary-hover" disabled={creatingCategory} onClick={createCategory}>
+                    {creatingCategory && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+                    Thêm
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Số lượng mẫu mẹ đưa vào cấy <span className="text-destructive">*</span></Label>
