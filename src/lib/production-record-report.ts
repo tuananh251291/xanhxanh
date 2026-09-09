@@ -8,6 +8,17 @@ import { startOfMonth, endOfMonth, addDays, eachDayOfInterval, parse, isValid, f
 // công thức "ghi nhận" đang dùng ở Bảng lương (xem computePayrollForPeriod trong payroll-calculation.ts),
 // nhưng KHÔNG quy đổi ra VNĐ — chỉ thuần số lượng, dùng cho báo cáo sản xuất (không phải dữ liệu lương
 // nhạy cảm) nên mở quyền xem rộng hơn Bảng lương.
+//
+// QUAN TRỌNG: phân biệt "tự ghi nhận (Xanh)" hay "cần kiểm tra (Đỏ/Vàng)" theo TỪNG PHIẾU bàn giao dựa
+// trên t.status/t.inspection (bằng chứng THẬT đã xảy ra lúc bàn giao) — KHÔNG dùng User.inspectionLane
+// (giá trị SỐNG, bị ghi đè mỗi đầu tháng bởi ensureMonthlyInspectionLaneUpdate). Nếu dùng lane sống để
+// suy luận NGƯỢC cho tháng đã qua, 1 NV vừa bị hạ xuống Vàng/Đỏ đầu tháng này sẽ hiện SAI thành "chưa
+// ghi nhận" cho toàn bộ tháng trước — dù tháng đó NV này thực tế đang ở luồng Xanh, đã tự ghi nhận và
+// KHÔNG CẦN kiểm tra (phát hiện thực tế qua báo cáo bị nhầm với 1 NV cụ thể, xem trao đổi 09/09/2026).
+// Bằng chứng đáng tin: phiếu đã status=CONFIRMED (đã xếp kệ xong) MÀ KHÔNG có TransferInspection chỉ có
+// thể xảy ra nếu lúc đó phiếu được xử lý theo đường Xanh/MM dư (2 đường DUY NHẤT bỏ qua bước kiểm tra —
+// xem POST /api/transfers/receive-phong-toi và .../place/[transferId], cả 2 đều CHẶN xếp kệ nếu chưa
+// kiểm tra trừ 2 trường hợp này) — tự nó đã xác nhận đúng luồng tại THỜI ĐIỂM đó, không cần tra lane.
 export type ProductionRecordDailyEntry = {
   date: string; // yyyy-MM-dd
   active: boolean; // có nhật ký cấy hoặc bàn giao phòng tối trong ngày
@@ -52,12 +63,11 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
 
   const staffList = await prisma.user.findMany({
     where: { role: "CAY_MO", isActive: true, ...(warehouseId ? { workplaceWarehouseId: warehouseId } : {}) },
-    select: { id: true, code: true, name: true, inspectionLane: true, workplaceWarehouse: { select: { name: true } } },
+    select: { id: true, code: true, name: true, workplaceWarehouse: { select: { name: true } } },
     orderBy: { name: "asc" },
   });
   if (staffList.length === 0) return { rangeStart, rangeEnd: rangeEndExclusive, rows: [] };
   const staffIds = staffList.map((s) => s.id);
-  const laneByStaff = new Map(staffList.map((s) => [s.id, s.inspectionLane]));
 
   const [dailyRecords, transfers] = await Promise.all([
     prisma.dailyRecord.findMany({
@@ -69,6 +79,7 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
       select: {
         fromUserId: true,
         createdAt: true,
+        status: true,
         items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, plantType: { select: { code: true, name: true } } } } } },
         inspection: { select: { items: { select: { plantTypeId: true, creditedQuantity: true, plantType: { select: { code: true, name: true } } } } } },
       },
@@ -96,23 +107,24 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
   };
 
   for (const t of transfers) {
-    const isXanh = laneByStaff.get(t.fromUserId) === "XANH";
     const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
     dayEntry.active = true;
-    if (isXanh) {
+    if (t.inspection) {
+      for (const insItem of t.inspection.items) {
+        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, insItem.creditedQuantity);
+        dayEntry.quantity += insItem.creditedQuantity;
+      }
+    } else if (t.status === "CONFIRMED") {
+      // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
+      // — tự ghi nhận theo số NV tự khai (xem giải thích ở đầu file, KHÔNG dùng lane sống).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
         addRecorded(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, credited);
         dayEntry.quantity += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
       }
-    } else if (t.inspection) {
-      for (const insItem of t.inspection.items) {
-        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, insItem.creditedQuantity);
-        dayEntry.quantity += insItem.creditedQuantity;
-      }
     }
-    // Luồng Đỏ/Vàng chưa được Kho mô kiểm tra (t.inspection null): chưa ghi nhận được, bỏ qua (khớp Bảng lương).
+    // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa ghi nhận được, bỏ qua.
   }
 
   const rows: ProductionRecordRow[] = staffList.map((s) => {

@@ -77,7 +77,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   const staffList = await prisma.user.findMany({
     where: { role: "CAY_MO", isActive: true, ...(warehouseId ? { workplaceWarehouseId: warehouseId } : {}) },
     select: {
-      id: true, code: true, name: true, employmentType: true, isTrainee: true, inspectionLane: true,
+      id: true, code: true, name: true, employmentType: true, isTrainee: true,
       workplaceWarehouse: { select: { name: true } },
       staffBaseSalary: { select: { monthlyAmount: true } },
       staffKpiDailyRate: { select: { vndPerDay: true } },
@@ -86,7 +86,6 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   });
   if (staffList.length === 0) return { periodMonth, rangeStart, rangeEnd, rows: [] };
   const staffIds = staffList.map((s) => s.id);
-  const laneByStaff = new Map(staffList.map((s) => [s.id, s.inspectionLane]));
 
   const [
     dailyRecords, transfers, violationSums, disqualifyingViolations, recoverySums, otherBonusSums,
@@ -103,6 +102,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       select: {
         fromUserId: true,
         createdAt: true,
+        status: true,
         items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true } } } },
         inspection: { select: { items: { select: { plantTypeId: true, creditedQuantity: true } } } },
       },
@@ -177,10 +177,21 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   const plantRateMap = new Map(plantRates.map((r) => [r.plantTypeId, r.vndPerUnit]));
 
   for (const t of transfers) {
-    const isXanh = laneByStaff.get(t.fromUserId) === "XANH";
     const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
     dayEntry.active = true;
-    if (isXanh) {
+    if (t.inspection) {
+      for (const insItem of t.inspection.items) {
+        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.creditedQuantity);
+        dayEntry.quantity += insItem.creditedQuantity;
+        dayEntry.amount += insItem.creditedQuantity * (plantRateMap.get(insItem.plantTypeId) ?? 0);
+      }
+    } else if (t.status === "CONFIRMED") {
+      // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
+      // — tự ghi nhận theo số NV tự khai. KHÔNG dùng User.inspectionLane (giá trị SỐNG, bị ghi đè mỗi đầu
+      // tháng bởi ensureMonthlyInspectionLaneUpdate) để suy luận ngược cho kỳ lương đã qua — nếu 1 NV vừa
+      // bị hạ luồng đầu tháng này, dùng lane sống sẽ tính SAI lương tháng trước thành "chưa ghi nhận" dù
+      // tháng đó NV đang ở luồng Xanh, không cần kiểm tra (bug phát hiện 09/09/2026 qua báo cáo tương tự
+      // production-record-report.ts — xem giải thích đầy đủ ở đó).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
         addRecorded(t.fromUserId, item.lot.plantTypeId, credited);
@@ -188,14 +199,8 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
         dayEntry.unqualified += item.unqualifiedQuantity;
         dayEntry.amount += credited * (plantRateMap.get(item.lot.plantTypeId) ?? 0);
       }
-    } else if (t.inspection) {
-      for (const insItem of t.inspection.items) {
-        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.creditedQuantity);
-        dayEntry.quantity += insItem.creditedQuantity;
-        dayEntry.amount += insItem.creditedQuantity * (plantRateMap.get(insItem.plantTypeId) ?? 0);
-      }
     }
-    // Luồng Đỏ chưa kiểm tra (t.inspection null): chưa ghi nhận được, bỏ qua (khớp handover-summary).
+    // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa ghi nhận được, bỏ qua.
   }
 
   // Tỉ lệ nhiễm trong kỳ — CÙNG công thức đã sửa ở /api/reports/mother-contamination: tổng

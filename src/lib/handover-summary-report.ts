@@ -6,6 +6,11 @@ import { startOfMonth, endOfMonth, addDays, eachDayOfInterval, parse, isValid, f
 // báo cáo "Số lượng ghi nhận" của Admin) để 2 báo cáo luôn khớp số — khác ở chỗ báo cáo này CHỈ tính từ
 // Transfer (bàn giao Phòng tối), không cộng thêm DailyRecord vào cờ "active", và có thêm số lượng ĐÃ BÀN
 // GIAO (trước khi trừ không đạt/kiểm tra) bên cạnh số ĐÃ GHI NHẬN.
+//
+// QUAN TRỌNG: phân biệt "tự ghi nhận (Xanh)" hay "cần kiểm tra (Đỏ/Vàng)" theo TỪNG PHIẾU dựa trên
+// t.status/t.inspection — KHÔNG dùng User.inspectionLane (giá trị SỐNG, bị ghi đè đầu mỗi tháng). Field
+// `lane` trong row CHỈ để hiển thị luồng HIỆN TẠI của NV, không dùng để tính toán — xem giải thích đầy đủ
+// ở production-record-report.ts (cùng bug đã sửa, phát hiện 09/09/2026).
 export type HandoverSummaryDailyEntry = {
   date: string; // yyyy-MM-dd
   active: boolean;
@@ -60,13 +65,13 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
   });
   if (staffList.length === 0) return { rangeStart, rangeEnd: rangeEndExclusive, rows: [] };
   const staffIds = staffList.map((s) => s.id);
-  const laneByStaff = new Map(staffList.map((s) => [s.id, s.inspectionLane]));
 
   const transfers = await prisma.transfer.findMany({
     where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive } },
     select: {
       fromUserId: true,
       createdAt: true,
+      status: true,
       items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, plantType: { select: { code: true, name: true } } } } } },
       inspection: { select: { items: { select: { plantTypeId: true, creditedQuantity: true, plantType: { select: { code: true, name: true } } } } } },
     },
@@ -99,29 +104,30 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
   const hasPendingByStaff = new Set<string>();
 
   for (const t of transfers) {
-    const isXanh = laneByStaff.get(t.fromUserId) === "XANH";
     const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
     dayEntry.active = true;
 
     for (const item of t.items) {
       dayEntry.handedOver += item.quantity;
       addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, 0);
-      if (isXanh) {
+    }
+
+    if (t.inspection) {
+      for (const insItem of t.inspection.items) {
+        addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, 0, insItem.creditedQuantity);
+        dayEntry.recorded += insItem.creditedQuantity;
+      }
+    } else if (t.status === "CONFIRMED") {
+      // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
+      // — tự ghi nhận theo số NV tự khai (xem giải thích ở đầu file, KHÔNG dùng lane sống).
+      for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
         addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, 0, credited);
         dayEntry.recorded += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
       }
-    }
-    if (!isXanh) {
-      if (t.inspection) {
-        for (const insItem of t.inspection.items) {
-          addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, 0, insItem.creditedQuantity);
-          dayEntry.recorded += insItem.creditedQuantity;
-        }
-      } else {
-        hasPendingByStaff.add(t.fromUserId);
-      }
+    } else {
+      hasPendingByStaff.add(t.fromUserId);
     }
   }
 
