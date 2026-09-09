@@ -19,6 +19,12 @@ import { startOfMonth, endOfMonth, addDays, eachDayOfInterval, parse, isValid, f
 // thể xảy ra nếu lúc đó phiếu được xử lý theo đường Xanh/MM dư (2 đường DUY NHẤT bỏ qua bước kiểm tra —
 // xem POST /api/transfers/receive-phong-toi và .../place/[transferId], cả 2 đều CHẶN xếp kệ nếu chưa
 // kiểm tra trừ 2 trường hợp này) — tự nó đã xác nhận đúng luồng tại THỜI ĐIỂM đó, không cần tra lane.
+//
+// "SL bàn giao" = số lượng THỰC SỰ gửi lên kho sáng (đã xếp kệ), KHÔNG PHẢI số NV giao ban đầu ở phòng
+// tối — luồng Vàng/Đỏ đã trừ hàng nhiễm Kho mô phát hiện lúc kiểm tra (= TransferInspectionItem
+// handedOverQuantity − contaminatedQuantity, tức passedQuantity); luồng Xanh/MM dư không qua kiểm tra
+// nhiễm ở bước này nên giữ nguyên số đã giao. Phiếu còn PENDING (chưa kiểm tra, chưa xếp kệ) coi như CHƯA
+// bàn giao lên kho sáng — không cộng vào cả SL bàn giao lẫn SL ghi nhận.
 export type ProductionRecordDailyEntry = {
   date: string; // yyyy-MM-dd
   active: boolean; // có nhật ký cấy hoặc bàn giao phòng tối trong ngày
@@ -86,7 +92,16 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
         createdAt: true,
         status: true,
         items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, plantType: { select: { code: true, name: true } } } } } },
-        inspection: { select: { items: { select: { plantTypeId: true, creditedQuantity: true, plantType: { select: { code: true, name: true } } } } } },
+        inspection: {
+          select: {
+            items: {
+              select: {
+                plantTypeId: true, creditedQuantity: true, handedOverQuantity: true, contaminatedQuantity: true,
+                plantType: { select: { code: true, name: true } },
+              },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -120,27 +135,27 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
     const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
     dayEntry.active = true;
 
-    for (const item of t.items) {
-      dayEntry.handedOver += item.quantity;
-      addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, 0);
-    }
-
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
-        addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, 0, insItem.creditedQuantity);
+        const passed = insItem.handedOverQuantity - insItem.contaminatedQuantity;
+        addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, passed, insItem.creditedQuantity);
+        dayEntry.handedOver += passed;
         dayEntry.recorded += insItem.creditedQuantity;
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
-      // — tự ghi nhận theo số NV tự khai (xem giải thích ở đầu file, KHÔNG dùng lane sống).
+      // — không qua kiểm tra nhiễm ở bước này nên SL bàn giao giữ nguyên; SL ghi nhận tự khai trừ hàng
+      // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
-        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, 0, credited);
+        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, credited);
+        dayEntry.handedOver += item.quantity;
         dayEntry.recorded += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
       }
     }
-    // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): đã tính vào SL bàn giao ở trên, chưa ghi nhận được.
+    // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa thật sự lên kho sáng — không tính vào cả SL bàn
+    // giao lẫn SL ghi nhận.
   }
 
   const rows: ProductionRecordRow[] = staffList.map((s) => {
