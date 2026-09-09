@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { computeHandoverSummaryForPeriod } from "@/lib/handover-summary-report";
+import { buildHandoverSummaryWorkbook } from "@/lib/handover-summary-workbook";
+import { format } from "date-fns";
 
-// Báo cáo "Bàn giao & ghi nhận theo tháng" — cho Admin + NV Hành chính nhân sự (chỉ xem) — xem
-// computeHandoverSummaryForPeriod (src/lib/handover-summary-report.ts) cho công thức tính, CÙNG mốc
-// tháng lịch + công thức "ghi nhận" với báo cáo "Số lượng ghi nhận" của Admin
-// (production-record-report.ts) để 2 báo cáo luôn khớp số.
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -19,11 +17,14 @@ export async function GET(req: NextRequest) {
   const warehouseId = searchParams.get("warehouseId") || undefined;
 
   const result = await computeHandoverSummaryForPeriod(monthParam, warehouseId);
-  const totalHandedOver = result.rows.reduce((s, r) => s + r.totalHandedOverQuantity, 0);
-  const totalRecorded = result.rows.reduce((s, r) => s + r.totalRecordedQuantity, 0);
+  const workbook = buildHandoverSummaryWorkbook(result);
+  const buffer = await workbook.xlsx.writeBuffer();
 
-  return NextResponse.json({
-    ...result,
-    summary: { totalHandedOver, totalRecorded, staffCount: result.rows.length },
+  const monthLabel = monthParam ?? format(new Date(), "yyyy-MM");
+  return new NextResponse(buffer, {
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="ban-giao-ghi-nhan-${monthLabel}-${format(new Date(), "yyyyMMdd")}.xlsx"`,
+    },
   });
 }
