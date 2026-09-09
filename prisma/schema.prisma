@@ -724,6 +724,7 @@ model MediumType {
   instructionItemsAsPreRootingMotherMedium PlantingInstructionItem[] @relation("ItemPreRootingMotherMedium")
   orderItems                               MediumOrderItem[]
   processingMediumOrders                   ProcessingMediumOrder[]
+  trialCultivationRounds                   TrialCultivationRound[]
 
   @@map("medium_types")
 }
@@ -1340,6 +1341,11 @@ model TrialCultivationRound {
   m05Quantity           Int?
   t05Quantity           Int?
   t01Quantity           Int?
+  // Loại môi trường dùng cho lượt cấy này — nhập cùng lúc với kết quả cấy (khác PlantingInstructionItem
+  // thật, nơi môi trường chọn lúc TẠO chỉ định chứ không phải lúc ghi nhận kết quả — form R&D đơn giản
+  // hơn, chỉ 1 loại môi trường/lượt thay vì tách riêng môi trường nhân mẫu mẹ/ra rễ). NULL = chưa chọn.
+  mediumTypeId String?
+  mediumType   MediumType? @relation(fields: [mediumTypeId], references: [id])
   recordedAt   DateTime?
   recordedById String?
   recordedBy   User?     @relation("TrialRoundRecordedBy", fields: [recordedById], references: [id])

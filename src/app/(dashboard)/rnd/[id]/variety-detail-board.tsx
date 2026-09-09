@@ -19,6 +19,7 @@ type Round = {
   id: string; motherInputQuantity: number; waitWeeks: number; plantedAt: string; expectedReadyAt: string;
   motherContaminatedM05: number | null; motherUsed: number | null; motherChecked: number | null;
   m05Quantity: number | null; t05Quantity: number | null; t01Quantity: number | null;
+  mediumType: { code: string; name: string } | null;
   recordedAt: string | null; notes: string | null;
 };
 type VarietyDetail = {
@@ -134,6 +135,7 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                     <th className="py-2 px-3 font-bold text-base text-center">M05</th>
                     <th className="py-2 px-3 font-bold text-base text-center">T05</th>
                     <th className="py-2 px-3 font-bold text-base text-center">T01</th>
+                    <th className="py-2 px-3 font-bold text-base">Loại môi trường</th>
                     <th className="py-2 px-3 font-bold text-base">Ghi chú</th>
                   </tr>
                 </thead>
@@ -145,7 +147,7 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                       <td className="py-2 px-3 text-center tabular-nums">{r.waitWeeks}</td>
                       <td className="py-2 px-3 whitespace-nowrap">{format(new Date(r.expectedReadyAt), "dd/MM/yyyy", { locale: vi })}</td>
                       {r.recordedAt === null ? (
-                        <td className="py-2 px-3 text-center" colSpan={5}><Badge variant="in-progress">Chưa nhập</Badge></td>
+                        <td className="py-2 px-3 text-center" colSpan={6}><Badge variant="in-progress">Chưa nhập</Badge></td>
                       ) : (
                         <>
                           <td className="py-2 px-3 text-center tabular-nums">{r.motherContaminatedM05?.toLocaleString("vi-VN") ?? "—"}</td>
@@ -153,6 +155,7 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                           <td className="py-2 px-3 text-center tabular-nums">{r.m05Quantity?.toLocaleString("vi-VN") ?? "—"}</td>
                           <td className="py-2 px-3 text-center tabular-nums">{r.t05Quantity?.toLocaleString("vi-VN") ?? "—"}</td>
                           <td className="py-2 px-3 text-center tabular-nums">{r.t01Quantity?.toLocaleString("vi-VN") ?? "—"}</td>
+                          <td className="py-2 px-3 text-text-secondary whitespace-nowrap">{r.mediumType ? `${r.mediumType.code} — ${r.mediumType.name}` : "—"}</td>
                         </>
                       )}
                       <td className="py-2 px-3 text-text-secondary">{r.notes ?? "—"}</td>

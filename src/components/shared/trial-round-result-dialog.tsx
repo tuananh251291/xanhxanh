@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Info, Loader2, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
+
+type MediumType = { id: string; code: string; name: string };
 
 export type DueTrialRound = {
   id: string;
@@ -37,13 +40,20 @@ export default function TrialRoundResultDialog({
   const [m05, setM05] = useState("");
   const [t05, setT05] = useState("");
   const [t01, setT01] = useState("");
+  const [mediumTypeId, setMediumTypeId] = useState("");
+  const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/medium-types").then((r) => r.json()).then((data: MediumType[]) => setMediumTypes(Array.isArray(data) ? data : []));
+  }, [open]);
 
   const motherChecked = (Number(motherUsed) || 0) + (Number(motherContaminatedM05) || 0);
 
   const reset = () => {
-    setMotherContaminatedM05(""); setMotherUsed(""); setM05(""); setT05(""); setT01(""); setNotes("");
+    setMotherContaminatedM05(""); setMotherUsed(""); setM05(""); setT05(""); setT01(""); setMediumTypeId(""); setNotes("");
   };
 
   const canSubmit = motherUsed.trim() !== "" && !saving;
@@ -61,6 +71,7 @@ export default function TrialRoundResultDialog({
           m05Quantity: Number(m05) || 0,
           t05Quantity: Number(t05) || 0,
           t01Quantity: Number(t01) || 0,
+          mediumTypeId: mediumTypeId || undefined,
           notes: notes.trim() || undefined,
         }),
       });
@@ -119,6 +130,21 @@ export default function TrialRoundResultDialog({
               <Label className="text-xs">T01 (cây)</Label>
               <Input type="number" min={0} placeholder="_" value={t01} onChange={(e) => setT01(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Loại môi trường</Label>
+            <Select
+              items={mediumTypes.map((m) => ({ value: m.id, label: `${m.code} — ${m.name}` }))}
+              value={mediumTypeId}
+              onValueChange={(v) => setMediumTypeId(v as string)}
+            >
+              <SelectTrigger className="w-full"><SelectValue placeholder="Chọn loại môi trường" /></SelectTrigger>
+              <SelectContent>
+                {mediumTypes.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.code} — {m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Ghi chú</Label>

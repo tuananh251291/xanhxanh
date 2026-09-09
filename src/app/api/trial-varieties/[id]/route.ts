@@ -31,6 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           id: true, motherInputQuantity: true, waitWeeks: true, plantedAt: true, expectedReadyAt: true,
           motherContaminatedM05: true, motherUsed: true, motherChecked: true,
           m05Quantity: true, t05Quantity: true, t01Quantity: true,
+          mediumType: { select: { code: true, name: true } },
           recordedAt: true, notes: true,
         },
       },

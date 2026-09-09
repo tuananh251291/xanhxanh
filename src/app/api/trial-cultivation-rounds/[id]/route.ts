@@ -10,6 +10,7 @@ const recordResultSchema = z.object({
   m05Quantity: z.number().int().min(0, "Số lượng không được âm"),
   t05Quantity: z.number().int().min(0, "Số lượng không được âm"),
   t01Quantity: z.number().int().min(0, "Số lượng không được âm"),
+  mediumTypeId: z.string().optional(),
   notes: z.string().trim().optional(),
 });
 
@@ -32,7 +33,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
-  const { motherContaminatedM05, motherUsed, m05Quantity, t05Quantity, t01Quantity, notes } = parsed.data;
+  const { motherContaminatedM05, motherUsed, m05Quantity, t05Quantity, t01Quantity, mediumTypeId, notes } = parsed.data;
+
+  if (mediumTypeId) {
+    const medium = await prisma.mediumType.findUnique({ where: { id: mediumTypeId }, select: { isActive: true } });
+    if (!medium || !medium.isActive) {
+      return NextResponse.json({ message: "Loại môi trường không hợp lệ" }, { status: 400 });
+    }
+  }
 
   const updated = await prisma.trialCultivationRound.update({
     where: { id },
@@ -43,6 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       m05Quantity,
       t05Quantity,
       t01Quantity,
+      mediumTypeId: mediumTypeId || undefined,
       notes: notes || undefined,
       recordedAt: new Date(),
       recordedById: session!.user!.id,
