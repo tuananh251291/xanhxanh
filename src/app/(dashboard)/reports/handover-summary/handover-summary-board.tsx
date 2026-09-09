@@ -62,7 +62,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
       <Card>
         <CardContent className="p-4 flex items-end gap-3 flex-wrap">
           <div className="space-y-1">
-            <Label className="text-xs">Kỳ lương (theo tháng chọn)</Label>
+            <Label className="text-xs">Tháng</Label>
             <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
           </div>
           <div className="space-y-1">

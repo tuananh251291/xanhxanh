@@ -2,20 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
-import { addMonths, parse, isValid } from "date-fns";
-
-const PERIOD_START_DAY = 7;
+import { startOfMonth, endOfMonth, addDays, parse, isValid } from "date-fns";
 
 // Báo cáo "Bàn giao & ghi nhận theo tháng" — cho Admin + NV Hành chính nhân sự (chỉ xem) — tổng hợp
 // TOÀN BỘ NV cấy mô (không chỉ 1 người như /api/transfers/my-handovers), lọc được theo cơ sở sản xuất.
-// Cùng công thức "số lượng ghi nhận" với my-handovers/route.ts:
+// Cùng công thức "số lượng ghi nhận" VÀ cùng mốc THÁNG LỊCH (1 — hết ngày cuối tháng) với báo cáo
+// "Số lượng ghi nhận" của Admin (xem computeProductionRecordForPeriod trong
+// src/lib/production-record-report.ts) — trước đây báo cáo này dùng "kỳ lương" mùng 7 nên số ghi nhận
+// lệch với báo cáo của Admin dù cùng chọn 1 tháng, đã bỏ để 2 báo cáo luôn khớp nhau:
 // - Luồng Xanh: không qua Kiểm tra, ghi nhận = đã bàn giao trừ số "không đạt" NV tự khai.
 // - Luồng Đỏ (hoặc chưa cài luồng): ghi nhận = TransferInspectionItem.creditedQuantity (Kho mô xác nhận
 //   sau khi kiểm tra) — phiếu chưa kiểm tra thì phần đó CHƯA cộng vào ghi nhận (hasPending=true để FE báo
 //   "còn phiếu đang chờ kiểm tra", tránh hiểu nhầm số ghi nhận thấp là NV làm kém). 1 phiếu có thể có
 //   NHIỀU dòng TransferInspectionItem cùng stageCode (mỗi dòng 1 mã cây, xem schema) — báo cáo này gộp
 //   theo stageCode (cộng dồn) vì chỉ cần tổng theo NV, không cần tách mã cây.
-// Cùng "kỳ lương" mùng 7 - trước mùng 7 tháng sau (không phải tháng lịch) — khớp quy ước công ty.
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -29,9 +29,8 @@ export async function GET(req: NextRequest) {
 
   const parsedMonth = monthParam ? parse(monthParam, "yyyy-MM", new Date()) : new Date();
   const monthDate = isValid(parsedMonth) ? parsedMonth : new Date();
-  const anchorMonth = !monthParam && monthDate.getDate() < PERIOD_START_DAY ? addMonths(monthDate, -1) : monthDate;
-  const rangeStart = new Date(anchorMonth.getFullYear(), anchorMonth.getMonth(), PERIOD_START_DAY, 0, 0, 0, 0);
-  const rangeEnd = addMonths(rangeStart, 1);
+  const rangeStart = startOfMonth(monthDate);
+  const rangeEnd = addDays(endOfMonth(monthDate), 1);
 
   const staffList = await prisma.user.findMany({
     where: { role: "CAY_MO", isActive: true, ...(warehouseId ? { workplaceWarehouseId: warehouseId } : {}) },

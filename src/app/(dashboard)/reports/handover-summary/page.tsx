@@ -24,8 +24,8 @@ export default async function HandoverSummaryPage() {
           <PackageCheck className="w-6 h-6 text-primary-strong" /> Bàn giao & ghi nhận theo tháng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Số lượng bàn giao và số lượng được ghi nhận của từng NV cấy mô, theo kỳ lương (mùng 7 — trước
-          mùng 7 tháng sau), lọc được theo cơ sở sản xuất.
+          Số lượng bàn giao và số lượng được ghi nhận của từng NV cấy mô trong tháng (khớp số với báo cáo
+          &quot;Số lượng ghi nhận&quot; của Admin), lọc được theo cơ sở sản xuất.
         </p>
       </div>
       <HandoverSummaryBoard warehouses={warehouses} />
