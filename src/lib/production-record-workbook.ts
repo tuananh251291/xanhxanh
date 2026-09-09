@@ -14,6 +14,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Mã NV", key: "staffCode", width: 12 },
     { header: "Tên NV", key: "staffName", width: 24 },
     { header: "Cơ sở", key: "warehouseName", width: 20 },
+    { header: "Số lượng bàn giao", key: "totalHandedOverQuantity", width: 16 },
     { header: "Số lượng ghi nhận", key: "totalRecordedQuantity", width: 16 },
     { header: "Số lượng không đạt", key: "totalUnqualifiedQuantity", width: 16 },
   ];
@@ -23,6 +24,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
       staffCode: r.staffCode,
       staffName: r.staffName,
       warehouseName: r.warehouseName ?? "",
+      totalHandedOverQuantity: r.totalHandedOverQuantity,
       totalRecordedQuantity: r.totalRecordedQuantity,
       totalUnqualifiedQuantity: r.totalUnqualifiedQuantity,
     });
@@ -35,6 +37,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Tên NV", key: "staffName", width: 24 },
     { header: "Mã cây", key: "plantTypeCode", width: 12 },
     { header: "Tên cây", key: "plantTypeName", width: 24 },
+    { header: "Số lượng bàn giao", key: "handedOverQuantity", width: 16 },
     { header: "Số lượng ghi nhận", key: "quantity", width: 16 },
   ];
   plantSheet.getRow(1).font = { bold: true };
@@ -45,6 +48,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
         staffName: r.staffName,
         plantTypeCode: p.plantTypeCode,
         plantTypeName: p.plantTypeName,
+        handedOverQuantity: p.handedOverQuantity,
         quantity: p.quantity,
       });
     }
@@ -56,7 +60,8 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Mã NV", key: "staffCode", width: 12 },
     { header: "Tên NV", key: "staffName", width: 24 },
     { header: "Ngày", key: "date", width: 14 },
-    { header: "Có ghi nhận", key: "active", width: 12 },
+    { header: "Có bàn giao", key: "active", width: 12 },
+    { header: "Số lượng bàn giao", key: "handedOverQuantity", width: 16 },
     { header: "Số lượng ghi nhận", key: "recordedQuantity", width: 16 },
     { header: "Số lượng không đạt", key: "unqualifiedQuantity", width: 16 },
   ];
@@ -68,6 +73,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
         staffName: r.staffName,
         date: format(new Date(`${d.date}T00:00:00`), "dd/MM/yyyy"),
         active: d.active ? "Có" : "",
+        handedOverQuantity: d.handedOverQuantity,
         recordedQuantity: d.recordedQuantity,
         unqualifiedQuantity: d.unqualifiedQuantity,
       });

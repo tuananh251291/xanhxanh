@@ -22,6 +22,7 @@ import { startOfMonth, endOfMonth, addDays, eachDayOfInterval, parse, isValid, f
 export type ProductionRecordDailyEntry = {
   date: string; // yyyy-MM-dd
   active: boolean; // có nhật ký cấy hoặc bàn giao phòng tối trong ngày
+  handedOverQuantity: number;
   recordedQuantity: number;
   unqualifiedQuantity: number;
 };
@@ -30,6 +31,7 @@ export type ProductionRecordPlantTypeBreakdown = {
   plantTypeId: string;
   plantTypeCode: string;
   plantTypeName: string;
+  handedOverQuantity: number;
   quantity: number;
 };
 
@@ -38,6 +40,7 @@ export type ProductionRecordRow = {
   staffCode: string;
   staffName: string;
   warehouseName: string | null;
+  totalHandedOverQuantity: number;
   totalRecordedQuantity: number;
   totalUnqualifiedQuantity: number;
   byPlantType: ProductionRecordPlantTypeBreakdown[];
@@ -90,64 +93,84 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
 
   const daysInPeriod = eachDayOfInterval({ start: rangeStart, end: rangeEndInclusive });
 
-  const dailyMap = new Map<string, Map<string, { active: boolean; quantity: number; unqualified: number }>>();
-  const ensureDayEntry = (staffId: string, day: string) => {
-    const staffMap = dailyMap.get(staffId) ?? new Map<string, { active: boolean; quantity: number; unqualified: number }>();
-    if (!staffMap.has(day)) staffMap.set(day, { active: false, quantity: 0, unqualified: 0 });
+  type DayAgg = { active: boolean; handedOver: number; recorded: number; unqualified: number };
+  const dailyMap = new Map<string, Map<string, DayAgg>>();
+  const ensureDayEntry = (staffId: string, day: string): DayAgg => {
+    const staffMap = dailyMap.get(staffId) ?? new Map<string, DayAgg>();
+    if (!staffMap.has(day)) staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0 });
     dailyMap.set(staffId, staffMap);
     return staffMap.get(day)!;
   };
   for (const r of dailyRecords) ensureDayEntry(r.staffId, dayKey(r.recordDate)).active = true;
 
   const plantTypeMetaById = new Map<string, { code: string; name: string }>();
-  const byStaffAndPlant = new Map<string, Map<string, number>>();
-  const addRecorded = (staffId: string, plantTypeId: string, code: string, name: string, qty: number) => {
+  type PlantAgg = { handedOver: number; recorded: number };
+  const byStaffAndPlant = new Map<string, Map<string, PlantAgg>>();
+  const addPlant = (staffId: string, plantTypeId: string, code: string, name: string, handedOverDelta: number, recordedDelta: number) => {
     plantTypeMetaById.set(plantTypeId, { code, name });
-    const m = byStaffAndPlant.get(staffId) ?? new Map<string, number>();
-    m.set(plantTypeId, (m.get(plantTypeId) ?? 0) + qty);
+    const m = byStaffAndPlant.get(staffId) ?? new Map<string, PlantAgg>();
+    const cur = m.get(plantTypeId) ?? { handedOver: 0, recorded: 0 };
+    cur.handedOver += handedOverDelta;
+    cur.recorded += recordedDelta;
+    m.set(plantTypeId, cur);
     byStaffAndPlant.set(staffId, m);
   };
 
   for (const t of transfers) {
     const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
     dayEntry.active = true;
+
+    for (const item of t.items) {
+      dayEntry.handedOver += item.quantity;
+      addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, 0);
+    }
+
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
-        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, insItem.creditedQuantity);
-        dayEntry.quantity += insItem.creditedQuantity;
+        addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, 0, insItem.creditedQuantity);
+        dayEntry.recorded += insItem.creditedQuantity;
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
       // — tự ghi nhận theo số NV tự khai (xem giải thích ở đầu file, KHÔNG dùng lane sống).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
-        addRecorded(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, credited);
-        dayEntry.quantity += credited;
+        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, 0, credited);
+        dayEntry.recorded += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
       }
     }
-    // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa ghi nhận được, bỏ qua.
+    // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): đã tính vào SL bàn giao ở trên, chưa ghi nhận được.
   }
 
   const rows: ProductionRecordRow[] = staffList.map((s) => {
     const plantMap = byStaffAndPlant.get(s.id);
     const byPlantType: ProductionRecordPlantTypeBreakdown[] = plantMap
       ? Array.from(plantMap.entries())
-          .map(([plantTypeId, quantity]) => ({ plantTypeId, plantTypeCode: plantTypeMetaById.get(plantTypeId)!.code, plantTypeName: plantTypeMetaById.get(plantTypeId)!.name, quantity }))
+          .map(([plantTypeId, agg]) => ({
+            plantTypeId,
+            plantTypeCode: plantTypeMetaById.get(plantTypeId)!.code,
+            plantTypeName: plantTypeMetaById.get(plantTypeId)!.name,
+            handedOverQuantity: agg.handedOver,
+            quantity: agg.recorded,
+          }))
           .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode))
       : [];
     const totalRecordedQuantity = byPlantType.reduce((sum, p) => sum + p.quantity, 0);
 
     const staffDayMap = dailyMap.get(s.id);
+    let totalHandedOverQuantity = 0;
     let totalUnqualifiedQuantity = 0;
     const dailyDetail: ProductionRecordDailyEntry[] = daysInPeriod.map((d) => {
       const key = dayKey(d);
       const entry = staffDayMap?.get(key);
+      totalHandedOverQuantity += entry?.handedOver ?? 0;
       totalUnqualifiedQuantity += entry?.unqualified ?? 0;
       return {
         date: key,
         active: entry?.active ?? false,
-        recordedQuantity: entry?.quantity ?? 0,
+        handedOverQuantity: entry?.handedOver ?? 0,
+        recordedQuantity: entry?.recorded ?? 0,
         unqualifiedQuantity: entry?.unqualified ?? 0,
       };
     });
@@ -157,6 +180,7 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
       staffCode: s.code,
       staffName: s.name,
       warehouseName: s.workplaceWarehouse?.name ?? null,
+      totalHandedOverQuantity,
       totalRecordedQuantity,
       totalUnqualifiedQuantity,
       byPlantType,
