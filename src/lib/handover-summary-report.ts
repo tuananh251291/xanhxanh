@@ -67,7 +67,9 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
   const staffIds = staffList.map((s) => s.id);
 
   const transfers = await prisma.transfer.findMany({
-    where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive } },
+    // status != REJECTED — phiếu bị Kho mô từ chối (VD MM dư không hợp lệ) coi như CHƯA TỪNG bàn giao
+    // thật, không tính vào bàn giao/ghi nhận lẫn "còn chờ kiểm tra" (đã có kết luận, không còn chờ gì).
+    where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" } },
     select: {
       fromUserId: true,
       createdAt: true,

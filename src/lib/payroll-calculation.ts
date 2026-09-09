@@ -97,8 +97,10 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     }),
     // Cùng nguồn Transfer dùng cho CẢ "ngày làm việc thực tế" (createdAt) LẪN "số lượng ghi nhận" theo
     // mã cây (items/inspection) — tránh truy vấn Transfer 2 lần cho cùng 1 khoảng thời gian.
+    // status != REJECTED — phiếu bị Kho mô từ chối coi như chưa từng bàn giao thật, không tính vào ngày
+    // công lẫn ghi nhận/lương.
     prisma.transfer.findMany({
-      where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEnd } },
+      where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: { not: "REJECTED" } },
       select: {
         fromUserId: true,
         createdAt: true,

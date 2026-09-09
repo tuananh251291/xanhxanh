@@ -75,7 +75,9 @@ export async function computeProductionRecordForPeriod(monthParam?: string | nul
       select: { staffId: true, recordDate: true },
     }),
     prisma.transfer.findMany({
-      where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive } },
+      // status != REJECTED — phiếu bị Kho mô từ chối coi như chưa từng bàn giao thật, không tính vào
+      // ngày hoạt động lẫn ghi nhận.
+      where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" } },
       select: {
         fromUserId: true,
         createdAt: true,
