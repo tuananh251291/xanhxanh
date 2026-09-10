@@ -87,8 +87,8 @@ export default function RootingSummaryWidget({
                     Chỉ tiêu TB/ngày: <span className="font-medium text-foreground">{num(w.dailyTargetQuantity)} cây</span>
                   </p>
                   {w.deficitQuantity > 0 ? (
-                    <p className="text-sm font-bold text-destructive mt-0.5">
-                      Còn thiếu {num(w.deficitQuantity)} cây để đạt chỉ tiêu
+                    <p className="text-sm text-text-secondary mt-0.5">
+                      Còn thiếu <span className="font-bold text-destructive">{num(w.deficitQuantity)}</span> cây để đạt chỉ tiêu
                     </p>
                   ) : (
                     <p className="text-sm font-bold text-success-foreground mt-0.5">
