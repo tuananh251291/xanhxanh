@@ -15,6 +15,7 @@ type Warehouse = { id: string; code: string; name: string };
 type DailyDetailEntry = {
   date: string; active: boolean; handedOverQuantity: number; recordedQuantity: number;
   unqualifiedQuantity: number; contaminatedQuantity: number;
+  inspectedUnqualifiedQuantity: number; randomCheckLossQuantity: number;
 };
 type PlantTypeBreakdown = {
   plantTypeId: string; plantTypeCode: string; plantTypeName: string;
@@ -30,6 +31,8 @@ type Row = {
   totalRecordedQuantity: number;
   totalUnqualifiedQuantity: number;
   totalContaminatedQuantity: number;
+  totalInspectedUnqualifiedQuantity: number;
+  totalRandomCheckLossQuantity: number;
   hasPending: boolean;
   byPlantType: PlantTypeBreakdown[];
   dailyDetail: DailyDetailEntry[];
@@ -144,6 +147,9 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ nhiễm</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL ghi nhận</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Không đạt (Kho mô KT)</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL nhiễm ngẫu nhiên</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ nhiễm ngẫu nhiên</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -154,6 +160,11 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                     // nhiễm lúc kiểm tra — giống cách tính ở inspect-form.tsx.
                     const originalHandedOver = r.totalHandedOverQuantity + r.totalContaminatedQuantity;
                     const contaminationPct = originalHandedOver > 0 ? Math.round((r.totalContaminatedQuantity / originalHandedOver) * 1000) / 10 : 0;
+                    // Tỉ lệ nhiễm ngẫu nhiên: mẫu số = SL ghi nhận + phần hao hụt này (số GỐC trước khi
+                    // Kho mô trừ theo tỉ lệ nhập tay ở bước kiểm tra ngẫu nhiên) — khác hẳn Tỉ lệ nhiễm ở
+                    // trên (đó tính trên SL nhiễm ĐẾM ĐƯỢC).
+                    const randomCheckBase = r.totalRecordedQuantity + r.totalRandomCheckLossQuantity;
+                    const randomCheckLossPct = randomCheckBase > 0 ? Math.round((r.totalRandomCheckLossQuantity / randomCheckBase) * 1000) / 10 : 0;
                     return (
                       <Fragment key={r.staffId}>
                         <tr
@@ -184,10 +195,13 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                             )}
                           </td>
                           <td className="px-4 py-3 text-right font-bold tabular-nums">{pct}%</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{num(r.totalInspectedUnqualifiedQuantity)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-destructive">{num(r.totalRandomCheckLossQuantity)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-destructive">{randomCheckLossPct}%</td>
                         </tr>
                         {isOpen && (
                           <tr className="bg-background border-b">
-                            <td colSpan={9} className="px-6 py-4">
+                            <td colSpan={12} className="px-6 py-4">
                               {r.byPlantType.length > 0 && (
                                 <div className="mb-4">
                                   <p className="text-text-muted text-xs mb-2">Theo mã cây (bàn giao / nhiễm / ghi nhận)</p>
@@ -212,6 +226,8 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL nhiễm</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL ghi nhận</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL không đạt</th>
+                                      <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">Không đạt (Kho mô KT)</th>
+                                      <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL nhiễm ngẫu nhiên</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -231,6 +247,8 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(d.contaminatedQuantity)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(d.recordedQuantity)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(d.unqualifiedQuantity)}</td>
+                                        <td className="px-3 py-1.5 text-right tabular-nums">{num(d.inspectedUnqualifiedQuantity)}</td>
+                                        <td className="px-3 py-1.5 text-right tabular-nums">{num(d.randomCheckLossQuantity)}</td>
                                       </tr>
                                     ))}
                                   </tbody>

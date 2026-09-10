@@ -19,10 +19,14 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Tỉ lệ nhiễm (%)", key: "contaminationRatePct", width: 14 },
     { header: "Số lượng ghi nhận", key: "totalRecordedQuantity", width: 16 },
     { header: "Số lượng không đạt", key: "totalUnqualifiedQuantity", width: 16 },
+    { header: "Không đạt (Kho mô kiểm tra)", key: "totalInspectedUnqualifiedQuantity", width: 20 },
+    { header: "SL nhiễm ngẫu nhiên (Kho mô nhập tay)", key: "totalRandomCheckLossQuantity", width: 22 },
+    { header: "Tỉ lệ nhiễm ngẫu nhiên (%)", key: "randomCheckLossRatePct", width: 18 },
   ];
   summarySheet.getRow(1).font = { bold: true };
   for (const r of rows) {
     const originalHandedOver = r.totalHandedOverQuantity + r.totalContaminatedQuantity;
+    const randomCheckBase = r.totalRecordedQuantity + r.totalRandomCheckLossQuantity;
     summarySheet.addRow({
       staffCode: r.staffCode,
       staffName: r.staffName,
@@ -32,6 +36,9 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
       contaminationRatePct: originalHandedOver > 0 ? Math.round((r.totalContaminatedQuantity / originalHandedOver) * 1000) / 10 : 0,
       totalRecordedQuantity: r.totalRecordedQuantity,
       totalUnqualifiedQuantity: r.totalUnqualifiedQuantity,
+      totalInspectedUnqualifiedQuantity: r.totalInspectedUnqualifiedQuantity,
+      totalRandomCheckLossQuantity: r.totalRandomCheckLossQuantity,
+      randomCheckLossRatePct: randomCheckBase > 0 ? Math.round((r.totalRandomCheckLossQuantity / randomCheckBase) * 1000) / 10 : 0,
     });
   }
   if (rows.length === 0) summarySheet.addRow({ staffCode: "", staffName: "Không có NV nào khớp bộ lọc" });
@@ -72,6 +79,8 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Số lượng nhiễm (Kho mô phát hiện)", key: "contaminatedQuantity", width: 20 },
     { header: "Số lượng ghi nhận", key: "recordedQuantity", width: 16 },
     { header: "Số lượng không đạt", key: "unqualifiedQuantity", width: 16 },
+    { header: "Không đạt (Kho mô kiểm tra)", key: "inspectedUnqualifiedQuantity", width: 20 },
+    { header: "SL nhiễm ngẫu nhiên (Kho mô nhập tay)", key: "randomCheckLossQuantity", width: 22 },
   ];
   detailSheet.getRow(1).font = { bold: true };
   for (const r of rows) {
@@ -85,6 +94,8 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
         contaminatedQuantity: d.contaminatedQuantity,
         recordedQuantity: d.recordedQuantity,
         unqualifiedQuantity: d.unqualifiedQuantity,
+        inspectedUnqualifiedQuantity: d.inspectedUnqualifiedQuantity,
+        randomCheckLossQuantity: d.randomCheckLossQuantity,
       });
     }
   }

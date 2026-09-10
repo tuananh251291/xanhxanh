@@ -33,6 +33,10 @@ export type ProductionRecordDailyEntry = {
   recordedQuantity: number;
   unqualifiedQuantity: number;
   contaminatedQuantity: number;
+  // 2 khoản trừ RIÊNG phát sinh ở bước "Kiểm tra bàn giao" của Kho mô (chỉ luồng Đỏ/Vàng có, luồng Xanh
+  // luôn 0) — xem giải thích đầy đủ ở totalInspectedUnqualifiedQuantity/totalRandomCheckLossQuantity.
+  inspectedUnqualifiedQuantity: number;
+  randomCheckLossQuantity: number;
 };
 
 export type ProductionRecordPlantTypeBreakdown = {
@@ -56,6 +60,23 @@ export type ProductionRecordRow = {
   // nên luôn 0) — cùng khái niệm với handover-summary-report.ts (xem giải thích ở đó). Mẫu số tỉ lệ nhiễm
   // = totalHandedOverQuantity + totalContaminatedQuantity (số GỐC trước khi trừ nhiễm).
   totalContaminatedQuantity: number;
+  // SL không đạt Kho mô tự kiểm tra lúc nhận bàn giao (TransferInspectionItem.unqualifiedQuantity, ô "SL
+  // không đạt NV kho kiểm tra" ở inspect-form.tsx) — CHỈ phát sinh ở phiếu có kiểm tra (Đỏ/Vàng). Trước
+  // đây con số này hoàn toàn "mất tích" khỏi báo cáo (không cộng vào totalUnqualifiedQuantity, vốn chỉ
+  // tính NV tự khai ở luồng Xanh) khiến SL ghi nhận < SL bàn giao dù cả SL nhiễm lẫn SL không đạt hiển thị
+  // đều bằng 0 — phát hiện qua trao đổi thực tế 10/09/2026 (NVCM032).
+  totalInspectedUnqualifiedQuantity: number;
+  // Phần hao hụt do Kho mô tự nhập tay ô "Tỉ lệ nhiễm (%)" lúc kiểm tra ngẫu nhiên (randomCheckPassRate —
+  // tên field giữ nguyên vì lịch sử, thực chất là tỉ lệ NHIỄM chứ không phải tỉ lệ đạt) — khác hẳn
+  // totalContaminatedQuantity (số cây nhiễm ĐẾM ĐƯỢC, bị trừ tồn thật). Suy ra bằng phần dư CHÍNH XÁC từ
+  // các field đã lưu (passed - inspectedUnqualified - creditedQuantity) thay vì tính lại từ rate trung
+  // bình đã gộp (rateSum/rateCount) — vì creditedQuantity gốc được cộng dồn TỪNG LÔ trước khi gộp theo
+  // quy cách nên áp lại rate trung bình lên tổng đã gộp có thể lệch do làm tròn/nhiều lô khác rate. Cách
+  // này luôn đảm bảo cộng đúng: SL bàn giao = SL nhiễm + SL không đạt (KT) + SL nhiễm ngẫu nhiên + SL ghi
+  // nhận, không có phần nào "rơi mất" — kể cả khi Kho mô để trống ô "SL không đạt" (A=0) nhưng NV tự khai
+  // (B) vẫn được áp theo max(A,B) lúc tính credited, phần chênh đó sẽ tự động rơi vào SL nhiễm ngẫu nhiên
+  // thay vì SL không đạt (KT) — chấp nhận vì TransferInspectionItem không lưu B riêng để tách chính xác.
+  totalRandomCheckLossQuantity: number;
   byPlantType: ProductionRecordPlantTypeBreakdown[];
   dailyDetail: ProductionRecordDailyEntry[];
 };
@@ -117,6 +138,7 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
             items: {
               select: {
                 plantTypeId: true, creditedQuantity: true, handedOverQuantity: true, contaminatedQuantity: true,
+                unqualifiedQuantity: true,
                 plantType: { select: { code: true, name: true } },
               },
             },
@@ -128,11 +150,16 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
 
   const daysInPeriod = eachDayOfInterval({ start: rangeStart, end: rangeEndInclusive });
 
-  type DayAgg = { active: boolean; handedOver: number; recorded: number; unqualified: number; contaminated: number };
+  type DayAgg = {
+    active: boolean; handedOver: number; recorded: number; unqualified: number; contaminated: number;
+    inspectedUnqualified: number; randomCheckLoss: number;
+  };
   const dailyMap = new Map<string, Map<string, DayAgg>>();
   const ensureDayEntry = (staffId: string, day: string): DayAgg => {
     const staffMap = dailyMap.get(staffId) ?? new Map<string, DayAgg>();
-    if (!staffMap.has(day)) staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0, contaminated: 0 });
+    if (!staffMap.has(day)) {
+      staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0, contaminated: 0, inspectedUnqualified: 0, randomCheckLoss: 0 });
+    }
     dailyMap.set(staffId, staffMap);
     return staffMap.get(day)!;
   };
@@ -162,6 +189,10 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
         const passed = insItem.handedOverQuantity - insItem.contaminatedQuantity;
+        // Phần dư sau khi trừ "không đạt Kho mô kiểm tra" — phần CÒN CHÊNH giữa đó và creditedQuantity
+        // (đã lưu sẵn, tính đúng theo từng lô lúc kiểm tra) chính là hao hụt do tỉ lệ nhiễm ngẫu nhiên,
+        // xem giải thích ở totalRandomCheckLossQuantity.
+        const randomCheckLoss = Math.max(0, passed - insItem.unqualifiedQuantity - insItem.creditedQuantity);
         addPlant(
           t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name,
           passed, insItem.creditedQuantity, insItem.contaminatedQuantity
@@ -169,6 +200,8 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
         dayEntry.handedOver += passed;
         dayEntry.recorded += insItem.creditedQuantity;
         dayEntry.contaminated += insItem.contaminatedQuantity;
+        dayEntry.inspectedUnqualified += insItem.unqualifiedQuantity;
+        dayEntry.randomCheckLoss += randomCheckLoss;
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
@@ -207,12 +240,16 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
     let totalHandedOverQuantity = 0;
     let totalUnqualifiedQuantity = 0;
     let totalContaminatedQuantity = 0;
+    let totalInspectedUnqualifiedQuantity = 0;
+    let totalRandomCheckLossQuantity = 0;
     const dailyDetail: ProductionRecordDailyEntry[] = daysInPeriod.map((d) => {
       const key = dayKey(d);
       const entry = staffDayMap?.get(key);
       totalHandedOverQuantity += entry?.handedOver ?? 0;
       totalUnqualifiedQuantity += entry?.unqualified ?? 0;
       totalContaminatedQuantity += entry?.contaminated ?? 0;
+      totalInspectedUnqualifiedQuantity += entry?.inspectedUnqualified ?? 0;
+      totalRandomCheckLossQuantity += entry?.randomCheckLoss ?? 0;
       return {
         date: key,
         active: entry?.active ?? false,
@@ -220,6 +257,8 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
         recordedQuantity: entry?.recorded ?? 0,
         unqualifiedQuantity: entry?.unqualified ?? 0,
         contaminatedQuantity: entry?.contaminated ?? 0,
+        inspectedUnqualifiedQuantity: entry?.inspectedUnqualified ?? 0,
+        randomCheckLossQuantity: entry?.randomCheckLoss ?? 0,
       };
     });
 
@@ -229,6 +268,8 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
       staffName: s.name,
       warehouseName: s.workplaceWarehouse?.name ?? null,
       totalHandedOverQuantity,
+      totalInspectedUnqualifiedQuantity,
+      totalRandomCheckLossQuantity,
       totalRecordedQuantity,
       totalUnqualifiedQuantity,
       totalContaminatedQuantity,
