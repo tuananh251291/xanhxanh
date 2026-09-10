@@ -526,6 +526,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
+    { href: "/transfers/handover-history", label: "Lịch sử phiếu bàn giao", icon: "History" },
     { href: "/instructions/edit", label: "Sửa chỉ định cấy", icon: "PenLine" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },

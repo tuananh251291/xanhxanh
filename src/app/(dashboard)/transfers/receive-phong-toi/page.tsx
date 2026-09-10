@@ -1,7 +1,9 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { PackageCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PackageCheck, History } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import ReceivePhongToiBoard from "./receive-phong-toi-board";
 import ReceiveDoLaneBoard from "./receive-do-lane-board";
@@ -40,6 +42,11 @@ export default async function ReceivePhongToiPage() {
         <div className="flex flex-wrap gap-2">
           <CheckHandoverStatusDialog />
           <CheckSurplusStatusDialog />
+          <Link href="/transfers/handover-history">
+            <Button type="button" className="bg-primary hover:bg-primary-hover">
+              <History className="w-3.5 h-3.5 mr-1.5" /> Lịch sử phiếu bàn giao
+            </Button>
+          </Link>
         </div>
       </div>
 
