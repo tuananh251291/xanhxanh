@@ -42,8 +42,48 @@ async function getDueTrialRounds() {
   });
 }
 
+// Sản lượng "cây ra rễ" (thành phẩm) 7 ngày gần nhất, gộp theo từng khu sản xuất — tóm tắt nhanh cho Admin
+// kỹ thuật ngay trên dashboard, không cần vào báo cáo riêng. CÙNG định nghĩa "thực tế" đã dùng ở báo cáo
+// "Kế hoạch vs thực tế — Cây ra rễ" (DailyRecordItem.quantityCreated, stage THANH_PHAM — xem
+// /api/reports/rooting-plan-vs-actual), lọc theo khu sản xuất qua NV cấy mô đang gán workplaceWarehouseId
+// đúng cơ sở đó (DailyRecord không có FK kho trực tiếp).
+async function getRootingLast7DaysByWarehouse() {
+  const rangeEnd = endOfDay(new Date());
+  const rangeStart = startOfDay(addDays(rangeEnd, -6));
+
+  const warehouses = await prisma.warehouse.findMany({
+    where: { type: "SAN_XUAT", isActive: true },
+    select: { id: true, code: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  if (warehouses.length === 0) return [];
+
+  const records = await prisma.dailyRecord.findMany({
+    where: {
+      recordDate: { gte: rangeStart, lte: rangeEnd },
+      staff: { role: "CAY_MO", workplaceWarehouseId: { in: warehouses.map((w) => w.id) } },
+    },
+    select: {
+      staff: { select: { workplaceWarehouseId: true } },
+      items: { select: { stage: true, quantityCreated: true } },
+    },
+  });
+
+  const totalsByWarehouse = new Map<string, number>();
+  for (const r of records) {
+    const warehouseId = r.staff.workplaceWarehouseId;
+    if (!warehouseId) continue;
+    const finishedQty = r.items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + i.quantityCreated, 0);
+    totalsByWarehouse.set(warehouseId, (totalsByWarehouse.get(warehouseId) ?? 0) + finishedQty);
+  }
+
+  return warehouses.map((w) => ({
+    warehouseId: w.id, warehouseCode: w.code, warehouseName: w.name, quantity: totalsByWarehouse.get(w.id) ?? 0,
+  }));
+}
+
 async function getAdminStats(role: "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT") {
-  const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts, dueTrialRounds] = await Promise.all([
+  const [totalLots, activeLots, pendingOrders, totalUsers, recentAlerts, dueTrialRounds, rootingByWarehouse] = await Promise.all([
     prisma.lot.count(),
     prisma.lot.count({ where: { status: "ACTIVE" } }),
     prisma.order.count({ where: { status: { in: ["HELD", "CONFIRMED"] } } }),
@@ -57,8 +97,9 @@ async function getAdminStats(role: "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT") {
       take: 5,
     }),
     role === "ADMIN_KY_THUAT" ? getDueTrialRounds() : Promise.resolve([]),
+    role === "ADMIN_KY_THUAT" ? getRootingLast7DaysByWarehouse() : Promise.resolve([]),
   ]);
-  return { totalLots, activeLots, pendingOrders, totalUsers, recentAlerts, dueTrialRounds };
+  return { totalLots, activeLots, pendingOrders, totalUsers, recentAlerts, dueTrialRounds, rootingByWarehouse };
 }
 
 async function getSaleStats(userId: string, workplaceWarehouseId: string | null) {
@@ -546,6 +587,26 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
       </div>
       <GreetingBanner />
       {stats.dueTrialRounds.length > 0 && <TrialRoundTaskCard rounds={stats.dueTrialRounds} />}
+      {stats.rootingByWarehouse.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sprout className="w-4 h-4 text-primary-strong" />
+              Cây ra rễ 7 ngày gần nhất theo khu sản xuất
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {stats.rootingByWarehouse.map((w) => (
+                <div key={w.warehouseId} className="p-3 rounded-lg bg-primary-light">
+                  <p className="text-sm text-text-secondary">{w.warehouseName} ({w.warehouseCode})</p>
+                  <p className="text-2xl font-bold text-primary-strong mt-1">{w.quantity.toLocaleString("vi-VN")}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Lô cây đang lưu" value={stats.activeLots} icon={Leaf} color="green" />
         <StatCard title="Tổng lô cây" value={stats.totalLots} icon={Package} color="blue" />
