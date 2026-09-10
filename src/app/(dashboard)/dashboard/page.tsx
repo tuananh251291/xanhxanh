@@ -82,9 +82,15 @@ async function getRootingLast7DaysByWarehouse(warehouseId?: string) {
   if (warehouses.length === 0) return { warehouses: [], warehouseSummaries: [], dailyBreakdown: [] };
   const warehouseIds = warehouses.map((w) => w.id);
 
-  const t1 = subMonths(monthStart, 1);
-  const t2 = subMonths(monthStart, 2);
-  const t3 = subMonths(monthStart, 3);
+  // RootingForecastEntry.taskMonth được LƯU dưới dạng UTC-midnight (xem new Date(format(...,"yyyy-MM-dd"))
+  // ở getTaskMonth trong rooting-forecast.ts) — subMonths thẳng trên monthStart (Date local-midnight) sẽ
+  // LỆCH múi giờ server (VD UTC+7 ra local-midnight = UTC 17h hôm trước, không khớp taskMonth đã lưu, khiến
+  // planRows luôn rỗng dù đã có kế hoạch — bug phát hiện 10/09/2026). Round-trip qua chuỗi "yyyy-MM-dd" để
+  // ép về đúng UTC-midnight trước khi trừ tháng, khớp chính xác cách taskMonth được tạo.
+  const monthStartUtcMidnight = new Date(format(monthStart, "yyyy-MM-dd"));
+  const t1 = subMonths(monthStartUtcMidnight, 1);
+  const t2 = subMonths(monthStartUtcMidnight, 2);
+  const t3 = subMonths(monthStartUtcMidnight, 3);
 
   const [records, monthToDateRecords, holidays, planRows] = await Promise.all([
     prisma.dailyRecord.findMany({
