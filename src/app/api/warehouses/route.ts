@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { generateWarehouseCode } from "@/lib/codes";
+import { createDefaultProductionRooms } from "@/lib/warehouse-provisioning";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -62,13 +63,7 @@ export async function POST(req: NextRequest) {
   // kệ" ở từng phòng, không cố định 1 kích cỡ). Phòng tối cá nhân không tạo ở đây — tự sinh riêng theo
   // từng NV cấy mô khi được gán làm việc tại kho này (xem lib/dark-room.ts).
   if (parsed.data.type === "SAN_XUAT") {
-    await prisma.room.createMany({
-      data: [
-        { code: `${code}-PS`, name: "Phòng mẫu mẹ", type: "PHONG_MAU_ME", warehouseId: warehouse.id },
-        { code: `${code}-PRR`, name: "Phòng ra rễ", type: "PHONG_RA_RE", warehouseId: warehouse.id },
-        { code: `${code}-NHIEM`, name: "Phòng nhiễm", type: "PHONG_NHIEM", warehouseId: warehouse.id },
-      ],
-    });
+    await createDefaultProductionRooms(warehouse.id, code);
   }
 
   // Kho thành phẩm mới mặc định có cấu tạo giống Kho thành phẩm A hiện tại — tự tạo sẵn 3 phòng cố định

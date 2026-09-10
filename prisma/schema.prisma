@@ -240,6 +240,10 @@ enum AlertType {
   ROOTING_FORECAST_EDIT_APPROVED
   // Admin từ chối đề xuất chỉnh sửa — báo đúng NV đã gửi (userId), kèm lý do nếu có.
   ROOTING_FORECAST_EDIT_REJECTED
+  // Admin kỹ thuật vừa kết thúc 1 kì cấy R&D tự tạo (mẫu mẹ dùng hết) — hệ thống đã tự tạo sẵn kì cấy
+  // tiếp theo ở trạng thái DRAFT (đầu vào = mẫu mẹ trả ra kì trước), chỉ cần vào xác nhận ngày bắt đầu —
+  // báo cho đúng Admin kỹ thuật đó (userId), xem createNextRndRound (src/lib/rnd-instruction-chain.ts).
+  RND_NEXT_ROUND_READY
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -939,6 +943,10 @@ model Warehouse {
   type        WarehouseType
   description String?
   isActive    Boolean       @default(true)
+  // Đánh dấu kho SX R&D (Admin kỹ thuật tự tạo chỉ định cấy cho mình) — cho phép tra cứu đáng tin cậy
+  // thay vì so tên chuỗi. Mặc định false cho mọi kho hiện có, không ảnh hưởng gì tới kho sản xuất/thành
+  // phẩm thật. Xem getOrCreateRndWarehouse (src/lib/rnd-instruction-warehouse.ts).
+  isRnd       Boolean       @default(false)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -1433,6 +1441,13 @@ model PlantingInstruction {
   // chưa gắn NV cụ thể lúc tạo — dùng khi NV cấy mô đăng ký làm thêm/hoàn thành sớm (xem
   // ExtraWorkRequest.fulfilledInstructionId). Xem POST /api/instructions, getKyThuatStats.
   isBackup Boolean @default(false)
+
+  // Liên kết kì cấy R&D tự tạo tiếp theo (Admin kỹ thuật, xem createNextRndRound trong
+  // src/lib/rnd-instruction-chain.ts) — đầu vào kì sau = mẫu mẹ trả ra của kì trước. Null với mọi chỉ
+  // định thường (KY_THUAT tạo cho NV cấy mô) — không ảnh hưởng gì tới luồng sản xuất thật hiện có.
+  previousInstructionId String?              @unique
+  previousInstruction   PlantingInstruction? @relation("InstructionChain", fields: [previousInstructionId], references: [id])
+  nextInstruction       PlantingInstruction? @relation("InstructionChain")
 
   items        PlantingInstructionItem[]
   lots         Lot[]

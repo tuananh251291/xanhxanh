@@ -260,6 +260,12 @@ export const SURPLUS_TRANSFER_TAG = "SURPLUS_MOTHER_HANDOVER";
 // chỉ định kết thúc, luôn cùng 1 kho, không cho KHO_MO tự chọn đích).
 export const MOTHER_WAREHOUSE_TRANSFER_TAG = "MOTHER_WAREHOUSE_TRANSFER";
 
+// Đánh dấu Transfer bàn giao SẢN PHẨM R&D (mẫu mẹ hoặc thành phẩm) từ "Kho SX R&D" sang 1 kho sản xuất
+// THẬT khác (Admin kỹ thuật chọn đích, xem src/lib/rnd-warehouse-handover.ts) — khác
+// MOTHER_WAREHOUSE_TRANSFER_TAG (đó là KHO_MO chuyển mẫu mẹ giữa 2 kho thật, nguồn luôn có giàn kệ thật,
+// còn đây nguồn là Phòng tối cá nhân của Admin kỹ thuật, không qua giàn kệ nào).
+export const RND_OUTPUT_TRANSFER_TAG = "RND_OUTPUT_TRANSFER";
+
 // Số chỉ định cấy dự phòng tối thiểu KY_THUAT phải tạo mỗi tuần cho tuần sau, trước Thứ 5 tuần này —
 // xem /instructions/backup, getKyThuatStats (dashboard/page.tsx).
 export const MIN_BACKUP_INSTRUCTION_COUNT = 5;
@@ -375,6 +381,7 @@ export const ALERT_TYPE_LABELS = {
   CUSTOMER_STATUS_UPDATE_DUE: "Cần cập nhật tình trạng khách hàng",
   INSTRUCTION_RETURNED_UNHANDED: "Chỉ định cấy được hoàn lại",
   DE_XUAT_TRONG_HUY_WEEKLY_DUE: "Nhắc hạn Đề xuất trồng/hủy tuần",
+  RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -560,6 +567,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
     { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
     { href: "/rnd", label: "R&D", icon: "FlaskConical" },
+    { href: "/rnd-production", label: "Cấy sản xuất R&D", icon: "Sprout" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

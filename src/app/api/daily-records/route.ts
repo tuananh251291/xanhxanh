@@ -5,6 +5,7 @@ import { generateProductLotCode } from "@/lib/codes";
 import { createAlert, createAlertForWarehouseStaff, getSystemConfig } from "@/lib/inventory";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { addToContaminationRoom } from "@/lib/contamination-room";
+import { createNextRndRound } from "@/lib/rnd-instruction-chain";
 import { z } from "zod";
 import { addDays, addWeeks, startOfDay, endOfDay, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 import { canManageDailyRecords, isAdminRole } from "@/types";
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
     include: {
       plantType: { include: { variantGroup: { include: { members: true } } } },
       assignedTo: { select: { name: true } },
-      items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } },
+      items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true, isRnd: true } } } } } },
     },
   });
   if (!instruction) return NextResponse.json({ message: "Không tìm thấy chỉ định" }, { status: 404 });
@@ -481,6 +482,20 @@ export async function POST(req: NextRequest) {
         data: { status: "ENDED", endReason },
       });
       ended = true;
+
+      // Chỉ định R&D (Admin kỹ thuật tự tạo, xem POST /api/rnd-production/instructions) kết thúc do dùng
+      // hết mẫu mẹ => tự tạo sẵn kì cấy tiếp theo (đầu vào = mẫu mẹ trả ra kì này) — không áp dụng chỉ
+      // định thường (KY_THUAT tạo cho NV cấy mô) hay chỉ định R&D kết thúc do TIME_UP (chưa dùng hết,
+      // NV/Admin có thể còn muốn bàn giao MM dư như bình thường, không tự chuyển kì mới).
+      if (endReason === "MOTHER_USED_UP" && instruction.items.some((i) => i.shelf?.warehouse.isRnd)) {
+        await createNextRndRound({
+          id: instructionId,
+          plantTypeId: instruction.plantTypeId,
+          assignedToId: instruction.assignedToId,
+          createdById: instruction.createdById,
+          items: instruction.items.map((i) => ({ motherMediumTypeId: i.motherMediumTypeId })),
+        });
+      }
     }
   }
 
