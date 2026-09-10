@@ -83,7 +83,7 @@ export async function computeHandoverHistory(params: {
       },
       inspection: {
         select: {
-          items: { select: { plantTypeId: true, stageCode: true, contaminatedQuantity: true, randomCheckPassRate: true, creditedQuantity: true } },
+          items: { select: { plantTypeId: true, stageCode: true, handedOverQuantity: true, contaminatedQuantity: true, creditedQuantity: true } },
         },
       },
     },
@@ -138,7 +138,11 @@ export async function computeHandoverHistory(params: {
           quantity: i.quantity,
           unqualifiedQuantity: i.unqualifiedQuantity,
           contaminatedQuantity: group ? group.contaminatedQuantity : null,
-          contaminationRatePct: group ? group.randomCheckPassRate : null,
+          contaminationRatePct: group
+            ? group.handedOverQuantity > 0
+              ? Math.round((group.contaminatedQuantity / group.handedOverQuantity) * 1000) / 10
+              : 0
+            : null,
           recordedQuantity,
         };
       }),
