@@ -44,18 +44,20 @@ async function getDueTrialRounds() {
 }
 
 // Sản lượng "cây ra rễ" (thành phẩm) 7 ngày gần nhất, gộp theo từng khu sản xuất — tóm tắt nhanh cho Admin
-// kỹ thuật ngay trên dashboard, không cần vào báo cáo riêng. CÙNG định nghĩa "thực tế" đã dùng ở báo cáo
-// "Kế hoạch vs thực tế — Cây ra rễ" (DailyRecordItem.quantityCreated, stage THANH_PHAM — xem
-// /api/reports/rooting-plan-vs-actual), lọc theo khu sản xuất qua NV cấy mô đang gán workplaceWarehouseId
-// đúng cơ sở đó (DailyRecord không có FK kho trực tiếp). Đồng thời gộp riêng số của HÔM NAY + chi tiết
-// từng ngày trong 7 ngày (dùng cho dialog "Xem chi tiết" trên dashboard, xem RootingSummaryWidget).
-async function getRootingLast7DaysByWarehouse() {
+// kỹ thuật/NV Kỹ thuật/Kho mô ngay trên dashboard, không cần vào báo cáo riêng. CÙNG định nghĩa "thực tế"
+// đã dùng ở báo cáo "Kế hoạch vs thực tế — Cây ra rễ" (DailyRecordItem.quantityCreated, stage THANH_PHAM —
+// xem /api/reports/rooting-plan-vs-actual), lọc theo khu sản xuất qua NV cấy mô đang gán
+// workplaceWarehouseId đúng cơ sở đó (DailyRecord không có FK kho trực tiếp). Đồng thời gộp riêng số của
+// HÔM NAY + chi tiết từng ngày trong 7 ngày (dùng cho dialog "Xem chi tiết" trên dashboard, xem
+// RootingSummaryWidget). warehouseId truyền vào (NV Kỹ thuật/Kho mô) => chỉ tính đúng 1 khu sản xuất mình
+// đang làm việc; bỏ trống (Admin kỹ thuật) => tất cả khu sản xuất.
+async function getRootingLast7DaysByWarehouse(warehouseId?: string) {
   const rangeEnd = endOfDay(new Date());
   const rangeStart = startOfDay(addDays(rangeEnd, -6));
   const todayKey = format(rangeEnd, "yyyy-MM-dd");
 
   const warehouses = await prisma.warehouse.findMany({
-    where: { type: "SAN_XUAT", isActive: true },
+    where: { type: "SAN_XUAT", isActive: true, ...(warehouseId ? { id: warehouseId } : {}) },
     select: { id: true, code: true, name: true },
     orderBy: { name: "asc" },
   });
@@ -226,16 +228,21 @@ async function getCayMoStats(userId: string) {
 // OUTPUT_DEVIATION cho KY_THUAT (xem /api/daily-records) — KY_THUAT phải vào trang Thông báo chọn
 // nguyên nhân (KY_THUAT_SAI/CAY_MO_SAI) để xử lý. % = số alert lệch trong tuần đã chọn nguyên nhân /
 // tổng số alert lệch phát sinh trong tuần, tính trên các chỉ định do chính người này tạo.
-async function getKyThuatStats(userId: string) {
+async function getKyThuatStats(userId: string, workplaceWarehouseId: string | null) {
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
 
-  const myInstructions = await prisma.plantingInstruction.findMany({
-    where: { createdById: userId },
-    select: { id: true },
-  });
+  const [myInstructions, rootingSummary] = await Promise.all([
+    prisma.plantingInstruction.findMany({
+      where: { createdById: userId },
+      select: { id: true },
+    }),
+    workplaceWarehouseId
+      ? getRootingLast7DaysByWarehouse(workplaceWarehouseId)
+      : Promise.resolve({ warehouses: [], warehouseSummaries: [], dailyBreakdown: [] }),
+  ]);
   const myInstructionIds = myInstructions.map((i) => i.id);
 
   const [dueMotherLots, deviationAlerts] = await Promise.all([
@@ -311,6 +318,7 @@ async function getKyThuatStats(userId: string) {
     backupCount, backupPercent,
     tuesdayDeadline, motherPhotoPercent, motherPhotoDone,
     motherPhotoDoneCount: motherPhotoDistinctPlantTypes.size, motherPhotoTotal,
+    rootingSummary,
   };
 }
 
@@ -330,7 +338,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
 
-  const [dueInstructions, finishedTransfers, contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount] = await Promise.all([
+  const [dueInstructions, finishedTransfers, contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount, rootingSummary] = await Promise.all([
     prisma.plantingInstruction.findMany({
       where: {
         createdAt: { lte: thursdayDeadline },
@@ -392,6 +400,9 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
         ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
       },
     }),
+    workplaceWarehouseId
+      ? getRootingLast7DaysByWarehouse(workplaceWarehouseId)
+      : Promise.resolve({ warehouses: [], warehouseSummaries: [], dailyBreakdown: [] }),
   ]);
 
   const handoverTotal = dueInstructions.length;
@@ -444,6 +455,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
     contaminationTaskVisible, contaminationOverdueDays,
     replantTaskVisible, replantOverdueDays, replantAwaitingConfirmation: pendingReplantHandover !== null,
     mediumSurplusOrderId,
+    rootingSummary,
   };
 }
 
@@ -586,7 +598,7 @@ export default async function DashboardPage() {
   }
 
   if (role === "KY_THUAT") {
-    const stats = await getKyThuatStats(userId);
+    const stats = await getKyThuatStats(userId, session?.user?.workplaceWarehouseId ?? null);
     return <KyThuatDashboard stats={stats} userName={session?.user?.name ?? ""} />;
   }
 
@@ -890,6 +902,14 @@ function KyThuatDashboard({
       </div>
       <GreetingBanner />
 
+      {stats.rootingSummary.warehouseSummaries.length > 0 && (
+        <RootingSummaryWidget
+          warehouses={stats.rootingSummary.warehouses}
+          warehouseSummaries={stats.rootingSummary.warehouseSummaries}
+          dailyBreakdown={stats.rootingSummary.dailyBreakdown}
+        />
+      )}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Công việc trong tuần</CardTitle>
@@ -1022,6 +1042,14 @@ function KhoMoTaskDashboard({
         <p className="text-text-secondary text-sm mt-1">Nhân viên kho mô</p>
       </div>
       <GreetingBanner />
+
+      {weeklyStats.rootingSummary.warehouseSummaries.length > 0 && (
+        <RootingSummaryWidget
+          warehouses={weeklyStats.rootingSummary.warehouses}
+          warehouseSummaries={weeklyStats.rootingSummary.warehouseSummaries}
+          dailyBreakdown={weeklyStats.rootingSummary.dailyBreakdown}
+        />
+      )}
 
       {dailyStats.editCountToday > 0 && (
         <Card className="border border-info-light bg-info-light">
