@@ -203,7 +203,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
 
                               <p className="text-text-muted text-xs mb-2">Chi tiết bàn giao & ghi nhận theo ngày trong khoảng đã chọn</p>
                               <div className="max-h-72 overflow-y-auto border border-divider rounded-md">
-                                <table className="w-full text-xs">
+                                <table className="text-xs">
                                   <thead className="sticky top-0 bg-primary-light">
                                     <tr>
                                       <th className="text-left px-3 py-2 text-primary-strong font-bold text-sm">Ngày</th>
@@ -217,10 +217,10 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                                   <tbody>
                                     {r.dailyDetail.map((d) => (
                                       <tr key={d.date} className="border-t border-divider even:bg-background odd:bg-card">
-                                        <td className="px-3 py-1.5 tabular-nums">
+                                        <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">
                                           {format(new Date(`${d.date}T00:00:00`), "dd/MM/yyyy")}
                                         </td>
-                                        <td className="px-3 py-1.5">
+                                        <td className="px-3 py-1.5 whitespace-nowrap">
                                           {d.active ? (
                                             <Badge className="bg-success-light text-success-foreground">Có bàn giao</Badge>
                                           ) : (

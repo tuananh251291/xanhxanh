@@ -32,6 +32,7 @@ export type ProductionRecordDailyEntry = {
   handedOverQuantity: number;
   recordedQuantity: number;
   unqualifiedQuantity: number;
+  contaminatedQuantity: number;
 };
 
 export type ProductionRecordPlantTypeBreakdown = {
@@ -40,6 +41,7 @@ export type ProductionRecordPlantTypeBreakdown = {
   plantTypeName: string;
   handedOverQuantity: number;
   quantity: number;
+  contaminatedQuantity: number;
 };
 
 export type ProductionRecordRow = {
@@ -50,6 +52,10 @@ export type ProductionRecordRow = {
   totalHandedOverQuantity: number;
   totalRecordedQuantity: number;
   totalUnqualifiedQuantity: number;
+  // Số lượng Kho mô phát hiện nhiễm lúc kiểm tra bàn giao (luồng Đỏ/Vàng — luồng Xanh không qua kiểm tra
+  // nên luôn 0) — cùng khái niệm với handover-summary-report.ts (xem giải thích ở đó). Mẫu số tỉ lệ nhiễm
+  // = totalHandedOverQuantity + totalContaminatedQuantity (số GỐC trước khi trừ nhiễm).
+  totalContaminatedQuantity: number;
   byPlantType: ProductionRecordPlantTypeBreakdown[];
   dailyDetail: ProductionRecordDailyEntry[];
 };
@@ -119,25 +125,29 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
 
   const daysInPeriod = eachDayOfInterval({ start: rangeStart, end: rangeEndInclusive });
 
-  type DayAgg = { active: boolean; handedOver: number; recorded: number; unqualified: number };
+  type DayAgg = { active: boolean; handedOver: number; recorded: number; unqualified: number; contaminated: number };
   const dailyMap = new Map<string, Map<string, DayAgg>>();
   const ensureDayEntry = (staffId: string, day: string): DayAgg => {
     const staffMap = dailyMap.get(staffId) ?? new Map<string, DayAgg>();
-    if (!staffMap.has(day)) staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0 });
+    if (!staffMap.has(day)) staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0, contaminated: 0 });
     dailyMap.set(staffId, staffMap);
     return staffMap.get(day)!;
   };
   for (const r of dailyRecords) ensureDayEntry(r.staffId, dayKey(r.recordDate)).active = true;
 
   const plantTypeMetaById = new Map<string, { code: string; name: string }>();
-  type PlantAgg = { handedOver: number; recorded: number };
+  type PlantAgg = { handedOver: number; recorded: number; contaminated: number };
   const byStaffAndPlant = new Map<string, Map<string, PlantAgg>>();
-  const addPlant = (staffId: string, plantTypeId: string, code: string, name: string, handedOverDelta: number, recordedDelta: number) => {
+  const addPlant = (
+    staffId: string, plantTypeId: string, code: string, name: string,
+    handedOverDelta: number, recordedDelta: number, contaminatedDelta: number
+  ) => {
     plantTypeMetaById.set(plantTypeId, { code, name });
     const m = byStaffAndPlant.get(staffId) ?? new Map<string, PlantAgg>();
-    const cur = m.get(plantTypeId) ?? { handedOver: 0, recorded: 0 };
+    const cur = m.get(plantTypeId) ?? { handedOver: 0, recorded: 0, contaminated: 0 };
     cur.handedOver += handedOverDelta;
     cur.recorded += recordedDelta;
+    cur.contaminated += contaminatedDelta;
     m.set(plantTypeId, cur);
     byStaffAndPlant.set(staffId, m);
   };
@@ -149,17 +159,22 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
         const passed = insItem.handedOverQuantity - insItem.contaminatedQuantity;
-        addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, passed, insItem.creditedQuantity);
+        addPlant(
+          t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name,
+          passed, insItem.creditedQuantity, insItem.contaminatedQuantity
+        );
         dayEntry.handedOver += passed;
         dayEntry.recorded += insItem.creditedQuantity;
+        dayEntry.contaminated += insItem.contaminatedQuantity;
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
       // — không qua kiểm tra nhiễm ở bước này nên SL bàn giao giữ nguyên; SL ghi nhận tự khai trừ hàng
-      // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống).
+      // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống). Không có "SL nhiễm" (luồng này không
+      // qua Kho mô kiểm tra nhiễm).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
-        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, credited);
+        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, credited, 0);
         dayEntry.handedOver += item.quantity;
         dayEntry.recorded += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
@@ -179,6 +194,7 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
             plantTypeName: plantTypeMetaById.get(plantTypeId)!.name,
             handedOverQuantity: agg.handedOver,
             quantity: agg.recorded,
+            contaminatedQuantity: agg.contaminated,
           }))
           .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode))
       : [];
@@ -187,17 +203,20 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
     const staffDayMap = dailyMap.get(s.id);
     let totalHandedOverQuantity = 0;
     let totalUnqualifiedQuantity = 0;
+    let totalContaminatedQuantity = 0;
     const dailyDetail: ProductionRecordDailyEntry[] = daysInPeriod.map((d) => {
       const key = dayKey(d);
       const entry = staffDayMap?.get(key);
       totalHandedOverQuantity += entry?.handedOver ?? 0;
       totalUnqualifiedQuantity += entry?.unqualified ?? 0;
+      totalContaminatedQuantity += entry?.contaminated ?? 0;
       return {
         date: key,
         active: entry?.active ?? false,
         handedOverQuantity: entry?.handedOver ?? 0,
         recordedQuantity: entry?.recorded ?? 0,
         unqualifiedQuantity: entry?.unqualified ?? 0,
+        contaminatedQuantity: entry?.contaminated ?? 0,
       };
     });
 
@@ -209,6 +228,7 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
       totalHandedOverQuantity,
       totalRecordedQuantity,
       totalUnqualifiedQuantity,
+      totalContaminatedQuantity,
       byPlantType,
       dailyDetail,
     };

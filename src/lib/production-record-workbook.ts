@@ -15,16 +15,21 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Tên NV", key: "staffName", width: 24 },
     { header: "Cơ sở", key: "warehouseName", width: 20 },
     { header: "Số lượng bàn giao", key: "totalHandedOverQuantity", width: 16 },
+    { header: "Số lượng nhiễm (Kho mô phát hiện)", key: "totalContaminatedQuantity", width: 20 },
+    { header: "Tỉ lệ nhiễm (%)", key: "contaminationRatePct", width: 14 },
     { header: "Số lượng ghi nhận", key: "totalRecordedQuantity", width: 16 },
     { header: "Số lượng không đạt", key: "totalUnqualifiedQuantity", width: 16 },
   ];
   summarySheet.getRow(1).font = { bold: true };
   for (const r of rows) {
+    const originalHandedOver = r.totalHandedOverQuantity + r.totalContaminatedQuantity;
     summarySheet.addRow({
       staffCode: r.staffCode,
       staffName: r.staffName,
       warehouseName: r.warehouseName ?? "",
       totalHandedOverQuantity: r.totalHandedOverQuantity,
+      totalContaminatedQuantity: r.totalContaminatedQuantity,
+      contaminationRatePct: originalHandedOver > 0 ? Math.round((r.totalContaminatedQuantity / originalHandedOver) * 1000) / 10 : 0,
       totalRecordedQuantity: r.totalRecordedQuantity,
       totalUnqualifiedQuantity: r.totalUnqualifiedQuantity,
     });
@@ -38,6 +43,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Mã cây", key: "plantTypeCode", width: 12 },
     { header: "Tên cây", key: "plantTypeName", width: 24 },
     { header: "Số lượng bàn giao", key: "handedOverQuantity", width: 16 },
+    { header: "Số lượng nhiễm (Kho mô phát hiện)", key: "contaminatedQuantity", width: 20 },
     { header: "Số lượng ghi nhận", key: "quantity", width: 16 },
   ];
   plantSheet.getRow(1).font = { bold: true };
@@ -49,6 +55,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
         plantTypeCode: p.plantTypeCode,
         plantTypeName: p.plantTypeName,
         handedOverQuantity: p.handedOverQuantity,
+        contaminatedQuantity: p.contaminatedQuantity,
         quantity: p.quantity,
       });
     }
@@ -62,6 +69,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
     { header: "Ngày", key: "date", width: 14 },
     { header: "Có bàn giao", key: "active", width: 12 },
     { header: "Số lượng bàn giao", key: "handedOverQuantity", width: 16 },
+    { header: "Số lượng nhiễm (Kho mô phát hiện)", key: "contaminatedQuantity", width: 20 },
     { header: "Số lượng ghi nhận", key: "recordedQuantity", width: 16 },
     { header: "Số lượng không đạt", key: "unqualifiedQuantity", width: 16 },
   ];
@@ -74,6 +82,7 @@ export function buildProductionRecordWorkbook(result: ProductionRecordResult): E
         date: format(new Date(`${d.date}T00:00:00`), "dd/MM/yyyy"),
         active: d.active ? "Có" : "",
         handedOverQuantity: d.handedOverQuantity,
+        contaminatedQuantity: d.contaminatedQuantity,
         recordedQuantity: d.recordedQuantity,
         unqualifiedQuantity: d.unqualifiedQuantity,
       });
