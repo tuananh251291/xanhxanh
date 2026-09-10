@@ -13,6 +13,13 @@ export type HandoverHistoryItemRow = {
   stageCode: string;
   quantity: number;
   unqualifiedQuantity: number;
+  // null = chưa xác định được (phiếu còn PENDING/REJECTED, chưa qua kiểm tra lẫn chưa tự ghi nhận) —
+  // KHÁC 0 (đã xác định, không nhiễm/không ghi nhận). contaminatedQuantity/contaminationRatePct chỉ có
+  // giá trị khi phiếu ĐÃ qua kiểm tra Kho mô (luồng Đỏ/Vàng) — luồng Xanh/MM dư không qua bước này nên
+  // luôn null (không phải 0, vì không có nghĩa "0% nhiễm", mà là "không kiểm tra nhiễm ở đây").
+  contaminatedQuantity: number | null;
+  contaminationRatePct: number | null;
+  recordedQuantity: number | null;
 };
 
 export type HandoverHistoryRow = {
@@ -71,12 +78,12 @@ export async function computeHandoverHistory(params: {
         select: {
           quantity: true,
           unqualifiedQuantity: true,
-          lot: { select: { code: true, stageCode: true, plantType: { select: { code: true, name: true } } } },
+          lot: { select: { code: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } } } },
         },
       },
       inspection: {
         select: {
-          items: { select: { contaminatedQuantity: true } },
+          items: { select: { plantTypeId: true, stageCode: true, contaminatedQuantity: true, randomCheckPassRate: true, creditedQuantity: true } },
         },
       },
     },
@@ -88,6 +95,13 @@ export async function computeHandoverHistory(params: {
     const totalQuantity = t.items.reduce((s, i) => s + i.quantity, 0);
     const totalUnqualifiedQuantity = t.items.reduce((s, i) => s + i.unqualifiedQuantity, 0);
     const totalContaminatedQuantity = t.inspection ? t.inspection.items.reduce((s, i) => s + i.contaminatedQuantity, 0) : 0;
+
+    // Kết quả kiểm tra chỉ lưu GỘP theo (mã cây, quy cách) — xem TransferInspectionItem — nên khớp lại
+    // cho từng lô qua key này (giống hệt cách hiển thị ở inspect-form.tsx lúc Kho mô nhập, nếu 1 phiếu chỉ
+    // có 1 lô/mã cây+quy cách thì đây chính là đúng số của lô đó).
+    const inspectionByKey = new Map(
+      (t.inspection?.items ?? []).map((i) => [`${i.plantTypeId}|${i.stageCode}`, i])
+    );
 
     return {
       id: t.id,
@@ -105,14 +119,29 @@ export async function computeHandoverHistory(params: {
       totalQuantity,
       totalUnqualifiedQuantity,
       totalContaminatedQuantity,
-      items: t.items.map((i) => ({
-        lotCode: i.lot.code,
-        plantTypeCode: i.lot.plantType.code,
-        plantTypeName: i.lot.plantType.name,
-        stageCode: i.lot.stageCode,
-        quantity: i.quantity,
-        unqualifiedQuantity: i.unqualifiedQuantity,
-      })),
+      items: t.items.map((i) => {
+        const group = inspectionByKey.get(`${i.lot.plantTypeId}|${i.lot.stageCode}`);
+        // Đã kiểm tra (luồng Đỏ/Vàng) => lấy đúng số Kho mô đã ghi nhận. Chưa kiểm tra nhưng phiếu đã
+        // CONFIRMED (xếp kệ xong) => tại thời điểm đó đi theo đường Xanh/MM dư, tự ghi nhận theo NV tự
+        // khai (không qua kiểm tra nhiễm nên contaminatedQuantity/contaminationRatePct để null). Còn lại
+        // (PENDING/REJECTED, chưa qua đường nào) => chưa xác định, để null.
+        const recordedQuantity = group
+          ? group.creditedQuantity
+          : t.status === "CONFIRMED"
+          ? Math.max(0, i.quantity - i.unqualifiedQuantity)
+          : null;
+        return {
+          lotCode: i.lot.code,
+          plantTypeCode: i.lot.plantType.code,
+          plantTypeName: i.lot.plantType.name,
+          stageCode: i.lot.stageCode,
+          quantity: i.quantity,
+          unqualifiedQuantity: i.unqualifiedQuantity,
+          contaminatedQuantity: group ? group.contaminatedQuantity : null,
+          contaminationRatePct: group ? group.randomCheckPassRate : null,
+          recordedQuantity,
+        };
+      }),
     };
   });
 }

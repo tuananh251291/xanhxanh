@@ -12,7 +12,10 @@ import { vi } from "date-fns/locale";
 
 type Warehouse = { id: string; code: string; name: string };
 type Staff = { id: string; code: string; name: string; workplaceWarehouseId: string | null };
-type ItemRow = { lotCode: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; unqualifiedQuantity: number };
+type ItemRow = {
+  lotCode: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number;
+  unqualifiedQuantity: number; contaminatedQuantity: number | null; contaminationRatePct: number | null; recordedQuantity: number | null;
+};
 type Row = {
   id: string; code: string; createdAt: string; status: "PENDING" | "CONFIRMED" | "REJECTED"; isSurplus: boolean;
   staffId: string; staffCode: string; staffName: string; warehouseName: string | null;
@@ -204,16 +207,22 @@ export default function HandoverHistoryBoard({ warehouses, staffList }: { wareho
                                       <th className="text-left px-3 py-2 text-primary-strong font-bold text-sm">Quy cách</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">Số lượng</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">Không đạt</th>
+                                      <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL nhiễm</th>
+                                      <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">Tỉ lệ nhiễm</th>
+                                      <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL được ghi nhận</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {r.items.map((it, idx) => (
                                       <tr key={`${it.lotCode}-${idx}`} className="border-t border-divider even:bg-background odd:bg-card">
                                         <td className="px-3 py-1.5 font-mono">{it.lotCode}</td>
-                                        <td className="px-3 py-1.5">{it.plantTypeCode} — {it.plantTypeName}</td>
+                                        <td className="px-3 py-1.5 font-mono">{it.plantTypeCode}</td>
                                         <td className="px-3 py-1.5">{it.stageCode}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(it.quantity)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(it.unqualifiedQuantity)}</td>
+                                        <td className="px-3 py-1.5 text-right tabular-nums">{it.contaminatedQuantity === null ? "—" : num(it.contaminatedQuantity)}</td>
+                                        <td className="px-3 py-1.5 text-right tabular-nums">{it.contaminationRatePct === null ? "—" : `${it.contaminationRatePct}%`}</td>
+                                        <td className="px-3 py-1.5 text-right tabular-nums font-medium text-primary-strong">{it.recordedQuantity === null ? "—" : num(it.recordedQuantity)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
