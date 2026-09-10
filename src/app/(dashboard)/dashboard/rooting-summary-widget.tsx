@@ -10,6 +10,8 @@ import { vi } from "date-fns/locale";
 type WarehouseSummary = {
   warehouseId: string; warehouseCode: string; warehouseName: string;
   todayQuantity: number; last7DaysQuantity: number;
+  monthlyPlanQuantity: number; workingDaysInMonth: number; dailyTargetQuantity: number;
+  deficitQuantity: number; // dương = còn thiếu, âm/0 = đã đạt hoặc vượt chỉ tiêu luỹ kế
 };
 type DailyBreakdownEntry = { date: string; byWarehouse: Record<string, number> };
 type Warehouse = { id: string; code: string; name: string };
@@ -79,6 +81,22 @@ export default function RootingSummaryWidget({
               <p className="text-sm text-text-secondary">{w.warehouseName} ({w.warehouseCode})</p>
               <p className="text-2xl font-bold text-primary-strong mt-1">{num(w.last7DaysQuantity)}</p>
               <p className="text-xs text-text-muted mt-0.5">Hôm nay: {num(w.todayQuantity)}</p>
+              {w.monthlyPlanQuantity > 0 && (
+                <div className="mt-2 pt-2 border-t border-divider">
+                  <p className="text-xs text-text-muted">
+                    Chỉ tiêu TB/ngày: <span className="font-medium text-foreground">{num(w.dailyTargetQuantity)} cây</span>
+                  </p>
+                  {w.deficitQuantity > 0 ? (
+                    <p className="text-sm font-bold text-destructive mt-0.5">
+                      Còn thiếu {num(w.deficitQuantity)} cây để đạt chỉ tiêu
+                    </p>
+                  ) : (
+                    <p className="text-sm font-bold text-success-foreground mt-0.5">
+                      Đã vượt {num(-w.deficitQuantity)} cây so với chỉ tiêu
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

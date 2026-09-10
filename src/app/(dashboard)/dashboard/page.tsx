@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS, ADMIN_DASHBOARD_ALERT_TYPES } from "@/types";
 import type { UserRole } from "@prisma/client";
-import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, format, differenceInCalendarDays, eachDayOfInterval } from "date-fns";
+import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subMonths, format, differenceInCalendarDays, eachDayOfInterval } from "date-fns";
 import TrialRoundTaskCard from "@/app/(dashboard)/rnd/trial-round-task-card";
 import RootingSummaryWidget from "@/app/(dashboard)/dashboard/rooting-summary-widget";
 import { vi } from "date-fns/locale";
@@ -43,18 +43,36 @@ async function getDueTrialRounds() {
   });
 }
 
-// Sản lượng "cây ra rễ" (thành phẩm) 7 ngày gần nhất, gộp theo từng khu sản xuất — tóm tắt nhanh cho Admin
-// kỹ thuật/NV Kỹ thuật/Kho mô ngay trên dashboard, không cần vào báo cáo riêng. CÙNG định nghĩa "thực tế"
-// đã dùng ở báo cáo "Kế hoạch vs thực tế — Cây ra rễ" (DailyRecordItem.quantityCreated, stage THANH_PHAM —
-// xem /api/reports/rooting-plan-vs-actual), lọc theo khu sản xuất qua NV cấy mô đang gán
-// workplaceWarehouseId đúng cơ sở đó (DailyRecord không có FK kho trực tiếp). Đồng thời gộp riêng số của
-// HÔM NAY + chi tiết từng ngày trong 7 ngày (dùng cho dialog "Xem chi tiết" trên dashboard, xem
-// RootingSummaryWidget). warehouseId truyền vào (NV Kỹ thuật/Kho mô) => chỉ tính đúng 1 khu sản xuất mình
-// đang làm việc; bỏ trống (Admin kỹ thuật) => tất cả khu sản xuất.
+// Sản lượng "cây ra rễ" (thành phẩm), gộp theo từng khu sản xuất — tóm tắt nhanh cho Admin kỹ thuật/NV Kỹ
+// thuật/Kho mô ngay trên dashboard, không cần vào báo cáo riêng. CÙNG định nghĩa "thực tế" đã dùng ở báo
+// cáo "Kế hoạch vs thực tế — Cây ra rễ" (DailyRecordItem.quantityCreated, stage THANH_PHAM — xem
+// /api/reports/rooting-plan-vs-actual), lọc theo khu sản xuất qua NV cấy mô đang gán workplaceWarehouseId
+// đúng cơ sở đó (DailyRecord không có FK kho trực tiếp). warehouseId truyền vào (NV Kỹ thuật/Kho mô) =>
+// chỉ tính đúng 1 khu sản xuất mình đang làm việc; bỏ trống (Admin kỹ thuật) => tất cả khu sản xuất.
+//
+// Ngoài số 7 ngày gần nhất (+ hôm nay, + chi tiết từng ngày cho dialog "Xem chi tiết"), còn tính "Chỉ tiêu
+// TB/ngày" + "Còn thiếu để đạt chỉ tiêu" của THÁNG HIỆN TẠI:
+// - Kế hoạch tháng lấy từ RootingForecastEntry (NV Kỹ thuật nhập, CÙNG công thức 3-tháng-1-lần đã dùng ở
+//   /api/reports/rooting-plan-vs-actual — taskMonth=T-1 dùng quantity1, T-2 dùng quantity2, T-3 dùng
+//   quantity3, chỉ 1 trong 3 khả năng thực sự có dữ liệu).
+// - "Ngày làm việc trong tháng" = số ngày trong tháng TRỪ Chủ nhật VÀ ngày lễ (PublicHoliday) — khớp công
+//   thức "ngày công tiêu chuẩn" đã dùng ở Bảng lương (payroll-calculation.ts).
+// - Chỉ tiêu TB/ngày = kế hoạch tháng / ngày làm việc trong tháng.
+// - Luỹ kế "còn thiếu" tính chỉ tiêu ĐẾN HẾT HÔM QUA (không tính hôm nay — ngày chưa qua hết, chưa thể coi
+//   là thiếu) so với thực tế đã ghi nhận từ đầu tháng tới hết hôm qua — dương = còn thiếu, âm/0 = đã đạt
+//   hoặc vượt (xem RootingSummaryWidget hiển thị cả 2 chiều).
 async function getRootingLast7DaysByWarehouse(warehouseId?: string) {
-  const rangeEnd = endOfDay(new Date());
+  const now = new Date();
+  const rangeEnd = endOfDay(now);
   const rangeStart = startOfDay(addDays(rangeEnd, -6));
   const todayKey = format(rangeEnd, "yyyy-MM-dd");
+
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+  const yesterday = subDays(startOfDay(now), 1);
+  // Nếu hôm nay là ngày 1 đầu tháng thì "hết hôm qua" rơi vào tháng trước — coi như chưa có ngày làm việc
+  // nào trôi qua trong tháng này, luỹ kế = 0.
+  const elapsedEnd = yesterday < monthStart ? null : yesterday;
 
   const warehouses = await prisma.warehouse.findMany({
     where: { type: "SAN_XUAT", isActive: true, ...(warehouseId ? { id: warehouseId } : {}) },
@@ -62,32 +80,63 @@ async function getRootingLast7DaysByWarehouse(warehouseId?: string) {
     orderBy: { name: "asc" },
   });
   if (warehouses.length === 0) return { warehouses: [], warehouseSummaries: [], dailyBreakdown: [] };
+  const warehouseIds = warehouses.map((w) => w.id);
 
-  const records = await prisma.dailyRecord.findMany({
-    where: {
-      recordDate: { gte: rangeStart, lte: rangeEnd },
-      staff: { role: "CAY_MO", workplaceWarehouseId: { in: warehouses.map((w) => w.id) } },
-    },
-    select: {
-      recordDate: true,
-      staff: { select: { workplaceWarehouseId: true } },
-      items: { select: { stage: true, quantityCreated: true } },
-    },
-  });
+  const t1 = subMonths(monthStart, 1);
+  const t2 = subMonths(monthStart, 2);
+  const t3 = subMonths(monthStart, 3);
+
+  const [records, monthToDateRecords, holidays, planRows] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: { recordDate: { gte: rangeStart, lte: rangeEnd }, staff: { role: "CAY_MO", workplaceWarehouseId: { in: warehouseIds } } },
+      select: { recordDate: true, staff: { select: { workplaceWarehouseId: true } }, items: { select: { stage: true, quantityCreated: true } } },
+    }),
+    elapsedEnd
+      ? prisma.dailyRecord.findMany({
+          where: { recordDate: { gte: monthStart, lte: elapsedEnd }, staff: { role: "CAY_MO", workplaceWarehouseId: { in: warehouseIds } } },
+          select: { staff: { select: { workplaceWarehouseId: true } }, items: { select: { stage: true, quantityCreated: true } } },
+        })
+      : Promise.resolve([]),
+    prisma.publicHoliday.findMany({ where: { date: { gte: monthStart, lte: monthEnd } } }),
+    prisma.rootingForecastEntry.groupBy({
+      by: ["warehouseId", "taskMonth"],
+      where: { warehouseId: { in: warehouseIds }, taskMonth: { in: [t1, t2, t3] } },
+      _sum: { quantity1: true, quantity2: true, quantity3: true },
+    }),
+  ]);
 
   const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd }).map((d) => format(d, "yyyy-MM-dd"));
   const byDayAndWarehouse = new Map<string, Map<string, number>>();
   for (const day of days) byDayAndWarehouse.set(day, new Map());
 
   for (const r of records) {
-    const warehouseId = r.staff.workplaceWarehouseId;
-    if (!warehouseId) continue;
+    const wId = r.staff.workplaceWarehouseId;
+    if (!wId) continue;
     const finishedQty = r.items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + i.quantityCreated, 0);
     if (finishedQty === 0) continue;
     const dayMap = byDayAndWarehouse.get(dayKey(r.recordDate));
     if (!dayMap) continue;
-    dayMap.set(warehouseId, (dayMap.get(warehouseId) ?? 0) + finishedQty);
+    dayMap.set(wId, (dayMap.get(wId) ?? 0) + finishedQty);
   }
+
+  const actualToDateByWarehouse = new Map<string, number>();
+  for (const r of monthToDateRecords) {
+    const wId = r.staff.workplaceWarehouseId;
+    if (!wId) continue;
+    const finishedQty = r.items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + i.quantityCreated, 0);
+    actualToDateByWarehouse.set(wId, (actualToDateByWarehouse.get(wId) ?? 0) + finishedQty);
+  }
+
+  const holidayDayKeys = new Set(holidays.map((h) => dayKey(h.date)));
+  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const workingDaysInMonth = daysInMonth.filter((d) => d.getDay() !== 0 && !holidayDayKeys.has(dayKey(d))).length;
+  const workingDaysElapsed = elapsedEnd
+    ? eachDayOfInterval({ start: monthStart, end: elapsedEnd }).filter((d) => d.getDay() !== 0 && !holidayDayKeys.has(dayKey(d))).length
+    : 0;
+
+  const planByWarehouseAndMonth = new Map(
+    planRows.map((r) => [`${r.warehouseId}|${dayKey(r.taskMonth)}`, { q1: r._sum.quantity1 ?? 0, q2: r._sum.quantity2 ?? 0, q3: r._sum.quantity3 ?? 0 }])
+  );
 
   const warehouseSummaries = warehouses.map((w) => {
     let last7DaysQuantity = 0;
@@ -97,7 +146,21 @@ async function getRootingLast7DaysByWarehouse(warehouseId?: string) {
       last7DaysQuantity += qty;
       if (day === todayKey) todayQuantity = qty;
     }
-    return { warehouseId: w.id, warehouseCode: w.code, warehouseName: w.name, todayQuantity, last7DaysQuantity };
+
+    const monthlyPlanQuantity =
+      (planByWarehouseAndMonth.get(`${w.id}|${dayKey(t1)}`)?.q1 ?? 0) +
+      (planByWarehouseAndMonth.get(`${w.id}|${dayKey(t2)}`)?.q2 ?? 0) +
+      (planByWarehouseAndMonth.get(`${w.id}|${dayKey(t3)}`)?.q3 ?? 0);
+    const dailyTargetQuantity = workingDaysInMonth > 0 ? monthlyPlanQuantity / workingDaysInMonth : 0;
+    const targetToDateQuantity = dailyTargetQuantity * workingDaysElapsed;
+    const actualToDateQuantity = actualToDateByWarehouse.get(w.id) ?? 0;
+    const deficitQuantity = Math.round(targetToDateQuantity - actualToDateQuantity);
+
+    return {
+      warehouseId: w.id, warehouseCode: w.code, warehouseName: w.name, todayQuantity, last7DaysQuantity,
+      monthlyPlanQuantity, workingDaysInMonth, dailyTargetQuantity: Math.round(dailyTargetQuantity),
+      deficitQuantity,
+    };
   });
 
   const dailyBreakdown = days.map((day) => ({
