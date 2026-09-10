@@ -11,7 +11,8 @@ import type { Prisma, Warehouse, Shelf } from "@prisma/client";
 // chứa mọi Lot mẫu mẹ mà Admin kỹ thuật tự khai khi tạo chỉ định — không hiện khái niệm "chọn kệ" ở UI.
 // isRnd đánh dấu để tra cứu đáng tin cậy, không so tên chuỗi (xem Warehouse.isRnd, schema.prisma).
 const RND_WAREHOUSE_NAME = "Kho SX R&D";
-const RND_BUCKET_SHELF_SUFFIX = "PS-BUCKET";
+const RND_INPUT_SHELF_SUFFIX = "PS-BUCKET";
+const RND_OUTPUT_SHELF_SUFFIX = "PRR-BUCKET";
 
 export async function getOrCreateRndWarehouse(
   client: Prisma.TransactionClient | typeof prisma = prisma
@@ -27,18 +28,37 @@ export async function getOrCreateRndWarehouse(
   return warehouse;
 }
 
-export async function getOrCreateRndInputShelf(
+async function getOrCreateRndBucketShelf(
   warehouseId: string,
-  client: Prisma.TransactionClient | typeof prisma = prisma
+  roomType: "PHONG_MAU_ME" | "PHONG_RA_RE",
+  suffix: string,
+  name: string,
+  client: Prisma.TransactionClient | typeof prisma
 ): Promise<Shelf> {
   const warehouse = await client.warehouse.findUniqueOrThrow({ where: { id: warehouseId } });
-  const shelfCode = `${warehouse.code}-${RND_BUCKET_SHELF_SUFFIX}`;
+  const shelfCode = `${warehouse.code}-${suffix}`;
 
   const existing = await client.shelf.findUnique({ where: { code: shelfCode } });
   if (existing) return existing;
 
-  const motherRoom = await client.room.findFirstOrThrow({ where: { warehouseId, type: "PHONG_MAU_ME" } });
-  return client.shelf.create({
-    data: { code: shelfCode, name: "Kệ mẫu mẹ R&D (ẩn)", warehouseId, roomId: motherRoom.id },
-  });
+  const room = await client.room.findFirstOrThrow({ where: { warehouseId, type: roomType } });
+  return client.shelf.create({ data: { code: shelfCode, name, warehouseId, roomId: room.id } });
+}
+
+// Kệ ẩn duy nhất trong Phòng mẫu mẹ — nơi chứa mọi Lot mẫu mẹ (M05) Admin kỹ thuật tự khai (tạo chỉ
+// định cấy hoặc bàn giao trực tiếp), không hiện khái niệm "chọn kệ" ở UI.
+export async function getOrCreateRndInputShelf(
+  warehouseId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<Shelf> {
+  return getOrCreateRndBucketShelf(warehouseId, "PHONG_MAU_ME", RND_INPUT_SHELF_SUFFIX, "Kệ mẫu mẹ R&D (ẩn)", client);
+}
+
+// Kệ ẩn duy nhất trong Phòng ra rễ — nơi chứa mọi Lot thành phẩm (T05/T01) Admin kỹ thuật tự khai lúc
+// bàn giao trực tiếp (xem sendRndOutputToWarehouse, src/lib/rnd-warehouse-handover.ts).
+export async function getOrCreateRndOutputShelf(
+  warehouseId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<Shelf> {
+  return getOrCreateRndBucketShelf(warehouseId, "PHONG_RA_RE", RND_OUTPUT_SHELF_SUFFIX, "Kệ ra rễ R&D (ẩn)", client);
 }

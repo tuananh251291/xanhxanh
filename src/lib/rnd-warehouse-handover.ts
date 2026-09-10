@@ -3,40 +3,31 @@ import { generateLotCode, generateTransferCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { RND_OUTPUT_TRANSFER_TAG } from "@/types";
 import { ShelfAssignError, matchesAllowedCodes } from "@/lib/shelf-assignment";
+import { getOrCreateRndWarehouse, getOrCreateRndInputShelf, getOrCreateRndOutputShelf } from "@/lib/rnd-instruction-warehouse";
 
-// Bàn giao SẢN PHẨM R&D (mẫu mẹ hoặc thành phẩm, Admin kỹ thuật tự cấy tại "Kho SX R&D") sang 1 kho
-// THẬT khác trong hệ thống — CẢ khu sản xuất (SAN_XUAT) lẫn kho thành phẩm (THANH_PHAM) — mô phỏng
-// src/lib/mother-warehouse-transfer.ts (tag riêng trong notes + hàng đợi/xác nhận riêng, KHÔNG qua
-// receive-phong-toi/do-lane vì pipeline đó hard-code giả định "phòng nguồn cùng kho với người xem", sẽ
-// không hiện phiếu liên kho cho đúng người nhận). Khác mother-warehouse-transfer ở chỗ nguồn là Phòng
-// tối cá nhân của Admin kỹ thuật (không qua giàn kệ, không FIFO nhiều lô) — mỗi lô chọn gửi TOÀN BỘ số
-// lượng hiện có, không tách lẻ.
+// Bàn giao SẢN PHẨM R&D sang 1 kho THẬT khác trong hệ thống — CẢ khu sản xuất (SAN_XUAT) lẫn kho thành
+// phẩm (THANH_PHAM) — mô phỏng src/lib/mother-warehouse-transfer.ts (tag riêng trong notes + hàng đợi/
+// xác nhận riêng, KHÔNG qua receive-phong-toi/do-lane vì pipeline đó hard-code giả định "phòng nguồn
+// cùng kho với người xem", sẽ không hiện phiếu liên kho cho đúng người nhận). Admin kỹ thuật KHÔNG chọn
+// từ lô có sẵn — tự khai thẳng mã cây/quy cách/số lượng đang có trong tay rồi bàn giao ngay, hệ thống tự
+// tạo 1 Lot mới trên kệ ẩn của "Kho SX R&D" (getOrCreateRndInputShelf cho M05, getOrCreateRndOutputShelf
+// cho T05/T01) rồi bàn giao lô đó đi luôn — không cần đã tồn tại trong Phòng tối cá nhân/qua bước nhập
+// dữ liệu cấy trước.
 export async function sendRndOutputToWarehouse(params: {
-  lotIds: string[];
+  plantTypeId: string;
+  stageCode: "M05" | "T05" | "T01";
+  quantity: number;
   toWarehouseId: string;
   fromUserId: string;
   notes?: string;
 }): Promise<{ transferCode: string; toWarehouseName: string; totalQuantity: number }> {
-  const { lotIds, toWarehouseId, fromUserId, notes } = params;
-  if (lotIds.length === 0) throw new ShelfAssignError("Cần chọn ít nhất 1 lô để bàn giao");
+  const { plantTypeId, stageCode, quantity, toWarehouseId, fromUserId, notes } = params;
+  if (quantity <= 0) throw new ShelfAssignError("Số lượng bàn giao phải lớn hơn 0");
 
-  const lots = await prisma.lot.findMany({
-    where: { id: { in: lotIds } },
-    include: { room: { select: { id: true, type: true, assignedStaffId: true, warehouseId: true, warehouse: { select: { isRnd: true, name: true } } } } },
-  });
-  if (lots.length !== lotIds.length) throw new ShelfAssignError("Có lô không tồn tại");
+  const plantType = await prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { code: true } });
+  if (!plantType) throw new ShelfAssignError("Không tìm thấy mã cây");
 
-  const invalid = lots.find(
-    (l) => !l.room || l.room.type !== "PHONG_TOI" || l.room.assignedStaffId !== fromUserId || !l.room.warehouse.isRnd
-  );
-  if (invalid) throw new ShelfAssignError(`Lô ${invalid.code} không thuộc Phòng tối R&D của bạn`);
-  if (lots.some((l) => !l.inspectedAt)) throw new ShelfAssignError("Cần kiểm tra nhiễm trước khi bàn giao");
-  if (lots.some((l) => l.quantity <= 0)) throw new ShelfAssignError("Có lô đã hết số lượng, không thể bàn giao");
-
-  const stage = lots[0].stage;
-  if (lots.some((l) => l.stage !== stage)) {
-    throw new ShelfAssignError("Chỉ bàn giao được các lô CÙNG loại (mẫu mẹ hoặc thành phẩm) trong 1 phiếu — mẫu mẹ và thành phẩm cần gửi thành 2 phiếu riêng");
-  }
+  const stage = stageCode === "M05" ? "MAU_ME" : "THANH_PHAM";
 
   const toWarehouse = await prisma.warehouse.findFirst({
     where: { id: toWarehouseId, isActive: true, isRnd: false, type: { in: ["SAN_XUAT", "THANH_PHAM"] } },
@@ -48,25 +39,42 @@ export async function sendRndOutputToWarehouse(params: {
     throw new ShelfAssignError("Kho thành phẩm chỉ nhận được lô thành phẩm — mẫu mẹ cần bàn giao sang 1 khu sản xuất khác");
   }
 
-  const fromRoom = lots[0].room!;
-  const totalQuantity = lots.reduce((s, l) => s + l.quantity, 0);
+  const [staff, rndWarehouse] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { id: fromUserId }, select: { code: true } }),
+    getOrCreateRndWarehouse(),
+  ]);
+  const bucketShelf = stage === "MAU_ME"
+    ? await getOrCreateRndInputShelf(rndWarehouse.id)
+    : await getOrCreateRndOutputShelf(rndWarehouse.id);
+
+  const lotCode = await generateLotCode({ plantTypeCode: plantType.code, staffCode: staff.code, stageCode });
 
   const transfer = await prisma.$transaction(async (tx) => {
-    for (const lot of lots) {
-      await tx.lot.update({ where: { id: lot.id }, data: { quantity: 0 } });
-    }
+    const lot = await tx.lot.create({
+      data: {
+        code: lotCode,
+        plantTypeId,
+        stage,
+        stageCode,
+        shelfId: bucketShelf.id,
+        quantity: 0,
+        initialQuantity: quantity,
+        status: "PLANTED",
+        enteredAt: new Date(),
+      },
+    });
     return tx.transfer.create({
       data: {
         code: await generateTransferCode(tx),
-        fromWarehouseId: fromRoom.warehouseId,
-        fromRoomId: fromRoom.id,
+        fromWarehouseId: rndWarehouse.id,
+        fromRoomId: bucketShelf.roomId,
         toWarehouseId,
         toRoomId: null,
         fromUserId,
         toUserId: null,
         status: "PENDING",
         notes: notes ? `${RND_OUTPUT_TRANSFER_TAG}|${notes}` : RND_OUTPUT_TRANSFER_TAG,
-        items: { create: lots.map((l) => ({ lotId: l.id, quantity: l.quantity })) },
+        items: { create: [{ lotId: lot.id, quantity }] },
       },
     });
   });
@@ -81,7 +89,7 @@ export async function sendRndOutputToWarehouse(params: {
       createAlert({
         type: "LOT_READY_TRANSFER",
         title: "Có phiếu bàn giao từ R&D chờ nhận",
-        message: `Kho SX R&D đã gửi phiếu ${transfer.code} — ${totalQuantity.toLocaleString("vi-VN")} cụm, chờ xác nhận nhập kho`,
+        message: `Kho SX R&D đã gửi phiếu ${transfer.code} — ${quantity.toLocaleString("vi-VN")} cụm, chờ xác nhận nhập kho`,
         userId: u.id,
         relatedId: transfer.id,
         relatedType: "Transfer",
@@ -89,7 +97,7 @@ export async function sendRndOutputToWarehouse(params: {
     )
   );
 
-  return { transferCode: transfer.code, toWarehouseName: toWarehouse.name, totalQuantity };
+  return { transferCode: transfer.code, toWarehouseName: toWarehouse.name, totalQuantity: quantity };
 }
 
 // toLocationCode = mã giàn kệ (kho đích là khu sản xuất — Phòng mẫu mẹ/ra rễ tuỳ stage) HOẶC mã phòng

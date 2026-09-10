@@ -5,39 +5,26 @@ import { sendRndOutputToWarehouse } from "@/lib/rnd-warehouse-handover";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
 import { z } from "zod";
 
-// GET: danh sách lô R&D (Phòng tối cá nhân của Admin kỹ thuật, đã kiểm tra nhiễm, còn số lượng) sẵn sàng
-// bàn giao + danh sách MỌI kho thật khác (khu sản xuất lẫn kho thành phẩm) có thể chọn làm đích — xem
-// sendRndOutputToWarehouse (src/lib/rnd-warehouse-handover.ts).
+// GET: danh sách MỌI kho thật khác (khu sản xuất lẫn kho thành phẩm) có thể chọn làm đích — xem
+// sendRndOutputToWarehouse (src/lib/rnd-warehouse-handover.ts). Mã cây tự khai lấy từ
+// GET /api/plant-types (tái dùng, không cần endpoint riêng).
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "ADMIN_KY_THUAT") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
-  const [lots, warehouses] = await Promise.all([
-    prisma.lot.findMany({
-      where: {
-        status: "ACTIVE",
-        quantity: { gt: 0 },
-        inspectedAt: { not: null },
-        room: { type: "PHONG_TOI", assignedStaffId: session.user.id, warehouse: { isRnd: true } },
-      },
-      select: {
-        id: true, code: true, stage: true, stageCode: true, quantity: true, enteredAt: true,
-        plantType: { select: { code: true, name: true } },
-      },
-      orderBy: { enteredAt: "asc" },
-    }),
-    prisma.warehouse.findMany({
-      where: { type: { in: ["SAN_XUAT", "THANH_PHAM"] }, isActive: true, isRnd: false },
-      select: { id: true, code: true, name: true, type: true },
-      orderBy: [{ type: "asc" }, { name: "asc" }],
-    }),
-  ]);
+  const warehouses = await prisma.warehouse.findMany({
+    where: { type: { in: ["SAN_XUAT", "THANH_PHAM"] }, isActive: true, isRnd: false },
+    select: { id: true, code: true, name: true, type: true },
+    orderBy: [{ type: "asc" }, { name: "asc" }],
+  });
 
-  return NextResponse.json({ lots, warehouses });
+  return NextResponse.json({ warehouses });
 }
 
 const sendSchema = z.object({
-  lotIds: z.array(z.string()).min(1, "Cần chọn ít nhất 1 lô"),
+  plantTypeId: z.string().min(1, "Cần chọn mã cây"),
+  stageCode: z.enum(["M05", "T05", "T01"]),
+  quantity: z.number().int().positive("Số lượng phải lớn hơn 0"),
   toWarehouseId: z.string().min(1, "Cần chọn kho đích"),
   notes: z.string().optional(),
 });
@@ -54,7 +41,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await sendRndOutputToWarehouse({
-      lotIds: parsed.data.lotIds,
+      plantTypeId: parsed.data.plantTypeId,
+      stageCode: parsed.data.stageCode,
+      quantity: parsed.data.quantity,
       toWarehouseId: parsed.data.toWarehouseId,
       fromUserId: session.user.id,
       notes: parsed.data.notes,
