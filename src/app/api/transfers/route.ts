@@ -5,6 +5,7 @@ import { generateTransferCode } from "@/lib/codes";
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { SURPLUS_TRANSFER_TAG, isKhoThanhPhamRole } from "@/types";
+import { isVnSunday } from "@/lib/medium-orders";
 import { format } from "date-fns";
 import { z } from "zod";
 
@@ -137,6 +138,12 @@ export async function POST(req: NextRequest) {
   // validate "không đạt" NV tự khai (chỉ cho lô thành phẩm T01/T05, không cho mẫu mẹ — mẫu mẹ luôn đạt
   // hết) — không vượt quá số lượng đang bàn giao của đúng lô đó.
   if (isFromDarkRoom) {
+    // Khoá NV cấy mô tạo phiếu bàn giao sản phẩm vào chủ nhật hàng tuần (yêu cầu nghiệp vụ) — chỉ áp
+    // dụng luồng bàn giao SẢN PHẨM thường từ phòng tối này, KHÔNG áp dụng bàn giao mẫu mẹ dư (đi qua
+    // route riêng /api/instructions/[id]/surplus-handover, không qua đây) nên tự động vẫn được phép.
+    if (isVnSunday()) {
+      return NextResponse.json({ message: "Bạn cần đợi đến thứ 2 để bàn giao phiếu này" }, { status: 400 });
+    }
     const lots = await prisma.lot.findMany({
       where: { id: { in: items.map((i) => i.lotId) } },
       select: { id: true, inspectedAt: true, stage: true, enteredAt: true },

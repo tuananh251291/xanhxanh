@@ -171,3 +171,10 @@ export function isMediumSurplusEntryDay(date: Date = new Date()): boolean {
   const day = toVnCalendarDate(date).getUTCDay();
   return day === 1 || day === 2;
 }
+
+// Chủ nhật theo đúng lịch VN — dùng để khoá NV cấy mô tạo phiếu bàn giao sản phẩm (Phòng tối → kho
+// sáng) vào ngày này, xem POST /api/transfers và product-handover-board.tsx. KHÔNG áp dụng cho bàn
+// giao mẫu mẹ dư (đi qua route riêng /api/instructions/[id]/surplus-handover).
+export function isVnSunday(date: Date = new Date()): boolean {
+  return toVnCalendarDate(date).getUTCDay() === 0;
+}

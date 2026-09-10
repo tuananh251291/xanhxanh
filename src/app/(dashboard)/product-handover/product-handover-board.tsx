@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Send, Loader2, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { differenceInCalendarDays, format } from "date-fns";
+import { isVnSunday } from "@/lib/medium-orders";
 import HandoverHistory from "./handover-history";
 
 // Quy cách thành phẩm (T01/T05) mới cho khai "không đạt" (VD cây quá nhỏ) — mẫu mẹ (M05) luôn đạt hết,
@@ -35,6 +36,10 @@ function ProductLotTable({ group, onHandedOver, blockedByDate }: { group: Lot[];
 
   const allInspected = group.every((l) => l.inspectedAt);
   const daysSince = differenceInCalendarDays(new Date(), new Date(group[0].enteredAt));
+  // Khoá chủ nhật hàng tuần (yêu cầu nghiệp vụ) — chỉ áp dụng bàn giao sản phẩm thường ở trang này,
+  // không áp dụng mẫu mẹ dư (trang riêng, xem surplus-handover-button.tsx). Khớp chặn phía server ở
+  // POST /api/transfers.
+  const isSunday = isVnSunday();
 
   const unqualifiedExceeded = group.some(
     (lot) => isFinishedStage(lot.stageCode) && (Number(unqualified[lot.id]) || 0) > lot.quantity
@@ -115,7 +120,11 @@ function ProductLotTable({ group, onHandedOver, blockedByDate }: { group: Lot[];
           </table>
         </div>
 
-        {blockedByDate ? (
+        {isSunday ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-divider">
+            <span className="text-sm text-warning-foreground">Bạn cần đợi đến thứ 2 để bàn giao phiếu này</span>
+          </div>
+        ) : blockedByDate ? (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-divider">
             <span className="text-sm text-warning-foreground">
               Bạn cần bàn giao lô ngày {format(new Date(blockedByDate), "dd/MM/yyyy")} trước — các lô nhập kho tối lâu hơn phải bàn giao trước
