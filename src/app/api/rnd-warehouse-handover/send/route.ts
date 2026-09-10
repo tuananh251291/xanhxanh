@@ -6,8 +6,8 @@ import { ShelfAssignError } from "@/lib/shelf-assignment";
 import { z } from "zod";
 
 // GET: danh sách lô R&D (Phòng tối cá nhân của Admin kỹ thuật, đã kiểm tra nhiễm, còn số lượng) sẵn sàng
-// bàn giao + danh sách kho sản xuất THẬT khác có thể chọn làm đích — xem sendRndOutputToWarehouse
-// (src/lib/rnd-warehouse-handover.ts).
+// bàn giao + danh sách MỌI kho thật khác (khu sản xuất lẫn kho thành phẩm) có thể chọn làm đích — xem
+// sendRndOutputToWarehouse (src/lib/rnd-warehouse-handover.ts).
 export async function GET() {
   const session = await auth();
   if (session?.user?.role !== "ADMIN_KY_THUAT") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -27,9 +27,9 @@ export async function GET() {
       orderBy: { enteredAt: "asc" },
     }),
     prisma.warehouse.findMany({
-      where: { type: "SAN_XUAT", isActive: true, isRnd: false },
-      select: { id: true, code: true, name: true },
-      orderBy: { name: "asc" },
+      where: { type: { in: ["SAN_XUAT", "THANH_PHAM"] }, isActive: true, isRnd: false },
+      select: { id: true, code: true, name: true, type: true },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
     }),
   ]);
 

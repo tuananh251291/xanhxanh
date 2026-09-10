@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
 import { confirmRndOutputReceipt } from "@/lib/rnd-warehouse-handover";
+import { isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 
 const confirmSchema = z.object({
-  toShelfCode: z.string().trim().min(1, "Cần chọn giàn đích"),
+  toLocationCode: z.string().trim().min(1, "Cần chọn giàn/phòng đích"),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ transferId: string }> }) {
   const session = await auth();
-  if (session?.user?.role !== "KHO_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-  const workplaceWarehouseId = session.user.workplaceWarehouseId;
+  const role = session?.user?.role;
+  if (role !== "KHO_MO" && !isKhoThanhPhamRole(role)) {
+    return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  }
+  const workplaceWarehouseId = session!.user.workplaceWarehouseId;
   if (!workplaceWarehouseId) return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc" }, { status: 400 });
 
   const { transferId } = await params;
@@ -22,9 +26,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   try {
     const result = await confirmRndOutputReceipt({
       transferId,
-      toShelfCode: parsed.data.toShelfCode,
+      toLocationCode: parsed.data.toLocationCode,
       workplaceWarehouseId,
-      confirmedByUserId: session.user.id,
+      confirmedByUserId: session!.user.id,
     });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {

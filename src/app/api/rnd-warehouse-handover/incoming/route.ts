@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { RND_OUTPUT_TRANSFER_TAG } from "@/types";
+import { RND_OUTPUT_TRANSFER_TAG, isKhoThanhPhamRole } from "@/types";
 
+// Phiếu bàn giao R&D đang chờ + danh sách vị trí đích khả dụng để chọn lúc xác nhận — giàn kệ (Kho mô,
+// kho đích là khu sản xuất) hoặc phòng (Kho thành phẩm, không quản lý theo giàn kệ) tuỳ đúng vai trò
+// đang xem, xem confirmRndOutputReceipt (src/lib/rnd-warehouse-handover.ts).
 export async function GET() {
   const session = await auth();
-  if (session?.user?.role !== "KHO_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-  const workplaceWarehouseId = session.user.workplaceWarehouseId;
-  if (!workplaceWarehouseId) return NextResponse.json({ rows: [], shelves: [] });
+  const role = session?.user?.role;
+  if (role !== "KHO_MO" && !isKhoThanhPhamRole(role)) {
+    return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  }
+  const workplaceWarehouseId = session!.user.workplaceWarehouseId;
+  if (!workplaceWarehouseId) return NextResponse.json({ rows: [], shelves: [], rooms: [] });
 
-  const [transfers, shelves] = await Promise.all([
+  const [transfers, shelves, rooms] = await Promise.all([
     prisma.transfer.findMany({
       where: { notes: { startsWith: RND_OUTPUT_TRANSFER_TAG }, toWarehouseId: workplaceWarehouseId, status: "PENDING" },
       include: {
@@ -23,19 +29,26 @@ export async function GET() {
       },
       orderBy: { transferredAt: "asc" },
     }),
-    // Giàn đích khả dụng cho Kho mô chọn lúc xác nhận — CẢ Phòng mẫu mẹ (nhận mẫu mẹ R&D) lẫn Phòng ra rễ
-    // (nhận thành phẩm R&D), client tự lọc theo đúng roomType khớp stage của từng phiếu.
-    prisma.shelf.findMany({
-      where: { warehouseId: workplaceWarehouseId, isActive: true, room: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] } } },
-      select: {
-        code: true, name: true, capacity: true, allowedCodes: true,
-        room: { select: { type: true } },
-        plantType: { select: { code: true } },
-        assignedStaff: { select: { name: true } },
-        lots: { where: { status: "ACTIVE" }, select: { quantity: true } },
-      },
-      orderBy: { code: "asc" },
-    }),
+    role === "KHO_MO"
+      ? prisma.shelf.findMany({
+          where: { warehouseId: workplaceWarehouseId, isActive: true, room: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] } } },
+          select: {
+            code: true, name: true, capacity: true, allowedCodes: true,
+            room: { select: { type: true } },
+            plantType: { select: { code: true } },
+            assignedStaff: { select: { name: true } },
+            lots: { where: { status: "ACTIVE" }, select: { quantity: true } },
+          },
+          orderBy: { code: "asc" },
+        })
+      : Promise.resolve([]),
+    isKhoThanhPhamRole(role)
+      ? prisma.room.findMany({
+          where: { warehouseId: workplaceWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI"] } },
+          select: { code: true, name: true, type: true },
+          orderBy: { code: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   return NextResponse.json({
@@ -64,5 +77,6 @@ export async function GET() {
       assignedStaffName: s.assignedStaff?.name ?? null,
       allowedCodes: s.allowedCodes,
     })),
+    rooms: rooms.map((r) => ({ code: r.code, name: r.name, type: r.type })),
   });
 }

@@ -23,7 +23,6 @@ import { toast } from "sonner";
 import { format, addWeeks } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS } from "@/types";
-import SendHandoverDialog from "./send-handover-dialog";
 
 type InstructionRow = {
   id: string;
@@ -69,10 +68,7 @@ export default function RndProductionBoard() {
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle className="text-base">Danh sách chỉ định cấy R&D của bạn</CardTitle>
-            <div className="flex items-center gap-2">
-              <SendHandoverDialog onSent={load} />
-              <CreateInstructionDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => { setCreateOpen(false); load(); }} />
-            </div>
+            <CreateInstructionDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => { setCreateOpen(false); load(); }} />
           </div>
         </CardHeader>
         <CardContent>

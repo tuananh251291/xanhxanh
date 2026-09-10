@@ -568,6 +568,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
     { href: "/rnd", label: "R&D", icon: "FlaskConical" },
     { href: "/rnd-production", label: "Cấy sản xuất R&D", icon: "Sprout" },
+    { href: "/rnd-handover", label: "Bàn giao", icon: "Send" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -623,6 +624,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/replant-handovers", label: "Bàn giao cây trồng", icon: "Sprout" },
+    { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
     // "Báo cáo tỉ lệ nhiễm" gộp vào tab trong hub này (xem violation-report/page.tsx) — route
     // /reports/mother-contamination vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
@@ -638,6 +640,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
+    { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
     { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
@@ -657,6 +660,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
+    { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },

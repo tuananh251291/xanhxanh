@@ -16,7 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Truck, PackageCheck, Loader2, Send, Check, FlaskConical } from "lucide-react";
+import { Truck, PackageCheck, Loader2, Send, Check } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -425,177 +425,18 @@ function IncomingTab() {
   );
 }
 
-type RndIncomingItem = { plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number };
-type RndIncomingRow = {
-  transferId: string;
-  code: string;
-  transferredAt: string;
-  fromUserCode: string;
-  fromUserName: string;
-  stage: "MAU_ME" | "THANH_PHAM" | null;
-  items: RndIncomingItem[];
-  totalQuantity: number;
-};
-type RndDestShelf = {
-  code: string; name: string; roomType: "PHONG_MAU_ME" | "PHONG_RA_RE" | null; capacity: number | null;
-  used: number; plantTypeCode: string | null; assignedStaffName: string | null; allowedCodes: string[];
-};
-
-function rndDestShelfLabel(s: RndDestShelf): string {
-  const capText = s.capacity === null ? "không giới hạn" : `${s.used.toLocaleString("vi-VN")}/${s.capacity.toLocaleString("vi-VN")}`;
-  const owner = s.assignedStaffName
-    ? `${s.assignedStaffName} · ${s.plantTypeCode ?? "?"}`
-    : s.allowedCodes.length > 0
-      ? `Chung · nhận: ${s.allowedCodes.join(", ")}`
-      : "Chung · mọi mã cây";
-  return `${s.code} — ${s.name} — ${owner} — ${capText}`;
-}
-
-function RndIncomingRowForm({ row, destShelves, onDone }: { row: RndIncomingRow; destShelves: RndDestShelf[]; onDone: () => void }) {
-  const [shelfOption, setShelfOption] = useState<ComboOption | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const roomType = row.stage === "MAU_ME" ? "PHONG_MAU_ME" : "PHONG_RA_RE";
-  const shelfOptions = useMemo(
-    () => destShelves.filter((s) => s.roomType === roomType).map((s) => ({ value: s.code, label: rndDestShelfLabel(s) })),
-    [destShelves, roomType]
-  );
-
-  const submit = async () => {
-    if (!shelfOption) { toast.error("Chưa chọn giàn đích"); return; }
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/rnd-warehouse-handover/incoming/${row.transferId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toShelfCode: shelfOption.value }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã nhận ${row.totalQuantity.toLocaleString("vi-VN")} cụm từ R&D`);
-      onDone();
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="rounded-lg border border-divider bg-background p-3 space-y-3 mt-2">
-      <div className="space-y-1">
-        <Label className="text-sm">Giàn đích (kho mình) — {roomType === "PHONG_MAU_ME" ? "Phòng mẫu mẹ" : "Phòng ra rễ"}</Label>
-        <Combobox
-          items={shelfOptions}
-          value={shelfOption}
-          isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-          onValueChange={setShelfOption}
-        >
-          <ComboboxInputGroup className="w-full h-9">
-            <ComboboxInput placeholder="Gõ mã hoặc tên giàn…" />
-            <ComboboxTrigger />
-          </ComboboxInputGroup>
-          <ComboboxContent>
-            <ComboboxEmpty>Không tìm thấy giàn</ComboboxEmpty>
-            <ComboboxList>
-              {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-            </ComboboxList>
-          </ComboboxContent>
-        </Combobox>
-      </div>
-      <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
-        {submitting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
-        Xác nhận đã nhận
-      </Button>
-    </div>
-  );
-}
-
-function RndIncomingTab() {
-  const [rows, setRows] = useState<RndIncomingRow[]>([]);
-  const [destShelves, setDestShelves] = useState<RndDestShelf[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [openRowId, setOpenRowId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/rnd-warehouse-handover/incoming");
-      const data = await res.json();
-      setRows(Array.isArray(data.rows) ? data.rows : []);
-      setDestShelves(Array.isArray(data.shelves) ? data.shelves : []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  if (loading) {
-    return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
-  }
-
-  if (rows.length === 0) {
-    return (
-      <Card><CardContent className="py-16 text-center text-text-muted">
-        <FlaskConical className="w-10 h-10 mx-auto mb-3 text-text-muted" />
-        <p>Không có phiếu bàn giao từ R&D nào đang chờ</p>
-      </CardContent></Card>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {rows.map((row) => (
-        <Card key={row.transferId}>
-          <CardContent className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-mono text-sm text-text-secondary">
-                  {row.code}
-                  <span className="ml-2 text-xs text-text-muted font-sans">
-                    {format(new Date(row.transferredAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                  </span>
-                </p>
-                <p className="text-sm text-foreground">
-                  Từ <strong>Kho SX R&D</strong> — {row.fromUserName} ({row.fromUserCode})
-                </p>
-                {row.items.map((it, idx) => (
-                  <p key={idx} className="text-sm text-text-secondary">
-                    {it.plantTypeCode} — {it.plantTypeName} ({it.stageCode}) — <strong>{it.quantity.toLocaleString("vi-VN")} cụm</strong>
-                  </p>
-                ))}
-              </div>
-              {openRowId !== row.transferId && (
-                <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" onClick={() => setOpenRowId(row.transferId)}>
-                  <PackageCheck className="w-3.5 h-3.5 mr-1.5" /> Nhận hàng
-                </Button>
-              )}
-            </div>
-            {openRowId === row.transferId && (
-              <RndIncomingRowForm row={row} destShelves={destShelves} onDone={() => { setOpenRowId(null); load(); }} />
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
 export default function MotherWarehouseTransferBoard() {
   return (
     <Tabs defaultValue="send">
       <TabsList>
         <TabsTrigger value="send" className="flex items-center gap-1.5"><Send className="w-3.5 h-3.5" /> Gửi đi</TabsTrigger>
         <TabsTrigger value="incoming" className="flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" /> Nhận về</TabsTrigger>
-        <TabsTrigger value="rnd" className="flex items-center gap-1.5"><FlaskConical className="w-3.5 h-3.5" /> Từ R&D</TabsTrigger>
       </TabsList>
       <TabsContent value="send" className="mt-4">
         <SendTab />
       </TabsContent>
       <TabsContent value="incoming" className="mt-4">
         <IncomingTab />
-      </TabsContent>
-      <TabsContent value="rnd" className="mt-4">
-        <RndIncomingTab />
       </TabsContent>
     </Tabs>
   );
