@@ -10,10 +10,11 @@ import DailyRecordEditBoard from "./daily-record-edit-board";
 // /api/daily-records — canManageDailyRecords đã tự chặn KHO_MO thao tác chỉ định KHÁC kho mình, và chặn
 // bù dữ liệu chỉ định không thuộc TUẦN HIỆN TẠI, xem daily-record-edit-board.tsx). Vi phạm nhập sai vẫn
 // tính đúng cho NV cấy mô (DailyRecordEdit.staffId) bất kể ai sửa — xem PATCH /api/daily-records/[id].
+// ADMIN_KY_THUAT KHÔNG được dùng trang này (dù isAdminRole trả về true cho role này) — bỏ theo yêu cầu.
 export default async function DailyRecordEditPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role) && role !== "KHO_MO") redirect("/dashboard");
+  if ((!isAdminRole(role) && role !== "KHO_MO") || role === "ADMIN_KY_THUAT") redirect("/dashboard");
 
   return <DailyRecordEditBoard isAdminUser={isAdminRole(role)} />;
 }

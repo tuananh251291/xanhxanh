@@ -555,16 +555,16 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
-  // Admin kỹ thuật — y hệt ADMIN ở trên, TRỪ 3 mục: Cài đặt CSDL chung hệ thống, Giám sát & vi phạm, Duyệt
-  // đề xuất cây ra rễ (chặn thêm ngay tại page.tsx của 3 trang đó dù isAdminRole trả về true cho role
-  // này — xem comment UserRole.ADMIN_KY_THUAT ở schema.prisma). Có thêm mục R&D (/rnd) riêng.
+  // Admin kỹ thuật — y hệt ADMIN ở trên, TRỪ 4 mục: Cài đặt CSDL chung hệ thống, Giám sát & vi phạm, Duyệt
+  // đề xuất cây ra rễ, Sửa cập nhật dữ liệu cấy (chặn thêm ngay tại page.tsx của các trang đó dù
+  // isAdminRole trả về true cho role này — xem comment UserRole.ADMIN_KY_THUAT ở schema.prisma). Có thêm
+  // mục R&D (/rnd) riêng.
   ADMIN_KY_THUAT: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Người dùng", icon: "Users" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
-    { href: "/daily-record-edit", label: "Sửa cập nhật dữ liệu cấy", icon: "PenLine" },
     { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
     { href: "/rnd", label: "R&D", icon: "FlaskConical" },
     { href: "/rnd-production", label: "Cấy sản xuất R&D", icon: "Sprout" },
