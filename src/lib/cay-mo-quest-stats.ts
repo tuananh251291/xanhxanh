@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { getSurplusHandoverCandidates } from "@/lib/surplus-handover";
+import { computeCayMoRootingTarget, type CayMoRootingTarget } from "@/lib/rooting-target";
 import { startOfDay, endOfDay, subDays, format, startOfWeek, endOfWeek, differenceInCalendarDays } from "date-fns";
 
 const STREAK_LOOKBACK_DAYS = 365;
@@ -36,6 +37,7 @@ export type CayMoQuestStats = {
   xpIntoLevel: number;
   xpTarget: number;
   badges: MilestoneBadge[];
+  rootingTarget: CayMoRootingTarget | null;
 };
 
 function computeStreaks(recordDates: Date[]) {
@@ -98,6 +100,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     recentRecordDates,
     surplusCandidates,
     pendingRepack,
+    rootingTarget,
   ] = await Promise.all([
     prisma.plantingInstruction.findFirst({
       where: { assignedToId: userId, handedOverAt: { not: null }, motherReceivedAt: null },
@@ -140,6 +143,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     prisma.repackInstruction.findFirst({
       where: { assignedToId: userId, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
     }),
+    computeCayMoRootingTarget(userId),
   ]);
 
   const hasOverdueDarkRoomLot = darkRoomLots.some(
@@ -244,5 +248,6 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
     xpIntoLevel,
     xpTarget: DAYS_PER_LEVEL,
     badges: buildBadges(bestStreak, level),
+    rootingTarget,
   };
 }

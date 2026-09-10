@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
+import CayMoRootingTargetCard from "@/components/shared/cay-mo-rooting-target-card";
 import type { CayMoQuestStats, Quest, MilestoneBadge } from "@/lib/cay-mo-quest-stats";
 import { generateConfettiPieces } from "@/lib/confetti";
 import { playBadgeUnlockSound, playLevelUpSound, playPerfectDaySound } from "@/lib/sound-effects";
@@ -151,6 +152,8 @@ export default function CayMoQuestDashboard({
       <p className="text-sm font-bold text-primary-strong bg-primary-light border border-primary-light rounded-2xl px-4 py-3">
         {quote}
       </p>
+
+      {stats.rootingTarget && <CayMoRootingTargetCard target={stats.rootingTarget} />}
 
       <Link href="/dashboard-basic/dang-ky-cay-them" className="block">
         <Card className="hover:border-primary transition-colors">

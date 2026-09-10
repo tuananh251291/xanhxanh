@@ -14,6 +14,8 @@ import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subMonths, format, differenceInCalendarDays, eachDayOfInterval } from "date-fns";
 import TrialRoundTaskCard from "@/app/(dashboard)/rnd/trial-round-task-card";
 import RootingSummaryWidget from "@/app/(dashboard)/dashboard/rooting-summary-widget";
+import CayMoRootingTargetCard from "@/components/shared/cay-mo-rooting-target-card";
+import { computeCayMoRootingTarget } from "@/lib/rooting-target";
 import { vi } from "date-fns/locale";
 import { ensureTodayChecklist } from "@/lib/checklist";
 import ProductivityLeaderboard from "@/components/shared/productivity-leaderboard";
@@ -233,7 +235,7 @@ async function getCayMoStats(userId: string) {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount, staffUser] = await Promise.all([
+  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount, staffUser, rootingTarget] = await Promise.all([
     // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
     // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
     prisma.plantingInstruction.findFirst({
@@ -273,6 +275,7 @@ async function getCayMoStats(userId: string) {
       where: { staffId: userId, createdAt: { gte: weekStart, lte: weekEnd } },
     }),
     prisma.user.findUnique({ where: { id: userId }, select: { inspectionLane: true } }),
+    computeCayMoRootingTarget(userId),
   ]);
 
   const now = new Date();
@@ -286,6 +289,7 @@ async function getCayMoStats(userId: string) {
     unreadInspectionResults,
     weeklyCorrectionCount,
     inspectionLane: staffUser?.inspectionLane ?? null,
+    rootingTarget,
   };
 }
 
@@ -811,6 +815,8 @@ function CayMoDashboard({
         </div>
       </div>
       <GreetingBanner />
+
+      {stats.rootingTarget && <CayMoRootingTargetCard target={stats.rootingTarget} />}
 
       {stats.unreadInspectionResults > 0 && (
         <Link href="/handover-record" className="block">
