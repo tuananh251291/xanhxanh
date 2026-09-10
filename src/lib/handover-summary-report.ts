@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { startOfMonth, endOfMonth, addDays, eachDayOfInterval, parse, isValid, format } from "date-fns";
+import { startOfMonth, endOfMonth, startOfDay, addDays, eachDayOfInterval, parse, isValid, format } from "date-fns";
 
 // Báo cáo "Bàn giao & ghi nhận theo tháng" (Admin + Hành chính nhân sự) — CÙNG khoảng thời gian (tháng
 // lịch) và CÙNG công thức "SL bàn giao"/"SL ghi nhận" với computeProductionRecordForPeriod
@@ -64,11 +64,15 @@ function dayKey(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-export async function computeHandoverSummaryForPeriod(monthParam?: string | null, warehouseId?: string): Promise<HandoverSummaryResult> {
-  const parsedMonth = monthParam ? parse(monthParam, "yyyy-MM", new Date()) : new Date();
-  const anchor = isValid(parsedMonth) ? parsedMonth : new Date();
-  const rangeStart = startOfMonth(anchor);
-  const rangeEndInclusive = endOfMonth(anchor);
+// dateFrom/dateTo (yyyy-MM-dd) — không truyền (hoặc không hợp lệ) thì mặc định về THÁNG HIỆN TẠI (giữ
+// tương thích hành vi cũ, xem cùng quy ước ở computeProductionRecordForPeriod).
+export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, dateTo?: string | null, warehouseId?: string): Promise<HandoverSummaryResult> {
+  const now = new Date();
+  const parsedFrom = dateFrom ? parse(dateFrom, "yyyy-MM-dd", now) : null;
+  const parsedTo = dateTo ? parse(dateTo, "yyyy-MM-dd", now) : null;
+  let rangeStart = parsedFrom && isValid(parsedFrom) ? startOfDay(parsedFrom) : startOfMonth(now);
+  let rangeEndInclusive = parsedTo && isValid(parsedTo) ? startOfDay(parsedTo) : endOfMonth(now);
+  if (rangeStart > rangeEndInclusive) [rangeStart, rangeEndInclusive] = [rangeEndInclusive, rangeStart];
   const rangeEndExclusive = addDays(rangeEndInclusive, 1);
 
   const staffList = await prisma.user.findMany({

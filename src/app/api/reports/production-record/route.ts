@@ -11,11 +11,12 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const monthParam = searchParams.get("month");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
   // NV Kỹ thuật chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server, khớp quy ước ở
   // /api/reports/planting-log-summary.
   const warehouseId = role === "KY_THUAT" ? session!.user.workplaceWarehouseId ?? undefined : searchParams.get("warehouseId") || undefined;
 
-  const result = await computeProductionRecordForPeriod(monthParam, warehouseId);
+  const result = await computeProductionRecordForPeriod(dateFrom, dateTo, warehouseId);
   return NextResponse.json(result);
 }

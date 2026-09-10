@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { startOfMonth, endOfMonth, addDays, eachDayOfInterval, parse, isValid, format } from "date-fns";
+import { startOfMonth, endOfMonth, startOfDay, addDays, eachDayOfInterval, parse, isValid, format } from "date-fns";
 
 // Báo cáo "Số lượng ghi nhận" của NV cấy mô — KHÁC "Dữ liệu nhật ký cấy" (planting-log-summary, tính trên
 // DailyRecordItem.quantityCreated = số cấy RA thô) ở chỗ đây tính đúng số lượng "ĐƯỢC GHI NHẬN" (tính vào
@@ -63,11 +63,16 @@ function dayKey(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-export async function computeProductionRecordForPeriod(monthParam?: string | null, warehouseId?: string): Promise<ProductionRecordResult> {
-  const parsedMonth = monthParam ? parse(monthParam, "yyyy-MM", new Date()) : new Date();
-  const anchor = isValid(parsedMonth) ? parsedMonth : new Date();
-  const rangeStart = startOfMonth(anchor);
-  const rangeEndInclusive = endOfMonth(anchor);
+// dateFrom/dateTo (yyyy-MM-dd) — không truyền (hoặc không hợp lệ) thì mặc định về THÁNG HIỆN TẠI (giữ
+// tương thích hành vi cũ). Đảo ngược nếu dateFrom nằm sau dateTo (nhập lộn) thay vì để eachDayOfInterval
+// bên dưới ném lỗi.
+export async function computeProductionRecordForPeriod(dateFrom?: string | null, dateTo?: string | null, warehouseId?: string): Promise<ProductionRecordResult> {
+  const now = new Date();
+  const parsedFrom = dateFrom ? parse(dateFrom, "yyyy-MM-dd", now) : null;
+  const parsedTo = dateTo ? parse(dateTo, "yyyy-MM-dd", now) : null;
+  let rangeStart = parsedFrom && isValid(parsedFrom) ? startOfDay(parsedFrom) : startOfMonth(now);
+  let rangeEndInclusive = parsedTo && isValid(parsedTo) ? startOfDay(parsedTo) : endOfMonth(now);
+  if (rangeStart > rangeEndInclusive) [rangeStart, rangeEndInclusive] = [rangeEndInclusive, rangeStart];
   const rangeEndExclusive = addDays(rangeEndInclusive, 1);
 
   const staffList = await prisma.user.findMany({

@@ -29,8 +29,8 @@ export default async function ProductionRecordPage() {
           <Boxes className="w-6 h-6 text-primary-strong" /> Số lượng ghi nhận
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Sản lượng ĐÃ ĐƯỢC GHI NHẬN của từng NV cấy mô trong tháng (luồng Xanh tự trừ hàng không đạt,
-          luồng Đỏ/Vàng theo số Kho mô đã kiểm tra và ghi nhận) — xem chi tiết theo từng ngày trong tháng.
+          Sản lượng ĐÃ ĐƯỢC GHI NHẬN của từng NV cấy mô trong khoảng ngày đã chọn (luồng Xanh tự trừ hàng
+          không đạt, luồng Đỏ/Vàng theo số Kho mô đã kiểm tra và ghi nhận) — xem chi tiết theo từng ngày.
         </p>
       </div>
       <ProductionRecordBoard warehouses={warehouses} />

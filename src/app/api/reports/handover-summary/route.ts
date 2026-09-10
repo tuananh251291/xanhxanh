@@ -15,10 +15,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const monthParam = searchParams.get("month");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
   const warehouseId = searchParams.get("warehouseId") || undefined;
 
-  const result = await computeHandoverSummaryForPeriod(monthParam, warehouseId);
+  const result = await computeHandoverSummaryForPeriod(dateFrom, dateTo, warehouseId);
   const totalHandedOver = result.rows.reduce((s, r) => s + r.totalHandedOverQuantity, 0);
   const totalRecorded = result.rows.reduce((s, r) => s + r.totalRecordedQuantity, 0);
 

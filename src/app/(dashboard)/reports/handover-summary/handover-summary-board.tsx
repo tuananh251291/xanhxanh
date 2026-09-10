@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Clock, ChevronDown, ChevronRight, Download } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
 
 type Warehouse = { id: string; code: string; name: string };
@@ -40,7 +40,9 @@ const ALL_WAREHOUSE = "ALL";
 const num = (n: number) => n.toLocaleString("vi-VN");
 
 export default function HandoverSummaryBoard({ warehouses }: { warehouses: Warehouse[] }) {
-  const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
+  const now = new Date();
+  const [dateFrom, setDateFrom] = useState(format(startOfMonth(now), "yyyy-MM-dd"));
+  const [dateTo, setDateTo] = useState(format(endOfMonth(now), "yyyy-MM-dd"));
   const [warehouseId, setWarehouseId] = useState(ALL_WAREHOUSE);
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -50,7 +52,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ month });
+      const params = new URLSearchParams({ dateFrom, dateTo });
       if (warehouseId !== ALL_WAREHOUSE) params.set("warehouseId", warehouseId);
       const res = await fetch(`/api/reports/handover-summary?${params}`);
       const data = await res.json();
@@ -59,7 +61,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
     } finally {
       setLoading(false);
     }
-  }, [month, warehouseId]);
+  }, [dateFrom, dateTo, warehouseId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -68,7 +70,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
     : 0;
   const selectedWarehouse = warehouseId !== ALL_WAREHOUSE ? warehouses.find((w) => w.id === warehouseId) : null;
 
-  const exportParams = new URLSearchParams({ month });
+  const exportParams = new URLSearchParams({ dateFrom, dateTo });
   if (warehouseId !== ALL_WAREHOUSE) exportParams.set("warehouseId", warehouseId);
   const exportHref = `/api/reports/handover-summary/export?${exportParams}`;
 
@@ -77,8 +79,12 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
       <Card>
         <CardContent className="p-4 flex items-end gap-3 flex-wrap">
           <div className="space-y-1">
-            <Label className="text-xs">Tháng</Label>
-            <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-40" />
+            <Label className="text-xs">Từ ngày</Label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} max={dateTo} className="w-40" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Đến ngày</Label>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} min={dateFrom} className="w-40" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Cơ sở sản xuất</Label>
@@ -195,7 +201,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                                 </div>
                               )}
 
-                              <p className="text-text-muted text-xs mb-2">Chi tiết bàn giao & ghi nhận theo ngày trong tháng</p>
+                              <p className="text-text-muted text-xs mb-2">Chi tiết bàn giao & ghi nhận theo ngày trong khoảng đã chọn</p>
                               <div className="max-h-72 overflow-y-auto border border-divider rounded-md">
                                 <table className="w-full text-xs">
                                   <thead className="sticky top-0 bg-primary-light">
