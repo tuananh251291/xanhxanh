@@ -3,8 +3,8 @@ import { parse, isValid, startOfDay, addDays } from "date-fns";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 
 // "Lịch sử phiếu bàn giao" — xem lại MỌI phiếu bàn giao Phòng tối (NV cấy mô → Kho mô, gồm cả luồng
-// Xanh/Vàng/Đỏ VÀ phiếu MM dư khi chỉ định kết thúc) đã tạo trong 1 ngày, không chỉ phiếu đang chờ xử lý
-// như trang "Nhận bàn giao từ kho tối" (ReceivePhongToiBoard chỉ hiện PENDING) — dùng để tra cứu/đối
+// Xanh/Vàng/Đỏ VÀ phiếu MM dư khi chỉ định kết thúc) đã tạo trong 1 khoảng ngày, không chỉ phiếu đang chờ
+// xử lý như trang "Nhận bàn giao từ kho tối" (ReceivePhongToiBoard chỉ hiện PENDING) — dùng để tra cứu/đối
 // chiếu về sau. Admin cấp cao xem được mọi cơ sở, Kho mô chỉ xem đúng cơ sở mình đang làm việc.
 export type HandoverHistoryItemRow = {
   lotCode: string;
@@ -35,19 +35,20 @@ export type HandoverHistoryRow = {
 };
 
 export async function computeHandoverHistory(params: {
-  date?: string | null; // yyyy-MM-dd
+  dateFrom?: string | null; // yyyy-MM-dd
+  dateTo?: string | null; // yyyy-MM-dd, bao gồm hết ngày này
   staffId?: string;
   warehouseId?: string;
 }): Promise<HandoverHistoryRow[]> {
-  const { date, staffId, warehouseId } = params;
+  const { dateFrom, dateTo, staffId, warehouseId } = params;
 
-  let dateRange: { gte: Date; lt: Date } | undefined;
-  if (date) {
-    const parsed = parse(date, "yyyy-MM-dd", new Date());
-    if (isValid(parsed)) {
-      const dayStart = startOfDay(parsed);
-      dateRange = { gte: dayStart, lt: addDays(dayStart, 1) };
-    }
+  let dateRange: { gte?: Date; lt?: Date } | undefined;
+  const parsedFrom = dateFrom ? parse(dateFrom, "yyyy-MM-dd", new Date()) : null;
+  const parsedTo = dateTo ? parse(dateTo, "yyyy-MM-dd", new Date()) : null;
+  if ((parsedFrom && isValid(parsedFrom)) || (parsedTo && isValid(parsedTo))) {
+    dateRange = {};
+    if (parsedFrom && isValid(parsedFrom)) dateRange.gte = startOfDay(parsedFrom);
+    if (parsedTo && isValid(parsedTo)) dateRange.lt = addDays(startOfDay(parsedTo), 1);
   }
 
   const transfers = await prisma.transfer.findMany({

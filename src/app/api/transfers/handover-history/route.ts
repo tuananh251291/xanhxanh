@@ -14,10 +14,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const date = searchParams.get("date");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
   const staffId = searchParams.get("staffId") || undefined;
   const warehouseId = role === "KHO_MO" ? session!.user.workplaceWarehouseId! : searchParams.get("warehouseId") || undefined;
 
-  const rows = await computeHandoverHistory({ date, staffId, warehouseId });
+  const rows = await computeHandoverHistory({ dateFrom, dateTo, staffId, warehouseId });
   return NextResponse.json({ rows });
 }

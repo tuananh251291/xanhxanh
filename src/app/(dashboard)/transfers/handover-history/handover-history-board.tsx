@@ -37,7 +37,9 @@ const STATUS_LABEL: Record<Row["status"], string> = {
 };
 
 export default function HandoverHistoryBoard({ warehouses, staffList }: { warehouses: Warehouse[]; staffList: Staff[] }) {
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const today = format(new Date(), "yyyy-MM-dd");
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [warehouseId, setWarehouseId] = useState(ALL_WAREHOUSE);
   const [staffId, setStaffId] = useState(ALL_STAFF);
   const [rows, setRows] = useState<Row[]>([]);
@@ -47,7 +49,7 @@ export default function HandoverHistoryBoard({ warehouses, staffList }: { wareho
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ date });
+      const params = new URLSearchParams({ dateFrom, dateTo });
       if (warehouseId !== ALL_WAREHOUSE) params.set("warehouseId", warehouseId);
       if (staffId !== ALL_STAFF) params.set("staffId", staffId);
       const res = await fetch(`/api/transfers/handover-history?${params}`);
@@ -56,7 +58,7 @@ export default function HandoverHistoryBoard({ warehouses, staffList }: { wareho
     } finally {
       setLoading(false);
     }
-  }, [date, warehouseId, staffId]);
+  }, [dateFrom, dateTo, warehouseId, staffId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -75,8 +77,12 @@ export default function HandoverHistoryBoard({ warehouses, staffList }: { wareho
       <Card>
         <CardContent className="p-4 flex items-end gap-3 flex-wrap">
           <div className="space-y-1">
-            <Label className="text-xs">Ngày</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" />
+            <Label className="text-xs">Từ ngày</Label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} max={dateTo} className="w-40" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Đến ngày</Label>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} min={dateFrom} className="w-40" />
           </div>
           {warehouses.length > 1 && (
             <div className="space-y-1">
@@ -112,7 +118,7 @@ export default function HandoverHistoryBoard({ warehouses, staffList }: { wareho
       </Card>
 
       {!loading && (
-        <p className="text-sm text-text-secondary">{rows.length} phiếu bàn giao trong ngày đã chọn</p>
+        <p className="text-sm text-text-secondary">{rows.length} phiếu bàn giao trong khoảng ngày đã chọn</p>
       )}
 
       {loading ? (
