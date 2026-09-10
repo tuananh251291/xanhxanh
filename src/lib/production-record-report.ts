@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, addDays, eachDayOfInterval, parse, isValid, format } from "date-fns";
+import { SURPLUS_TRANSFER_TAG } from "@/types";
 
 // Báo cáo "Số lượng ghi nhận" của NV cấy mô — KHÁC "Dữ liệu nhật ký cấy" (planting-log-summary, tính trên
 // DailyRecordItem.quantityCreated = số cấy RA thô) ở chỗ đây tính đúng số lượng "ĐƯỢC GHI NHẬN" (tính vào
@@ -90,8 +91,13 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
     }),
     prisma.transfer.findMany({
       // status != REJECTED — phiếu bị Kho mô từ chối coi như chưa từng bàn giao thật, không tính vào
-      // ngày hoạt động lẫn ghi nhận.
-      where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" } },
+      // ngày hoạt động lẫn ghi nhận. Loại cả phiếu MM dư (SURPLUS_TRANSFER_TAG, mẫu mẹ trả lại khi 1 chỉ
+      // định cấy KẾT THÚC, không phải sản lượng tạo ra trong kỳ) — nếu không loại sẽ bị tính nhầm vào SL
+      // bàn giao/ghi nhận của NV, xem cùng lý do đã sửa ở payroll-calculation.ts.
+      where: {
+        fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" },
+        NOT: { notes: { startsWith: SURPLUS_TRANSFER_TAG } },
+      },
       select: {
         fromUserId: true,
         createdAt: true,

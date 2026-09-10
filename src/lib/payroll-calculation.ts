@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { eachDayOfInterval, addDays, format } from "date-fns";
+import { SURPLUS_TRANSFER_TAG } from "@/types";
 
 export type PayrollBreakdown = {
   staffId: string;
@@ -98,9 +99,14 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     // Cùng nguồn Transfer dùng cho CẢ "ngày làm việc thực tế" (createdAt) LẪN "số lượng ghi nhận" theo
     // mã cây (items/inspection) — tránh truy vấn Transfer 2 lần cho cùng 1 khoảng thời gian.
     // status != REJECTED — phiếu bị Kho mô từ chối coi như chưa từng bàn giao thật, không tính vào ngày
-    // công lẫn ghi nhận/lương.
+    // công lẫn ghi nhận/lương. Loại cả phiếu MM dư (SURPLUS_TRANSFER_TAG, mẫu mẹ trả lại khi 1 chỉ định
+    // cấy KẾT THÚC — không phải sản lượng NV tạo ra trong kỳ, xem POST .../surplus-handover) — nếu không
+    // loại, mẫu mẹ dư sẽ bị tính nhầm thành sản lượng/ngày công của NV, đội SL bàn giao/ghi nhận lên sai.
     prisma.transfer.findMany({
-      where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: { not: "REJECTED" } },
+      where: {
+        fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: { not: "REJECTED" },
+        NOT: { notes: { startsWith: SURPLUS_TRANSFER_TAG } },
+      },
       select: {
         fromUserId: true,
         createdAt: true,

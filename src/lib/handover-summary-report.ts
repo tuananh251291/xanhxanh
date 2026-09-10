@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, addDays, eachDayOfInterval, parse, isValid, format } from "date-fns";
+import { SURPLUS_TRANSFER_TAG } from "@/types";
 
 // Báo cáo "Bàn giao & ghi nhận theo tháng" (Admin + Hành chính nhân sự) — CÙNG khoảng thời gian (tháng
 // lịch) và CÙNG công thức "SL bàn giao"/"SL ghi nhận" với computeProductionRecordForPeriod
@@ -86,7 +87,13 @@ export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, 
   const transfers = await prisma.transfer.findMany({
     // status != REJECTED — phiếu bị Kho mô từ chối (VD MM dư không hợp lệ) coi như CHƯA TỪNG bàn giao
     // thật, không tính vào bàn giao/ghi nhận lẫn "còn chờ kiểm tra" (đã có kết luận, không còn chờ gì).
-    where: { fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" } },
+    // Loại cả phiếu MM dư hợp lệ (SURPLUS_TRANSFER_TAG, mẫu mẹ trả lại khi 1 chỉ định cấy KẾT THÚC, không
+    // phải sản lượng NV tạo ra trong kỳ) — nếu không loại sẽ bị tính nhầm vào SL bàn giao/ghi nhận, xem
+    // cùng lý do đã sửa ở payroll-calculation.ts + production-record-report.ts.
+    where: {
+      fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" },
+      NOT: { notes: { startsWith: SURPLUS_TRANSFER_TAG } },
+    },
     select: {
       fromUserId: true,
       createdAt: true,
