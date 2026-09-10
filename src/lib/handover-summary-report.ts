@@ -22,6 +22,7 @@ export type HandoverSummaryDailyEntry = {
   handedOverQuantity: number;
   recordedQuantity: number;
   unqualifiedQuantity: number;
+  contaminatedQuantity: number;
 };
 
 export type HandoverSummaryPlantTypeBreakdown = {
@@ -30,6 +31,7 @@ export type HandoverSummaryPlantTypeBreakdown = {
   plantTypeName: string;
   handedOverQuantity: number;
   recordedQuantity: number;
+  contaminatedQuantity: number;
 };
 
 export type HandoverSummaryRow = {
@@ -41,6 +43,12 @@ export type HandoverSummaryRow = {
   totalHandedOverQuantity: number;
   totalRecordedQuantity: number;
   totalUnqualifiedQuantity: number;
+  // Số lượng Kho mô phát hiện nhiễm lúc kiểm tra bàn giao (TransferInspectionItem.contaminatedQuantity,
+  // luồng Đỏ/Vàng — luồng Xanh không qua kiểm tra nên luôn 0) — hiển thị RIÊNG, giống màn "Kiểm tra bàn
+  // giao" của Kho mô (xem inspect-form.tsx cột "SL nhiễm"), thay vì chỉ ẩn trong công thức trừ ra
+  // "SL bàn giao". Mẫu số tỉ lệ = totalHandedOverQuantity + totalContaminatedQuantity (số GỐC trước khi
+  // trừ nhiễm — totalHandedOverQuantity ở trên đã là số SAU khi trừ).
+  totalContaminatedQuantity: number;
   hasPending: boolean;
   byPlantType: HandoverSummaryPlantTypeBreakdown[];
   dailyDetail: HandoverSummaryDailyEntry[];
@@ -95,24 +103,28 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
 
   const daysInPeriod = eachDayOfInterval({ start: rangeStart, end: rangeEndInclusive });
 
-  type DayAgg = { active: boolean; handedOver: number; recorded: number; unqualified: number };
+  type DayAgg = { active: boolean; handedOver: number; recorded: number; unqualified: number; contaminated: number };
   const dailyMap = new Map<string, Map<string, DayAgg>>();
   const ensureDayEntry = (staffId: string, day: string): DayAgg => {
     const staffMap = dailyMap.get(staffId) ?? new Map<string, DayAgg>();
-    if (!staffMap.has(day)) staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0 });
+    if (!staffMap.has(day)) staffMap.set(day, { active: false, handedOver: 0, recorded: 0, unqualified: 0, contaminated: 0 });
     dailyMap.set(staffId, staffMap);
     return staffMap.get(day)!;
   };
 
   const plantTypeMetaById = new Map<string, { code: string; name: string }>();
-  type PlantAgg = { handedOver: number; recorded: number };
+  type PlantAgg = { handedOver: number; recorded: number; contaminated: number };
   const byStaffAndPlant = new Map<string, Map<string, PlantAgg>>();
-  const addPlant = (staffId: string, plantTypeId: string, code: string, name: string, handedOverDelta: number, recordedDelta: number) => {
+  const addPlant = (
+    staffId: string, plantTypeId: string, code: string, name: string,
+    handedOverDelta: number, recordedDelta: number, contaminatedDelta: number
+  ) => {
     plantTypeMetaById.set(plantTypeId, { code, name });
     const m = byStaffAndPlant.get(staffId) ?? new Map<string, PlantAgg>();
-    const cur = m.get(plantTypeId) ?? { handedOver: 0, recorded: 0 };
+    const cur = m.get(plantTypeId) ?? { handedOver: 0, recorded: 0, contaminated: 0 };
     cur.handedOver += handedOverDelta;
     cur.recorded += recordedDelta;
+    cur.contaminated += contaminatedDelta;
     m.set(plantTypeId, cur);
     byStaffAndPlant.set(staffId, m);
   };
@@ -126,17 +138,22 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
         const passed = insItem.handedOverQuantity - insItem.contaminatedQuantity;
-        addPlant(t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name, passed, insItem.creditedQuantity);
+        addPlant(
+          t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name,
+          passed, insItem.creditedQuantity, insItem.contaminatedQuantity
+        );
         dayEntry.handedOver += passed;
         dayEntry.recorded += insItem.creditedQuantity;
+        dayEntry.contaminated += insItem.contaminatedQuantity;
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
       // — không qua kiểm tra nhiễm ở bước này nên SL bàn giao giữ nguyên; SL ghi nhận tự khai trừ hàng
-      // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống).
+      // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống). Không có "SL nhiễm" (luồng này không
+      // qua Kho mô kiểm tra nhiễm).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
-        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, credited);
+        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, credited, 0);
         dayEntry.handedOver += item.quantity;
         dayEntry.recorded += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
@@ -156,6 +173,7 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
             plantTypeName: plantTypeMetaById.get(plantTypeId)!.name,
             handedOverQuantity: agg.handedOver,
             recordedQuantity: agg.recorded,
+            contaminatedQuantity: agg.contaminated,
           }))
           .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode))
       : [];
@@ -164,18 +182,21 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
     let totalHandedOverQuantity = 0;
     let totalRecordedQuantity = 0;
     let totalUnqualifiedQuantity = 0;
+    let totalContaminatedQuantity = 0;
     const dailyDetail: HandoverSummaryDailyEntry[] = daysInPeriod.map((d) => {
       const key = dayKey(d);
       const entry = staffDayMap?.get(key);
       totalHandedOverQuantity += entry?.handedOver ?? 0;
       totalRecordedQuantity += entry?.recorded ?? 0;
       totalUnqualifiedQuantity += entry?.unqualified ?? 0;
+      totalContaminatedQuantity += entry?.contaminated ?? 0;
       return {
         date: key,
         active: entry?.active ?? false,
         handedOverQuantity: entry?.handedOver ?? 0,
         recordedQuantity: entry?.recorded ?? 0,
         unqualifiedQuantity: entry?.unqualified ?? 0,
+        contaminatedQuantity: entry?.contaminated ?? 0,
       };
     });
 
@@ -188,6 +209,7 @@ export async function computeHandoverSummaryForPeriod(monthParam?: string | null
       totalHandedOverQuantity,
       totalRecordedQuantity,
       totalUnqualifiedQuantity,
+      totalContaminatedQuantity,
       hasPending: hasPendingByStaff.has(s.id),
       byPlantType,
       dailyDetail,

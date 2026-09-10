@@ -12,8 +12,14 @@ import { format } from "date-fns";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
 
 type Warehouse = { id: string; code: string; name: string };
-type DailyDetailEntry = { date: string; active: boolean; handedOverQuantity: number; recordedQuantity: number; unqualifiedQuantity: number };
-type PlantTypeBreakdown = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; handedOverQuantity: number; recordedQuantity: number };
+type DailyDetailEntry = {
+  date: string; active: boolean; handedOverQuantity: number; recordedQuantity: number;
+  unqualifiedQuantity: number; contaminatedQuantity: number;
+};
+type PlantTypeBreakdown = {
+  plantTypeId: string; plantTypeCode: string; plantTypeName: string;
+  handedOverQuantity: number; recordedQuantity: number; contaminatedQuantity: number;
+};
 type Row = {
   staffId: string;
   staffCode: string;
@@ -23,6 +29,7 @@ type Row = {
   totalHandedOverQuantity: number;
   totalRecordedQuantity: number;
   totalUnqualifiedQuantity: number;
+  totalContaminatedQuantity: number;
   hasPending: boolean;
   byPlantType: PlantTypeBreakdown[];
   dailyDetail: DailyDetailEntry[];
@@ -125,9 +132,10 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                     <th className="text-left px-2 py-3 text-primary-strong font-bold text-base"></th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Mã NV</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên NV</th>
-                    <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Cơ sở</th>
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Luồng</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL bàn giao</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL nhiễm</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ nhiễm</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">SL ghi nhận</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tỉ lệ</th>
                   </tr>
@@ -136,6 +144,10 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                   {rows.map((r) => {
                     const isOpen = expanded === r.staffId;
                     const pct = r.totalHandedOverQuantity > 0 ? Math.round((r.totalRecordedQuantity / r.totalHandedOverQuantity) * 1000) / 10 : 0;
+                    // Mẫu số = SL bàn giao (đã trừ nhiễm) + SL nhiễm = số GỐC trước khi Kho mô trừ hàng
+                    // nhiễm lúc kiểm tra — giống cách tính ở inspect-form.tsx.
+                    const originalHandedOver = r.totalHandedOverQuantity + r.totalContaminatedQuantity;
+                    const contaminationPct = originalHandedOver > 0 ? Math.round((r.totalContaminatedQuantity / originalHandedOver) * 1000) / 10 : 0;
                     return (
                       <Fragment key={r.staffId}>
                         <tr
@@ -147,7 +159,6 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                           </td>
                           <td className="px-4 py-3 font-mono text-text-secondary">{r.staffCode}</td>
                           <td className="px-4 py-3 font-medium text-foreground">{r.staffName}</td>
-                          <td className="px-4 py-3 text-text-secondary">{r.warehouseName ?? "—"}</td>
                           <td className="px-4 py-3">
                             {r.lane ? (
                               <Badge className={INSPECTION_LANE_COLORS[r.lane]}>
@@ -156,6 +167,8 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                             ) : "—"}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums">{num(r.totalHandedOverQuantity)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-destructive">{num(r.totalContaminatedQuantity)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-destructive">{contaminationPct}%</td>
                           <td className="px-4 py-3 text-right font-bold tabular-nums text-primary-strong">
                             {num(r.totalRecordedQuantity)}
                             {r.hasPending && (
@@ -168,14 +181,14 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                         </tr>
                         {isOpen && (
                           <tr className="bg-background border-b">
-                            <td colSpan={8} className="px-6 py-4">
+                            <td colSpan={9} className="px-6 py-4">
                               {r.byPlantType.length > 0 && (
                                 <div className="mb-4">
-                                  <p className="text-text-muted text-xs mb-2">Theo mã cây (bàn giao / ghi nhận)</p>
+                                  <p className="text-text-muted text-xs mb-2">Theo mã cây (bàn giao / nhiễm / ghi nhận)</p>
                                   <div className="flex flex-wrap gap-2">
                                     {r.byPlantType.map((p) => (
                                       <Badge key={p.plantTypeId} className="bg-info-light text-info-foreground">
-                                        {p.plantTypeCode} — {p.plantTypeName}: {num(p.handedOverQuantity)} / {num(p.recordedQuantity)}
+                                        {p.plantTypeCode} — {p.plantTypeName}: {num(p.handedOverQuantity)} / {num(p.contaminatedQuantity)} / {num(p.recordedQuantity)}
                                       </Badge>
                                     ))}
                                   </div>
@@ -190,6 +203,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                                       <th className="text-left px-3 py-2 text-primary-strong font-bold text-sm">Ngày</th>
                                       <th className="text-left px-3 py-2 text-primary-strong font-bold text-sm">Trạng thái</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL bàn giao</th>
+                                      <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL nhiễm</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL ghi nhận</th>
                                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-sm">SL không đạt</th>
                                     </tr>
@@ -208,6 +222,7 @@ export default function HandoverSummaryBoard({ warehouses }: { warehouses: Wareh
                                           )}
                                         </td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(d.handedOverQuantity)}</td>
+                                        <td className="px-3 py-1.5 text-right tabular-nums">{num(d.contaminatedQuantity)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(d.recordedQuantity)}</td>
                                         <td className="px-3 py-1.5 text-right tabular-nums">{num(d.unqualifiedQuantity)}</td>
                                       </tr>
