@@ -90,9 +90,12 @@ export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, 
     // Loại cả phiếu MM dư hợp lệ (SURPLUS_TRANSFER_TAG, mẫu mẹ trả lại khi 1 chỉ định cấy KẾT THÚC, không
     // phải sản lượng NV tạo ra trong kỳ) — nếu không loại sẽ bị tính nhầm vào SL bàn giao/ghi nhận, xem
     // cùng lý do đã sửa ở payroll-calculation.ts + production-record-report.ts.
+    // Dùng OR + notes:null thay vì NOT:{notes:{startsWith}} — phiếu bàn giao thường KHÔNG có notes (null),
+    // và SQL "NOT (notes LIKE ...)" trả về NULL (bị loại luôn) khi notes null, làm rỗng sạch cả bàn giao
+    // bình thường (bug phát hiện 10/09/2026 — SL bàn giao/ghi nhận về 0 hết).
     where: {
       fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" },
-      NOT: { notes: { startsWith: SURPLUS_TRANSFER_TAG } },
+      OR: [{ notes: null }, { notes: { not: { startsWith: SURPLUS_TRANSFER_TAG } } }],
     },
     select: {
       fromUserId: true,

@@ -102,10 +102,13 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     // công lẫn ghi nhận/lương. Loại cả phiếu MM dư (SURPLUS_TRANSFER_TAG, mẫu mẹ trả lại khi 1 chỉ định
     // cấy KẾT THÚC — không phải sản lượng NV tạo ra trong kỳ, xem POST .../surplus-handover) — nếu không
     // loại, mẫu mẹ dư sẽ bị tính nhầm thành sản lượng/ngày công của NV, đội SL bàn giao/ghi nhận lên sai.
+    // Dùng OR + notes:null thay vì NOT:{notes:{startsWith}} — phiếu bàn giao thường KHÔNG có notes (null),
+    // và SQL "NOT (notes LIKE ...)" trả về NULL (bị loại luôn) khi notes null, làm rỗng sạch cả bàn giao
+    // bình thường (bug phát hiện 10/09/2026 — số bàn giao/ghi nhận về 0 hết sau khi thêm điều kiện loại MM dư).
     prisma.transfer.findMany({
       where: {
         fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: { not: "REJECTED" },
-        NOT: { notes: { startsWith: SURPLUS_TRANSFER_TAG } },
+        OR: [{ notes: null }, { notes: { not: { startsWith: SURPLUS_TRANSFER_TAG } } }],
       },
       select: {
         fromUserId: true,
