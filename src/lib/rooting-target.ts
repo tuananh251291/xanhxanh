@@ -16,12 +16,20 @@ import { startOfMonth, endOfMonth, startOfDay, endOfDay, subDays, subMonths, eac
 // taskMonth được LƯU dưới dạng UTC-midnight (xem getTaskMonth trong rooting-forecast.ts) — round-trip qua
 // chuỗi "yyyy-MM-dd" để ép về đúng UTC-midnight trước khi subMonths, tránh lệch múi giờ server (bug đã sửa
 // ở widget theo khu sản xuất, xem trao đổi 10/09/2026).
+//
+// "Bạn cần cấy tối thiểu X cây để hoàn thành chỉ tiêu của tháng" — KHÁC dailyTargetQuantity (mức trung
+// bình CỐ ĐỊNH cả tháng, chỉ dùng nội bộ để tính deficitQuantity) — X là mức tối thiểu MỖI NGÀY LÀM VIỆC
+// CÒN LẠI CHƯA NHẬP DỮ LIỆU cần đạt để về đích, tính LẠI mỗi lần xem theo tiến độ THỰC TẾ NGAY LÚC NÀY:
+// X = (kế hoạch tháng − thực tế đã làm tính đến NGAY BÂY GIỜ, gồm cả hôm nay nếu đã nhập) / (số ngày làm
+// việc còn lại từ hôm nay tới hết tháng mà CHƯA có nhật ký cấy — hôm nay tự loại khỏi mẫu số nếu đã nhập
+// rồi, các ngày trong tương lai luôn coi là "chưa nhập"). Làm tròn LÊN (Math.ceil) vì là mức "tối thiểu".
 export type CayMoRootingTarget = {
   monthlyPlanQuantity: number;
   workingDaysInMonth: number;
   dailyTargetQuantity: number;
   todayQuantity: number;
   deficitQuantity: number; // dương = còn thiếu tính đến hết hôm qua, âm/0 = đã đạt/vượt
+  minRequiredPerRemainingDay: number;
 };
 
 function dayKey(d: Date): string {
@@ -93,11 +101,27 @@ export async function computeCayMoRootingTarget(staffId: string): Promise<CayMoR
   const targetToDateQuantity = dailyTargetQuantity * workingDaysElapsed;
   const deficitQuantity = Math.round(targetToDateQuantity - actualToDateQuantity);
 
+  // Thực tế TÍNH ĐẾN NGAY BÂY GIỜ (khác actualToDateQuantity ở trên — chỉ tính đến HẾT HÔM QUA, dùng riêng
+  // cho deficitQuantity) — cộng thêm phần hôm nay nếu NV đã nhập.
+  const actualThroughTodayQuantity = actualToDateQuantity + todayQuantity;
+  const remainingNeeded = Math.max(0, monthlyPlanQuantity - actualThroughTodayQuantity);
+
+  const isTodayWorkingDay = now.getDay() !== 0 && !holidayDayKeys.has(dayKey(now));
+  const hasTodayRecord = todayRecords.length > 0;
+  const workingDaysFromTodayToMonthEnd = eachDayOfInterval({ start: todayStart, end: monthEnd }).filter(
+    (d) => d.getDay() !== 0 && !holidayDayKeys.has(dayKey(d))
+  ).length;
+  // Hôm nay đã nhập rồi => không còn là ngày "chưa nhập dữ liệu", loại khỏi mẫu số. Các ngày còn lại trong
+  // tương lai luôn coi là "chưa nhập" (không thể nhập trước).
+  const remainingWorkingDaysWithoutData = workingDaysFromTodayToMonthEnd - (isTodayWorkingDay && hasTodayRecord ? 1 : 0);
+  const minRequiredPerRemainingDay = remainingWorkingDaysWithoutData > 0 ? Math.ceil(remainingNeeded / remainingWorkingDaysWithoutData) : 0;
+
   return {
     monthlyPlanQuantity,
     workingDaysInMonth,
     dailyTargetQuantity: Math.round(dailyTargetQuantity),
     todayQuantity,
     deficitQuantity,
+    minRequiredPerRemainingDay,
   };
 }
