@@ -16,7 +16,7 @@ export default function CayMoRootingTargetCard({ target }: { target: CayMoRootin
         </div>
         <div className="space-y-1.5 text-sm text-text-secondary">
           <p>
-            Bạn cần cấy tối thiểu <span className="font-bold text-foreground">{num(target.minRequiredPerRemainingDay)}</span> cây để hoàn thành chỉ tiêu của tháng.
+            Bạn cần cấy tối thiểu <span className="font-bold text-foreground">{num(target.minRequiredPerRemainingDay)}</span> cây mỗi ngày để hoàn thành chỉ tiêu của tháng này.
           </p>
           <p>
             Hôm nay bạn đã cấy được <span className="font-bold text-foreground">{num(target.todayQuantity)}</span> cây ra rễ.
