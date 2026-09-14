@@ -124,15 +124,17 @@ export default async function KhoSangPage({
     : [];
   const plantTypeById = new Map(plantTypeNames.map((p) => [p.id, p]));
   const summaryByTypeEntries = (() => {
-    const byType: Record<string, { name: string; mother: number; finished: number }> = {};
+    const byType: Record<string, { code: string; name: string; mother: number; finished: number }> = {};
     for (const a of lotAgg) {
       const pt = plantTypeById.get(a.plantTypeId);
       if (!pt) continue;
-      if (!byType[a.plantTypeId]) byType[a.plantTypeId] = { name: `${pt.name} (${pt.code})`, mother: 0, finished: 0 };
+      if (!byType[a.plantTypeId]) byType[a.plantTypeId] = { code: pt.code, name: `${pt.name} (${pt.code})`, mother: 0, finished: 0 };
       if (a.stage === "MAU_ME") byType[a.plantTypeId].mother += a._sum?.quantity ?? 0;
       else byType[a.plantTypeId].finished += a._sum?.quantity ?? 0;
     }
-    return Object.values(byType);
+    // Sắp theo mã cây (A-Z) để các mã cùng nhóm/tiền tố (VD AL001, AL002...) đứng cạnh nhau trong lưới —
+    // trước đây giữ nguyên thứ tự groupBy trên DB (gần như ngẫu nhiên), khiến các loại cây bị xáo trộn.
+    return Object.values(byType).sort((a, b) => a.code.localeCompare(b.code));
   })();
   // Danh sách kho sản xuất cho ô chọn của Quản lý kho thành phẩm (RootingPlantSearch) — chỉ cần tải khi
   // onlyRootingRoom, NV kho mô/kỹ thuật không thấy ô chọn này nên khỏi tốn truy vấn.
