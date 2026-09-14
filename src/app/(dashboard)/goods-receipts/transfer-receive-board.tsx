@@ -134,7 +134,9 @@ export default function TransferReceiveBoard() {
     } finally { setProcessing(null); }
   };
 
-  const pendingTransfers = transfers.filter((t) => t.status === "PENDING");
+  // Phiếu gửi tới Kho thị trường (Đối tác vận hành quản lý) không hiện ở đây — bên nhận là Đối tác vận
+  // hành (xem /market-receive), không phải Kho thành phẩm, dù Kho thành phẩm là người tạo phiếu.
+  const pendingTransfers = transfers.filter((t) => t.status === "PENDING" && t.toWarehouse?.type !== "THI_TRUONG");
 
   return (
     <div className="space-y-3">

@@ -43,7 +43,7 @@ export async function createAlert(data: {
 // ngưỡng nhiễm) để tránh spam nhiều alert trùng cho cùng 1 NV, khác hẳn dedupe theo relatedId đã tồn tại
 // TOÀN CỤC (dùng khi relatedId tự mang tính duy nhất theo chu kỳ, xem mother-ready.ts/rooting-ready.ts).
 export async function createAlertForWarehouseStaff(params: {
-  role: "KY_THUAT" | "KHO_MO";
+  role: "KY_THUAT" | "KHO_MO" | "DOI_TAC_VAN_HANH";
   warehouseId: string | null | undefined;
   type: AlertType;
   title: string;

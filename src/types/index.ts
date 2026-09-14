@@ -648,6 +648,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
+    { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
@@ -669,6 +670,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/task-progress", label: "Theo dõi tiến độ công việc", icon: "Gauge" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
+    { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
     { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
@@ -722,11 +724,12 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
-  // Chưa có trang nghiệp vụ riêng cho Kho thị trường (chỉ mới có khung sườn: role + Warehouse.type
-  // THI_TRUONG + 3 phòng cố định, xem User.workplaceWarehouseId) — mở rộng sau khi rõ luồng nhập/xuất
-  // hàng vào Kho thị trường, giống mẫu NHAN_VIEN_QUAN_LY_VUON ở trên.
+  // Nhận hàng gửi từ Kho thành phẩm (xem /transfers/send-market, KHO_THANH_PHAM/QUAN_LY_KHO_THANH_PHAM) —
+  // nhập số lượng thực nhận, chia vào Phòng sản phẩm đạt/không đạt (/market-receive). Chưa có trang xem
+  // tồn kho/Phòng cây trồng riêng — mở rộng sau.
   DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/market-receive", label: "Nhận hàng Kho thành phẩm", icon: "PackageCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

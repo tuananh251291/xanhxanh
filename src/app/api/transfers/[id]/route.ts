@@ -6,6 +6,7 @@ import { planShelfAssignments, planSurplusPlacement, ShelfAssignError } from "@/
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
 import { generateLotCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
+import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
 
 const confirmSchema = z.object({
@@ -14,6 +15,18 @@ const confirmSchema = z.object({
   // Nhận thành phẩm từ Phòng ra rễ — chia số lượng theo TỪNG loại cây + quy cách (T01/T05) vào Phòng
   // theo dõi/Phòng hàn túi (không được gộp nhiều loại cây lại rồi chia theo tổng quy cách).
   finishedSplit: z.array(z.object({ roomId: z.string(), plantTypeId: z.string(), stageCode: z.string(), quantity: z.number().int().positive() })).optional(),
+  // Nhận hàng ở Kho thị trường (từ Kho thành phẩm) — chia số THỰC NHẬN theo từng loại cây + quy cách
+  // vào Phòng sản phẩm đạt/không đạt. Tổng 2 số này được phép NHỎ HƠN số đã gửi (hao hụt vận chuyển,
+  // không tính thẳng vào đâu — chỉ ghi chú lại ở receiveNotes) nhưng không được vượt quá.
+  marketSplit: z.array(z.object({
+    plantTypeId: z.string(),
+    stageCode: z.string(),
+    passedQuantity: z.number().int().min(0),
+    failedQuantity: z.number().int().min(0),
+  })).optional(),
+  // Ghi chú của Đối tác vận hành lúc nhận hàng (VD lý do hao hụt) — nối thêm vào Transfer.notes gốc,
+  // không đè mất ghi chú của bên gửi.
+  receiveNotes: z.string().optional(),
   notes: z.string().optional(),
   // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách phiếu bàn giao
   // thành phẩm này. null = bỏ gán.
@@ -70,6 +83,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
   if (transfer.status !== "PENDING") return NextResponse.json({ message: "Phiếu đã xử lý" }, { status: 400 });
+
+  // Phiếu gửi tới Kho thị trường — chỉ đúng Đối tác vận hành phụ trách kho đó (hoặc Admin) mới được
+  // xác nhận/từ chối, áp dụng cho MỌI action bên dưới (kể cả reject).
+  if (transfer.toWarehouse?.type === "THI_TRUONG") {
+    const isOwnerPartner = session.user.role === "DOI_TAC_VAN_HANH" && session.user.workplaceWarehouseId === transfer.toWarehouseId;
+    if (!isOwnerPartner && !isAdminRole(session.user.role)) {
+      return NextResponse.json({ message: "Bạn không có quyền xử lý phiếu này" }, { status: 403 });
+    }
+  }
 
   if (parsed.data.action === "assign") {
     if (!isAdminRole(session.user.role) && session.user.role !== "QUAN_LY_KHO_THANH_PHAM") {
@@ -294,6 +316,76 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       "Transfer",
       `Đã xác nhận nhận bàn giao thành phẩm ${transfer.code}`
     );
+    return NextResponse.json({ success: true });
+  }
+
+  // Bàn giao đến Kho thị trường (Đối tác vận hành) — hàng gửi từ Kho thành phẩm, KHÔNG quản lý theo
+  // giàn kệ. Đối tác vận hành nhập số THỰC NHẬN theo từng loại cây + quy cách, chia vào Phòng sản phẩm
+  // đạt/không đạt — được phép NHỎ HƠN số đã gửi (hao hụt vận chuyển, không cộng vào đâu cả, chỉ ghi lại
+  // ở receiveNotes), không được VƯỢT QUÁ số đã gửi.
+  if (transfer.toWarehouse?.type === "THI_TRUONG") {
+    const { marketSplit, receiveNotes } = parsed.data;
+    if (!marketSplit || marketSplit.length === 0) {
+      return NextResponse.json({ message: "Cần nhập số lượng thực nhận (đạt/không đạt)" }, { status: 400 });
+    }
+
+    const groupKey = (plantTypeId: string, stageCode: string) => `${plantTypeId}:${stageCode}`;
+    const shippedByGroup = new Map<string, number>();
+    for (const item of transfer.items) {
+      const key = groupKey(item.lot.plantTypeId, item.lot.stageCode);
+      shippedByGroup.set(key, (shippedByGroup.get(key) ?? 0) + item.quantity);
+    }
+    for (const key of shippedByGroup.keys()) {
+      if (!marketSplit.some((s) => groupKey(s.plantTypeId, s.stageCode) === key)) {
+        const [, stageCode] = key.split(":");
+        const plantTypeName = transfer.items.find((i) => groupKey(i.lot.plantTypeId, i.lot.stageCode) === key)?.lot.plantType.name;
+        return NextResponse.json({ message: `Thiếu số lượng thực nhận cho ${plantTypeName ?? ""} ${stageCode}` }, { status: 400 });
+      }
+    }
+    for (const s of marketSplit) {
+      const key = groupKey(s.plantTypeId, s.stageCode);
+      const shipped = shippedByGroup.get(key);
+      if (shipped === undefined) {
+        return NextResponse.json({ message: "Loại cây/quy cách không khớp với phiếu bàn giao" }, { status: 400 });
+      }
+      if (s.passedQuantity + s.failedQuantity > shipped) {
+        const plantTypeName = transfer.items.find((i) => groupKey(i.lot.plantTypeId, i.lot.stageCode) === key)?.lot.plantType.name;
+        return NextResponse.json({ message: `Số lượng thực nhận của ${plantTypeName ?? ""} ${s.stageCode} vượt quá số đã gửi` }, { status: 400 });
+      }
+    }
+
+    const [passedRoom, failedRoom] = await Promise.all([
+      prisma.room.findFirst({ where: { warehouseId: transfer.toWarehouseId, type: "PHONG_SAN_PHAM_DAT", isActive: true }, select: { id: true } }),
+      prisma.room.findFirst({ where: { warehouseId: transfer.toWarehouseId, type: "PHONG_SAN_PHAM_KHONG_DAT", isActive: true }, select: { id: true } }),
+    ]);
+    if (!passedRoom || !failedRoom) {
+      return NextResponse.json({ message: "Kho thị trường thiếu Phòng sản phẩm đạt/không đạt — liên hệ Admin kiểm tra lại kho" }, { status: 400 });
+    }
+
+    const staffUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
+    const staffCode = staffUser?.code ?? "000";
+
+    await prisma.$transaction(async (tx) => {
+      // Trừ NGUYÊN số đã gửi khỏi từng lô nguồn — hàng đã rời Kho thành phẩm dù nhận thiếu.
+      for (const item of transfer.items) {
+        await tx.lot.update({ where: { id: item.lotId }, data: { quantity: { decrement: item.quantity } } });
+      }
+      for (const s of marketSplit) {
+        const plantTypeCode = transfer.items.find((i) => i.lot.plantTypeId === s.plantTypeId)!.lot.plantType.code;
+        if (s.passedQuantity > 0) await upsertLot(tx, passedRoom.id, s.plantTypeId, plantTypeCode, s.stageCode, s.passedQuantity, staffCode);
+        if (s.failedQuantity > 0) await upsertLot(tx, failedRoom.id, s.plantTypeId, plantTypeCode, s.stageCode, s.failedQuantity, staffCode);
+      }
+      await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
+      await tx.transfer.update({
+        where: { id },
+        data: {
+          status: "CONFIRMED",
+          confirmedAt: new Date(),
+          ...(receiveNotes ? { notes: transfer.notes ? `${transfer.notes}\nGhi chú nhận hàng: ${receiveNotes}` : `Ghi chú nhận hàng: ${receiveNotes}` } : {}),
+        },
+      });
+    });
+
     return NextResponse.json({ success: true });
   }
 

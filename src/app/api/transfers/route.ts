@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
-import { SURPLUS_TRANSFER_TAG, isKhoThanhPhamRole } from "@/types";
+import { SURPLUS_TRANSFER_TAG, isKhoThanhPhamRole, isAdminRole } from "@/types";
 import { isVnSunday } from "@/lib/medium-orders";
 import { format } from "date-fns";
 import { z } from "zod";
@@ -60,6 +60,9 @@ export async function GET(req: NextRequest) {
       { toUserId: null, fromRoom: { type: "PHONG_RA_RE" } },
     ];
   }
+  // Đối tác vận hành chỉ thấy phiếu gửi tới ĐÚNG Kho thị trường mình phụ trách — workplaceWarehouseId
+  // null (chưa được gán kho) trả về rỗng thay vì lộ mọi phiếu.
+  if (role === "DOI_TAC_VAN_HANH") where.toWarehouseId = session.user.workplaceWarehouseId ?? "__none__";
 
   const transfers = await prisma.transfer.findMany({
     where,
@@ -132,6 +135,14 @@ export async function POST(req: NextRequest) {
   if (!toWarehouseId) toWarehouseId = fromWarehouseId ?? undefined;
   if (!toWarehouseId) {
     return NextResponse.json({ message: "Cần chọn kho hoặc phòng đích" }, { status: 400 });
+  }
+
+  // Gửi hàng sang Kho thị trường (Đối tác vận hành quản lý) — chỉ Kho thành phẩm/Admin được gửi, Đối
+  // tác vận hành tự chia đạt/không đạt lúc xác nhận (xem PATCH /api/transfers/[id]).
+  const toWarehouseForCheck = await prisma.warehouse.findUnique({ where: { id: toWarehouseId }, select: { type: true } });
+  const isToMarketWarehouse = toWarehouseForCheck?.type === "THI_TRUONG";
+  if (isToMarketWarehouse && !isKhoThanhPhamRole(session.user.role) && !isAdminRole(session.user.role)) {
+    return NextResponse.json({ message: "Chỉ Kho thành phẩm mới được gửi hàng tới Kho thị trường" }, { status: 403 });
   }
 
   // Bàn giao từ phòng tối cá nhân → bắt buộc mọi lô đã "Đã kiểm tra" nhiễm trước khi bàn giao. Đồng thời
@@ -289,6 +300,19 @@ export async function POST(req: NextRequest) {
       title: "Có phiếu bàn giao thành phẩm chờ nhận",
       message: `${session.user.name} đã gửi phiếu ${transfer.code} — ${items.length} lô thành phẩm, chờ xác nhận nhập kho`,
       targetRole: "KHO_THANH_PHAM",
+      relatedId: transfer.id,
+      relatedType: "Transfer",
+    });
+  }
+
+  // Gửi hàng tới Kho thị trường → thông báo cho Đối tác vận hành phụ trách đúng kho đó.
+  if (isToMarketWarehouse) {
+    await createAlertForWarehouseStaff({
+      role: "DOI_TAC_VAN_HANH",
+      warehouseId: toWarehouseId,
+      type: "LOT_READY_TRANSFER",
+      title: "Có phiếu gửi hàng từ Kho thành phẩm chờ nhận",
+      message: `${session.user.name} đã gửi phiếu ${transfer.code} — ${items.length} lô, chờ xác nhận nhận hàng`,
       relatedId: transfer.id,
       relatedType: "Transfer",
     });
