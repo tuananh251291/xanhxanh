@@ -27,6 +27,8 @@ type ComboOption = { value: string; label: string };
 
 type Unit = "week" | "month";
 type ScopeKind = "all" | "warehouse" | "staff";
+type StockBreakdown = { shelvedQuantity: number; darkRoomQuantity: number; totalQuantity: number };
+const EMPTY_STOCK: StockBreakdown = { shelvedQuantity: 0, darkRoomQuantity: 0, totalQuantity: 0 };
 
 // `<input type="week">` trả về "YYYY-Www" (tuần ISO), `<input type="month">` trả về "YYYY-MM" — quy đổi
 // sang ngày bất kỳ trong kỳ đó (yyyy-MM-dd) để gửi cho API (API tự làm tròn chẵn tuần/chẵn tháng, chỉ
@@ -64,6 +66,8 @@ export default function ProductionCapacityBoard() {
   const [data, setData] = useState<Record<string, string | number>[]>([]);
   const [staffing, setStaffing] = useState<{ period: string; motherProcessed: number; workDaysNeeded: number }[]>([]);
   const [ratios, setRatios] = useState({ avgRatioMM: 0, avgRatioTP: 0, avgMotherPerStaffDay: 0 });
+  const [motherStock, setMotherStock] = useState<StockBreakdown>(EMPTY_STOCK);
+  const [finishedStock, setFinishedStock] = useState<StockBreakdown>(EMPTY_STOCK);
   // Tham số NV tự nhập — 1 số áp dụng chung cho mọi kỳ đang xem (số ngày làm việc thực tế của 1 NV trong
   // 1 kỳ, VD trừ nghỉ thì còn ~24 ngày/tháng) — chia tiếp cho "Số ngày cấy cần" ra "Số nhân sự cần", tính
   // ở FE để đổi số không cần gọi lại API (server trả sẵn "Số ngày cấy cần", không phụ thuộc tham số này).
@@ -105,6 +109,8 @@ export default function ProductionCapacityBoard() {
         avgRatioTP: Number(json.avgRatioTP) || 0,
         avgMotherPerStaffDay: Number(json.avgMotherPerStaffDay) || 0,
       });
+      setMotherStock(json.motherStock ?? EMPTY_STOCK);
+      setFinishedStock(json.finishedStock ?? EMPTY_STOCK);
       setStaffCounts({});
     } finally {
       setLoading(false);
@@ -327,6 +333,32 @@ export default function ProductionCapacityBoard() {
           <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
         ) : (
           <>
+            <div className="mb-6 pb-6 border-b border-divider">
+              <h3 className="font-bold text-primary-strong">Số lượng hiện có (tại thời điểm xem)</h3>
+              <p className="text-sm text-text-secondary mt-1 mb-3 max-w-3xl">
+                Kho sáng (đã xếp giàn) + Phòng tối cá nhân từng NV (chưa có phiếu bàn giao) — đã tự loại
+                hàng đang ở Phòng nhiễm. KHÁC &quot;vốn dự báo&quot; dùng để vẽ đoạn nét mảnh phía dưới (chỉ
+                tính phần đã xếp giàn VÀ đã gán Nhóm tuần xoay vòng) — số này có thể LỚN HƠN vốn dự báo nếu
+                còn nhiều hàng ở Phòng tối chưa bàn giao hoặc chưa gán Nhóm.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-primary-light">
+                  <p className="text-sm text-text-secondary">Mẫu mẹ (M05)</p>
+                  <p className="text-2xl font-bold text-primary-strong mt-1">{motherStock.totalQuantity.toLocaleString("vi-VN")}</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Kho sáng: {motherStock.shelvedQuantity.toLocaleString("vi-VN")} · Phòng tối chưa bàn giao: {motherStock.darkRoomQuantity.toLocaleString("vi-VN")}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-primary-light">
+                  <p className="text-sm text-text-secondary">Thành phẩm</p>
+                  <p className="text-2xl font-bold text-primary-strong mt-1">{finishedStock.totalQuantity.toLocaleString("vi-VN")}</p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Kho sáng: {finishedStock.shelvedQuantity.toLocaleString("vi-VN")} · Phòng tối chưa bàn giao: {finishedStock.darkRoomQuantity.toLocaleString("vi-VN")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <ReportLineChart
               data={data}
               xKey="period"

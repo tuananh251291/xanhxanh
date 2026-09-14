@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
 import { computeActualSeries, simulateWeeklyForecast, computeAverageRatios, type CapacityScope } from "@/lib/production-capacity";
+import { computeCurrentStock } from "@/lib/current-stock";
 import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -30,6 +31,9 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // Response còn thêm `staffing` — mỗi kỳ TƯƠNG LAI cần bao nhiêu ngày công NV cấy để đạt đúng kịch bản tối
 // đa ở "data" (kịch bản đó ngầm giả định không giới hạn nhân sự) — FE tự chia tiếp cho tham số "số ngày
 // làm việc" NV nhập để ra số nhân sự cần (xem phần "Dự đoán theo kịch bản" ở production-capacity-board.tsx).
+// Và `motherStock`/`finishedStock` — "Số lượng hiện có" THẬT tại thời điểm gọi API (kho sáng + phòng tối
+// cá nhân chưa bàn giao, xem computeCurrentStock ở current-stock.ts) — KHÁC "vốn dự báo" dùng để mô phỏng
+// đường "dự kiến" ở data (chỉ tính phần đã gán Nhóm tuần xoay vòng) — hiện riêng để Admin đối chiếu.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
@@ -77,12 +81,16 @@ export async function GET(req: NextRequest) {
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const futureBuckets = buckets.filter((b) => b.start > todayBucket.start);
-  const [actualPoints, weeklyForecast, ratios] = await Promise.all([
+  const [actualPoints, weeklyForecast, ratios, motherStock, finishedStock] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
     futureBuckets.length > 0
       ? simulateWeeklyForecast(plantTypeId, scope, now, futureBuckets[futureBuckets.length - 1].end)
       : Promise.resolve([]),
     computeAverageRatios(plantTypeId, now, scope),
+    // Số lượng hiện có THẬT (kho sáng + phòng tối chưa bàn giao) — KHÁC "vốn dự báo" dùng để mô phỏng
+    // (chỉ tính phần đã gán Nhóm tuần xoay vòng) — hiện cho Admin đối chiếu, xem current-stock.ts.
+    computeCurrentStock(plantTypeId, "MAU_ME", scope),
+    computeCurrentStock(plantTypeId, "THANH_PHAM", scope),
   ]);
   const { avgRatioMM, avgRatioTP, avgMotherPerStaffDay } = ratios;
 
@@ -140,5 +148,5 @@ export async function GET(req: NextRequest) {
   // avgRatioMM/avgRatioTP/avgMotherPerStaffDay trả kèm để FE tự tính "Dự kiến theo số nhân sự thực tế"
   // (kịch bản có giới hạn nhân sự, có dồn tồn qua kỳ sau khi thiếu người — xem production-capacity-board.tsx)
   // hoàn toàn ở client, đổi tham số không cần gọi lại API.
-  return NextResponse.json({ data, staffing, avgRatioMM, avgRatioTP, avgMotherPerStaffDay });
+  return NextResponse.json({ data, staffing, avgRatioMM, avgRatioTP, avgMotherPerStaffDay, motherStock, finishedStock });
 }
