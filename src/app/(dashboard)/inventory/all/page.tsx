@@ -18,6 +18,9 @@ const ROOM_TYPE_ICONS: Record<RoomType, typeof Sun> = {
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
   PHONG_THI_TRUONG: Globe,
+  PHONG_SAN_PHAM_DAT: PackageCheck,
+  PHONG_SAN_PHAM_KHONG_DAT: Package,
+  PHONG_CAY_TRONG: Sprout,
 };
 
 const ROOM_TYPES_ORDER: RoomType[] = [
@@ -29,6 +32,9 @@ const ROOM_TYPES_ORDER: RoomType[] = [
   "PHONG_THEO_DOI",
   "PHONG_HAN_TUI",
   "PHONG_THI_TRUONG",
+  "PHONG_SAN_PHAM_DAT",
+  "PHONG_SAN_PHAM_KHONG_DAT",
+  "PHONG_CAY_TRONG",
 ];
 
 export default async function AllInventoryPage() {

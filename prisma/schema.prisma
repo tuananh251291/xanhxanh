@@ -43,11 +43,20 @@ enum UserRole {
   // NVQLV — quản lý 1 (hoặc nhiều) Vườn sản xuất (xem ProductionGarden.managerId). Không dùng
   // User.workplaceWarehouseId (field đó gắn với Warehouse, không áp dụng cho Vườn).
   NHAN_VIEN_QUAN_LY_VUON
+  // Đối tác vận hành — quản lý 1 Kho thị trường (WarehouseType.THI_TRUONG, xem User.workplaceWarehouseId)
+  // qua Warehouse.type = THI_TRUONG, KHÁC với "Phòng thị trường" (RoomType.PHONG_THI_TRUONG) vốn nằm
+  // trong Kho thành phẩm cho NV bán hàng xem — 2 khái niệm không liên quan dù cùng tên gọi "thị trường".
+  DOI_TAC_VAN_HANH
 }
 
 enum WarehouseType {
   SAN_XUAT
   THANH_PHAM
+  // Kho thị trường — do Đối tác vận hành (UserRole.DOI_TAC_VAN_HANH) quản lý, chỉ Admin cấp cao
+  // (SUPER_ADMIN) được tạo (xem POST /api/warehouses). Luôn có sẵn đúng 3 phòng cố định lúc tạo: Phòng
+  // sản phẩm đạt/không đạt/cây trồng (PHONG_SAN_PHAM_DAT/PHONG_SAN_PHAM_KHONG_DAT/PHONG_CAY_TRONG) —
+  // KHÁC hẳn RoomType.PHONG_THI_TRUONG (Phòng thị trường trong Kho thành phẩm).
+  THI_TRUONG
 }
 
 // Luồng kiểm tra gắn theo NV cấy mô — HỆ THỐNG TỰ TÍNH mỗi tháng từ tỉ lệ nhiễm tháng trước (xem
@@ -74,6 +83,10 @@ enum RoomType {
   PHONG_THEO_DOI
   PHONG_HAN_TUI
   PHONG_THI_TRUONG
+  // Kho thị trường (WarehouseType.THI_TRUONG) — 3 phòng cố định tạo sẵn lúc Admin cấp cao tạo kho.
+  PHONG_SAN_PHAM_DAT
+  PHONG_SAN_PHAM_KHONG_DAT
+  PHONG_CAY_TRONG
 }
 
 enum PlantStage {
@@ -970,8 +983,9 @@ model Warehouse {
 }
 
 // ============================================================
-// ROOMS — cả kho sản xuất (phòng sáng/phòng tối) và kho thành phẩm
-// (phòng đạt tiêu chuẩn/theo dõi/hàn túi/thị trường) đều dùng model này.
+// ROOMS — cả kho sản xuất (phòng sáng/phòng tối), kho thành phẩm
+// (phòng đạt tiêu chuẩn/theo dõi/hàn túi/thị trường) và kho thị trường (phòng sản phẩm đạt/không đạt/
+// cây trồng) đều dùng model này.
 // ============================================================
 
 model Room {

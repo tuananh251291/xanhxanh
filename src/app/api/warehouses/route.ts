@@ -8,7 +8,7 @@ import { z } from "zod";
 
 const createSchema = z.object({
   name: z.string().min(2),
-  type: z.enum(["SAN_XUAT", "THANH_PHAM"]),
+  type: z.enum(["SAN_XUAT", "THANH_PHAM", "THI_TRUONG"]),
   description: z.string().optional(),
 });
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type");
 
   const warehouses = await prisma.warehouse.findMany({
-    where: { isActive: true, ...(type ? { type: type as "SAN_XUAT" | "THANH_PHAM" } : {}) },
+    where: { isActive: true, ...(type ? { type: type as "SAN_XUAT" | "THANH_PHAM" | "THI_TRUONG" } : {}) },
     include: {
       rooms: {
         where: { isActive: true },
@@ -55,6 +55,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
+  // Kho thị trường (Đối tác vận hành quản lý) chỉ Admin cấp cao được tạo — khác kho sản xuất/thành
+  // phẩm vốn Admin/Admin kỹ thuật thường cũng tạo được (isAdminRole ở trên).
+  if (parsed.data.type === "THI_TRUONG" && session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Chỉ Admin cấp cao mới được tạo Kho thị trường" }, { status: 403 });
+  }
+
   const code = await generateWarehouseCode(parsed.data.type);
   const warehouse = await prisma.warehouse.create({ data: { ...parsed.data, code } });
 
@@ -75,6 +81,18 @@ export async function POST(req: NextRequest) {
         { code: `${code}-DTC`, name: "Phòng đạt tiêu chuẩn", type: "PHONG_DAT_TIEU_CHUAN", warehouseId: warehouse.id },
         { code: `${code}-TD`, name: "Phòng theo dõi", type: "PHONG_THEO_DOI", warehouseId: warehouse.id },
         { code: `${code}-HT`, name: "Phòng hàn túi", type: "PHONG_HAN_TUI", warehouseId: warehouse.id },
+      ],
+    });
+  }
+
+  // Kho thị trường mới luôn có sẵn đúng 3 phòng cố định (không cho thêm/bớt qua UI, khác kho thành phẩm
+  // có thể thêm Phòng thị trường tùy ý).
+  if (parsed.data.type === "THI_TRUONG") {
+    await prisma.room.createMany({
+      data: [
+        { code: `${code}-SPD`, name: "Phòng sản phẩm đạt", type: "PHONG_SAN_PHAM_DAT", warehouseId: warehouse.id },
+        { code: `${code}-SPKD`, name: "Phòng sản phẩm không đạt", type: "PHONG_SAN_PHAM_KHONG_DAT", warehouseId: warehouse.id },
+        { code: `${code}-CT`, name: "Phòng cây trồng", type: "PHONG_CAY_TRONG", warehouseId: warehouse.id },
       ],
     });
   }

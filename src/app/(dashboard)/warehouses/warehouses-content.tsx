@@ -61,7 +61,7 @@ export default async function WarehousesContent({ role }: { role: UserRole | nul
           <h1 className="text-2xl font-bold text-foreground">Kho & Giàn kệ</h1>
           <p className="text-text-secondary text-sm mt-1">{warehouses.length} kho — bấm vào từng kho để xem phòng, bấm vào từng phòng để xem chi tiết giàn kệ</p>
         </div>
-        <CreateWarehouseDialog />
+        <CreateWarehouseDialog role={role} />
       </div>
 
       <WarehouseBoard

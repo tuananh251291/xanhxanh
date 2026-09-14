@@ -17,6 +17,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   HANH_CHINH_NHAN_SU: "NV Hành chính nhân sự",
   NHAN_VIEN_SAN_XUAT: "NV Sản xuất",
   NHAN_VIEN_QUAN_LY_VUON: "NV Quản lý vườn",
+  DOI_TAC_VAN_HANH: "Đối tác vận hành",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -34,6 +35,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   HANH_CHINH_NHAN_SU: "bg-indigo-100 text-indigo-800",
   NHAN_VIEN_SAN_XUAT: "bg-lime-100 text-lime-800",
   NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
+  DOI_TAC_VAN_HANH: "bg-sky-100 text-sky-800",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — hệ thống tự tính mỗi tháng (xem src/lib/inspection-lane.ts),
@@ -128,6 +130,7 @@ export function canEditEmployeeName(role: UserRole | null | undefined): boolean 
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
   "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
   "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
+  "DOI_TAC_VAN_HANH",
 ];
 export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN" && r !== "ADMIN_KY_THUAT");
 
@@ -180,11 +183,13 @@ export function canManageDailyRecords(
 export const WAREHOUSE_TYPE_LABELS = {
   SAN_XUAT: "Kho sản xuất",
   THANH_PHAM: "Kho thành phẩm",
+  THI_TRUONG: "Kho thị trường",
 } as const;
 
 export const WAREHOUSE_TYPE_COLORS = {
   SAN_XUAT: "bg-blue-100 text-blue-800",
   THANH_PHAM: "bg-green-100 text-green-800",
+  THI_TRUONG: "bg-sky-100 text-sky-800",
 } as const;
 
 export const ROOM_TYPE_LABELS = {
@@ -196,6 +201,9 @@ export const ROOM_TYPE_LABELS = {
   PHONG_THEO_DOI: "Phòng theo dõi",
   PHONG_HAN_TUI: "Phòng hàn túi",
   PHONG_THI_TRUONG: "Phòng thị trường",
+  PHONG_SAN_PHAM_DAT: "Phòng sản phẩm đạt",
+  PHONG_SAN_PHAM_KHONG_DAT: "Phòng sản phẩm không đạt",
+  PHONG_CAY_TRONG: "Phòng cây trồng",
 } as const;
 
 export const ROOM_TYPE_COLORS = {
@@ -207,6 +215,9 @@ export const ROOM_TYPE_COLORS = {
   PHONG_THEO_DOI: "bg-orange-100 text-orange-800",
   PHONG_HAN_TUI: "bg-purple-100 text-purple-800",
   PHONG_THI_TRUONG: "bg-cyan-100 text-cyan-800",
+  PHONG_SAN_PHAM_DAT: "bg-emerald-100 text-emerald-800",
+  PHONG_SAN_PHAM_KHONG_DAT: "bg-rose-100 text-rose-800",
+  PHONG_CAY_TRONG: "bg-teal-100 text-teal-800",
 } as const;
 
 export const STAGE_LABELS = {
@@ -708,6 +719,13 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // Chưa có trang nghiệp vụ riêng (xem Vườn sản xuất được gán ở /production-gardens, chỉ SUPER_ADMIN
   // sửa) — menu tối thiểu, mở rộng sau nếu NVQLV cần tự thao tác trên Vườn của mình.
   NHAN_VIEN_QUAN_LY_VUON: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  // Chưa có trang nghiệp vụ riêng cho Kho thị trường (chỉ mới có khung sườn: role + Warehouse.type
+  // THI_TRUONG + 3 phòng cố định, xem User.workplaceWarehouseId) — mở rộng sau khi rõ luồng nhập/xuất
+  // hàng vào Kho thị trường, giống mẫu NHAN_VIEN_QUAN_LY_VUON ở trên.
+  DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

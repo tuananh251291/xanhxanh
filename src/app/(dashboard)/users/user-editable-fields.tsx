@@ -40,6 +40,7 @@ export default function UserEditableFields({
   editUser,
   sanXuatWarehouses,
   thanhPhamWarehouses,
+  thiTruongWarehouses,
   lockedAt,
 }: {
   userId: string;
@@ -65,6 +66,7 @@ export default function UserEditableFields({
   editUser: EditableUser | null;
   sanXuatWarehouses: WarehouseOption[];
   thanhPhamWarehouses: WarehouseOption[];
+  thiTruongWarehouses: WarehouseOption[];
   lockedAt: Date | null;
 }) {
   const canEditWorkplace = isWorkplaceRole && canAssignWorkplace;
@@ -290,7 +292,7 @@ export default function UserEditableFields({
         <td className="px-4 py-3">
           <div className="flex items-center gap-1.5">
             {editUser && (
-              <EditUserDialog user={editUser} sanXuatWarehouses={sanXuatWarehouses} thanhPhamWarehouses={thanhPhamWarehouses} />
+              <EditUserDialog user={editUser} sanXuatWarehouses={sanXuatWarehouses} thanhPhamWarehouses={thanhPhamWarehouses} thiTruongWarehouses={thiTruongWarehouses} />
             )}
             {editUser && <DeleteUserButton id={editUser.id} code={editUser.code} name={editUser.name} />}
             {(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays || canEditThisEmployment) && (

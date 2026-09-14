@@ -22,8 +22,11 @@ import UserInlineFieldCell from "./user-inline-field-cell";
 
 // NV/Quản lý kho thành phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao
 // tác — xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
 const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
+// Đối tác vận hành làm việc với 1 Kho THỊ TRƯỜNG (WarehouseType.THI_TRUONG), khác cả kho sản xuất lẫn
+// kho thành phẩm — xem nhánh validate loại kho ở PATCH /api/users/[id].
+const THI_TRUONG_WORKPLACE_ROLES = ["DOI_TAC_VAN_HANH"] as const;
 const PAGE_SIZE = 7;
 
 export default async function UsersPage({
@@ -59,7 +62,7 @@ export default async function UsersPage({
     ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { code: { contains: search, mode: "insensitive" } }] } : {}),
   };
 
-  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses, defaultHoldDaysStr] = await Promise.all([
+  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses, thiTruongWarehouses, defaultHoldDaysStr] = await Promise.all([
     prisma.user.count({ where: adminExclusion }),
     prisma.user.findMany({
       where: { status: "PENDING" },
@@ -76,6 +79,7 @@ export default async function UsersPage({
     canManagePermissions ? prisma.rolePermission.findMany() : Promise.resolve([]),
     prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.warehouse.findMany({ where: { type: "THANH_PHAM", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.warehouse.findMany({ where: { type: "THI_TRUONG", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     getSystemConfig("default_hold_days", "3"),
   ]);
   const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
@@ -209,9 +213,11 @@ export default async function UsersPage({
                           workplaceWarehouseId={user.workplaceWarehouseId}
                           workplaceWarehouse={user.workplaceWarehouse}
                           warehouseOptions={
-                            user.role && THANH_PHAM_WORKPLACE_ROLES.includes(user.role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
-                              ? thanhPhamWarehouses
-                              : sanXuatWarehouses
+                            user.role && THI_TRUONG_WORKPLACE_ROLES.includes(user.role as (typeof THI_TRUONG_WORKPLACE_ROLES)[number])
+                              ? thiTruongWarehouses
+                              : user.role && THANH_PHAM_WORKPLACE_ROLES.includes(user.role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
+                                ? thanhPhamWarehouses
+                                : sanXuatWarehouses
                           }
                           plantingCapacity={user.plantingCapacity}
                           holdDays={user.holdDays}
@@ -234,6 +240,7 @@ export default async function UsersPage({
                           }
                           sanXuatWarehouses={sanXuatWarehouses}
                           thanhPhamWarehouses={thanhPhamWarehouses}
+                          thiTruongWarehouses={thiTruongWarehouses}
                           lockedAt={user.lockedAt}
                         />
                       </tr>

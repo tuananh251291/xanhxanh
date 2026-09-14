@@ -19,6 +19,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   HANH_CHINH_NHAN_SU: { prefix: "NVHC", pad: 2 },
   NHAN_VIEN_SAN_XUAT: { prefix: "NVSX", pad: 2 },
   NHAN_VIEN_QUAN_LY_VUON: { prefix: "NVQLV", pad: 2 },
+  DOI_TAC_VAN_HANH: { prefix: "DTVH", pad: 2 },
 };
 
 // Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,
@@ -153,11 +154,11 @@ export function generateProductLotCode(instructionCode: string, date: Date = new
   return `${instructionCode}${dayDigit}`;
 }
 
-// Mã kho = tiền tố theo loại ("SX" kho sản xuất / "KTP" kho thành phẩm) + 1 chữ cái tăng dần theo thứ
-// tự tạo (SX-A, SX-B, ... — riêng theo từng loại, không dùng chung dãy). Quá 26 kho cùng loại thì
-// chuyển sang số ("SX-27"...) — thực tế khó xảy ra nhưng vẫn tránh lỗi ký tự ngoài A-Z.
-export async function generateWarehouseCode(type: "SAN_XUAT" | "THANH_PHAM"): Promise<string> {
-  const prefix = type === "SAN_XUAT" ? "SX" : "KTP";
+// Mã kho = tiền tố theo loại ("SX" kho sản xuất / "KTP" kho thành phẩm / "TT" kho thị trường) + 1 chữ
+// cái tăng dần theo thứ tự tạo (SX-A, SX-B, ... — riêng theo từng loại, không dùng chung dãy). Quá 26
+// kho cùng loại thì chuyển sang số ("SX-27"...) — thực tế khó xảy ra nhưng vẫn tránh lỗi ký tự ngoài A-Z.
+export async function generateWarehouseCode(type: "SAN_XUAT" | "THANH_PHAM" | "THI_TRUONG"): Promise<string> {
+  const prefix = type === "SAN_XUAT" ? "SX" : type === "THANH_PHAM" ? "KTP" : "TT";
   const letterFor = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String(i - 25));
 
   let index = await prisma.warehouse.count({ where: { type } });

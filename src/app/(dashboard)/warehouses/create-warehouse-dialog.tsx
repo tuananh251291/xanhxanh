@@ -13,19 +13,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Loader2 } from "lucide-react";
 import { WAREHOUSE_TYPE_LABELS } from "@/types";
 import { toast } from "sonner";
+import type { UserRole } from "@prisma/client";
 
 const schema = z.object({
   name: z.string().min(2),
-  type: z.enum(["SAN_XUAT", "THANH_PHAM"]),
+  type: z.enum(["SAN_XUAT", "THANH_PHAM", "THI_TRUONG"]),
   description: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
 
-export default function CreateWarehouseDialog() {
+// Kho thị trường (Đối tác vận hành quản lý) chỉ Admin cấp cao được tạo (xem POST /api/warehouses) —
+// ẩn hẳn lựa chọn này khỏi dropdown cho Admin/Admin kỹ thuật thường thay vì để chọn rồi báo lỗi.
+export default function CreateWarehouseDialog({ role }: { role: UserRole | null }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const typeOptions = role === "SUPER_ADMIN"
+    ? WAREHOUSE_TYPE_LABELS
+    : Object.fromEntries(Object.entries(WAREHOUSE_TYPE_LABELS).filter(([k]) => k !== "THI_TRUONG"));
 
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -65,10 +71,10 @@ export default function CreateWarehouseDialog() {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <div className="space-y-1">
             <Label>Loại kho</Label>
-            <Select items={WAREHOUSE_TYPE_LABELS} onValueChange={(v) => setValue("type", v as FormData["type"])}>
+            <Select items={typeOptions} onValueChange={(v) => setValue("type", v as FormData["type"])}>
               <SelectTrigger><SelectValue placeholder="Chọn loại" /></SelectTrigger>
               <SelectContent>
-                {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => (
+                {Object.entries(typeOptions).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>
                 ))}
               </SelectContent>

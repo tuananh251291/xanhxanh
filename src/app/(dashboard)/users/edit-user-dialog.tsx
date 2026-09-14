@@ -19,15 +19,16 @@ import { Pencil, Loader2 } from "lucide-react";
 import { ROLE_LABELS } from "@/types";
 import { toast } from "sonner";
 
-const ASSIGNABLE_ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON"] as const;
+const ASSIGNABLE_ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH"] as const;
 const ASSIGNABLE_ROLE_LABELS = Object.fromEntries(
   ASSIGNABLE_ROLES.map((r) => [r, ROLE_LABELS[r]])
 ) as Record<(typeof ASSIGNABLE_ROLES)[number], string>;
 
 // Đồng bộ với WORKPLACE_ROLES ở users/page.tsx và src/app/api/users/[id]/route.ts. NV/Quản lý kho thành
 // phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao tác.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
 const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
+const THI_TRUONG_WORKPLACE_ROLES = ["DOI_TAC_VAN_HANH"] as const;
 const NO_WAREHOUSE = "NONE";
 
 // Chỉ để báo hiệu "tài khoản đã có mật khẩu", KHÔNG phản ánh số ký tự thật — mật khẩu chỉ lưu dạng
@@ -61,10 +62,12 @@ export default function EditUserDialog({
   user,
   sanXuatWarehouses,
   thanhPhamWarehouses,
+  thiTruongWarehouses,
 }: {
   user: EditableUser;
   sanXuatWarehouses: WarehouseOption[];
   thanhPhamWarehouses: WarehouseOption[];
+  thiTruongWarehouses: WarehouseOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -87,9 +90,11 @@ export default function EditUserDialog({
   const isActive = watch("isActive");
   const prevRoleRef = useRef(user.role);
   const isWorkplaceRole = WORKPLACE_ROLES.includes(role as (typeof WORKPLACE_ROLES)[number]);
-  const warehouseOptions = THANH_PHAM_WORKPLACE_ROLES.includes(role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
-    ? thanhPhamWarehouses
-    : sanXuatWarehouses;
+  const warehouseOptions = THI_TRUONG_WORKPLACE_ROLES.includes(role as (typeof THI_TRUONG_WORKPLACE_ROLES)[number])
+    ? thiTruongWarehouses
+    : THANH_PHAM_WORKPLACE_ROLES.includes(role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
+      ? thanhPhamWarehouses
+      : sanXuatWarehouses;
 
   const onRoleChange = async (newRole: FormData["role"]) => {
     setValue("role", newRole);

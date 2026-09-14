@@ -41,9 +41,12 @@ type RoomData = {
 };
 
 // Các phòng này không có Shelf nào, không cần hiện quản lý kệ: kho thành phẩm không quản lý theo giàn
-// kệ; Phòng tối cá nhân (1 Room/NV) và Phòng Nhiễm cũng vậy — lô gắn thẳng vào Room (Lot.roomId).
+// kệ; Phòng tối cá nhân (1 Room/NV) và Phòng Nhiễm cũng vậy — lô gắn thẳng vào Room (Lot.roomId). 3
+// phòng Kho thị trường cũng chưa có nghiệp vụ/giàn kệ riêng (mới có khung sườn — xem comment ROLE_NAV
+// DOI_TAC_VAN_HANH ở src/types/index.ts).
 const NO_SHELF_ROOM_TYPES = new Set<RoomType>([
   "PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG", "PHONG_TOI", "PHONG_NHIEM",
+  "PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG",
 ]);
 // Kho sản xuất chỉ có đúng 4 loại phòng này — nhóm lại 2 tầng cho dễ nhìn: Phòng sáng (mẫu mẹ + ra rễ)
 // và Phòng tối (phòng nhiễm + các phòng tối cá nhân theo từng NV cấy mô).
@@ -161,7 +164,9 @@ function RoomCard({
       {!isDarkRoom && expanded && NO_SHELF_ROOM_TYPES.has(room.type) && (
         <div className="px-4 pb-4 space-y-3">
           <p className="text-text-muted text-sm text-center py-3">
-            Kho thành phẩm không quản lý theo giàn kệ — xem tồn kho tại trang Tồn kho thành phẩm
+            {wh.type === "THANH_PHAM"
+              ? "Kho thành phẩm không quản lý theo giàn kệ — xem tồn kho tại trang Tồn kho thành phẩm"
+              : "Kho thị trường chưa có trang quản lý tồn kho riêng"}
           </p>
         </div>
       )}

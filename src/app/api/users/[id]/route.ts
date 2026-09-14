@@ -6,7 +6,7 @@ import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkpl
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON"] as const;
+const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH"] as const;
 
 // NV kho mô/cấy mô/môi trường/kỹ thuật bị ràng buộc làm việc với đúng 1 kho sản xuất — KY_THUAT gán được
 // từ khi có nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" (xem src/lib/rooting-forecast.ts), CHƯA dùng field
@@ -15,8 +15,10 @@ const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_T
 // này nhưng ràng buộc với 1 Kho THÀNH PHẨM (không phải kho sản xuất) — xem nhánh validate loại kho bên
 // dưới. NV/Quản lý kho thành phẩm (isKhoThanhPhamRole) cũng gán được 1 Kho THÀNH PHẨM nhưng CHỈ mang tính
 // hiển thị/lưu trữ — KHÔNG giới hạn phạm vi thao tác, họ vẫn xử lý phiếu/xem tồn trên mọi kho thành phẩm
-// như trước (xem getFinishedQualifiedRooms ở src/lib/processing.ts).
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT"] as const;
+// như trước (xem getFinishedQualifiedRooms ở src/lib/processing.ts). Đối tác vận hành (DOI_TAC_VAN_HANH)
+// gán với 1 Kho THỊ TRƯỜNG (WarehouseType.THI_TRUONG) — chưa có nghiệp vụ dùng field này, chỉ mới
+// lưu/hiển thị (xem comment ROLE_NAV.DOI_TAC_VAN_HANH ở src/types/index.ts).
+const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
 
 const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
@@ -62,19 +64,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
     if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
     if (!target.role || !WORKPLACE_ROLES.includes(target.role as (typeof WORKPLACE_ROLES)[number])) {
-      return NextResponse.json({ message: "Chỉ áp dụng cho NV kho mô, cấy mô, môi trường, kỹ thuật, bán hàng, kho thành phẩm" }, { status: 400 });
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV kho mô, cấy mô, môi trường, kỹ thuật, bán hàng, kho thành phẩm, đối tác vận hành" }, { status: 400 });
     }
     const { workplaceWarehouseId } = parsed.data;
-    // NV bán hàng và NV kho thành phẩm làm việc với 1 Kho THÀNH PHẨM — các vai trò còn lại vẫn là Kho
-    // sản xuất như trước.
-    const requiredType = target.role === "SALE" || isKhoThanhPhamRole(target.role) ? "THANH_PHAM" : "SAN_XUAT";
+    // NV bán hàng và NV kho thành phẩm làm việc với 1 Kho THÀNH PHẨM, Đối tác vận hành với 1 Kho THỊ
+    // TRƯỜNG — các vai trò còn lại vẫn là Kho sản xuất như trước.
+    const requiredType = target.role === "DOI_TAC_VAN_HANH"
+      ? "THI_TRUONG"
+      : target.role === "SALE" || isKhoThanhPhamRole(target.role) ? "THANH_PHAM" : "SAN_XUAT";
     if (workplaceWarehouseId) {
       const warehouse = await prisma.warehouse.findUnique({ where: { id: workplaceWarehouseId }, select: { type: true } });
       if (!warehouse || warehouse.type !== requiredType) {
-        return NextResponse.json(
-          { message: requiredType === "THANH_PHAM" ? "Địa điểm làm việc phải là kho thành phẩm" : "Địa điểm làm việc phải là kho sản xuất" },
-          { status: 400 }
-        );
+        const requiredTypeMessage = {
+          THANH_PHAM: "Địa điểm làm việc phải là kho thành phẩm",
+          THI_TRUONG: "Địa điểm làm việc phải là kho thị trường",
+          SAN_XUAT: "Địa điểm làm việc phải là kho sản xuất",
+        }[requiredType];
+        return NextResponse.json({ message: requiredTypeMessage }, { status: 400 });
       }
     }
     const updated = await prisma.user.update({
