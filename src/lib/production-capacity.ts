@@ -66,6 +66,61 @@ function sumByStage(rows: OutputRow[]): { motherOutput: number; finishedOutput: 
   return { motherOutput, finishedOutput, motherUsed };
 }
 
+// Chênh lệch NET mẫu mẹ (sinh ra − dùng làm vốn) trong 1 khoảng thời gian bất kỳ, KHÔNG chia theo bucket
+// — dùng để suy ngược tồn mẫu mẹ THẬT tại mốc BẮT ĐẦU khung hiển thị (xem route.ts): tồn tại mốc đó =
+// tồn THẬT bây giờ (computeCurrentMotherStock) − net từ mốc đó tới bây giờ. Nhờ vậy đường "Mẫu mẹ" trên
+// biểu đồ là TỒN THỰC lũy kế theo đúng công thức "tồn cuối kỳ = tồn đầu kỳ − mẫu mẹ đem cấy + mẫu mẹ sinh
+// ra", không phải delta tính từ mốc 0 — điểm "hôm nay" luôn khớp đúng tồn thật, các điểm quá khứ suy ngược
+// từ đó. Xấp xỉ này giả định DailyRecord ghi nhận đủ mọi biến động mẫu mẹ (cấy/sinh) — hao hụt khác
+// (nhiễm, điều chỉnh tay...) không phản ánh vào đây.
+export async function computeMotherNetSince(plantTypeId: string, since: Date, until: Date, scope: CapacityScope): Promise<number> {
+  const scopedStaffIds = await resolveScopedStaffIds(scope);
+  const rows = await fetchDailyRecords(plantTypeId, since, until, scopedStaffIds, true);
+  const { motherOutput, motherUsed } = sumByStage(rows);
+  return motherOutput - motherUsed;
+}
+
+// Tồn mẫu mẹ THẬT hiện có (kho sáng đã xếp giàn Phòng mẫu mẹ + Phòng tối cá nhân chưa bàn giao) — dùng
+// làm mốc neo cho computeMotherNetSince ở trên. CÙNG logic đã fix ở /api/reports/quick-stock-check (commit
+// "Kiem tra nhanh san luong cong thieu Phong toi"): lô Phòng tối nằm thẳng qua Lot.roomId (shelfId null),
+// KHÔNG qua shelf.room như lô đã xếp giàn — thiếu nhánh này sẽ hụt tồn thật rất nhiều (từng phát hiện qua
+// đối chiếu thực tế). transferItems: none — đã tạo phiếu bàn giao thì không còn là "hàng NV đang giữ" dù
+// Kho mô chưa xác nhận xong.
+export async function computeCurrentMotherStock(plantTypeId: string, scope: CapacityScope): Promise<number> {
+  const [shelvedAgg, darkRoomAgg] = await Promise.all([
+    prisma.lot.aggregate({
+      where: {
+        status: "ACTIVE",
+        stage: "MAU_ME",
+        plantTypeId,
+        shelfId: { not: null },
+        shelf: {
+          room: { type: "PHONG_MAU_ME" },
+          ...(scope.kind === "WAREHOUSE" ? { warehouseId: scope.warehouseId } : {}),
+          ...(scope.kind === "STAFF" ? { assignedStaffId: scope.staffId } : {}),
+        },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.lot.aggregate({
+      where: {
+        status: "ACTIVE",
+        stage: "MAU_ME",
+        plantTypeId,
+        shelfId: null,
+        room: {
+          type: "PHONG_TOI",
+          ...(scope.kind === "WAREHOUSE" ? { warehouseId: scope.warehouseId } : {}),
+          ...(scope.kind === "STAFF" ? { assignedStaffId: scope.staffId } : {}),
+        },
+        transferItems: { none: {} },
+      },
+      _sum: { quantity: true },
+    }),
+  ]);
+  return (shelvedAgg._sum.quantity ?? 0) + (darkRoomAgg._sum.quantity ?? 0);
+}
+
 // motherUsed = tổng mẫu mẹ ĐEM CẤY (vốn tiêu thụ) trong kỳ — PHẢI trừ khỏi motherOutput để ra đúng lũy
 // kế mẫu mẹ THỰC (net), xem cách dùng ở "Mẫu mẹ" spec trong route.ts. Bỏ field này lỡ dùng lại motherOutput
 // một mình sẽ đếm cả phần mẫu mẹ vừa tạo ra ĐÃ BỊ TIÊU LUÔN làm vốn cho lượt cấy kế tiếp trong cùng kỳ —

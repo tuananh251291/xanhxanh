@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getWeekBuckets, getMonthBuckets, getWeekBucketsInRange, getMonthBucketsInRange, type WeekBucket } from "@/lib/report-utils";
-import { computeActualSeries, simulateWeeklyForecast, computeAverageRatios, type CapacityScope } from "@/lib/production-capacity";
+import {
+  computeActualSeries,
+  simulateWeeklyForecast,
+  computeAverageRatios,
+  computeMotherNetSince,
+  computeCurrentMotherStock,
+  type CapacityScope,
+} from "@/lib/production-capacity";
 import { addWeeks, addMonths, endOfWeek, endOfMonth, format, isValid } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -14,11 +21,12 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // theo 1 quy cách nữa — mỗi quy cách 2 khoá: khoá "gốc" (VD "Mẫu mẹ") phủ mọi kỳ <= kỳ hiện tại THẬT
 // (đã xảy ra, FE vẽ nét đậm), khoá "(dự kiến)" (VD "Mẫu mẹ (dự kiến)") phủ kỳ hiện tại (để nối liền, cùng
 // giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh). Mỗi khoá là số LŨY KẾ cộng dồn từ kỳ ĐẦU TIÊN
-// đang hiển thị trên trục ngang (không phải sản lượng riêng của từng kỳ), dù xem theo Tuần hay Tháng (đổi
-// "from" sẽ đổi luôn mốc 0 bắt đầu cộng dồn). Riêng "Mẫu mẹ" là NET (đã trừ motherUsed/motherProcessed —
-// vốn mẫu mẹ tiêu thụ mỗi lượt cấy, xem SPECS bên dưới) nên đường này CÓ THỂ đi xuống nếu kỳ đó dùng mẫu
-// mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra — "Thành phẩm" vẫn là gộp thô (ra khỏi hệ thống mẫu mẹ hẳn,
-// không có gì để trừ tiếp). Phần dự kiến MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn tiếp vào đúng lũy
+// đang hiển thị trên trục ngang (không phải sản lượng riêng của từng kỳ), dù xem theo Tuần hay Tháng.
+// Riêng "Mẫu mẹ" LÀ TỒN THỰC (không phải delta) — neo về tồn mẫu mẹ THẬT hiện có rồi suy ngược lùi về mốc
+// bắt đầu khung hiển thị bằng NET từng kỳ (sinh ra − dùng làm vốn cấy, xem computeMotherNetSince/
+// computeCurrentMotherStock, production-capacity.ts) nên đường này CÓ THỂ đi xuống nếu kỳ đó dùng mẫu mẹ
+// làm vốn nhiều hơn mẫu mẹ mới sinh ra — "Thành phẩm" vẫn neo ở 0 (sản lượng thu hoạch cộng dồn, không
+// phải tồn có sẵn từ trước). Phần dự kiến MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn tiếp vào đúng lũy
 // kế thực tế: mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy" (không phải chỉ 1 Nhóm
 // duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt, mỗi Nhóm có 1 chuỗi cộng
 // dồn RIÊNG cách nhau N tuần = transferWaitWeeks). Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ
@@ -79,12 +87,20 @@ export async function GET(req: NextRequest) {
 
   const historyBuckets = buckets.filter((b) => b.start <= todayBucket.start);
   const futureBuckets = buckets.filter((b) => b.start > todayBucket.start);
-  const [actualPoints, weeklyForecast, ratios] = await Promise.all([
+  const [actualPoints, weeklyForecast, ratios, motherStockNow, motherNetSinceWindowStart] = await Promise.all([
     computeActualSeries(plantTypeId, historyBuckets, scope),
     futureBuckets.length > 0
       ? simulateWeeklyForecast(plantTypeId, scope, now, futureBuckets[futureBuckets.length - 1].end)
       : Promise.resolve([]),
     computeAverageRatios(plantTypeId, now, scope),
+    // Tồn mẫu mẹ THẬT tại thời điểm gọi API — dùng làm mốc neo cho đường "Mẫu mẹ" (xem bên dưới), KHÔNG
+    // trả riêng trong response (trang này không hiển thị lại "Số lượng hiện có" nữa, đã có ở tab Sản lượng
+    // "Kiểm tra nhanh sản lượng" — xem computeCurrentMotherStock).
+    computeCurrentMotherStock(plantTypeId, scope),
+    // NET mẫu mẹ (sinh ra − dùng làm vốn) TỪ MỐC BẮT ĐẦU khung hiển thị (buckets[0]) tới NGAY-BÂY-GIỜ
+    // (không phải tới todayBucket/cuối kỳ) — để suy ngược ra đúng tồn thật tại mốc bắt đầu, xem baseline
+    // bên dưới. Rỗng nếu buckets rỗng (không xảy ra thực tế, chỉ phòng thủ).
+    buckets.length > 0 ? computeMotherNetSince(plantTypeId, buckets[0].start, now, scope) : Promise.resolve(0),
   ]);
   const { avgRatioMM, avgRatioTP, avgMotherPerStaffDay } = ratios;
 
@@ -100,13 +116,18 @@ export async function GET(req: NextRequest) {
     { label: "Tổng", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.motherNet + p.finishedOutput },
   ];
 
-  // Biểu đồ vẽ LŨY KẾ (cộng dồn từ kỳ đầu tiên đang hiển thị), không phải sản lượng riêng từng kỳ, bất kể
-  // đơn vị đang xem Tuần hay Tháng. Vì đường "Mẫu mẹ" giờ là NET (có trừ vốn tiêu thụ), đường có thể ĐI
-  // XUỐNG nếu kỳ đó dùng mẫu mẹ làm vốn (ra rễ/tiêu hao) nhiều hơn mẫu mẹ mới sinh ra — khác thiết kế cũ
-  // (cộng dồn thô, luôn đi lên/đi ngang). Cộng dồn trên giá trị THÔ (chưa làm tròn) rồi mới làm tròn từng
-  // điểm hiển thị — tránh lệch dần do làm tròn nhiều lần cộng lại. Đường dự kiến (tương lai) cộng tiếp từ
-  // đúng lũy kế thực tế tới hết kỳ hiện tại, không tính lại từ 0.
-  const cumulative: Record<string, number> = Object.fromEntries(SPECS.map((s) => [s.label, 0]));
+  // Biểu đồ vẽ LŨY KẾ TỒN THỰC (không phải delta tính từ mốc 0): "Mẫu mẹ" neo về tồn mẫu mẹ THẬT hiện có
+  // (motherStockNow) rồi suy ngược lùi về đúng tồn tại mốc BẮT ĐẦU khung hiển thị (trừ đi phần net đã phát
+  // sinh từ mốc đó tới giờ — motherNetSinceWindowStart), đúng công thức "tồn cuối kỳ = tồn đầu kỳ − mẫu mẹ
+  // đem cấy + mẫu mẹ sinh ra" lặp lại từng kỳ (VD: đầu có 10, kỳ 1 cấy 3 sinh 6 → cuối kỳ 1 = 10-3+6=13,
+  // kỳ 2 tương tự tiếp tục từ 13...). Nhờ vậy điểm "hôm nay" trên đường Mẫu mẹ luôn khớp đúng tồn thật,
+  // đường CÓ THỂ đi xuống nếu kỳ đó dùng mẫu mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra. "Thành phẩm" vẫn neo
+  // ở 0 (sản lượng thu hoạch cộng dồn trong kỳ, không phải tồn kho có sẵn từ trước — không có gì để neo
+  // vào). Cộng dồn trên giá trị THÔ (chưa làm tròn) rồi mới làm tròn từng điểm hiển thị — tránh lệch dần do
+  // làm tròn nhiều lần cộng lại. Đường dự kiến (tương lai) cộng tiếp từ đúng lũy kế thực tế tới hết kỳ hiện
+  // tại, không tính lại từ mốc neo.
+  const motherBaseline = motherStockNow - motherNetSinceWindowStart;
+  const cumulative: Record<string, number> = { "Mẫu mẹ": motherBaseline, "Thành phẩm": 0, "Tổng": motherBaseline };
   const data: Record<string, string | number>[] = buckets.map((b) => {
     const row: Record<string, string | number> = { period: b.label };
     if (b.start <= todayBucket.start) {
