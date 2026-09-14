@@ -17,6 +17,7 @@ type CheckResult = {
   byStageCode?: Record<string, number>;
   byWarehouse?: Record<string, number>;
   byPlantType?: Record<string, number>;
+  waitingToPlant?: number;
 };
 
 const STAGE_OPTIONS = [
@@ -87,7 +88,8 @@ export default function ProductionQuickCheck() {
         <CardTitle className="text-base">Kiểm tra nhanh sản lượng</CardTitle>
         <p className="text-sm text-text-secondary">
           Số lượng hiện có tại thời điểm kiểm tra — cộng cả kho sáng (Phòng mẫu mẹ/Phòng ra rễ) và Phòng
-          tối cá nhân của từng NV (hàng chưa bàn giao), đã trừ hàng nhiễm.
+          tối cá nhân của từng NV (hàng chưa bàn giao), đã trừ hàng nhiễm. Riêng mẫu mẹ (M05) có thêm mục
+          &quot;Đang đợi cấy&quot; — phần đã bàn giao cho chỉ định cấy nhưng NV cấy mô chưa dùng hết.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -166,6 +168,12 @@ export default function ProductionQuickCheck() {
                   </span>
                 ))}
               </div>
+            )}
+            {result.waitingToPlant !== undefined && (
+              <p className="text-sm text-text-secondary">
+                Đang đợi cấy (đã bàn giao, chưa cấy hết):{" "}
+                <strong className="text-warning-foreground">{result.waitingToPlant.toLocaleString("vi-VN")}</strong>
+              </p>
             )}
           </div>
         )}
