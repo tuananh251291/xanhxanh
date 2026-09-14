@@ -66,7 +66,11 @@ function sumByStage(rows: OutputRow[]): { motherOutput: number; finishedOutput: 
   return { motherOutput, finishedOutput, motherUsed };
 }
 
-export type ActualPoint = { motherOutput: number; finishedOutput: number };
+// motherUsed = tổng mẫu mẹ ĐEM CẤY (vốn tiêu thụ) trong kỳ — PHẢI trừ khỏi motherOutput để ra đúng lũy
+// kế mẫu mẹ THỰC (net), xem cách dùng ở "Mẫu mẹ" spec trong route.ts. Bỏ field này lỡ dùng lại motherOutput
+// một mình sẽ đếm cả phần mẫu mẹ vừa tạo ra ĐÃ BỊ TIÊU LUÔN làm vốn cho lượt cấy kế tiếp trong cùng kỳ —
+// ra số cao hơn thực tế nhiều lần khi xem kỳ dài (tuần/tháng).
+export type ActualPoint = { motherOutput: number; finishedOutput: number; motherUsed: number };
 
 // Đường XANH — sản lượng thực tế mỗi kỳ (bucket), tính TẤT CẢ chỉ định (kể cả dự phòng) vì đây là sản
 // lượng THẬT đã cấy ra, không phải hệ số dự báo — khác Bước A (computeAverageRatios) chỉ lấy chỉ định
@@ -76,10 +80,11 @@ export async function computeActualSeries(plantTypeId: string, buckets: WeekBuck
   if (buckets.length === 0) return [];
   const rows = await fetchDailyRecords(plantTypeId, buckets[0].start, buckets[buckets.length - 1].end, scopedStaffIds, true);
 
-  const points: ActualPoint[] = buckets.map(() => ({ motherOutput: 0, finishedOutput: 0 }));
+  const points: ActualPoint[] = buckets.map(() => ({ motherOutput: 0, finishedOutput: 0, motherUsed: 0 }));
   for (const r of rows) {
     const idx = buckets.findIndex((b) => r.recordDate >= b.start && r.recordDate <= b.end);
     if (idx === -1) continue;
+    points[idx].motherUsed += r.motherUsed;
     for (const item of r.items) {
       if (item.stage === "MAU_ME") points[idx].motherOutput += item.quantityCreated;
       else points[idx].finishedOutput += item.quantityCreated;

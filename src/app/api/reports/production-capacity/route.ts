@@ -15,9 +15,11 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // theo 1 quy cách nữa — mỗi quy cách 2 khoá: khoá "gốc" (VD "Mẫu mẹ") phủ mọi kỳ <= kỳ hiện tại THẬT
 // (đã xảy ra, FE vẽ nét đậm), khoá "(dự kiến)" (VD "Mẫu mẹ (dự kiến)") phủ kỳ hiện tại (để nối liền, cùng
 // giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh). Mỗi khoá là số LŨY KẾ cộng dồn từ kỳ ĐẦU TIÊN
-// đang hiển thị trên trục ngang (không phải sản lượng riêng của từng kỳ) — theo đúng yêu cầu Admin: biểu
-// đồ luôn đi lên/đi ngang, không đi xuống, dù xem theo Tuần hay Tháng (đổi "from" sẽ đổi luôn mốc 0 bắt
-// đầu cộng dồn). Phần dự kiến MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn tiếp vào đúng lũy
+// đang hiển thị trên trục ngang (không phải sản lượng riêng của từng kỳ), dù xem theo Tuần hay Tháng (đổi
+// "from" sẽ đổi luôn mốc 0 bắt đầu cộng dồn). Riêng "Mẫu mẹ" là NET (đã trừ motherUsed/motherProcessed —
+// vốn mẫu mẹ tiêu thụ mỗi lượt cấy, xem SPECS bên dưới) nên đường này CÓ THỂ đi xuống nếu kỳ đó dùng mẫu
+// mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra — "Thành phẩm" vẫn là gộp thô (ra khỏi hệ thống mẫu mẹ hẳn,
+// không có gì để trừ tiếp). Phần dự kiến MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn tiếp vào đúng lũy
 // kế thực tế: mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy" (không phải chỉ 1 Nhóm
 // duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt, mỗi Nhóm có 1 chuỗi cộng
 // dồn RIÊNG cách nhau N tuần = transferWaitWeeks). Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ
@@ -94,25 +96,33 @@ export async function GET(req: NextRequest) {
   ]);
   const { avgRatioMM, avgRatioTP, avgMotherPerStaffDay } = ratios;
 
+  // "Mẫu mẹ" PHẢI là NET (motherOutput mới sinh ra − motherUsed/motherProcessed đã tiêu làm vốn), KHÔNG
+  // phải tổng sản lượng gộp — mỗi lượt cấy lấy 1 lô mẫu mẹ hiện có làm vốn (bị trừ hết, motherUsed) rồi
+  // sinh ra mẫu mẹ mới + thành phẩm, nên chỉ phần CHÊNH LỆCH (net) mới đúng là mẫu mẹ THỰC tăng thêm vào
+  // hệ thống trong kỳ — cộng thẳng motherOutput (gộp cả phần vừa tạo ra đã bị dùng luôn làm vốn cấy tiếp
+  // trong cùng kỳ) sẽ đếm trùng, ra số cao hơn thực tế nhiều lần khi xem kỳ dài. "Tổng" = Mẫu mẹ (net) +
+  // Thành phẩm, để 2 đường con luôn cộng đúng ra đường Tổng trên biểu đồ.
   const SPECS = [
-    { label: "Mẫu mẹ", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput },
-    { label: "Thành phẩm", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.finishedOutput },
-    { label: "Tổng", valueFor: (p: { motherOutput: number; finishedOutput: number }) => p.motherOutput + p.finishedOutput },
+    { label: "Mẫu mẹ", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.motherNet },
+    { label: "Thành phẩm", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.finishedOutput },
+    { label: "Tổng", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.motherNet + p.finishedOutput },
   ];
 
-  // Biểu đồ vẽ LŨY KẾ (cộng dồn từ kỳ đầu tiên đang hiển thị), không phải sản lượng riêng từng kỳ — để
-  // luôn là đường đi lên/đi ngang (không bao giờ đi xuống, đúng bản chất tổng cộng dồn không có gì bị trừ
-  // đi), bất kể đơn vị đang xem Tuần hay Tháng. Cộng dồn trên giá trị THÔ (chưa làm tròn) rồi mới làm tròn
-  // từng điểm hiển thị — tránh lệch dần do làm tròn nhiều lần cộng lại. Đường dự kiến (tương lai) cộng tiếp
-  // từ đúng lũy kế thực tế tới hết kỳ hiện tại, không tính lại từ 0.
+  // Biểu đồ vẽ LŨY KẾ (cộng dồn từ kỳ đầu tiên đang hiển thị), không phải sản lượng riêng từng kỳ, bất kể
+  // đơn vị đang xem Tuần hay Tháng. Vì đường "Mẫu mẹ" giờ là NET (có trừ vốn tiêu thụ), đường có thể ĐI
+  // XUỐNG nếu kỳ đó dùng mẫu mẹ làm vốn (ra rễ/tiêu hao) nhiều hơn mẫu mẹ mới sinh ra — khác thiết kế cũ
+  // (cộng dồn thô, luôn đi lên/đi ngang). Cộng dồn trên giá trị THÔ (chưa làm tròn) rồi mới làm tròn từng
+  // điểm hiển thị — tránh lệch dần do làm tròn nhiều lần cộng lại. Đường dự kiến (tương lai) cộng tiếp từ
+  // đúng lũy kế thực tế tới hết kỳ hiện tại, không tính lại từ 0.
   const cumulative: Record<string, number> = Object.fromEntries(SPECS.map((s) => [s.label, 0]));
   const data: Record<string, string | number>[] = buckets.map((b) => {
     const row: Record<string, string | number> = { period: b.label };
     if (b.start <= todayBucket.start) {
       const idx = historyBuckets.findIndex((h) => h.start.getTime() === b.start.getTime());
-      const point = idx !== -1 ? actualPoints[idx] : { motherOutput: 0, finishedOutput: 0 };
+      const point = idx !== -1 ? actualPoints[idx] : { motherOutput: 0, finishedOutput: 0, motherUsed: 0 };
+      const normalized = { motherNet: point.motherOutput - point.motherUsed, finishedOutput: point.finishedOutput };
       for (const s of SPECS) {
-        cumulative[s.label] += s.valueFor(point);
+        cumulative[s.label] += s.valueFor(normalized);
         const cumulativeValue = Math.round(cumulative[s.label]);
         row[s.label] = cumulativeValue;
         if (b.start.getTime() === todayBucket.start.getTime()) row[`${s.label} (dự kiến)`] = cumulativeValue;
@@ -122,11 +132,16 @@ export async function GET(req: NextRequest) {
       // tuần có thể là 1 Nhóm tuần mẫu mẹ khác nhau tới lượt cấy (xem simulateWeeklyForecast).
       const pointsInBucket = weeklyForecast.filter((p) => p.weekStart >= b.start && p.weekStart <= b.end);
       const summed = pointsInBucket.reduce(
-        (acc, p) => ({ motherOutput: acc.motherOutput + p.motherForecast, finishedOutput: acc.finishedOutput + p.finishedForecast }),
-        { motherOutput: 0, finishedOutput: 0 }
+        (acc, p) => ({
+          motherForecast: acc.motherForecast + p.motherForecast,
+          finishedForecast: acc.finishedForecast + p.finishedForecast,
+          motherProcessed: acc.motherProcessed + p.motherProcessed,
+        }),
+        { motherForecast: 0, finishedForecast: 0, motherProcessed: 0 }
       );
+      const normalized = { motherNet: summed.motherForecast - summed.motherProcessed, finishedOutput: summed.finishedForecast };
       for (const s of SPECS) {
-        cumulative[s.label] += s.valueFor(summed);
+        cumulative[s.label] += s.valueFor(normalized);
         row[`${s.label} (dự kiến)`] = Math.round(cumulative[s.label]);
       }
     }
