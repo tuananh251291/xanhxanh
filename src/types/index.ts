@@ -245,6 +245,26 @@ export const FINISHED_SPEC_BAG_SIZE = {
   T10: 10,
 } as const;
 
+// Quy cách chậu (Phòng cây trồng, Kho thị trường) — gắn trên Lot.stageCode khi stage = THANH_PHAM, dùng
+// riêng cho "Xuất cây" (Đối tác vận hành, xem src/lib/market-export.ts). Khác hẳn FINISHED_SPEC_LABELS
+// (quy cách túi, Phòng sản phẩm đạt) — 1 chậu luôn tính là 1 cây (không có bagSize > 1 như túi).
+export const POT_SPEC_LABELS = {
+  S: "Chậu S",
+  M: "Chậu M",
+  L: "Chậu L",
+  C: "Chậu C",
+} as const;
+
+// Nhãn hiển thị quy cách dùng chung cho MỌI dòng thành phẩm (túi lẫn chậu) — trả nguyên mã nếu không
+// khớp nhãn nào (dữ liệu cũ/lạ), dùng ở trang Xuất cây thay vì chỉ tra FINISHED_SPEC_LABELS.
+export function finishedStageLabel(stageCode: string): string {
+  return (
+    (FINISHED_SPEC_LABELS as Record<string, string>)[stageCode] ??
+    (POT_SPEC_LABELS as Record<string, string>)[stageCode] ??
+    stageCode
+  );
+}
+
 // Số cụm mẫu mẹ trong 1 túi mẫu mẹ theo quy cách (VD: 1 túi M05 = 5 cụm) — Lot.quantity của M05 LUÔN
 // tính thẳng theo cụm (đơn vị nhỏ nhất, giống T01/T05/T10 tính theo cây), bagSize này chỉ dùng khi cần
 // biết 1 lô chiếm bao nhiêu túi VẬT LÝ (VD làm tròn khi xếp kệ — xem src/lib/shelf-assignment.ts).
@@ -730,6 +750,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/market-receive", label: "Nhận hàng Kho thành phẩm", icon: "PackageCheck" },
+    { href: "/market-export", label: "Xuất cây", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

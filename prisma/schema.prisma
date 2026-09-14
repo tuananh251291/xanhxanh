@@ -440,6 +440,7 @@ model User {
   complianceRecoveryPointsAsStaff      ComplianceRecoveryPoint[]    @relation("ComplianceRecoveryPointStaff")
   complianceRecoveryPointsCreated      ComplianceRecoveryPoint[]    @relation("ComplianceRecoveryPointCreatedBy")
   recoveryBehaviorTypesCreated         RecoveryBehaviorType[]
+  marketExportsCreated                 MarketExport[]
 
   @@map("users")
 }
@@ -707,6 +708,7 @@ model PlantType {
   motherStockWeekSnapshots   MotherStockWeekSnapshot[]
   rootingForecastEntries     RootingForecastEntry[]
   rootingForecastEditProposalItems RootingForecastEditProposalItem[]
+  marketExportItems          MarketExportItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -978,6 +980,7 @@ model Warehouse {
   rootingForecastEntries      RootingForecastEntry[]
   rootingForecastSubmissions  RootingForecastSubmission[]
   rootingForecastEditProposals RootingForecastEditProposal[]
+  marketExports               MarketExport[]
 
   @@map("warehouses")
 }
@@ -1015,6 +1018,7 @@ model Room {
   goodsReceipts                   GoodsReceipt[]
   dailyTasks                      DailyTask[]
   contaminationProposals          ContaminationProposal[]
+  marketExportItems               MarketExportItem[]
 
   @@map("rooms")
 }
@@ -2918,4 +2922,52 @@ model ComplianceRecoveryPoint {
 
   @@index([staffId, periodMonth])
   @@map("compliance_recovery_points")
+}
+
+// ============================================================
+// MARKET EXPORT (Xuất cây) — Đối tác vận hành tải file Excel xuất từ sàn bán hàng (Mã đơn/Tình trạng/
+// Ngày/Lineitem quantity/Tên SPF/Mã hàng/Tên nội bộ), mỗi lần tải lên tạo 1 MarketExport gồm nhiều dòng
+// (MarketExportItem). Trừ THẲNG vào tồn thực (Lot.quantity) ở Kho thị trường của Đối tác đó — cho phép
+// âm nếu bán vượt tồn thực tế (đối soát lại sau), KHÔNG lọc theo Tình trạng (mọi dòng trong file đều tính
+// là đã xuất). Xem src/lib/market-export.ts (parseExportStageCode, deductOrCreateLot) và
+// POST /api/market-export.
+model MarketExport {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  fileName    String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  items MarketExportItem[]
+
+  @@map("market_exports")
+}
+
+// 1 dòng = 1 dòng hàng (line item) trong file xuất — orderCode + productCode (Mã hàng) là khoá chống
+// trùng khi Đối tác tải lại file có phần trùng lặp với lần trước (xem checkDuplicateKeys trong route),
+// KHÔNG unique cứng ở DB vì 1 đơn ngoài sàn có thể thật sự lặp mã hàng ở lần xuất bù/huỷ khác ngày.
+model MarketExportItem {
+  id          String       @id @default(cuid())
+  exportId    String
+  export      MarketExport @relation(fields: [exportId], references: [id])
+  orderCode   String // "Mã đơn"
+  status      String? // "Tình trạng" — chỉ lưu lại, KHÔNG dùng để lọc dòng nào được xuất
+  orderedAt   DateTime // "Ngày"
+  quantity    Int // "Lineitem quantity" — số túi/chậu bán, KHÁC deductedQuantity (số cây thực trừ)
+  spfName     String? // "Tên SPF"
+  productCode String // "Mã hàng" — dùng tách quy cách (stageCode), xem parseExportStageCode
+  internalName String // "Tên nội bộ" — khớp thẳng với PlantType.name để xác định loại cây
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  stageCode   String // quy cách tách từ Mã hàng: T01/T05/T10 (túi) hoặc S/M/L/C (chậu)
+  roomId      String // Phòng sản phẩm đạt (túi) hoặc Phòng cây trồng (chậu) — xem parseExportStageCode
+  room        Room      @relation(fields: [roomId], references: [id])
+  deductedQuantity Int // số CÂY thực trừ khỏi Lot = quantity * bagSize(stageCode)
+  createdAt   DateTime  @default(now())
+
+  @@index([orderCode, productCode])
+  @@map("market_export_items")
 }

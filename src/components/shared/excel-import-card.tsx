@@ -10,8 +10,10 @@ import { toast } from "sonner";
 export type ImportRowError = { row: number; label: string; message: string };
 // zeroedCount: riêng cho mục "Lô tồn kho hiện có" — số lô TRÙNG combo (vị trí + mã cây + quy cách, dữ
 // liệu cũ lỡ có nhiều lô cùng combo) bị đưa quantity về 0 khi combo đó được ghi đè, trường hợp hiếm gặp.
+// duplicateCount: riêng cho mục "Xuất cây" — số dòng trùng (Mã đơn + Mã hàng) với 1 lần tải file trước
+// đó, bị BỎ QUA (không trừ tồn lại lần 2), KHÔNG tính là lỗi (xem POST /api/market-export).
 // Các mục nhập Excel khác không trả field này.
-export type ImportResult = { successCount: number; zeroedCount?: number; errors: ImportRowError[] };
+export type ImportResult = { successCount: number; zeroedCount?: number; duplicateCount?: number; errors: ImportRowError[] };
 
 // Card nhập Excel dùng chung cho mọi mục ở trang "Nhập liệu trực tiếp" (/settings/data-import) —
 // generalize từ warehouses/rooms/[roomId]/import-export-shelves-dialog.tsx (dialog cho 1 phòng) sang
@@ -62,7 +64,7 @@ export default function ExcelImportCard({
       // Server lỗi (VD 500 do timeout DB) có thể trả về trang lỗi HTML thay vì JSON — res.json() sẽ ném
       // exception. Bắt riêng để LUÔN báo được cho NV thay vì im lặng như file chưa từng được nhập (rất dễ
       // hiểu nhầm là đã thành công vì không thấy lỗi gì).
-      let json: { successCount?: number; zeroedCount?: number; errors?: ImportRowError[]; message?: string };
+      let json: { successCount?: number; zeroedCount?: number; duplicateCount?: number; errors?: ImportRowError[]; message?: string };
       try {
         json = await res.json();
       } catch {
@@ -78,7 +80,8 @@ export default function ExcelImportCard({
       if (importResult.errors.length === 0) {
         const label = successLabel ? successLabel(importResult.successCount) : `Đã nhập ${importResult.successCount} dòng`;
         const zeroedSuffix = importResult.zeroedCount ? ` — kèm ${importResult.zeroedCount} lô trùng dữ liệu bị dồn về 0` : "";
-        toast.success(`${label}${zeroedSuffix}`);
+        const duplicateSuffix = importResult.duplicateCount ? ` — bỏ qua ${importResult.duplicateCount} dòng trùng đã nhập trước đó` : "";
+        toast.success(`${label}${zeroedSuffix}${duplicateSuffix}`);
       } else {
         // File có dòng lỗi = KHÔNG ghi gì cả (xem các route /api/data-import/*) — báo rõ chưa nhập được
         // gì, tránh hiểu nhầm "đã nhập 0 dòng" là hệ thống có lỗi, thay vì hiểu đúng là cần sửa & tải lại.
@@ -130,7 +133,7 @@ export default function ExcelImportCard({
             <p className={`text-sm font-medium ${result.errors.length > 0 ? "text-destructive" : "text-foreground"}`}>
               {result.errors.length > 0
                 ? `Chưa nhập được gì — file có ${result.errors.length} dòng lỗi, cần sửa hết rồi tải lên lại`
-                : `Đã nhập ${result.successCount} dòng${result.zeroedCount ? ` — kèm ${result.zeroedCount} lô trùng dữ liệu bị dồn về 0` : ""}`}
+                : `Đã nhập ${result.successCount} dòng${result.zeroedCount ? ` — kèm ${result.zeroedCount} lô trùng dữ liệu bị dồn về 0` : ""}${result.duplicateCount ? ` — bỏ qua ${result.duplicateCount} dòng trùng đã nhập trước đó` : ""}`}
             </p>
             {result.errors.length > 0 && (
               <div className="max-h-56 overflow-y-auto border border-divider rounded-lg divide-y divide-divider">
