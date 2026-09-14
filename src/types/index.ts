@@ -730,6 +730,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/market-receive", label: "Nhận hàng Kho thành phẩm", icon: "PackageCheck" },
+    { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

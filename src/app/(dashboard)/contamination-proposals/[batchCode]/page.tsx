@@ -13,7 +13,7 @@ export default async function ContaminationProposalBatchPage({
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/contamination-proposals"))) redirect("/dashboard");
-  if (role !== "KHO_MO" && !isAdminRole(role) && !isKhoThanhPhamRole(role)) redirect("/dashboard");
+  if (role !== "KHO_MO" && !isAdminRole(role) && !isKhoThanhPhamRole(role) && role !== "DOI_TAC_VAN_HANH") redirect("/dashboard");
 
   const { batchCode } = await params;
 
@@ -26,7 +26,7 @@ export default async function ContaminationProposalBatchPage({
       </div>
       <BatchDetailBoard
         batchCode={batchCode}
-        canSubmit={role === "KHO_MO" || isKhoThanhPhamRole(role)}
+        canSubmit={role === "KHO_MO" || isKhoThanhPhamRole(role) || role === "DOI_TAC_VAN_HANH"}
         canApprove={isAdminRole(role)}
         currentUserId={session?.user?.id}
         currentUserRole={role}

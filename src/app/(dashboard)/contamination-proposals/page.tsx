@@ -12,10 +12,11 @@ export default async function ContaminationProposalsPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/contamination-proposals"))) redirect("/dashboard");
-  if (role !== "KHO_MO" && !isAdminRole(role) && !isKhoThanhPhamRole(role)) redirect("/dashboard");
+  if (role !== "KHO_MO" && !isAdminRole(role) && !isKhoThanhPhamRole(role) && role !== "DOI_TAC_VAN_HANH") redirect("/dashboard");
 
-  const canSubmit = role === "KHO_MO" || isKhoThanhPhamRole(role);
+  const canSubmit = role === "KHO_MO" || isKhoThanhPhamRole(role) || role === "DOI_TAC_VAN_HANH";
   const isFinishedGoods = isKhoThanhPhamRole(role);
+  const isMarketPartner = role === "DOI_TAC_VAN_HANH";
 
   const [rooms, gardens] = await Promise.all([
     isFinishedGoods && session?.user?.workplaceWarehouseId
@@ -39,9 +40,11 @@ export default async function ContaminationProposalsPage() {
         <p className="text-text-secondary text-sm mt-1">
           {isFinishedGoods
             ? "Chọn phòng, chọn lô hàng thực tế, nhập số lượng Trồng/Hủy rồi gửi Admin duyệt."
-            : canSubmit
-              ? "Lịch sử các đề xuất đã gửi Admin duyệt — tạo đề xuất mới ở mục \"Kiểm tra kho nhiễm cá nhân\" trong Nhiệm vụ ngày"
-              : "Duyệt các đề xuất Trồng/Hủy do Kho mô/Kho thành phẩm gửi lên"}
+            : isMarketPartner
+              ? "Lịch sử các đề xuất đã gửi Admin duyệt — tạo đề xuất mới ở mục \"Công việc hôm nay của bạn\" tại Tổng quan"
+              : canSubmit
+                ? "Lịch sử các đề xuất đã gửi Admin duyệt — tạo đề xuất mới ở mục \"Kiểm tra kho nhiễm cá nhân\" trong Nhiệm vụ ngày"
+                : "Duyệt các đề xuất Trồng/Hủy do Kho mô/Kho thành phẩm/Đối tác vận hành gửi lên"}
         </p>
       </div>
 

@@ -665,6 +665,11 @@ export default async function DashboardPage() {
     return <KhoDashboard stats={stats} role={role} myTasks={myTasks} />;
   }
 
+  if (role === "DOI_TAC_VAN_HANH") {
+    const myTasks = await getMyPendingTasks(userId);
+    return <DoiTacVanHanhDashboard myTasks={myTasks} userName={session?.user?.name ?? ""} />;
+  }
+
   if (role === "CAY_MO") {
     const stats = await getCayMoStats(userId);
     return <CayMoDashboard stats={stats} userName={session?.user?.name ?? ""} />;
@@ -1350,6 +1355,55 @@ function KhoDashboard({
                     <DailyTaskCompleteDialog taskId={t.dailyTaskId} code={t.dailyTaskCode} type={t.dailyTaskType} subtitle={t.description} />
                   ) : (
                     <Link href={t.href}>
+                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Dashboard Đối tác vận hành — chỉ 1 khối "Công việc hôm nay của bạn" (3 việc/tuần tự sinh + tự gán
+// thẳng, xem ensureWeeklyMarketInspectionTask), tái dùng đúng markup/luồng "Thực hiện nhiệm vụ" của
+// KhoDashboard (Kho thành phẩm) — không có phần thống kê tồn kho vì Đối tác vận hành không quản lý tồn
+// kiểu đó, và không có bước "Xác nhận nhận việc" vì việc luôn tự gán thẳng (assignmentConfirmedAt set
+// sẵn lúc tạo).
+function DoiTacVanHanhDashboard({ myTasks, userName }: { myTasks: MyTask[]; userName: string }) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
+        <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS.DOI_TAC_VAN_HANH}</p>
+      </div>
+      <GreetingBanner />
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Công việc hôm nay của bạn</CardTitle>
+          <p className="text-xs text-text-secondary">Kiểm tra định kì hàng tuần — tự động tạo, gửi đề xuất Trồng/Hủy cho Admin duyệt</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {myTasks.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-4">Chưa có việc nào trong tuần này</p>
+          ) : (
+            myTasks.map((t, i) => (
+              <div key={t.key} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-border">
+                <div className="min-w-0 flex items-center gap-2 flex-1">
+                  <span className="text-sm font-bold text-primary-strong shrink-0">{i + 1}.</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                    <p className="text-xs text-text-secondary truncate">{t.description}</p>
+                  </div>
+                  <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {t.dailyTaskId && (
+                    <Link href={`/task-assignment/de-xuat/${t.dailyTaskId}`}>
                       <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
                     </Link>
                   )}

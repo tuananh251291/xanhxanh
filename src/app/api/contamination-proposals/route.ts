@@ -5,6 +5,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { generateContaminationProposalCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
+import { MARKET_ROOM_TYPES } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -48,8 +49,9 @@ export async function GET(req: NextRequest) {
   // Dòng nháp (status DRAFT, chưa "Gửi đề xuất trồng/hủy") không hiện ở danh sách chung — xem
   // GET /api/contamination-proposal-drafts cho phiếu chung đang gộp dở của Kho mô.
   const where: Record<string, unknown> = status ? { status } : { status: { not: "DRAFT" } };
-  // Kho mô/Kho thành phẩm chỉ thấy đề xuất của đúng kho mình đang làm việc — Admin thấy tất cả để duyệt.
-  if (role === "KHO_MO" || isKhoThanhPhamRole(role)) {
+  // Kho mô/Kho thành phẩm/Đối tác vận hành chỉ thấy đề xuất của đúng kho mình đang làm việc — Admin thấy
+  // tất cả để duyệt.
+  if (role === "KHO_MO" || isKhoThanhPhamRole(role) || role === "DOI_TAC_VAN_HANH") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
     where.warehouseId = session.user.workplaceWarehouseId;
   } else if (!isAdminRole(role)) {
@@ -70,8 +72,9 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   const isFinishedGoods = isKhoThanhPhamRole(role);
-  if (role !== "KHO_MO" && !isFinishedGoods) {
-    return NextResponse.json({ message: "Chỉ NV kho mô hoặc Kho thành phẩm mới có quyền gửi đề xuất" }, { status: 403 });
+  const isMarketPartner = role === "DOI_TAC_VAN_HANH";
+  if (role !== "KHO_MO" && !isFinishedGoods && !isMarketPartner) {
+    return NextResponse.json({ message: "Chỉ NV kho mô, Kho thành phẩm hoặc Đối tác vận hành mới có quyền gửi đề xuất" }, { status: 403 });
   }
   if (!session!.user.workplaceWarehouseId) {
     return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc — không thể gửi đề xuất" }, { status: 403 });
@@ -97,6 +100,25 @@ export async function POST(req: NextRequest) {
     }
     const room = await prisma.room.findUnique({ where: { id: roomId } });
     if (!room || room.warehouseId !== warehouseId || !(FINISHED_GOODS_ROOM_TYPES as readonly string[]).includes(room.type)) {
+      return NextResponse.json({ message: "Phòng không hợp lệ" }, { status: 400 });
+    }
+    const lot = await prisma.lot.findFirst({ where: { roomId, plantTypeId, stageCode, status: "ACTIVE" } });
+    if (!lot || lot.quantity < quantity) {
+      return NextResponse.json(
+        { message: `${room.name} không có đủ số lượng cho mã cây/quy cách này (còn ${lot?.quantity ?? 0})` },
+        { status: 400 }
+      );
+    }
+    lotId = lot.id;
+    sourceRoomId = room.id;
+    sourceRoomName = room.name;
+  } else if (isMarketPartner) {
+    // Đối tác vận hành ở Kho thị trường — KHÔNG bắt buộc chọn Vườn sản xuất kể cả với đề xuất Trồng
+    // (khác hẳn Kho thành phẩm) vì kho thị trường không gắn với 1 vườn cụ thể nào, xem
+    // de-xuat-execute-form.tsx (gardens=[] cho vai trò này).
+    if (!roomId) return NextResponse.json({ message: "Chưa chọn phòng" }, { status: 400 });
+    const room = await prisma.room.findUnique({ where: { id: roomId } });
+    if (!room || room.warehouseId !== warehouseId || !(MARKET_ROOM_TYPES as readonly string[]).includes(room.type)) {
       return NextResponse.json({ message: "Phòng không hợp lệ" }, { status: 400 });
     }
     const lot = await prisma.lot.findFirst({ where: { roomId, plantTypeId, stageCode, status: "ACTIVE" } });

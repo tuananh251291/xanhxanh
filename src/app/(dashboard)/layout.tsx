@@ -14,6 +14,7 @@ import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { ensureMediumOrdersSent } from "@/lib/medium-order-lifecycle";
 import { ensureCustomerAutoExpire, ensureCustomerStatusReminders } from "@/lib/customer-lifecycle";
 import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-task-weekly";
+import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMonthlyInspectionLaneUpdate } from "@/lib/inspection-lane";
 
@@ -41,6 +42,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);
   if (isKhoThanhPhamRole(role)) {
     await ensureWeeklyDeXuatTask(session.user.workplaceWarehouseId);
+    await ensureDeXuatTaskCompletion(session.user.workplaceWarehouseId);
+  }
+  if (role === "DOI_TAC_VAN_HANH") {
+    await ensureWeeklyMarketInspectionTask(session.user.workplaceWarehouseId);
     await ensureDeXuatTaskCompletion(session.user.workplaceWarehouseId);
   }
 

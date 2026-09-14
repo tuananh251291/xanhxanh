@@ -65,7 +65,9 @@ export default function DeXuatExecuteForm({
     if (rows.length === 0) { toast.error("Chưa nhập số lượng dòng nào"); return; }
     for (const r of rows) {
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
-      if (r.trong > 0 && !productionGardenId) { toast.error("Chưa chọn Vườn sản xuất cho dòng Trồng"); return; }
+      // Không bắt buộc chọn Vườn sản xuất khi không có vườn nào để chọn (Đối tác vận hành ở Kho thị
+      // trường — xem page.tsx truyền gardens=[] cho trường hợp này).
+      if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error("Chưa chọn Vườn sản xuất cho dòng Trồng"); return; }
     }
 
     setSubmitting(true);
@@ -88,7 +90,9 @@ export default function DeXuatExecuteForm({
               quantity: c.quantity,
               batchCode,
               dailyTaskId: taskId,
-              productionGardenId: c.type === "TRONG" ? productionGardenId : undefined,
+              // productionGardenId (state) có thể là null (chưa chọn/không có vườn nào, xem gardens.length
+              // === 0) — gửi undefined thay vì null vì z.string().optional() không nhận null.
+              productionGardenId: c.type === "TRONG" && productionGardenId ? productionGardenId : undefined,
             }),
           });
           if (!res.ok) { toast.error((await res.json()).message ?? "Có dòng gửi thất bại"); continue; }
@@ -190,21 +194,23 @@ export default function DeXuatExecuteForm({
                   </table>
                 </div>
 
-                <div className="space-y-1 max-w-sm">
-                  <Label>Vườn sản xuất <span className="text-text-muted font-normal">(áp dụng cho mọi dòng Trồng đã nhập)</span></Label>
-                  <Select
-                    items={gardens.map((g) => ({ value: g.id, label: `${g.name} (${g.code})` }))}
-                    value={productionGardenId}
-                    onValueChange={(v) => setProductionGardenId(v as string)}
-                  >
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Chọn vườn" /></SelectTrigger>
-                    <SelectContent>
-                      {gardens.map((g) => (
-                        <SelectItem key={g.id} value={g.id}>{g.name} ({g.code})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {gardens.length > 0 && (
+                  <div className="space-y-1 max-w-sm">
+                    <Label>Vườn sản xuất <span className="text-text-muted font-normal">(áp dụng cho mọi dòng Trồng đã nhập)</span></Label>
+                    <Select
+                      items={gardens.map((g) => ({ value: g.id, label: `${g.name} (${g.code})` }))}
+                      value={productionGardenId}
+                      onValueChange={(v) => setProductionGardenId(v as string)}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Chọn vườn" /></SelectTrigger>
+                      <SelectContent>
+                        {gardens.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>{g.name} ({g.code})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <Button className="w-full bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting}>
                   {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}

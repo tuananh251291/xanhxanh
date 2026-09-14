@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { isAdminRole } from "@/types";
 import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
+import { MARKET_ROOM_TYPES } from "@/lib/market-inspection";
 import { getDeXuatDeadline } from "@/lib/daily-task-weekly";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -27,16 +28,22 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
   if (task.assignedToId !== session.user.id && !isManager) redirect("/task-assignment");
   if (task.status !== "PENDING") redirect("/task-assignment");
 
+  // Đối tác vận hành ở Kho thị trường có 3 phòng cố định KHÁC HẲN 4 loại phòng Kho thành phẩm — và không
+  // chọn Vườn sản xuất cho đề xuất Trồng (gardens rỗng, xem POST /api/contamination-proposals nhánh
+  // isMarketPartner) vì kho thị trường không gắn với 1 Vườn sản xuất cụ thể nào.
+  const isMarketPartner = role === "DOI_TAC_VAN_HANH";
   const workplaceWarehouseId = session.user.workplaceWarehouseId;
   const [rooms, gardens] = await Promise.all([
     workplaceWarehouseId
       ? prisma.room.findMany({
-          where: { warehouseId: workplaceWarehouseId, type: { in: FINISHED_GOODS_ROOM_TYPES }, isActive: true },
+          where: { warehouseId: workplaceWarehouseId, type: { in: isMarketPartner ? MARKET_ROOM_TYPES : FINISHED_GOODS_ROOM_TYPES }, isActive: true },
           select: { id: true, name: true, type: true },
           orderBy: { type: "asc" },
         })
       : [],
-    prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
+    isMarketPartner
+      ? Promise.resolve([])
+      : prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
   const deadlineLabel = task.weekStart

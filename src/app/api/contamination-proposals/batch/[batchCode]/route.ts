@@ -29,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ batc
   const { batchCode } = await params;
 
   const where: Prisma.ContaminationProposalWhereInput = batchWhere(batchCode);
-  if (role === "KHO_MO" || isKhoThanhPhamRole(role)) {
+  if (role === "KHO_MO" || isKhoThanhPhamRole(role) || role === "DOI_TAC_VAN_HANH") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
     where.warehouseId = session.user.workplaceWarehouseId;
   } else if (!isAdminRole(role)) {
