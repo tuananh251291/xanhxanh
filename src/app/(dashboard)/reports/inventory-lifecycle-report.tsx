@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { differenceInCalendarDays } from "date-fns";
 import { getWeekBuckets, bucketIndexForDate, isNearExpiry } from "@/lib/report-utils";
-import { ROOM_TYPE_LABELS } from "@/types";
+import { ROOM_TYPE_LABELS, STAGE_LABELS } from "@/types";
 import type { RoomType } from "@prisma/client";
 import ReportBarChart from "./charts/report-bar-chart";
 import ReportLineChart from "./charts/report-line-chart";
@@ -17,6 +17,8 @@ export default async function InventoryLifecycleReport() {
     where: { status: "ACTIVE" },
     select: {
       code: true,
+      stage: true,
+      quantity: true,
       enteredAt: true,
       expectedMoveAt: true,
       plantType: { select: { name: true } },
@@ -40,11 +42,20 @@ export default async function InventoryLifecycleReport() {
     "Tuổi TB (ngày)": Math.round(e.total / e.count),
   }));
 
-  // (b) Danh sách sắp/quá hạn
+  // (b) Danh sách sắp/quá hạn — gồm CẢ Mẫu mẹ (KY_THUAT ra chỉ định cấy chuyển) lẫn Thành phẩm (Kho mô
+  // chuyển kho thành phẩm), phân biệt bằng cột "Giai đoạn" vì cùng 1 danh sách trộn cả 2. Tính tổng số
+  // lượng ĐÃ quá hạn (không phải chỉ đếm số lô) riêng theo từng giai đoạn TRÊN TOÀN BỘ danh sách trước khi
+  // cắt còn 15 dòng hiển thị — để tổng luôn đúng dù bảng chi tiết bị giới hạn.
   const nearExpiryLots = activeLots
     .filter((l) => isNearExpiry(l.expectedMoveAt))
-    .sort((a, b) => (a.expectedMoveAt?.getTime() ?? 0) - (b.expectedMoveAt?.getTime() ?? 0))
-    .slice(0, 15);
+    .sort((a, b) => (a.expectedMoveAt?.getTime() ?? 0) - (b.expectedMoveAt?.getTime() ?? 0));
+  const overdueMotherQuantity = nearExpiryLots
+    .filter((l) => l.stage === "MAU_ME" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
+    .reduce((sum, l) => sum + l.quantity, 0);
+  const overdueFinishedQuantity = nearExpiryLots
+    .filter((l) => l.stage === "THANH_PHAM" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
+    .reduce((sum, l) => sum + l.quantity, 0);
+  const displayedLots = nearExpiryLots.slice(0, 15);
 
   // (c) Lô nhập kho theo tuần
   const enteredByWeek = buckets.map(() => 0);
@@ -85,6 +96,20 @@ export default async function InventoryLifecycleReport() {
           <p className="text-sm text-text-secondary">Còn ≤3 ngày hoặc đã quá hạn dự kiến chuyển giai đoạn</p>
         </CardHeader>
         <CardContent className="p-0">
+          {(overdueMotherQuantity > 0 || overdueFinishedQuantity > 0) && (
+            <div className="flex flex-wrap gap-3 px-4 pb-3">
+              {overdueMotherQuantity > 0 && (
+                <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
+                  <strong>{overdueMotherQuantity.toLocaleString("vi-VN")} cụm mẫu mẹ</strong> đã quá hạn cấy chuyển (chưa ra chỉ định cấy)
+                </p>
+              )}
+              {overdueFinishedQuantity > 0 && (
+                <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
+                  <strong>{overdueFinishedQuantity.toLocaleString("vi-VN")} cây thành phẩm</strong> đã quá hạn chuyển kho thành phẩm
+                </p>
+              )}
+            </div>
+          )}
           {nearExpiryLots.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-6">Không có lô nào sắp/quá hạn</p>
           ) : (
@@ -94,17 +119,21 @@ export default async function InventoryLifecycleReport() {
                   <tr className="bg-primary-light">
                     <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã lô</th>
                     <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Loại cây</th>
+                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Giai đoạn</th>
+                    <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Số lượng</th>
                     <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {nearExpiryLots.map((lot) => {
+                  {displayedLots.map((lot) => {
                     const daysLeft = lot.expectedMoveAt ? differenceInCalendarDays(lot.expectedMoveAt, new Date()) : null;
                     const overdue = daysLeft !== null && daysLeft < 0;
                     return (
                       <tr key={lot.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                         <td className="px-3 py-2 font-mono">{lot.code}</td>
                         <td className="px-3 py-2">{lot.plantType.name}</td>
+                        <td className="px-3 py-2 text-text-secondary">{STAGE_LABELS[lot.stage]}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{lot.quantity.toLocaleString("vi-VN")}</td>
                         <td className="px-3 py-2 text-right">
                           <Badge className={overdue ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
                             {overdue ? `Quá hạn ${Math.abs(daysLeft!)} ngày` : `Còn ${daysLeft} ngày`}
@@ -115,6 +144,11 @@ export default async function InventoryLifecycleReport() {
                   })}
                 </tbody>
               </table>
+              {nearExpiryLots.length > displayedLots.length && (
+                <p className="text-xs text-text-muted text-center py-2">
+                  Hiển thị {displayedLots.length}/{nearExpiryLots.length} lô gần hạn nhất — xem tổng số lượng quá hạn ở trên
+                </p>
+              )}
             </div>
           )}
         </CardContent>
