@@ -16,6 +16,7 @@ import { ensureCustomerAutoExpire, ensureCustomerStatusReminders } from "@/lib/c
 import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-task-weekly";
 import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
+import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
 import { ensureMonthlyInspectionLaneUpdate } from "@/lib/inspection-lane";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (role === "KY_THUAT") {
     await ensureMotherReadyAlerts();
     await ensureRootingForecastReminder(session.user.workplaceWarehouseId);
+    await ensureMotherForecastReminder(session.user.workplaceWarehouseId);
+    await ensureMotherOutputShortfallAlerts(session.user.workplaceWarehouseId);
   }
   if (role === "KHO_MO") await ensureRootingReadyAlerts();
   if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);

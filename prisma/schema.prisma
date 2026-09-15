@@ -258,6 +258,24 @@ enum AlertType {
   // tiếp theo ở trạng thái DRAFT (đầu vào = mẫu mẹ trả ra kì trước), chỉ cần vào xác nhận ngày bắt đầu —
   // báo cho đúng Admin kỹ thuật đó (userId), xem createNextRndRound (src/lib/rnd-instruction-chain.ts).
   RND_NEXT_ROUND_READY
+  // Báo nhiệm vụ "Dự kiến đáp ứng mẫu mẹ" (lộ trình 3 tháng/lần, xem ensureMotherForecastReminder,
+  // src/lib/mother-forecast.ts) đã MỞ và chưa nộp — CÙNG quy ước ROOTING_FORECAST_MONTHLY_DUE nhưng epoch
+  // chu kỳ riêng, báo đúng NV Kỹ thuật đang gán cơ sở sản xuất đó (userId).
+  MOTHER_FORECAST_MONTHLY_DUE
+  // Sản lượng mẫu mẹ THỰC TẾ tháng này (1 dòng mã cây + NV cấy mô) tụt dưới 90% so với kế hoạch tính theo
+  // tiến độ ngày làm việc đã qua (xem ensureMotherOutputShortfallAlerts/computeMotherShortfallRows,
+  // src/lib/mother-forecast.ts) — báo NV Kỹ thuật đã lập kế hoạch đó (userId), 1 lần/dòng/tháng. Admin kỹ
+  // thuật + Admin cấp cao xem qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES), không nhận alert cá
+  // nhân — Alert.targetRole hiện không hỗ trợ ADMIN_KY_THUAT.
+  MOTHER_OUTPUT_SHORTFALL
+  // NV Kỹ thuật gửi đề xuất chỉnh sửa "Dự kiến đáp ứng mẫu mẹ" (sau khi đã khoá, hoặc từ danh sách tụt kế
+  // hoạch) — báo Admin kỹ thuật + Admin cấp cao (userId từng người, KHÔNG dùng targetRole vì
+  // ADMIN_KY_THUAT chưa có trong danh sách hỗ trợ) vào duyệt, xem POST /api/mother-forecast-edit-proposals.
+  MOTHER_FORECAST_EDIT_PROPOSAL
+  // Admin kỹ thuật/Admin cấp cao duyệt đề xuất chỉnh sửa mẫu mẹ — báo đúng NV đã gửi (userId).
+  MOTHER_FORECAST_EDIT_APPROVED
+  // Admin kỹ thuật/Admin cấp cao từ chối đề xuất chỉnh sửa mẫu mẹ — báo đúng NV đã gửi (userId), kèm lý do.
+  MOTHER_FORECAST_EDIT_REJECTED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -415,6 +433,12 @@ model User {
   rootingForecastEditProposalsRequested RootingForecastEditProposal[] @relation("RootingForecastEditProposalRequestedBy")
   rootingForecastEditProposalsReviewed  RootingForecastEditProposal[] @relation("RootingForecastEditProposalReviewedBy")
   rootingForecastEditProposalItems      RootingForecastEditProposalItem[] @relation("RootingForecastEditProposalItemStaff")
+  motherForecastEntriesEntered          MotherForecastEntry[] @relation("MotherForecastEnteredBy")
+  motherForecastEntriesAssigned         MotherForecastEntry[] @relation("MotherForecastAssignedStaff")
+  motherForecastSubmissions             MotherForecastSubmission[]
+  motherForecastEditProposalsRequested  MotherForecastEditProposal[] @relation("MotherForecastEditProposalRequestedBy")
+  motherForecastEditProposalsReviewed   MotherForecastEditProposal[] @relation("MotherForecastEditProposalReviewedBy")
+  motherForecastEditProposalItems       MotherForecastEditProposalItem[] @relation("MotherForecastEditProposalItemStaff")
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -709,6 +733,8 @@ model PlantType {
   rootingForecastEntries     RootingForecastEntry[]
   rootingForecastEditProposalItems RootingForecastEditProposalItem[]
   marketExportItems          MarketExportItem[]
+  motherForecastEntries      MotherForecastEntry[]
+  motherForecastEditProposalItems MotherForecastEditProposalItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -981,6 +1007,9 @@ model Warehouse {
   rootingForecastSubmissions  RootingForecastSubmission[]
   rootingForecastEditProposals RootingForecastEditProposal[]
   marketExports               MarketExport[]
+  motherForecastEntries       MotherForecastEntry[]
+  motherForecastSubmissions   MotherForecastSubmission[]
+  motherForecastEditProposals MotherForecastEditProposal[]
 
   @@map("warehouses")
 }
@@ -2695,6 +2724,94 @@ model RootingForecastEditProposalItem {
   quantity3       Int
 
   @@map("rooting_forecast_edit_proposal_items")
+}
+
+// Nhiệm vụ tháng "Dự kiến đáp ứng mẫu mẹ" cho NV Kỹ thuật — CÙNG cơ chế RootingForecastEntry (lộ trình 3
+// tháng/lần, nộp 1 lần rồi khoá, sửa sau đó qua MotherForecastEditProposal) nhưng theo dõi sản lượng MẪU
+// MẸ (stage MAU_ME) thay vì thành phẩm ra rễ — xem src/lib/mother-forecast.ts (epoch chu kỳ riêng, KHÔNG
+// dùng chung ROOTING_FORECAST_CYCLE_EPOCH). Mỗi dòng = 1 (mã cây, NV cấy mô) — dùng LÀM CĂN CỨ để so sánh
+// với sản lượng mẫu mẹ thực tế đã cấy trong THÁNG HIỆN TẠI (không phải taskMonth tương lai — xem
+// computeMotherShortfallRows) và cảnh báo MOTHER_OUTPUT_SHORTFALL nếu tụt dưới 90%.
+model MotherForecastEntry {
+  id              String    @id @default(cuid())
+  warehouseId     String
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+  plantTypeId     String
+  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
+  taskMonth       DateTime  @db.Date
+  assignedStaffId String
+  assignedStaff   User      @relation("MotherForecastAssignedStaff", fields: [assignedStaffId], references: [id])
+  quantity1       Int
+  quantity2       Int
+  quantity3       Int
+  enteredById     String
+  enteredBy       User      @relation("MotherForecastEnteredBy", fields: [enteredById], references: [id])
+  enteredAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([warehouseId, plantTypeId, taskMonth, assignedStaffId])
+  @@map("mother_forecast_entries")
+}
+
+// Đánh dấu 1 (cơ sở, tháng) ĐÃ NỘP "Dự kiến đáp ứng mẫu mẹ" — có dòng này = khoá cứng MotherForecastEntry
+// của đúng (warehouseId, taskMonth) đó, xem comment ở model đó.
+model MotherForecastSubmission {
+  id            String    @id @default(cuid())
+  warehouseId   String
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
+  taskMonth     DateTime  @db.Date
+  submittedById String
+  submittedBy   User      @relation(fields: [submittedById], references: [id])
+  submittedAt   DateTime  @default(now())
+
+  @@unique([warehouseId, taskMonth])
+  @@map("mother_forecast_submissions")
+}
+
+enum MotherForecastEditProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// NV Kỹ thuật đề xuất thêm/sửa dòng "Dự kiến đáp ứng mẫu mẹ" SAU KHI đã khoá — KHÁC RootingForecastEditProposal
+// ở quyền duyệt: Admin KỸ THUẬT + Admin cấp cao duyệt được (không chặn ADMIN_KY_THUAT như bên cây ra rễ,
+// vì đây là số liệu sản xuất/kỹ thuật thuần tuý). Duyệt thì mới thực sự upsert vào MotherForecastEntry (qua
+// applyForecastEntry, src/lib/mother-forecast.ts).
+model MotherForecastEditProposal {
+  id              String    @id @default(cuid())
+  warehouseId     String
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+  taskMonth       DateTime  @db.Date
+  reason          String
+  status          MotherForecastEditProposalStatus @default(PENDING)
+  requestedById   String
+  requestedBy     User      @relation("MotherForecastEditProposalRequestedBy", fields: [requestedById], references: [id])
+  reviewedById    String?
+  reviewedBy      User?     @relation("MotherForecastEditProposalReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+
+  items MotherForecastEditProposalItem[]
+
+  @@map("mother_forecast_edit_proposals")
+}
+
+// 1 dòng đề xuất thêm/sửa — cùng hình dạng (mã cây, NV cấy mô, quantity1/2/3) với MotherForecastEntry.
+model MotherForecastEditProposalItem {
+  id              String   @id @default(cuid())
+  proposalId      String
+  proposal        MotherForecastEditProposal @relation(fields: [proposalId], references: [id])
+  plantTypeId     String
+  plantType       PlantType @relation(fields: [plantTypeId], references: [id])
+  assignedStaffId String
+  assignedStaff   User      @relation("MotherForecastEditProposalItemStaff", fields: [assignedStaffId], references: [id])
+  quantity1       Int
+  quantity2       Int
+  quantity3       Int
+
+  @@map("mother_forecast_edit_proposal_items")
 }
 
 // ============================================================

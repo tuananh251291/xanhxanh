@@ -413,6 +413,11 @@ export const ALERT_TYPE_LABELS = {
   INSTRUCTION_RETURNED_UNHANDED: "Chỉ định cấy được hoàn lại",
   DE_XUAT_TRONG_HUY_WEEKLY_DUE: "Nhắc hạn Đề xuất trồng/hủy tuần",
   RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
+  MOTHER_FORECAST_MONTHLY_DUE: "Nhiệm vụ Dự kiến đáp ứng mẫu mẹ đến hạn",
+  MOTHER_OUTPUT_SHORTFALL: "Sản lượng mẫu mẹ tụt dưới kế hoạch",
+  MOTHER_FORECAST_EDIT_PROPOSAL: "Đề xuất chỉnh sửa kế hoạch mẫu mẹ",
+  MOTHER_FORECAST_EDIT_APPROVED: "Đề xuất chỉnh sửa mẫu mẹ đã duyệt",
+  MOTHER_FORECAST_EDIT_REJECTED: "Đề xuất chỉnh sửa mẫu mẹ bị từ chối",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -434,6 +439,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "CONTAMINATION_PROPOSAL", "INSPECTION_RESULT_READY", "ACCOUNT_LOCKED", "PASSWORD_RESET_REQUESTED",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
     "ROOTING_FORECAST_MONTHLY_DUE", "ROOTING_FORECAST_EDIT_PROPOSAL",
+    "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
   ],
   ADMIN: [
     "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED", "STOCK_LOW", "ORDER_PENDING_PACK",
@@ -442,6 +448,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
   ADMIN_KY_THUAT: [
     "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "ROOTING_FORECAST_MONTHLY_DUE",
+    "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
   ],
 };
 
@@ -564,6 +571,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
+    { href: "/mother-forecast-requests", label: "Duyệt đề xuất mẫu mẹ", icon: "PackageCheck" },
     { href: "/transfers/handover-history", label: "Lịch sử phiếu bàn giao", icon: "History" },
     { href: "/instructions/edit", label: "Sửa chỉ định cấy", icon: "PenLine" },
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
@@ -589,7 +597,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // Admin kỹ thuật — y hệt ADMIN ở trên, TRỪ 4 mục: Cài đặt CSDL chung hệ thống, Giám sát & vi phạm, Duyệt
   // đề xuất cây ra rễ, Sửa cập nhật dữ liệu cấy (chặn thêm ngay tại page.tsx của các trang đó dù
   // isAdminRole trả về true cho role này — xem comment UserRole.ADMIN_KY_THUAT ở schema.prisma). Có thêm
-  // mục R&D (/rnd) riêng.
+  // mục R&D (/rnd) riêng + "Duyệt đề xuất mẫu mẹ" (KHÁC "Duyệt đề xuất cây ra rễ" — mục này ADMIN_KY_THUAT
+  // LÀ người duyệt được, xem comment MotherForecastEditProposal ở schema.prisma).
   ADMIN_KY_THUAT: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Người dùng", icon: "Users" },
@@ -597,6 +606,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
+    { href: "/mother-forecast-requests", label: "Duyệt đề xuất mẫu mẹ", icon: "PackageCheck" },
     { href: "/rnd", label: "R&D", icon: "FlaskConical" },
     { href: "/rnd-production", label: "Cấy sản xuất R&D", icon: "Sprout" },
     { href: "/rnd-handover", label: "Bàn giao", icon: "Send" },
@@ -618,6 +628,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/production-record", label: "Số lượng ghi nhận", icon: "Boxes" },
     { href: "/reports/production-capacity", label: "Năng lực sản xuất", icon: "Gauge" },
     { href: "/rooting-forecast", label: "Dự kiến đáp ứng cây ra rễ", icon: "Sprout" },
+    { href: "/mother-forecast", label: "Dự kiến đáp ứng mẫu mẹ", icon: "Layers" },
     { href: "/reports/rooting-plan-vs-actual", label: "Kế hoạch vs thực tế cây ra rễ", icon: "Gauge" },
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },

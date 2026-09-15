@@ -1,0 +1,27 @@
+import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { Layers } from "lucide-react";
+import MotherForecastBoard from "./mother-forecast-board";
+
+export default async function MotherForecastPage() {
+  const session = await auth();
+  if (session?.user?.role !== "KY_THUAT") redirect("/dashboard");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Layers className="w-6 h-6 text-primary-strong" /> Dự kiến đáp ứng mẫu mẹ
+        </h1>
+        <p className="text-text-secondary text-sm mt-1">
+          Điền mã cây, NV cấy mô phụ trách và số lượng mẫu mẹ dự kiến đáp ứng được cho TỪNG THÁNG trong
+          3 THÁNG SAU tại cơ sở sản xuất của bạn — nộp 1 lần cho cả lộ trình 3 tháng, hạn hoàn thành ngày 15
+          (dời sang 16 nếu 15 rơi vào Chủ nhật). Nhiệm vụ tiếp theo mở lại vào ngày 5 của tháng cuối cùng
+          trong lộ trình 3 tháng vừa nộp. Sản lượng mẫu mẹ thực tế tháng hiện tại tụt dưới 90% kế hoạch sẽ
+          hiện trong danh sách bên dưới, kèm nút giải trình/đề xuất sửa kế hoạch các tháng tới.
+        </p>
+      </div>
+      <MotherForecastBoard />
+    </div>
+  );
+}
