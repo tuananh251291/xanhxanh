@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/combobox";
 import { Loader2, Plus, Sprout, Calendar, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
-import { format, addWeeks } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS } from "@/types";
 
@@ -32,9 +32,14 @@ type InstructionRow = {
   inputMotherQuantity: number;
   createdAt: string;
   previousInstructionId: string | null;
-  plantType: { code: string; name: string; transferWaitWeeks: number };
+  plantType: { code: string; name: string };
   items: { motherMedium: { code: string; name: string } | null }[];
 };
+
+// Ngày cấy có thể ở TƯƠNG LAI — Admin kỹ thuật xác nhận trước cho 1 ngày sắp tới (không bắt buộc là hôm
+// nay, xem ConfirmStartDialog), nên phải phân biệt: ngày đã tới (đang/đã cấy thật) hiển thị đậm màu bình
+// thường, ngày còn ở tương lai (mới lên lịch, chưa thật sự diễn ra) hiển thị nhạt màu để dễ nhận biết.
+const isFutureDate = (dateStr: string) => new Date(dateStr) > startOfDay(new Date());
 
 const STATUS_BADGE: Record<string, string> = {
   DRAFT: "bg-warning-light text-warning-foreground",
@@ -85,17 +90,13 @@ export default function RndProductionBoard() {
                     <th className="py-2 px-3 font-bold text-base">Mã cây</th>
                     <th className="py-2 px-3 font-bold text-base">Môi trường</th>
                     <th className="py-2 px-3 font-bold text-base text-center">SL mẫu mẹ</th>
-                    <th className="py-2 px-3 font-bold text-base">Tuần thực hiện</th>
-                    <th className="py-2 px-3 font-bold text-base">Dự kiến đến hạn</th>
+                    <th className="py-2 px-3 font-bold text-base">Ngày cấy</th>
                     <th className="py-2 px-3 font-bold text-base">Trạng thái</th>
                     <th className="py-2 px-3 font-bold text-base"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {instructions.map((inst) => {
-                    const expectedReadyAt = inst.weekStart
-                      ? addWeeks(new Date(inst.weekStart), inst.plantType.transferWaitWeeks)
-                      : null;
                     const medium = inst.items[0]?.motherMedium;
                     return (
                       <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light/30">
@@ -107,10 +108,13 @@ export default function RndProductionBoard() {
                         <td className="py-2 px-3 text-text-secondary">{medium ? `${medium.code} — ${medium.name}` : "—"}</td>
                         <td className="py-2 px-3 text-center tabular-nums">{inst.inputMotherQuantity.toLocaleString("vi-VN")}</td>
                         <td className="py-2 px-3 whitespace-nowrap">
-                          {inst.weekStart ? format(new Date(inst.weekStart), "dd/MM/yyyy", { locale: vi }) : "Chưa xác nhận"}
-                        </td>
-                        <td className="py-2 px-3 whitespace-nowrap text-text-secondary">
-                          {expectedReadyAt ? format(expectedReadyAt, "dd/MM/yyyy", { locale: vi }) : "—"}
+                          {inst.weekStart ? (
+                            <span className={isFutureDate(inst.weekStart) ? "text-text-muted" : "text-foreground"}>
+                              {format(new Date(inst.weekStart), "dd/MM/yyyy", { locale: vi })}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">Chưa xác nhận</span>
+                          )}
                         </td>
                         <td className="py-2 px-3">
                           <Badge className={STATUS_BADGE[inst.status]}>{INSTRUCTION_STATUS_LABELS[inst.status]}</Badge>
