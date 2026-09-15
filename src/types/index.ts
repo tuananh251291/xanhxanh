@@ -616,6 +616,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/overview", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/reports/planting-log-summary", label: "Dữ liệu nhật ký cấy", icon: "BookOpen" },
     { href: "/reports/production-record", label: "Số lượng ghi nhận", icon: "Boxes" },
+    { href: "/reports/production-capacity", label: "Năng lực sản xuất", icon: "Gauge" },
     { href: "/rooting-forecast", label: "Dự kiến đáp ứng cây ra rễ", icon: "Sprout" },
     { href: "/reports/rooting-plan-vs-actual", label: "Kế hoạch vs thực tế cây ra rễ", icon: "Gauge" },
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },

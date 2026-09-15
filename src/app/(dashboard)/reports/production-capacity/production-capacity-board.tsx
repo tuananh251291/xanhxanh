@@ -45,14 +45,17 @@ function periodValueToDateStr(value: string, unit: Unit): string {
   return `${m[1]}-${m[2]}-01`;
 }
 
-export default function ProductionCapacityBoard() {
+// `kyThuatWarehouseId` != null nghĩa là NV Kỹ thuật đang xem — khoá cứng phạm vi về đúng khu sản xuất
+// mình làm việc (không cho chọn "Toàn hệ thống"/"Theo nhân sự" hay kho khác), ép cứng lại lần nữa ở
+// server (route.ts) nên tham số client gửi lên không có tác dụng thay đổi phạm vi thật.
+export default function ProductionCapacityBoard({ kyThuatWarehouseId = null }: { kyThuatWarehouseId?: string | null }) {
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
 
   const [unit, setUnit] = useState<Unit>("week");
   const [plantTypeOption, setPlantTypeOption] = useState<ComboOption | null>(null);
-  const [scopeKind, setScopeKind] = useState<ScopeKind>("all");
+  const [scopeKind, setScopeKind] = useState<ScopeKind>(kyThuatWarehouseId ? "warehouse" : "all");
   const [scopeOption, setScopeOption] = useState<ComboOption | null>(null);
   // Quãng thời gian tự nhập (tuỳ chọn) — để trống cả 2 thì API tự dùng mặc định 10 kỳ gần nhất + 1 kỳ
   // kế tiếp. Nhập theo ĐÚNG đơn vị đang chọn (tuần ISO qua <input type="week">, tháng qua
@@ -75,9 +78,17 @@ export default function ProductionCapacityBoard() {
 
   useEffect(() => {
     fetch("/api/plant-types").then((r) => r.json()).then((d) => setPlantTypes(Array.isArray(d) ? d : []));
-    fetch("/api/warehouses?type=SAN_XUAT").then((r) => r.json()).then((d) => setWarehouses(Array.isArray(d) ? d : []));
-    fetch("/api/users").then((r) => r.json()).then((d) => setStaffList(Array.isArray(d) ? d.filter((u: Staff) => u.role === "CAY_MO") : []));
-  }, []);
+    fetch("/api/warehouses?type=SAN_XUAT")
+      .then((r) => r.json())
+      .then((d: unknown) => {
+        const list = Array.isArray(d) ? (d as Warehouse[]) : [];
+        setWarehouses(kyThuatWarehouseId ? list.filter((w) => w.id === kyThuatWarehouseId) : list);
+      });
+    // NV Kỹ thuật bị khoá cứng về "Theo kho", không dùng tới danh sách nhân sự — bỏ qua fetch để đỡ 1 lượt gọi.
+    if (!kyThuatWarehouseId) {
+      fetch("/api/users").then((r) => r.json()).then((d) => setStaffList(Array.isArray(d) ? d.filter((u: Staff) => u.role === "CAY_MO") : []));
+    }
+  }, [kyThuatWarehouseId]);
 
   const plantTypeOptions = useMemo(
     () => plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` })),
@@ -85,6 +96,12 @@ export default function ProductionCapacityBoard() {
   );
   const warehouseOptions = useMemo(() => warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.name}` })), [warehouses]);
   const staffOptions = useMemo(() => staffList.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })), [staffList]);
+
+  // Tự chọn sẵn đúng kho của NV Kỹ thuật ngay khi danh sách kho (đã lọc còn 1 phần tử) tải xong, để họ
+  // không phải tự bấm chọn kho của chính mình.
+  useEffect(() => {
+    if (kyThuatWarehouseId && warehouseOptions.length > 0 && !scopeOption) setScopeOption(warehouseOptions[0]);
+  }, [kyThuatWarehouseId, warehouseOptions, scopeOption]);
 
   const load = useCallback(async () => {
     if (!plantTypeOption) { setData([]); return; }
@@ -262,23 +279,32 @@ export default function ProductionCapacityBoard() {
               </Combobox>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Phạm vi</Label>
-              <Select
-                items={[{ value: "all", label: "Toàn hệ thống" }, { value: "warehouse", label: "Theo kho" }, { value: "staff", label: "Theo nhân sự" }]}
-                value={scopeKind}
-                onValueChange={(v) => { setScopeKind(v as ScopeKind); setScopeOption(null); }}
-              >
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toàn hệ thống</SelectItem>
-                  <SelectItem value="warehouse">Theo kho</SelectItem>
-                  <SelectItem value="staff">Theo nhân sự</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {kyThuatWarehouseId ? (
+              <div className="space-y-1">
+                <Label className="text-xs">Khu sản xuất</Label>
+                <p className="text-sm font-medium text-foreground h-9 flex items-center px-1">
+                  {warehouseOptions[0]?.label ?? "—"}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs">Phạm vi</Label>
+                <Select
+                  items={[{ value: "all", label: "Toàn hệ thống" }, { value: "warehouse", label: "Theo kho" }, { value: "staff", label: "Theo nhân sự" }]}
+                  value={scopeKind}
+                  onValueChange={(v) => { setScopeKind(v as ScopeKind); setScopeOption(null); }}
+                >
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toàn hệ thống</SelectItem>
+                    <SelectItem value="warehouse">Theo kho</SelectItem>
+                    <SelectItem value="staff">Theo nhân sự</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-            {scopeKind === "warehouse" && (
+            {scopeKind === "warehouse" && !kyThuatWarehouseId && (
               <div className="space-y-1">
                 <Label className="text-xs">Kho sản xuất</Label>
                 <Combobox
@@ -301,7 +327,7 @@ export default function ProductionCapacityBoard() {
               </div>
             )}
 
-            {scopeKind === "staff" && (
+            {scopeKind === "staff" && !kyThuatWarehouseId && (
               <div className="space-y-1">
                 <Label className="text-xs">Nhân sự</Label>
                 <Combobox

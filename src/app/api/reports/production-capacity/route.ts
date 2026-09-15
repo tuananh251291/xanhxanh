@@ -42,7 +42,8 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 // làm việc" NV nhập để ra số nhân sự cần (xem phần "Dự đoán theo kịch bản" ở production-capacity-board.tsx).
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  const role = session?.user?.role ?? null;
+  if (!isAdminRole(role) && role !== "KY_THUAT") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get("unit") === "month" ? "month" : "week";
@@ -54,8 +55,14 @@ export async function GET(req: NextRequest) {
 
   if (!plantTypeId) return NextResponse.json({ message: "Thiếu mã sản phẩm" }, { status: 400 });
 
+  // NV Kỹ thuật chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server (không tin tham số
+  // scope/scopeId từ client), khớp quy ước ở /api/reports/production-record.
   let scope: CapacityScope = { kind: "ALL" };
-  if (scopeParam === "warehouse") {
+  if (role === "KY_THUAT") {
+    const kyThuatWarehouseId = session!.user.workplaceWarehouseId;
+    if (!kyThuatWarehouseId) return NextResponse.json({ message: "Chưa gán khu sản xuất làm việc" }, { status: 400 });
+    scope = { kind: "WAREHOUSE", warehouseId: kyThuatWarehouseId };
+  } else if (scopeParam === "warehouse") {
     if (!scopeId) return NextResponse.json({ message: "Thiếu kho sản xuất" }, { status: 400 });
     scope = { kind: "WAREHOUSE", warehouseId: scopeId };
   } else if (scopeParam === "staff") {
