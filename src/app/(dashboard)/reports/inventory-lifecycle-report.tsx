@@ -22,7 +22,11 @@ export default async function InventoryLifecycleReport() {
       enteredAt: true,
       expectedMoveAt: true,
       plantType: { select: { name: true } },
-      shelf: { select: { room: { select: { type: true } } } },
+      // shelf = lô ở kho sản xuất (Phòng mẫu mẹ/Phòng ra rễ, xếp theo giàn kệ). room = lô ở kho thành
+      // phẩm (không quản lý theo giàn kệ, gắn thẳng vào phòng) — 1 lô chỉ có ĐÚNG 1 trong 2, dùng cả 2 để
+      // ghép ra "đang nằm ở khu vực nào" cho mục (b) bên dưới.
+      shelf: { select: { code: true, room: { select: { type: true, warehouse: { select: { code: true, name: true } } } } } },
+      room: { select: { name: true, warehouse: { select: { code: true, name: true } } } },
     },
   });
 
@@ -58,6 +62,14 @@ export default async function InventoryLifecycleReport() {
   const overdueFinishedQuantity = nearExpiryLots
     .filter((l) => l.stage === "THANH_PHAM" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
     .reduce((sum, l) => sum + l.quantity, 0);
+
+  // "Đang nằm ở khu vực nào" — kho sản xuất (có shelf) hiện Kho + mã giàn kệ, kho thành phẩm (chỉ có
+  // room, không qua giàn kệ) hiện Kho + tên phòng.
+  const locationLabel = (lot: (typeof nearExpiryLots)[number]) => {
+    if (lot.shelf) return `${lot.shelf.room?.warehouse.name ?? "?"} — Kệ ${lot.shelf.code}`;
+    if (lot.room) return `${lot.room.warehouse.name} — ${lot.room.name}`;
+    return "—";
+  };
   const displayedLots = nearExpiryLots.slice(0, 15);
 
   // (c) Lô nhập kho theo tuần
@@ -123,6 +135,7 @@ export default async function InventoryLifecycleReport() {
                     <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã lô</th>
                     <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Loại cây</th>
                     <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Giai đoạn</th>
+                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Khu vực</th>
                     <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Số lượng</th>
                     <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
                   </tr>
@@ -136,6 +149,7 @@ export default async function InventoryLifecycleReport() {
                         <td className="px-3 py-2 font-mono">{lot.code}</td>
                         <td className="px-3 py-2">{lot.plantType.name}</td>
                         <td className="px-3 py-2 text-text-secondary">{STAGE_LABELS[lot.stage]}</td>
+                        <td className="px-3 py-2 text-text-secondary">{locationLabel(lot)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{lot.quantity.toLocaleString("vi-VN")}</td>
                         <td className="px-3 py-2 text-right">
                           <Badge className={overdue ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
