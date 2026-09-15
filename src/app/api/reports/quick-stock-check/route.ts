@@ -120,6 +120,10 @@ export async function GET(req: NextRequest) {
       (sum, inst) => sum + Math.max(0, inst.inputMotherQuantity - (usedByInstruction.get(inst.id) ?? 0)),
       0
     );
+    // "Đang đợi cấy" là 1 trong 3 nhóm cộng ra tổng mẫu mẹ (xem comment đầu file) — phải cộng vào total,
+    // không chỉ hiển thị riêng, nếu không tổng hiện ra sẽ thiếu hẳn phần này (phát hiện qua đối chiếu
+    // thực tế mã MS001, thiếu 805/6.360 cụm — 15/09/2026).
+    total += waitingToPlant;
   }
 
   return NextResponse.json({
