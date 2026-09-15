@@ -153,10 +153,16 @@ export default function ProductionCapacityBoard() {
         <div className="space-y-4">
           <ul className="text-sm text-text-secondary space-y-1.5 list-disc pl-5">
             <li>
-              Biểu đồ vẽ <span className="font-semibold text-foreground">số lũy kế</span> (cộng dồn từ kỳ
-              đầu tiên đang hiển thị trên trục ngang), không phải sản lượng riêng từng kỳ — nên đường luôn
-              đi lên hoặc đi ngang, không đi xuống, dù xem theo Tuần hay Tháng. Đổi &quot;Từ&quot; sẽ đổi
-              luôn mốc bắt đầu cộng dồn.
+              Biểu đồ vẽ <span className="font-semibold text-foreground">số lũy kế</span>, không phải sản
+              lượng riêng từng kỳ. Đường <span className="font-semibold text-foreground">Mẫu mẹ</span> (và{" "}
+              <span className="font-semibold text-foreground">Tổng</span>, vì Tổng = Mẫu mẹ + Thành phẩm) là{" "}
+              <span className="font-semibold text-foreground">tồn mẫu mẹ thực</span> — neo đúng tồn thật
+              tại kỳ hiện tại rồi cộng/trừ theo từng kỳ (tồn cuối kỳ = tồn đầu kỳ − mẫu mẹ đem cấy + mẫu mẹ
+              sinh ra), nên <span className="font-semibold text-foreground">CÓ THỂ đi xuống</span> nếu kỳ đó
+              dùng mẫu mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra. Riêng đường{" "}
+              <span className="font-semibold text-foreground">Thành phẩm</span> là sản lượng thu hoạch cộng
+              dồn từ kỳ đầu tiên đang hiển thị (không phải tồn có sẵn từ trước) nên luôn đi lên hoặc đi
+              ngang.
             </li>
             <li>
               Luôn hiện <span className="font-semibold text-foreground">cả 3 đường</span> cùng lúc, phân
