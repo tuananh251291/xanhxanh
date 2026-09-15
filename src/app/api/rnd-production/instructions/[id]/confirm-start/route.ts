@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { toStoredWeekStart } from "@/lib/week-rotation";
-import { startOfWeek } from "date-fns";
+import { startOfWeek, addWeeks, format } from "date-fns";
 import { z } from "zod";
 
 // Xác nhận ngày bắt đầu cho 1 kì cấy R&D đã được TỰ TẠO SẴN ở trạng thái DRAFT (đầu vào = mẫu mẹ trả ra
@@ -22,7 +22,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const instruction = await prisma.plantingInstruction.findUnique({ where: { id } });
+  const instruction = await prisma.plantingInstruction.findUnique({
+    where: { id },
+    select: {
+      status: true,
+      createdById: true,
+      plantType: { select: { transferWaitWeeks: true } },
+      previousInstruction: { select: { weekStart: true } },
+    },
+  });
   if (!instruction) return NextResponse.json({ message: "Không tìm thấy chỉ định" }, { status: 404 });
   if (instruction.createdById !== session.user.id) {
     return NextResponse.json({ message: "Không phải chỉ định của bạn" }, { status: 403 });
@@ -33,6 +41,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const startDate = new Date(parsed.data.startDate);
   if (Number.isNaN(startDate.getTime())) return NextResponse.json({ message: "Ngày không hợp lệ" }, { status: 400 });
+
+  // Chặn xác nhận sớm hơn ngày mẫu mẹ kì trước THẬT SỰ sẵn sàng (weekStart kì trước + transferWaitWeeks) —
+  // xem comment earliestStartDate ở ConfirmStartDialog (rnd-production-board.tsx), tránh lặp lại lỗi lưu
+  // nhầm ngày bắt đầu là "hôm nay" (ngày này mẫu mẹ còn chưa tồn tại).
+  if (instruction.previousInstruction?.weekStart) {
+    const earliestStartDate = addWeeks(instruction.previousInstruction.weekStart, instruction.plantType.transferWaitWeeks);
+    if (startDate < earliestStartDate) {
+      return NextResponse.json(
+        { message: `Mẫu mẹ kì trước chỉ sẵn sàng từ ${format(earliestStartDate, "dd/MM/yyyy")}, không thể chọn ngày sớm hơn` },
+        { status: 400 }
+      );
+    }
+  }
   const weekStart = toStoredWeekStart(startOfWeek(startDate, { weekStartsOn: 1 }));
 
   const now = new Date();

@@ -33,7 +33,7 @@ export async function GET() {
       inputMotherQuantity: true,
       createdAt: true,
       previousInstructionId: true,
-      plantType: { select: { code: true, name: true } },
+      plantType: { select: { code: true, name: true, transferWaitWeeks: true } },
       items: { select: { motherMedium: { select: { code: true, name: true } } } },
     },
     orderBy: { createdAt: "desc" },

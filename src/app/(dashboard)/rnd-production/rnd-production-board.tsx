@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/combobox";
 import { Loader2, Plus, Sprout, Calendar, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfDay } from "date-fns";
+import { format, startOfDay, addWeeks } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSTRUCTION_STATUS_LABELS } from "@/types";
 
@@ -32,7 +32,7 @@ type InstructionRow = {
   inputMotherQuantity: number;
   createdAt: string;
   previousInstructionId: string | null;
-  plantType: { code: string; name: string };
+  plantType: { code: string; name: string; transferWaitWeeks: number };
   items: { motherMedium: { code: string; name: string } | null }[];
 };
 
@@ -120,7 +120,20 @@ export default function RndProductionBoard() {
                           <Badge className={STATUS_BADGE[inst.status]}>{INSTRUCTION_STATUS_LABELS[inst.status]}</Badge>
                         </td>
                         <td className="py-2 px-3 text-right">
-                          {inst.status === "DRAFT" && <ConfirmStartDialog instructionId={inst.id} onConfirmed={load} />}
+                          {inst.status === "DRAFT" && (
+                            <ConfirmStartDialog
+                              instructionId={inst.id}
+                              earliestStartDate={
+                                inst.previousInstructionId
+                                  ? (() => {
+                                      const prev = instructions.find((i) => i.id === inst.previousInstructionId);
+                                      return prev?.weekStart ? addWeeks(new Date(prev.weekStart), inst.plantType.transferWaitWeeks) : null;
+                                    })()
+                                  : null
+                              }
+                              onConfirmed={load}
+                            />
+                          )}
                           {inst.status === "ACTIVE" && (
                             <Link href={`/rnd-production/${inst.id}`}>
                               <Button type="button" variant="outline" size="sm">
@@ -260,9 +273,20 @@ function CreateInstructionDialog({
   );
 }
 
-function ConfirmStartDialog({ instructionId, onConfirmed }: { instructionId: string; onConfirmed: () => void }) {
+// earliestStartDate = ngày mẫu mẹ kì trước THẬT SỰ sẵn sàng (weekStart kì trước + transferWaitWeeks của
+// chính mã cây này) — trước đây ô ngày mặc định luôn là "hôm nay" (new Date()), Admin kỹ thuật bấm Xác
+// nhận ngay mà không đổi ngày sẽ lưu nhầm 1 ngày mẫu mẹ CHƯA THỂ tồn tại (VD kì trước vừa tạo hôm nay,
+// 6 tuần sau mới có mẫu mẹ nhân tiếp nhưng lại xác nhận đúng hôm nay) — nay mặc định VÀ chặn không cho
+// chọn sớm hơn ngày này (null nếu là chỉ định gốc, không có kì trước, giữ mặc định hôm nay như cũ).
+function ConfirmStartDialog({
+  instructionId, earliestStartDate, onConfirmed,
+}: {
+  instructionId: string;
+  earliestStartDate: Date | null;
+  onConfirmed: () => void;
+}) {
   const [open, setOpen] = useState(false);
-  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [startDate, setStartDate] = useState(format(earliestStartDate ?? new Date(), "yyyy-MM-dd"));
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -295,7 +319,17 @@ function ConfirmStartDialog({ instructionId, onConfirmed }: { instructionId: str
         <div className="space-y-3 mt-2">
           <div className="space-y-1">
             <Label className="text-xs">Ngày bắt đầu <span className="text-destructive">*</span></Label>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Input
+              type="date"
+              value={startDate}
+              min={earliestStartDate ? format(earliestStartDate, "yyyy-MM-dd") : undefined}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            {earliestStartDate && (
+              <p className="text-xs text-text-muted">
+                Mẫu mẹ kì trước chỉ sẵn sàng từ {format(earliestStartDate, "dd/MM/yyyy", { locale: vi })} (đủ thời gian ra rễ) — không chọn được ngày sớm hơn.
+              </p>
+            )}
           </div>
           <Button type="button" className="w-full bg-primary hover:bg-primary-hover" disabled={saving} onClick={submit}>
             {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
