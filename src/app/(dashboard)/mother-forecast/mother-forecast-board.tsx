@@ -16,6 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Loader2, Trash2, Plus, Send, AlertTriangle, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -211,6 +212,120 @@ function collectValidRows(rows: DraftRow[]): { plantTypeId: string; assignedStaf
   return result;
 }
 
+// Hộp thoại giải trình/đề xuất sửa RIÊNG cho từng dòng (mã cây, NV cấy mô) đang tụt kế hoạch — mỗi dòng
+// gửi thành 1 MotherForecastEditProposal riêng (reason + 1 item), KHÔNG gộp chung 1 lý do cho nhiều mã
+// cây như "Đề xuất chỉnh sửa" tổng quát bên dưới (mục đó vẫn giữ nguyên cho nhu cầu thêm/sửa chung).
+function ShortfallProposalDialog({
+  row, targetMonths, existingEntry, locked, onSubmitted,
+}: {
+  row: ShortfallRow;
+  targetMonths: [string, string, string];
+  existingEntry: ForecastEntryRow | undefined;
+  locked: boolean;
+  onSubmitted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [quantities, setQuantities] = useState<[string, string, string]>(["", "", ""]);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleOpenChange = (v: boolean) => {
+    if (v && !locked) {
+      toast.info("Lộ trình 3 tháng hiện tại chưa khoá — điền thẳng vào bảng bên dưới rồi bấm \"Lưu tất cả\", không cần gửi đề xuất.");
+      return;
+    }
+    setOpen(v);
+    if (v) {
+      setReason("");
+      setQuantities([
+        String(existingEntry?.quantity1 ?? ""),
+        String(existingEntry?.quantity2 ?? ""),
+        String(existingEntry?.quantity3 ?? ""),
+      ]);
+    }
+  };
+
+  const submit = async () => {
+    if (reason.trim() === "") { toast.error("Cần nhập nội dung giải trình"); return; }
+    const parsed = quantities.map(Number);
+    if (parsed.some((q, i) => quantities[i].trim() === "" || !Number.isInteger(q) || q < 0)) {
+      toast.error("Số kế hoạch mới phải là số nguyên, không âm, đủ cả 3 tháng");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/mother-forecast-edit-proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: reason.trim(),
+          items: [{ plantTypeId: row.plantTypeId, assignedStaffId: row.assignedStaffId, quantity1: parsed[0], quantity2: parsed[1], quantity3: parsed[2] }],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data?.message ?? "Gửi đề xuất thất bại"); return; }
+      toast.success("Đã gửi đề xuất — chờ Admin kỹ thuật/Admin cấp cao duyệt");
+      setOpen(false);
+      onSubmitted();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger render={<Button type="button" size="sm" variant="outline" />}>
+        <PenLine className="w-3.5 h-3.5 mr-1.5" /> Giải trình / Đề xuất sửa
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Giải trình — {row.plantTypeCode} · {row.staffCode} - {row.staffName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
+            Kế hoạch tháng: <strong>{row.monthlyPlanQuantity.toLocaleString("vi-VN")}</strong> · Cần đạt đến
+            hôm nay: <strong>{row.requiredToDateQuantity.toLocaleString("vi-VN")}</strong> · Thực tế:{" "}
+            <strong>{row.actualQuantity.toLocaleString("vi-VN")}</strong> · Đạt <strong>{row.achievedPct}%</strong>
+          </p>
+          <div className="space-y-1">
+            <Label className="text-xs">Nội dung giải trình *</Label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="VD: Thiếu mẫu mẹ đủ tuổi cấy chuyển do tỉ lệ nhiễm cao đợt vừa rồi..."
+              rows={3}
+              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Số kế hoạch mới đề xuất (3 tháng tới)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {targetMonths.map((m, i) => (
+                <div key={i} className="space-y-1">
+                  <p className="text-xs text-text-muted text-center">Th.{monthLabel(m)}</p>
+                  <Input
+                    type="number" min={0}
+                    value={quantities[i]}
+                    onChange={(e) => setQuantities((prev) => { const next = [...prev] as [string, string, string]; next[i] = e.target.value; return next; })}
+                    className="text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={submitting} onClick={() => setOpen(false)}>Huỷ</Button>
+          <Button className="bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
+            {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+            Gửi đề xuất
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MotherForecastBoard() {
   const [status, setStatus] = useState<ForecastStatus | null>(null);
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
@@ -302,33 +417,6 @@ export default function MotherForecastBoard() {
     }
   };
 
-  // Mở form Đề xuất chỉnh sửa, prefill sẵn đúng dòng (mã cây, NV cấy mô) đang tụt kế hoạch — giữ nguyên số
-  // kế hoạch CŨ (quantity1/2/3 hiện có, nếu có) để NV chỉ cần sửa đúng phần cần đổi thay vì gõ lại từ đầu.
-  // Chỉ áp dụng khi lộ trình 3 tháng HIỆN TẠI đã khoá (status.isLocked) — vì Đề xuất chỉnh sửa tác động
-  // đúng taskMonth đang hiệu lực đó. Nếu lộ trình hiện tại CHƯA khoá thì không có gì để "đề xuất" — điền
-  // thẳng vào bảng Lưu tất cả bên dưới là đủ, không cần qua Admin duyệt.
-  const openProposalForShortfall = (row: ShortfallRow) => {
-    if (!status?.isLocked) {
-      toast.info("Lộ trình 3 tháng hiện tại chưa khoá — điền thẳng vào bảng bên dưới rồi bấm \"Lưu tất cả\", không cần gửi đề xuất.");
-      return;
-    }
-    const plantTypeOption = plantTypeOptions.find((o) => o.value === row.plantTypeId) ?? null;
-    const staffOption = staffOptions.find((o) => o.value === row.assignedStaffId) ?? null;
-    const existingEntry = status.entries.find((e) => e.plantTypeId === row.plantTypeId && e.assignedStaffId === row.assignedStaffId);
-    setEditRows([
-      {
-        key: `shortfall-${row.plantTypeId}-${row.assignedStaffId}`,
-        plantTypeOption, staffOption,
-        quantity1: String(existingEntry?.quantity1 ?? ""),
-        quantity2: String(existingEntry?.quantity2 ?? ""),
-        quantity3: String(existingEntry?.quantity3 ?? ""),
-      },
-      newDraftRow(),
-    ]);
-    setEditReason("");
-    setEditMode(true);
-  };
-
   if (loading) {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   }
@@ -374,9 +462,13 @@ export default function MotherForecastBoard() {
                       <td className="px-3 py-2 text-center tabular-nums">{row.actualQuantity.toLocaleString("vi-VN")}</td>
                       <td className="px-3 py-2 text-center font-semibold text-destructive">{row.achievedPct}%</td>
                       <td className="px-3 py-2 text-center">
-                        <Button type="button" size="sm" variant="outline" onClick={() => openProposalForShortfall(row)}>
-                          <PenLine className="w-3.5 h-3.5 mr-1.5" /> Giải trình / Đề xuất sửa
-                        </Button>
+                        <ShortfallProposalDialog
+                          row={row}
+                          targetMonths={status.targetMonths}
+                          existingEntry={status.entries.find((e) => e.plantTypeId === row.plantTypeId && e.assignedStaffId === row.assignedStaffId)}
+                          locked={status.isLocked}
+                          onSubmitted={load}
+                        />
                       </td>
                     </tr>
                   ))}
