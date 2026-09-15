@@ -43,11 +43,14 @@ export default async function InventoryLifecycleReport() {
   }));
 
   // (b) Danh sách sắp/quá hạn — gồm CẢ Mẫu mẹ (KY_THUAT ra chỉ định cấy chuyển) lẫn Thành phẩm (Kho mô
-  // chuyển kho thành phẩm), phân biệt bằng cột "Giai đoạn" vì cùng 1 danh sách trộn cả 2. Tính tổng số
-  // lượng ĐÃ quá hạn (không phải chỉ đếm số lô) riêng theo từng giai đoạn TRÊN TOÀN BỘ danh sách trước khi
-  // cắt còn 15 dòng hiển thị — để tổng luôn đúng dù bảng chi tiết bị giới hạn.
+  // chuyển kho thành phẩm), phân biệt bằng cột "Giai đoạn" vì cùng 1 danh sách trộn cả 2. Loại lô
+  // quantity = 0 — lô đã dùng hết (tách túi/chuyển hết/xuất hết đơn) nhưng status vẫn ACTIVE theo đúng quy
+  // ước "không xoá bản ghi Lot, chỉ đưa quantity về 0" của toàn hệ thống (xem POST /api/data-import/lots)
+  // — vỏ rỗng này không còn gì để chuyển giai đoạn nên hiện "quá hạn" ở đây là vô nghĩa, chỉ gây nhiễu.
+  // Tính tổng số lượng ĐÃ quá hạn (không phải chỉ đếm số lô) riêng theo từng giai đoạn TRÊN TOÀN BỘ danh
+  // sách trước khi cắt còn 15 dòng hiển thị — để tổng luôn đúng dù bảng chi tiết bị giới hạn.
   const nearExpiryLots = activeLots
-    .filter((l) => isNearExpiry(l.expectedMoveAt))
+    .filter((l) => l.quantity > 0 && isNearExpiry(l.expectedMoveAt))
     .sort((a, b) => (a.expectedMoveAt?.getTime() ?? 0) - (b.expectedMoveAt?.getTime() ?? 0));
   const overdueMotherQuantity = nearExpiryLots
     .filter((l) => l.stage === "MAU_ME" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
