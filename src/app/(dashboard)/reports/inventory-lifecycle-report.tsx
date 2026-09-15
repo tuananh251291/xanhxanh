@@ -27,6 +27,9 @@ export default async function InventoryLifecycleReport() {
       // ghép ra "đang nằm ở khu vực nào" cho mục (b) bên dưới.
       shelf: { select: { code: true, room: { select: { type: true, warehouse: { select: { code: true, name: true } } } } } },
       room: { select: { name: true, warehouse: { select: { code: true, name: true } } } },
+      // Chỉ cần biết CÓ đang gắn với 1 chỉ định cấy còn hiệu lực hay không (xem isPendingTransfer bên
+      // dưới) — không cần chi tiết gì thêm ngoài status.
+      instructionItems: { select: { instruction: { select: { status: true } } } },
     },
   });
 
@@ -51,10 +54,21 @@ export default async function InventoryLifecycleReport() {
   // quantity = 0 — lô đã dùng hết (tách túi/chuyển hết/xuất hết đơn) nhưng status vẫn ACTIVE theo đúng quy
   // ước "không xoá bản ghi Lot, chỉ đưa quantity về 0" của toàn hệ thống (xem POST /api/data-import/lots)
   // — vỏ rỗng này không còn gì để chuyển giai đoạn nên hiện "quá hạn" ở đây là vô nghĩa, chỉ gây nhiễu.
-  // Tính tổng số lượng ĐÃ quá hạn (không phải chỉ đếm số lô) riêng theo từng giai đoạn TRÊN TOÀN BỘ danh
-  // sách trước khi cắt còn 15 dòng hiển thị — để tổng luôn đúng dù bảng chi tiết bị giới hạn.
+  //
+  // QUAN TRỌNG: expectedMoveAt được set 1 LẦN lúc lô sinh ra (đến hạn ra rễ tại Phòng ra rễ, hoặc đến hạn
+  // cấy chuyển mẫu mẹ tại Phòng mẫu mẹ) và KHÔNG BAO GIỜ được xoá/cập nhật lại sau khi lô đã thực sự
+  // chuyển giai đoạn xong — nên nếu chỉ lọc theo expectedMoveAt, lô ĐÃ chuyển xong từ lâu (thành phẩm đã
+  // nằm trong Kho thành phẩm, mẫu mẹ đã được gán vào 1 chỉ định cấy mới) vẫn hiện "quá hạn" MÃI MÃI dù đã
+  // xử lý xong — đây chính là điều anh hỏi ("sao thành phẩm đã ở Kho thành phẩm Đông Dư vẫn quá hạn").
+  // Phải lọc thêm isPendingTransfer để chỉ giữ lại lô THẬT SỰ còn chờ xử lý, khớp đúng điều kiện đã dùng ở
+  // ensureRootingReadyAlerts (src/lib/rooting-ready.ts, shelfId != null = còn ở Phòng ra rễ) và
+  // /instructions (mother-due, chưa gắn chỉ định ACTIVE/DRAFT nào).
+  const isPendingTransfer = (lot: (typeof activeLots)[number]) => {
+    if (lot.stage === "THANH_PHAM") return !!lot.shelf; // còn ở Phòng ra rễ — chưa chuyển Kho thành phẩm
+    return !lot.instructionItems.some((it) => it.instruction.status === "ACTIVE" || it.instruction.status === "DRAFT");
+  };
   const nearExpiryLots = activeLots
-    .filter((l) => l.quantity > 0 && isNearExpiry(l.expectedMoveAt))
+    .filter((l) => l.quantity > 0 && isNearExpiry(l.expectedMoveAt) && isPendingTransfer(l))
     .sort((a, b) => (a.expectedMoveAt?.getTime() ?? 0) - (b.expectedMoveAt?.getTime() ?? 0));
   const overdueMotherQuantity = nearExpiryLots
     .filter((l) => l.stage === "MAU_ME" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
