@@ -179,6 +179,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const remaining = await tx.transferItem.count({ where: { transferId: id, confirmedAt: null } });
       if (remaining === 0) {
         await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+        // Phiếu đã nhận xong — tắt luôn thông báo "Có phiếu bàn giao từ phòng tối/MM dư chờ nhận"
+        // (LOT_READY_TRANSFER, relatedId = transfer.id) cho MỌI NV Kho mô đã nhận được (không chỉ đúng
+        // người vừa bấm xác nhận), khỏi phải tự bấm "Đã xem" ở trang Thông báo cho 1 việc đã xử lý xong.
+        await tx.alert.updateMany({
+          where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
+          data: { status: "READ", readAt: new Date() },
+        });
       }
     });
 
