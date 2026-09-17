@@ -140,7 +140,7 @@ export default function ExtraWorkRequestBoard() {
                               {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                             </Button>
                             <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === r.id} onClick={() => respond(r.id, "approve")}>
-                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Đồng ý</>}
+                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Giao việc</>}
                             </Button>
                           </>
                         )}

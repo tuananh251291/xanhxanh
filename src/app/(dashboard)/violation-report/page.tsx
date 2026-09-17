@@ -9,15 +9,14 @@ import RecordViolationRecoveryBoard from "./record-violation-recovery-board";
 import DataCorrectionsBoard from "../data-corrections/data-corrections-board";
 import ViolationTypesBoard from "../violation-types/violation-types-board";
 import TaskCompletionReportBoard from "../task-completion-report/task-completion-report-board";
-import MotherContaminationReport from "../reports/mother-contamination-report";
-import DarkRoomContaminationByInstructionSection from "../reports/overview/dark-room-contamination-by-instruction-section";
 
 // Gộp menu Kho mô — "Theo dõi nhập sai dữ liệu cấy", "Danh sách lỗi vi phạm", "Số ngày không hoàn thành
 // nhiệm vụ" gộp làm tab tại đây cho menu dọc gọn hơn (xem ROLE_NAV.KHO_MO, src/types/index.ts). 3 URL cũ
 // (/data-corrections, /violation-types, /task-completion-report) vẫn hoạt động độc lập như cũ, dùng
 // thẳng lại các Board đã tự fetch, không cần tách gì thêm.
-// Riêng tab "Báo cáo tỉ lệ nhiễm" (nhúng thẳng 2 component đã có sẵn của /reports/mother-contamination,
-// route đó vẫn hoạt động độc lập như cũ) CHỈ hiện cho KHO_MO — không thuộc phạm vi Admin/HR ở trang này.
+// Tab "Báo cáo tỉ lệ nhiễm" (trước đây nhúng ở đây, chỉ hiện cho KHO_MO) đã CHUYỂN sang trang "Thống kê
+// trực quan" của Kho mô (/reports/overview-kho-mo, xem 2 CollapsibleSection "Nhiễm sau ủ tối theo chỉ
+// định cấy"/"Tỉ lệ nhiễm mẫu mẹ bàn giao" ở đó) — không nhúng lại ở đây nữa, tránh trùng lặp.
 // NV Hành chính nhân sự (chủ yếu chỉ xem — riêng vi phạm được ghi trực tiếp/sửa/xoá vì phục vụ tính
 // lương, xem canManagePayroll) thấy 4/5 tab: "Báo cáo vi phạm", "Ghi nhận vi phạm & tích cực" (gộp ghi
 // vi phạm + điểm phục hồi vào 1 chỗ, xem record-violation-recovery-board.tsx — thay cho nút "Ghi nhận vi
@@ -51,7 +50,6 @@ export default async function ViolationReportPage() {
           {!isHr && <TabsTrigger value="data-corrections">Theo dõi nhập sai dữ liệu cấy</TabsTrigger>}
           <TabsTrigger value="violation-types">Danh sách lỗi vi phạm</TabsTrigger>
           <TabsTrigger value="task-completion">Số ngày không hoàn thành nhiệm vụ</TabsTrigger>
-          {isKhoMo && <TabsTrigger value="mother-contamination">Báo cáo tỉ lệ nhiễm</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="violation-report" className="mt-4">
@@ -71,12 +69,6 @@ export default async function ViolationReportPage() {
         <TabsContent value="task-completion" className="mt-4">
           <TaskCompletionReportBoard isAdmin={isAdminRole(role)} canFilterByWarehouse={isAdminRole(role) || isHr} />
         </TabsContent>
-        {isKhoMo && (
-          <TabsContent value="mother-contamination" className="mt-4 space-y-6">
-            <MotherContaminationReport />
-            <DarkRoomContaminationByInstructionSection />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   );
