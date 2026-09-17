@@ -18,6 +18,7 @@ import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
 import { ensureMonthlyInspectionLaneUpdate } from "@/lib/inspection-lane";
+import { ensureExpiredExtraWorkReadinessAlertsRead } from "@/lib/extra-work-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -41,7 +42,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     await ensureMotherForecastReminder(session.user.workplaceWarehouseId);
     await ensureMotherOutputShortfallAlerts(session.user.workplaceWarehouseId);
   }
-  if (role === "KHO_MO") await ensureRootingReadyAlerts();
+  if (role === "KHO_MO") {
+    await ensureRootingReadyAlerts();
+    await ensureExpiredExtraWorkReadinessAlertsRead();
+  }
   if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);
   if (isKhoThanhPhamRole(role)) {
     await ensureWeeklyDeXuatTask(session.user.workplaceWarehouseId);
