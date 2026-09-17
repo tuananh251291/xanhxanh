@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { differenceInCalendarDays } from "date-fns";
 import { getWeekBuckets, bucketIndexForDate, isNearExpiry } from "@/lib/report-utils";
-import { ROOM_TYPE_LABELS, STAGE_LABELS } from "@/types";
+import { ROOM_TYPE_LABELS } from "@/types";
 import type { RoomType } from "@prisma/client";
 import ReportBarChart from "./charts/report-bar-chart";
 import ReportLineChart from "./charts/report-line-chart";
@@ -89,7 +89,13 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
     if (lot.room) return `${lot.room.warehouse.name} — ${lot.room.name}`;
     return "—";
   };
-  const displayedLots = nearExpiryLots.slice(0, 15);
+  // Tách riêng Mẫu mẹ/Thành phẩm thành 2 cột cạnh nhau thay vì trộn chung 1 bảng — 2 giai đoạn này do 2
+  // vai trò khác nhau xử lý (KY_THUAT ra chỉ định cấy chuyển / Kho mô chuyển kho thành phẩm) nên tách ra
+  // dễ nhìn hơn, đỡ phải dò cột "Giai đoạn" giữa 1 danh sách dài.
+  const motherLots = nearExpiryLots.filter((l) => l.stage === "MAU_ME");
+  const finishedLots = nearExpiryLots.filter((l) => l.stage === "THANH_PHAM");
+  const displayedMotherLots = motherLots.slice(0, 15);
+  const displayedFinishedLots = finishedLots.slice(0, 15);
 
   // (c) Lô nhập kho theo tuần
   const enteredByWeek = buckets.map(() => 0);
@@ -130,61 +136,28 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
           <p className="text-sm text-text-secondary">Còn ≤3 ngày hoặc đã quá hạn dự kiến chuyển giai đoạn</p>
         </CardHeader>
         <CardContent className="p-0">
-          {(overdueMotherQuantity > 0 || overdueFinishedQuantity > 0) && (
-            <div className="flex flex-wrap gap-3 px-4 pb-3">
-              {overdueMotherQuantity > 0 && (
-                <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
-                  <strong>{overdueMotherQuantity.toLocaleString("vi-VN")} cụm mẫu mẹ</strong> đã quá hạn cấy chuyển (chưa ra chỉ định cấy)
-                </p>
-              )}
-              {overdueFinishedQuantity > 0 && (
-                <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
-                  <strong>{overdueFinishedQuantity.toLocaleString("vi-VN")} cây thành phẩm</strong> đã quá hạn chuyển kho thành phẩm
-                </p>
-              )}
-            </div>
-          )}
           {nearExpiryLots.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-6">Không có lô nào sắp/quá hạn</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-primary-light">
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã lô</th>
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Loại cây</th>
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Giai đoạn</th>
-                    <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Khu vực</th>
-                    <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Số lượng</th>
-                    <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedLots.map((lot) => {
-                    const daysLeft = lot.expectedMoveAt ? differenceInCalendarDays(lot.expectedMoveAt, new Date()) : null;
-                    const overdue = daysLeft !== null && daysLeft < 0;
-                    return (
-                      <tr key={lot.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
-                        <td className="px-3 py-2 font-mono">{lot.code}</td>
-                        <td className="px-3 py-2">{lot.plantType.name}</td>
-                        <td className="px-3 py-2 text-text-secondary">{STAGE_LABELS[lot.stage]}</td>
-                        <td className="px-3 py-2 text-text-secondary">{locationLabel(lot)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{lot.quantity.toLocaleString("vi-VN")}</td>
-                        <td className="px-3 py-2 text-right">
-                          <Badge className={overdue ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
-                            {overdue ? `Quá hạn ${Math.abs(daysLeft!)} ngày` : `Còn ${daysLeft} ngày`}
-                          </Badge>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {nearExpiryLots.length > displayedLots.length && (
-                <p className="text-xs text-text-muted text-center py-2">
-                  Hiển thị {displayedLots.length}/{nearExpiryLots.length} lô gần hạn nhất — xem tổng số lượng quá hạn ở trên
-                </p>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y divide-divider md:divide-y-0 md:divide-x">
+              <div className="p-4">
+                <h3 className="font-bold text-primary-strong mb-2">Mẫu mẹ — chờ cấy chuyển</h3>
+                {overdueMotherQuantity > 0 && (
+                  <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2 mb-3">
+                    <strong>{overdueMotherQuantity.toLocaleString("vi-VN")} cụm</strong> đã quá hạn cấy chuyển (chưa ra chỉ định cấy)
+                  </p>
+                )}
+                <StageLotTable lots={displayedMotherLots} totalCount={motherLots.length} locationLabel={locationLabel} />
+              </div>
+              <div className="p-4">
+                <h3 className="font-bold text-primary-strong mb-2">Thành phẩm — chờ chuyển kho</h3>
+                {overdueFinishedQuantity > 0 && (
+                  <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2 mb-3">
+                    <strong>{overdueFinishedQuantity.toLocaleString("vi-VN")} cây</strong> đã quá hạn chuyển kho thành phẩm
+                  </p>
+                )}
+                <StageLotTable lots={displayedFinishedLots} totalCount={finishedLots.length} locationLabel={locationLabel} />
+              </div>
             </div>
           )}
         </CardContent>
@@ -206,6 +179,59 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
           />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// Dùng chung cho cả 2 cột Mẫu mẹ/Thành phẩm ở "Lô sắp/quá hạn chuyển giai đoạn" — bỏ cột "Giai đoạn" (đã
+// tách riêng theo cột nên không cần lặp lại trong bảng nữa).
+function StageLotTable<T extends { code: string; quantity: number; expectedMoveAt: Date | null; plantType: { name: string } }>({
+  lots, totalCount, locationLabel,
+}: {
+  lots: T[];
+  totalCount: number;
+  locationLabel: (lot: T) => string;
+}) {
+  if (lots.length === 0) {
+    return <p className="text-sm text-text-muted text-center py-6">Không có lô nào sắp/quá hạn</p>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-primary-light">
+            <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Mã lô</th>
+            <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Loại cây</th>
+            <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Khu vực</th>
+            <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Số lượng</th>
+            <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lots.map((lot) => {
+            const daysLeft = lot.expectedMoveAt ? differenceInCalendarDays(lot.expectedMoveAt, new Date()) : null;
+            const overdue = daysLeft !== null && daysLeft < 0;
+            return (
+              <tr key={lot.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                <td className="px-3 py-2 font-mono">{lot.code}</td>
+                <td className="px-3 py-2">{lot.plantType.name}</td>
+                <td className="px-3 py-2 text-text-secondary">{locationLabel(lot)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{lot.quantity.toLocaleString("vi-VN")}</td>
+                <td className="px-3 py-2 text-right">
+                  <Badge className={overdue ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
+                    {overdue ? `Quá hạn ${Math.abs(daysLeft!)} ngày` : `Còn ${daysLeft} ngày`}
+                  </Badge>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {totalCount > lots.length && (
+        <p className="text-xs text-text-muted text-center py-2">
+          Hiển thị {lots.length}/{totalCount} lô gần hạn nhất
+        </p>
+      )}
     </div>
   );
 }
