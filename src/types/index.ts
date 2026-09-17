@@ -632,6 +632,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/rooting-plan-vs-actual", label: "Kế hoạch vs thực tế cây ra rễ", icon: "Gauge" },
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },
+    { href: "/reports/inventory-lifecycle", label: "Tồn kho & vòng đời", icon: "Package" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   CAY_MO: [
@@ -659,6 +660,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/overview-kho-mo", label: "Thống kê trực quan", icon: "TrendingUp" },
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },
+    { href: "/reports/inventory-lifecycle", label: "Tồn kho & vòng đời", icon: "Package" },
     // Gộp "Nhập kho thủ công" + "Gán mã cây & NV mẫu mẹ" + "Cài đặt luồng kiểm tra" vào hub này (xem
     // manual-settings/page.tsx) — 3 route cũ vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/manual-settings", label: "Cài đặt thủ công", icon: "Settings" },

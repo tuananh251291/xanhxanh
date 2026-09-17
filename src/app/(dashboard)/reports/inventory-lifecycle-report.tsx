@@ -10,11 +10,16 @@ import ReportLineChart from "./charts/report-line-chart";
 
 const HISTORY_WEEKS = 10;
 
-export default async function InventoryLifecycleReport() {
+// warehouseId (tuỳ chọn) — thu hẹp cả 3 mục xuống ĐÚNG 1 kho sản xuất, dùng cho trang riêng
+// /reports/inventory-lifecycle (NV Kỹ thuật/Kho mô chỉ xem đúng cơ sở mình làm việc, xem page.tsx ở đó).
+// Bỏ trống (mặc định) = xem toàn hệ thống, giữ nguyên hành vi cũ cho tab "Tồn kho & vòng đời" của Admin
+// ở /reports. 1 lô chỉ có ĐÚNG 1 trong 2 (shelf ở kho sản xuất, room ở kho thành phẩm) nên lọc OR cả hai.
+export default async function InventoryLifecycleReport({ warehouseId = null }: { warehouseId?: string | null } = {}) {
   const buckets = getWeekBuckets(HISTORY_WEEKS);
+  const warehouseFilter = warehouseId ? { OR: [{ shelf: { warehouseId } }, { room: { warehouseId } }] } : {};
 
   const activeLots = await prisma.lot.findMany({
-    where: { status: "ACTIVE" },
+    where: { status: "ACTIVE", ...warehouseFilter },
     select: {
       code: true,
       stage: true,
@@ -89,7 +94,7 @@ export default async function InventoryLifecycleReport() {
   // (c) Lô nhập kho theo tuần
   const enteredByWeek = buckets.map(() => 0);
   const allLotsForTrend = await prisma.lot.findMany({
-    where: { enteredAt: { gte: buckets[0].start } },
+    where: { enteredAt: { gte: buckets[0].start }, ...warehouseFilter },
     select: { enteredAt: true },
   });
   for (const lot of allLotsForTrend) {
