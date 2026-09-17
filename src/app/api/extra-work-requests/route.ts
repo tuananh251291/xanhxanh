@@ -42,6 +42,11 @@ const include = {
   instruction: { select: { code: true } },
   respondedBy: { select: { name: true } },
   slots: { orderBy: { date: "asc" as const } },
+  // Chỉ có giá trị trong danh sách "Đã giao nhiệm vụ" (fulfilled=true) — biết đúng 1 trong 3 loại việc
+  // đã được gán (xem ExtraWorkRequest.fulfilledAt, schema.prisma).
+  fulfilledInstruction: { select: { code: true } },
+  fulfilledRepackInstruction: { select: { code: true } },
+  fulfilledSealingTask: { select: { code: true } },
 };
 
 export async function GET(req: NextRequest) {
@@ -59,15 +64,30 @@ export async function GET(req: NextRequest) {
   // thao tác hàng ngày thay vì hiện mãi kèm badge "Từ chối". NV cấy mô xem lịch sử đăng ký của CHÍNH
   // mình (ExtraWorkRequestForm) vẫn gọi KHÔNG kèm cờ này nên vẫn thấy đủ cả đăng ký đã bị từ chối.
   const excludeRejected = searchParams.get("excludeRejected") === "true";
+  // Dùng cho bảng "Đăng kí làm thêm" — chỉ lấy đăng ký thuộc ĐÚNG tuần này (theo expectedEndDate với
+  // EARLY_COMPLETION, theo ngày slot với OVERTIME — cùng logic tính tuần đã dùng ở availableToAssign và
+  // ensureExpiredExtraWorkRequestsCleaned), để đăng ký của tuần đã trôi qua không còn hiện trong danh
+  // sách thao tác hàng ngày nữa (dù chưa tới lượt bị dọn — xem src/lib/extra-work-lifecycle.ts).
+  const currentWeekOnly = searchParams.get("week") === "current";
+  // Dùng cho danh sách riêng "Đã giao nhiệm vụ" — đăng ký đã thực sự được dùng gán 1 việc cụ thể
+  // (chỉ định cấy dự phòng/xử lý hoặc hàn túi), không giới hạn theo tuần (xem lịch sử mọi lúc).
+  const fulfilled = searchParams.get("fulfilled") === "true";
   const role = session.user.role;
+
+  const currentWeekOr = () => {
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+    return [
+      { type: "EARLY_COMPLETION", expectedEndDate: { gte: weekStart, lte: weekEnd } },
+      { type: "OVERTIME", slots: { some: { date: { gte: weekStart, lte: weekEnd } } } },
+    ];
+  };
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
   else if (excludeRejected) where.status = { not: "REJECTED" };
+  if (fulfilled) where.fulfilledAt = { not: null };
   if (availableToAssign) {
-    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
-
     // Không còn giới hạn "1 NV chỉ nhận thêm đúng 1 việc/tuần" — NV cấy nhanh, hoàn thành sớm nhiều lần
     // trong cùng 1 tuần vẫn được đề xuất tiếp cho việc dự phòng/xử lý kế tiếp, không bị chặn dù đã có 1
     // đăng ký khác (fulfilledAt) trong tuần rồi. Chỉ cần đăng ký này CHƯA được dùng (fulfilledAt null).
@@ -77,10 +97,9 @@ export async function GET(req: NextRequest) {
     // trong tuần hiện tại (xem validate ở POST bên dưới) nhưng vẫn lọc lại cho chắc (phòng NV đăng ký từ
     // tuần trước còn tồn đọng chưa dùng); EARLY_COMPLETION không bị giới hạn tuần lúc đăng ký nên cần lọc
     // riêng ở đây.
-    where.OR = [
-      { type: "EARLY_COMPLETION", expectedEndDate: { gte: weekStart, lte: weekEnd } },
-      { type: "OVERTIME", slots: { some: { date: { gte: weekStart, lte: weekEnd } } } },
-    ];
+    where.OR = currentWeekOr();
+  } else if (currentWeekOnly) {
+    where.OR = currentWeekOr();
   }
   if (role === "CAY_MO") {
     where.staffId = session.user.id;

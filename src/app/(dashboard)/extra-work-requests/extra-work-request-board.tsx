@@ -24,7 +24,19 @@ type Request = {
   slots: { date: string; startTime: string; endTime: string }[];
   purpose: "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT" | null;
   fulfilledAt: string | null;
+  fulfilledInstruction: { code: string } | null;
+  fulfilledRepackInstruction: { code: string } | null;
+  fulfilledSealingTask: { code: string } | null;
 };
+
+// Nhãn + mã việc đã gán, đúng 1 trong 3 field fulfilledXxx có giá trị (xem ExtraWorkRequest.fulfilledAt,
+// prisma/schema.prisma).
+function fulfilledWorkLabel(r: Request): string {
+  if (r.fulfilledInstruction) return `Chỉ định cấy dự phòng — ${r.fulfilledInstruction.code}`;
+  if (r.fulfilledRepackInstruction) return `Chỉ định cấy xử lý — ${r.fulfilledRepackInstruction.code}`;
+  if (r.fulfilledSealingTask) return `Việc hàn túi — ${r.fulfilledSealingTask.code}`;
+  return "—";
+}
 
 const STATUS_BADGE_VARIANT = {
   PENDING: "in-progress",
@@ -34,16 +46,24 @@ const STATUS_BADGE_VARIANT = {
 
 export default function ExtraWorkRequestBoard() {
   const [requests, setRequests] = useState<Request[]>([]);
+  const [fulfilledRequests, setFulfilledRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Ẩn hẳn đăng ký đã bị từ chối khỏi bảng này — NV đã được báo qua Alert (xem PATCH [id]/route.ts),
-      // không cần Kho mô theo dõi tiếp trong danh sách thao tác hàng ngày.
-      const res = await fetch("/api/extra-work-requests?excludeRejected=true");
-      setRequests(await res.json());
+      // Chỉ lấy đăng ký của ĐÚNG TUẦN NÀY — đăng ký của tuần đã trôi qua không còn cần thao tác nữa
+      // (tự động bị dọn hẳn sau đó, xem ensureExpiredExtraWorkRequestsCleaned). Ẩn hẳn đăng ký đã bị từ
+      // chối khỏi bảng này — NV đã được báo qua Alert (xem PATCH [id]/route.ts), không cần Kho mô theo
+      // dõi tiếp trong danh sách thao tác hàng ngày.
+      const [pendingRes, fulfilledRes] = await Promise.all([
+        fetch("/api/extra-work-requests?excludeRejected=true&week=current"),
+        // Danh sách riêng "Đã giao nhiệm vụ" — không giới hạn theo tuần, xem lịch sử mọi lúc.
+        fetch("/api/extra-work-requests?fulfilled=true"),
+      ]);
+      setRequests(await pendingRes.json());
+      setFulfilledRequests(await fulfilledRes.json());
     } finally {
       setLoading(false);
     }
@@ -71,14 +91,18 @@ export default function ExtraWorkRequestBoard() {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
   }
 
-  const pendingCount = requests.filter((r) => r.status === "PENDING").length;
+  // Danh sách "tuần này" chỉ hiện đăng ký CHƯA được giao việc thật — đã giao rồi thì chuyển hẳn xuống
+  // danh sách "Đã giao nhiệm vụ" riêng bên dưới, tránh trùng lặp giữa 2 danh sách.
+  const weekRequests = requests.filter((r) => !r.fulfilledAt);
+  const pendingCount = weekRequests.filter((r) => r.status === "PENDING").length;
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="px-4 pt-4 pb-1 text-sm text-text-muted">
-          {requests.length} đăng ký{pendingCount > 0 && <span className="text-warning-foreground font-medium"> · {pendingCount} chờ xử lý</span>}
-        </div>
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="p-0">
+          <div className="px-4 pt-4 pb-1 text-sm text-text-muted">
+            {weekRequests.length} đăng ký tuần này{pendingCount > 0 && <span className="text-warning-foreground font-medium"> · {pendingCount} chờ xử lý</span>}
+          </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -92,9 +116,9 @@ export default function ExtraWorkRequestBoard() {
               </tr>
             </thead>
             <tbody>
-              {requests.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-text-muted">Chưa có đăng ký nào</td></tr>
-              ) : requests.map((r) => (
+              {weekRequests.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-text-muted">Chưa có đăng ký nào trong tuần này</td></tr>
+              ) : weekRequests.map((r) => (
                 <tr key={r.id} className="border-b border-divider last:border-0 even:bg-background">
                   <td className="px-3 py-2 text-foreground whitespace-nowrap">{r.staff.name}</td>
                   <td className="px-3 py-2 text-foreground whitespace-nowrap">
@@ -167,5 +191,40 @@ export default function ExtraWorkRequestBoard() {
         </div>
       </CardContent>
     </Card>
+
+    <Card>
+      <CardContent className="p-0">
+        <div className="px-4 pt-4 pb-1 text-sm text-text-muted">
+          {fulfilledRequests.length} đăng ký đã giao nhiệm vụ
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-primary-light">
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base whitespace-nowrap">NV</th>
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base whitespace-nowrap">Loại đăng ký</th>
+                <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Việc đã giao</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fulfilledRequests.length === 0 ? (
+                <tr><td colSpan={3} className="px-3 py-6 text-center text-text-muted">Chưa giao nhiệm vụ nào</td></tr>
+              ) : fulfilledRequests.map((r) => (
+                <tr key={r.id} className="border-b border-divider last:border-0 even:bg-background">
+                  <td className="px-3 py-2 text-foreground whitespace-nowrap">
+                    {r.staff.name} <span className="text-xs text-text-muted font-mono">({r.staff.code})</span>
+                  </td>
+                  <td className="px-3 py-2 text-foreground whitespace-nowrap">
+                    {r.type === "EARLY_COMPLETION" ? "Hoàn thành sớm" : "Làm thêm ngoài giờ"}
+                  </td>
+                  <td className="px-3 py-2 text-text-secondary font-mono">{fulfilledWorkLabel(r)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+    </div>
   );
 }
