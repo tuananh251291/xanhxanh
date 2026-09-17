@@ -18,7 +18,7 @@ import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
 import { ensureMonthlyInspectionLaneUpdate } from "@/lib/inspection-lane";
-import { ensureExpiredExtraWorkReadinessAlertsRead } from "@/lib/extra-work-lifecycle";
+import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -32,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   await ensureInstructionsEnded();
   await ensureBackupInstructionsCleaned();
+  await ensureExpiredExtraWorkRequestsCleaned();
   await ensureExpiredOrdersCancelled();
   await ensureMediumOrdersSent();
   await ensureCustomerAutoExpire();
