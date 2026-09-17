@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   // lý (xem AssignRepackStaffCell) và cần chọn "nhân viên đã đăng ký" — chỉ lấy đăng ký ĐÃ DUYỆT và CHƯA
   // được dùng gán cho việc nào (chung 1 cờ fulfilledAt cho cả 2 loại việc, xem schema.prisma).
   const availableToAssign = searchParams.get("availableToAssign") === "true";
-  // Dùng cho bảng "Đăng ký cấy thêm" của Kho mô (ExtraWorkRequestBoard) — đăng ký đã bị từ chối không
+  // Dùng cho bảng "Đăng kí làm thêm" của Kho mô (ExtraWorkRequestBoard) — đăng ký đã bị từ chối không
   // còn cần theo dõi tiếp (NV đã được báo qua Alert, xem PATCH [id]/route.ts), ẩn hẳn khỏi danh sách
   // thao tác hàng ngày thay vì hiện mãi kèm badge "Từ chối". NV cấy mô xem lịch sử đăng ký của CHÍNH
   // mình (ExtraWorkRequestForm) vẫn gọi KHÔNG kèm cờ này nên vẫn thấy đủ cả đăng ký đã bị từ chối.
@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
     warehouseId: session.user.workplaceWarehouseId,
     type: "EXTRA_WORK_REQUEST",
     title: "NV cấy mô đăng ký làm thêm ngoài giờ",
-    message: `${session.user.name} đăng ký làm thêm ${parsedSlots.length} ngày trong tuần này (${purposeLabel}) — vào Đăng ký cấy thêm để xem chi tiết và duyệt`,
+    message: `${session.user.name} đăng ký làm thêm ${parsedSlots.length} ngày trong tuần này (${purposeLabel}) — vào Đăng kí làm thêm để xem chi tiết và duyệt`,
     relatedId: request.id,
     relatedType: "ExtraWorkRequest",
   });

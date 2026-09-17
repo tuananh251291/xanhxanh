@@ -15,7 +15,7 @@ export default async function ExtraWorkRequestsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <CalendarPlus className="w-6 h-6 text-primary-strong" /> Đăng ký cấy thêm
+          <CalendarPlus className="w-6 h-6 text-primary-strong" /> Đăng kí làm thêm
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           NV cấy mô báo hoàn thành sớm chỉ định hoặc đăng ký làm thêm ngoài giờ — xác nhận/duyệt tại đây

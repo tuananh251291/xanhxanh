@@ -405,7 +405,7 @@ export const ALERT_TYPE_LABELS = {
   MOTHER_CONTAMINATION_HIGH: "Tỉ lệ nhiễm mẫu mẹ sau ủ sáng cao",
   GOODS_RECEIPT_RETURN_DUE: "Phiếu nhập hàng cần kiểm tra trả hàng",
   ORDER_PROCESSING_SHORTFALL: "Xử lý cây thiếu hụt so với đơn hàng",
-  EXTRA_WORK_REQUEST: "Đăng ký cấy thêm",
+  EXTRA_WORK_REQUEST: "Đăng kí làm thêm",
   ASSIGNED_TASK_COMPLETED: "Đã hoàn thành việc được giao",
   MOTHER_WAREHOUSE_TRANSFER_SHORTFALL: "Nhận thiếu mẫu mẹ bàn giao liên kho",
   NV_VIOLATION: "Vi phạm kiểm tra kho tối",
@@ -673,7 +673,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // "Báo cáo tỉ lệ nhiễm" gộp vào tab trong hub này (xem violation-report/page.tsx) — route
     // /reports/mother-contamination vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
-    { href: "/extra-work-requests", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
+    { href: "/extra-work-requests", label: "Đăng kí làm thêm", icon: "CalendarPlus" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Nhận hàng" (/goods-receipts) gộp cả "Nhận hàng từ NCC" lẫn "Nhận bàn giao thành phẩm" (route
