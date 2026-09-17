@@ -17,6 +17,7 @@ import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import TransferReceiveBoard from "./transfer-receive-board";
 import GoodsReceiptActions from "./goods-receipt-actions";
+import SealingTaskReceiveBoard from "./sealing-task-receive-board";
 
 export default async function GoodsReceiptsPage() {
   const session = await auth();
@@ -93,6 +94,7 @@ export default async function GoodsReceiptsPage() {
         <TabsList>
           <TabsTrigger value="ncc">Nhận hàng từ NCC</TabsTrigger>
           <TabsTrigger value="transfer">Nhận bàn giao thành phẩm</TabsTrigger>
+          <TabsTrigger value="sealing">Nhận hàn túi</TabsTrigger>
           <TabsTrigger value="planned">Dự kiến nhập hàng</TabsTrigger>
         </TabsList>
 
@@ -179,6 +181,10 @@ export default async function GoodsReceiptsPage() {
 
         <TabsContent value="transfer" className="mt-4">
           <TransferReceiveBoard />
+        </TabsContent>
+
+        <TabsContent value="sealing" className="mt-4">
+          <SealingTaskReceiveBoard />
         </TabsContent>
 
         <TabsContent value="planned" className="mt-4">

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { isSameDay, startOfWeek } from "date-fns";
 import EndInstructionEarlyButton from "@/app/(dashboard)/daily-record/end-instruction-early-button";
 import RepackInstructionPanel from "@/app/(dashboard)/daily-record/repack-instruction-panel";
+import SealingTaskPanel from "@/app/(dashboard)/daily-record/sealing-task-panel";
 
 type InstructionItem = { stageCode: string | null; expectedMotherOutput: number | null };
 type VariantPlantType = { id: string; code: string; name: string };
@@ -306,6 +307,7 @@ export default function DailyRecordSimpleForm() {
           </CardContent>
         </Card>
         <RepackInstructionPanel />
+        <SealingTaskPanel />
       </div>
     );
   }

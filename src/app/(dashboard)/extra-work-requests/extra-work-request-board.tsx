@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check, X } from "lucide-react";
+import { Loader2, Check, X, Send } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import Link from "next/link";
 import { EXTRA_WORK_REQUEST_STATUS_LABELS, WORK_SESSION_LABELS, EXTRA_WORK_PURPOSE_LABELS } from "@/types";
 
 type Request = {
@@ -22,6 +23,7 @@ type Request = {
   respondedBy: { name: string } | null;
   slots: { date: string; startTime: string; endTime: string }[];
   purpose: "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT" | null;
+  fulfilledAt: string | null;
 };
 
 const STATUS_BADGE_VARIANT = {
@@ -131,7 +133,7 @@ export default function ExtraWorkRequestBoard() {
                               {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                             </Button>
                             <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === r.id} onClick={() => respond(r.id, "confirm")}>
-                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Giao việc</>}
+                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Xác nhận</>}
                             </Button>
                           </>
                         ) : (
@@ -140,10 +142,21 @@ export default function ExtraWorkRequestBoard() {
                               {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                             </Button>
                             <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === r.id} onClick={() => respond(r.id, "approve")}>
-                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Giao việc</>}
+                              {processingId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Đồng ý</>}
                             </Button>
                           </>
                         )}
+                      </div>
+                    )}
+                    {/* Đã duyệt nhưng chưa gán việc thật (fulfilledAt null) — mở trang chọn "Giao thêm chỉ
+                        định cấy" hoặc "Giao việc hàn túi" cho đúng đăng ký này. */}
+                    {r.status === "APPROVED" && !r.fulfilledAt && (
+                      <div className="flex justify-end">
+                        <Link href={`/extra-work-requests/${r.id}/assign`}>
+                          <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover">
+                            <Send className="w-3.5 h-3.5 mr-1" /> Giao việc
+                          </Button>
+                        </Link>
                       </div>
                     )}
                   </td>

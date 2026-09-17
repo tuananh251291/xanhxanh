@@ -419,6 +419,9 @@ model User {
   repackInspectedBy                    RepackInstruction[]          @relation("RepackInspectedBy")
   repackPlacedBy                       RepackInstruction[]          @relation("RepackPlacedBy")
   repackQuantityIssueReportedBy        RepackInstruction[]          @relation("RepackQuantityIssueReportedBy")
+  sealingTasksAssignedTo               SealingTask[]                @relation("SealingTaskAssignedTo")
+  sealingTasksAssignedBy               SealingTask[]                @relation("SealingTaskAssignedBy")
+  sealingTasksConfirmedBy              SealingTask[]                @relation("SealingTaskConfirmedBy")
   transfersAssignedTo                  Transfer[]                   @relation("TransferAssignedTo")
   transfersAssignedBy                  Transfer[]                   @relation("TransferAssignedBy")
   goodsReceiptsAssignedTo              GoodsReceipt[]               @relation("GoodsReceiptAssignedTo")
@@ -735,6 +738,7 @@ model PlantType {
   marketExportItems          MarketExportItem[]
   motherForecastEntries      MotherForecastEntry[]
   motherForecastEditProposalItems MotherForecastEditProposalItem[]
+  sealingTaskItems           SealingTaskItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -1010,6 +1014,7 @@ model Warehouse {
   motherForecastEntries       MotherForecastEntry[]
   motherForecastSubmissions   MotherForecastSubmission[]
   motherForecastEditProposals MotherForecastEditProposal[]
+  sealingTasks                SealingTask[]
 
   @@map("warehouses")
 }
@@ -1657,6 +1662,81 @@ model RepackInstruction {
 }
 
 // ============================================================
+// SEALING TASKS — "Giao việc hàn túi": NV cấy mô (từ 1 ExtraWorkRequest đã duyệt) sang hỗ trợ Kho
+// thành phẩm hàn/đóng gói lại túi sản phẩm đang nằm ở Phòng theo dõi. Khác RepackInstruction (xử lý
+// NGAY TRONG kho sản xuất, tự Kho mô kiểm tra/sắp xếp lại) — đây là việc XUYÊN 2 kho: Kho mô giao việc,
+// nhưng Phòng theo dõi (nguồn, trừ tồn ngay lúc giao) và Phòng hàn túi (đích, cộng tồn lúc xác nhận) đều
+// thuộc Kho thành phẩm nên bước xác nhận cuối do Kho thành phẩm làm — KHÔNG phải Kho mô.
+// ============================================================
+
+enum SealingTaskStatus {
+  IN_PROGRESS     // Đã giao việc, đã trừ tồn Phòng theo dõi, NV cấy mô đang làm
+  PENDING_RECEIPT // NV đã "Hoàn thành", chờ Kho thành phẩm xác nhận số liệu thật
+  COMPLETED       // Kho thành phẩm đã xác nhận, đã cộng vào Phòng hàn túi
+  CANCELLED       // Kho mô/Admin huỷ trước khi NV hoàn thành — đã hoàn lại tồn Phòng theo dõi
+}
+
+model SealingTask {
+  id          String @id @default(cuid())
+  code        String @unique
+
+  // Kho thành phẩm chứa Phòng theo dõi (nguồn) + Phòng hàn túi (đích) — hệ thống hiện chỉ có 1 kho
+  // thành phẩm nên luôn tự suy ra, không cho chọn tay (xem POST /api/sealing-tasks).
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  // NV cấy mô được giao (lấy từ ExtraWorkRequest.staffId) + Kho mô giao việc.
+  assignedToId String
+  assignedTo   User     @relation("SealingTaskAssignedTo", fields: [assignedToId], references: [id])
+  assignedById String
+  assignedBy   User     @relation("SealingTaskAssignedBy", fields: [assignedById], references: [id])
+  assignedAt   DateTime @default(now())
+
+  // NV cấy mô tự khai kết quả cuối cùng (1 lần duy nhất, giống RepackInstruction.staffHandedBackAt) —
+  // số lượng thực tế theo từng dòng nằm ở SealingTaskItem.reportedQuantity.
+  staffHandedBackAt DateTime?
+  notes             String?
+
+  // Kho thành phẩm xác nhận số liệu thật + cộng vào Phòng hàn túi — KHÔNG phải Kho mô (khác
+  // RepackInstruction.khoMoInspectedBy) vì Phòng hàn túi thuộc kho thành phẩm.
+  confirmedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?     @relation("SealingTaskConfirmedBy", fields: [confirmedById], references: [id])
+
+  status    SealingTaskStatus @default(IN_PROGRESS)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  items SealingTaskItem[]
+
+  // Đăng ký hoàn thành sớm/làm thêm (ExtraWorkRequest) đã được Kho mô "dùng" để gán NV cho ĐÚNG việc
+  // hàn túi này — xem ExtraWorkRequest.fulfilledSealingTaskId, POST /api/sealing-tasks.
+  extraWorkRequestsFulfilled ExtraWorkRequest[] @relation("ExtraWorkRequestFulfilledSealingTask")
+
+  @@map("sealing_tasks")
+}
+
+model SealingTaskItem {
+  id          String      @id @default(cuid())
+  taskId      String
+  task        SealingTask @relation(fields: [taskId], references: [id])
+  plantTypeId String
+  plantType   PlantType   @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+
+  // Giao việc — TRỪ NGAY khỏi Lot ACTIVE (roomId, plantTypeId, stageCode) tại Phòng theo dõi lúc tạo
+  // SealingTask (xem POST /api/sealing-tasks), không đợi NV xác nhận nhận như RepackInstruction.
+  quantity Int
+  // NV cấy mô tự khai lúc bấm "Hoàn thành" — có thể NHỎ HƠN quantity (hao hụt khi hàn túi).
+  reportedQuantity Int?
+  // Kho thành phẩm xác nhận lúc nhận lại — đúng số này được cộng vào Phòng hàn túi (upsertLot, xem
+  // src/lib/goods-receipt.ts) — mặc định gợi ý = reportedQuantity nhưng Kho thành phẩm sửa được.
+  confirmedQuantity Int?
+
+  @@map("sealing_task_items")
+}
+
+// ============================================================
 // MEDIUM ORDERS — đơn đặt hàng môi trường tự động sinh khi KY_THUAT tạo chỉ định cấy
 // (KY_THUAT tạo chỉ định -> tự sinh đơn cho MOI_TRUONG -> MOI_TRUONG xác nhận + pha theo
 // từng ngày trong tuần -> bàn giao từng ngày -> KHO_MO xác nhận nhận).
@@ -2101,18 +2181,21 @@ model ExtraWorkRequest {
   respondedBy   User?                  @relation("ExtraWorkRequestRespondedBy", fields: [respondedById], references: [id])
   respondedAt   DateTime?
 
-  // Đăng ký đã APPROVED được Kho mô "dùng" để gán vào 1 chỉ định cấy dự phòng HOẶC 1 chỉ định cấy xử lý
-  // (xem PlantingInstruction.isBackup, PATCH /api/instructions/[id] nhánh assignExtraWorkRequestId; và
-  // RepackInstruction, PATCH /api/repack-instructions/[id] nhánh cùng tên) — null ở CẢ 2 field dưới dù đã
-  // APPROVED nghĩa là còn "khả dụng" (xem GET /api/extra-work-requests?availableToAssign=true), chưa NV
-  // nào được gán việc thật từ đăng ký này. fulfilledAt dùng CHUNG cho cả 2 loại (chỉ đánh dấu "đã dùng"),
-  // chỉ 1 trong 2 field Id dưới được set tuỳ đã dùng cho loại chỉ định nào — ngăn 1 đăng ký bị dùng gán
-  // trùng cho nhiều việc khác nhau bất kể loại.
+  // Đăng ký đã APPROVED được Kho mô "dùng" để gán vào 1 chỉ định cấy dự phòng, 1 chỉ định cấy xử lý,
+  // HOẶC 1 việc hàn túi (xem PlantingInstruction.isBackup, PATCH /api/instructions/[id] nhánh
+  // assignExtraWorkRequestId; RepackInstruction, PATCH /api/repack-instructions/[id] nhánh cùng tên; và
+  // SealingTask, POST /api/sealing-tasks) — null ở CẢ 3 field dưới dù đã APPROVED nghĩa là còn "khả
+  // dụng" (xem GET /api/extra-work-requests?availableToAssign=true), chưa NV nào được gán việc thật từ
+  // đăng ký này. fulfilledAt dùng CHUNG cho cả 3 loại (chỉ đánh dấu "đã dùng"), chỉ 1 trong 3 field Id
+  // dưới được set tuỳ đã dùng cho loại việc nào — ngăn 1 đăng ký bị dùng gán trùng cho nhiều việc khác
+  // nhau bất kể loại.
   fulfilledAt                  DateTime?
   fulfilledInstructionId       String?
   fulfilledInstruction         PlantingInstruction? @relation("ExtraWorkRequestFulfilledInstruction", fields: [fulfilledInstructionId], references: [id])
   fulfilledRepackInstructionId String?
   fulfilledRepackInstruction   RepackInstruction?   @relation("ExtraWorkRequestFulfilledRepackInstruction", fields: [fulfilledRepackInstructionId], references: [id])
+  fulfilledSealingTaskId       String?
+  fulfilledSealingTask         SealingTask?         @relation("ExtraWorkRequestFulfilledSealingTask", fields: [fulfilledSealingTaskId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
