@@ -2,20 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { differenceInCalendarDays } from "date-fns";
-import { getWeekBuckets, bucketIndexForDate, isNearExpiry } from "@/lib/report-utils";
-import { ROOM_TYPE_LABELS } from "@/types";
-import type { RoomType } from "@prisma/client";
-import ReportBarChart from "./charts/report-bar-chart";
-import ReportLineChart from "./charts/report-line-chart";
+import { isNearExpiry } from "@/lib/report-utils";
 
-const HISTORY_WEEKS = 10;
-
-// warehouseId (tuỳ chọn) — thu hẹp cả 3 mục xuống ĐÚNG 1 kho sản xuất, dùng cho trang riêng
+// warehouseId (tuỳ chọn) — thu hẹp xuống ĐÚNG 1 kho sản xuất, dùng cho trang riêng
 // /reports/inventory-lifecycle (NV Kỹ thuật/Kho mô chỉ xem đúng cơ sở mình làm việc, xem page.tsx ở đó).
-// Bỏ trống (mặc định) = xem toàn hệ thống, giữ nguyên hành vi cũ cho tab "Tồn kho & vòng đời" của Admin
-// ở /reports. 1 lô chỉ có ĐÚNG 1 trong 2 (shelf ở kho sản xuất, room ở kho thành phẩm) nên lọc OR cả hai.
+// Bỏ trống (mặc định) = xem toàn hệ thống, giữ nguyên hành vi cũ cho tab "Quá hạn" của Admin ở /reports.
+// 1 lô chỉ có ĐÚNG 1 trong 2 (shelf ở kho sản xuất, room ở kho thành phẩm) nên lọc OR cả hai.
 export default async function InventoryLifecycleReport({ warehouseId = null }: { warehouseId?: string | null } = {}) {
-  const buckets = getWeekBuckets(HISTORY_WEEKS);
   const warehouseFilter = warehouseId ? { OR: [{ shelf: { warehouseId } }, { room: { warehouseId } }] } : {};
 
   const activeLots = await prisma.lot.findMany({
@@ -29,8 +22,8 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
       plantType: { select: { name: true } },
       // shelf = lô ở kho sản xuất (Phòng mẫu mẹ/Phòng ra rễ, xếp theo giàn kệ). room = lô ở kho thành
       // phẩm (không quản lý theo giàn kệ, gắn thẳng vào phòng) — 1 lô chỉ có ĐÚNG 1 trong 2, dùng cả 2 để
-      // ghép ra "đang nằm ở khu vực nào" cho mục (b) bên dưới.
-      shelf: { select: { code: true, room: { select: { type: true, warehouse: { select: { code: true, name: true } } } } } },
+      // ghép ra "đang nằm ở khu vực nào" bên dưới.
+      shelf: { select: { code: true, room: { select: { warehouse: { select: { code: true, name: true } } } } } },
       room: { select: { name: true, warehouse: { select: { code: true, name: true } } } },
       // Chỉ cần biết CÓ đang gắn với 1 chỉ định cấy còn hiệu lực hay không (xem isPendingTransfer bên
       // dưới) — không cần chi tiết gì thêm ngoài status.
@@ -38,23 +31,7 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
     },
   });
 
-  // (a) Tuổi trung bình theo loại phòng
-  const ageByRoomType = new Map<string, { total: number; count: number }>();
-  for (const lot of activeLots) {
-    const roomType = lot.shelf?.room?.type;
-    if (!roomType) continue;
-    const age = differenceInCalendarDays(new Date(), lot.enteredAt);
-    if (!ageByRoomType.has(roomType)) ageByRoomType.set(roomType, { total: 0, count: 0 });
-    const e = ageByRoomType.get(roomType)!;
-    e.total += age;
-    e.count += 1;
-  }
-  const ageData = Array.from(ageByRoomType.entries()).map(([type, e]) => ({
-    "Loại phòng": ROOM_TYPE_LABELS[type as RoomType],
-    "Tuổi TB (ngày)": Math.round(e.total / e.count),
-  }));
-
-  // (b) Danh sách sắp/quá hạn — gồm CẢ Mẫu mẹ (KY_THUAT ra chỉ định cấy chuyển) lẫn Thành phẩm (Kho mô
+  // Danh sách sắp/quá hạn — gồm CẢ Mẫu mẹ (KY_THUAT ra chỉ định cấy chuyển) lẫn Thành phẩm (Kho mô
   // chuyển kho thành phẩm), phân biệt bằng cột "Giai đoạn" vì cùng 1 danh sách trộn cả 2. Loại lô
   // quantity = 0 — lô đã dùng hết (tách túi/chuyển hết/xuất hết đơn) nhưng status vẫn ACTIVE theo đúng quy
   // ước "không xoá bản ghi Lot, chỉ đưa quantity về 0" của toàn hệ thống (xem POST /api/data-import/lots)
@@ -89,47 +66,16 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
     if (lot.room) return `${lot.room.warehouse.name} — ${lot.room.name}`;
     return "—";
   };
-  // Tách riêng Mẫu mẹ/Thành phẩm thành 2 cột cạnh nhau thay vì trộn chung 1 bảng — 2 giai đoạn này do 2
-  // vai trò khác nhau xử lý (KY_THUAT ra chỉ định cấy chuyển / Kho mô chuyển kho thành phẩm) nên tách ra
-  // dễ nhìn hơn, đỡ phải dò cột "Giai đoạn" giữa 1 danh sách dài.
+  // Tách riêng Mẫu mẹ/Thành phẩm thành 2 bảng xếp chồng (mẫu mẹ trên, thành phẩm dưới) thay vì trộn chung
+  // 1 bảng — 2 giai đoạn này do 2 vai trò khác nhau xử lý (KY_THUAT ra chỉ định cấy chuyển / Kho mô
+  // chuyển kho thành phẩm) nên tách ra gọn/dễ nhìn hơn, đỡ phải dò cột "Giai đoạn" giữa 1 danh sách dài.
   const motherLots = nearExpiryLots.filter((l) => l.stage === "MAU_ME");
   const finishedLots = nearExpiryLots.filter((l) => l.stage === "THANH_PHAM");
   const displayedMotherLots = motherLots.slice(0, 15);
   const displayedFinishedLots = finishedLots.slice(0, 15);
 
-  // (c) Lô nhập kho theo tuần
-  const enteredByWeek = buckets.map(() => 0);
-  const allLotsForTrend = await prisma.lot.findMany({
-    where: { enteredAt: { gte: buckets[0].start }, ...warehouseFilter },
-    select: { enteredAt: true },
-  });
-  for (const lot of allLotsForTrend) {
-    const idx = bucketIndexForDate(buckets, lot.enteredAt);
-    if (idx !== -1) enteredByWeek[idx] += 1;
-  }
-  const trendData = buckets.map((b, i) => ({ Tuần: b.label, "Lô nhập kho": enteredByWeek[i] }));
-
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Tuổi trung bình lô hàng theo loại phòng</CardTitle>
-          <p className="text-sm text-text-secondary">Số ngày trung bình lô đang lưu tại phòng tính từ lúc nhập</p>
-        </CardHeader>
-        <CardContent>
-          {ageData.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-6">Chưa có dữ liệu</p>
-          ) : (
-            <ReportBarChart
-              data={ageData}
-              xKey="Loại phòng"
-              unit=" ngày"
-              series={[{ key: "Tuổi TB (ngày)", label: "Tuổi TB (ngày)", color: "#2a78d6" }]}
-            />
-          )}
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Lô sắp/quá hạn chuyển giai đoạn</CardTitle>
@@ -139,7 +85,7 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
           {nearExpiryLots.length === 0 ? (
             <p className="text-sm text-text-muted text-center py-6">Không có lô nào sắp/quá hạn</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y divide-divider md:divide-y-0 md:divide-x">
+            <div className="divide-y divide-divider">
               <div className="p-4">
                 <h3 className="font-bold text-primary-strong mb-2">Mẫu mẹ — chờ cấy chuyển</h3>
                 {overdueMotherQuantity > 0 && (
@@ -162,29 +108,12 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
           )}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Lô nhập kho theo tuần</CardTitle>
-          <p className="text-sm text-text-secondary">
-            Số lô mới nhập kho mỗi tuần — <strong>không phải</strong> tồn kho tại từng thời điểm (hệ thống chưa lưu lịch sử tồn kho theo thời gian)
-          </p>
-        </CardHeader>
-        <CardContent>
-          <ReportLineChart
-            data={trendData}
-            xKey="Tuần"
-            unit=" lô"
-            series={[{ key: "Lô nhập kho", label: "Lô nhập kho", color: "#2a78d6" }]}
-          />
-        </CardContent>
-      </Card>
     </div>
   );
 }
 
-// Dùng chung cho cả 2 cột Mẫu mẹ/Thành phẩm ở "Lô sắp/quá hạn chuyển giai đoạn" — bỏ cột "Giai đoạn" (đã
-// tách riêng theo cột nên không cần lặp lại trong bảng nữa).
+// Dùng chung cho cả 2 bảng Mẫu mẹ/Thành phẩm ở "Lô sắp/quá hạn chuyển giai đoạn" — bỏ cột "Giai đoạn" (đã
+// tách riêng theo bảng nên không cần lặp lại nữa).
 function StageLotTable<T extends { code: string; quantity: number; expectedMoveAt: Date | null; plantType: { name: string } }>({
   lots, totalCount, locationLabel,
 }: {

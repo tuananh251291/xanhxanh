@@ -20,10 +20,10 @@ export default async function InventoryLifecyclePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Boxes className="w-6 h-6 text-primary-strong" /> Tồn kho & vòng đời
+          <Boxes className="w-6 h-6 text-primary-strong" /> Quá hạn
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Tuổi trung bình lô hàng, lô sắp/quá hạn chuyển giai đoạn, lô nhập kho theo tuần
+          Lô sắp/quá hạn chuyển giai đoạn
           {!isAdminRole(role) ? " — đúng cơ sở sản xuất bạn đang làm việc" : ""}
         </p>
       </div>

@@ -28,7 +28,7 @@ export default async function ReportsPage() {
             <TabsTrigger value="production" className="whitespace-nowrap">Sản lượng</TabsTrigger>
             <TabsTrigger value="contamination" className="whitespace-nowrap">Tỉ lệ nhiễm</TabsTrigger>
             <TabsTrigger value="plan" className="whitespace-nowrap">Kế hoạch vs thực tế</TabsTrigger>
-            <TabsTrigger value="inventory" className="whitespace-nowrap">Tồn kho & vòng đời</TabsTrigger>
+            <TabsTrigger value="inventory" className="whitespace-nowrap">Quá hạn</TabsTrigger>
             <TabsTrigger value="checklist" className="whitespace-nowrap">Checklist</TabsTrigger>
           </TabsList>
         </div>
