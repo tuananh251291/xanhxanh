@@ -162,7 +162,7 @@ export default function CayMoQuestDashboard({
               <CalendarPlus className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground">Đăng ký cấy thêm</p>
+              <p className="text-sm font-semibold text-foreground">Đăng ký làm thêm việc</p>
               <p className="text-xs text-text-secondary">Hoàn thành sớm chỉ định hoặc đăng ký làm thêm ngoài giờ/Chủ nhật</p>
             </div>
             <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />

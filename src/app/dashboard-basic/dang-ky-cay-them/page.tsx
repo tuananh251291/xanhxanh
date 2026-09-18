@@ -14,7 +14,7 @@ export default async function DangKyCayThemPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <BasicPageHeader title="Đăng ký cấy thêm" />
+      <BasicPageHeader title="Đăng ký làm thêm việc" />
       <div className="p-4 sm:p-6 max-w-xl mx-auto">
         <ExtraWorkRequestForm hideHeader inspectionLane={staff?.inspectionLane ?? null} />
       </div>

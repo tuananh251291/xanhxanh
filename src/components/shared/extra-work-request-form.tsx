@@ -42,7 +42,7 @@ const STATUS_BADGE_VARIANT = {
 
 const emptySlot = (): OvertimeSlot => ({ date: "", startTime: "", endTime: "" });
 
-// Đăng ký cấy thêm — dùng chung cho cả giao diện nâng cao (/extra-work) và cơ bản
+// Đăng ký làm thêm việc — dùng chung cho cả giao diện nâng cao (/extra-work) và cơ bản
 // (/dashboard-basic/dang-ky-cay-them), CHỈ NV cấy mô. 2 bảng loại trừ nhau (chọn 1 thì khoá bảng kia) —
 // Bảng 1 chỉ báo trước cho Kho mô (không có luồng từ chối), Bảng 2 Kho mô xét duyệt Đồng ý/Từ chối.
 // `inspectionLane` truyền từ trang cha (server component, đọc thẳng User.inspectionLane) — "Đăng ký cấy
@@ -136,7 +136,7 @@ export default function ExtraWorkRequestForm({
       {!hideHeader && (
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Bell className="w-6 h-6 text-primary-strong" /> Đăng ký cấy thêm
+            <Bell className="w-6 h-6 text-primary-strong" /> Đăng ký làm thêm việc
           </h1>
           <p className="text-text-secondary text-sm mt-1">
             Dùng khi cấy nhanh hết chỉ định được giao hoặc muốn đăng ký làm thêm ngoài giờ/Chủ nhật — chỉ chọn được 1 trong 2 mục dưới đây.

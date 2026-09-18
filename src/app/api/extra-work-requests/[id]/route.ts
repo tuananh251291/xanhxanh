@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     try {
       await createAlert({
         type: "EXTRA_WORK_REQUEST_REJECTED",
-        title: "Đăng ký cấy thêm bị từ chối",
+        title: "Đăng ký làm thêm việc bị từ chối",
         message: `Đăng ký ${reasonDetail} của bạn đã bị từ chối (${format(new Date(), "HH:mm dd/MM/yyyy", { locale: vi })}).`,
         userId: request.staffId,
         relatedId: request.id,
