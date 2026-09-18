@@ -25,7 +25,9 @@ const createSchema = z.discriminatedUnion("type", [
       )
       .min(1, "Cần ít nhất 1 ngày đăng ký"),
     // Bắt buộc chọn 1 trong 2 lý do — KHO_MO xem để quyết định duyệt hay không (xem ExtraWorkPurpose).
-    purpose: z.enum(["COMPLETE_MAIN_INSTRUCTION", "INCREASE_OUTPUT"], { message: "Chọn lý do đăng ký làm thêm" }),
+    // CHỈ 2 giá trị hiện tại — COMPLETE_MAIN_INSTRUCTION/INCREASE_OUTPUT là lịch sử cũ, không cho tạo
+    // mới nữa (vẫn còn trong Prisma enum để hiển thị đúng các đăng ký cũ, xem prisma/schema.prisma).
+    purpose: z.enum(["CAY_THEM", "HAN_TUI"], { message: "Chọn lý do đăng ký làm thêm" }),
   }),
 ]);
 
@@ -206,6 +208,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // "Đăng ký cấy thêm cây" chỉ dành cho NV thuộc luồng Xanh (kiểm tra ít, đủ tin tưởng giao thêm việc
+  // cấy) — luồng Vàng/Đỏ chỉ còn lựa chọn "Đăng ký hàn túi" (client đã ẩn lựa chọn này, chặn lại ở đây
+  // đề phòng gọi thẳng API). Không chặn HAN_TUI theo luồng nào.
+  if (parsed.data.purpose === "CAY_THEM") {
+    const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { inspectionLane: true } });
+    if (staff?.inspectionLane !== "XANH") {
+      return NextResponse.json({ message: "Chỉ NV thuộc luồng Xanh mới đăng ký cấy thêm cây được" }, { status: 403 });
+    }
+  }
+
   const request = await prisma.extraWorkRequest.create({
     data: {
       type: "OVERTIME",
@@ -216,10 +228,7 @@ export async function POST(req: NextRequest) {
     include,
   });
 
-  const purposeLabel =
-    parsed.data.purpose === "COMPLETE_MAIN_INSTRUCTION"
-      ? "để hoàn thành chỉ định cấy chính được giao trong tuần"
-      : "để gia tăng sản lượng";
+  const purposeLabel = parsed.data.purpose === "CAY_THEM" ? "để cấy thêm cây" : "để hàn túi";
   await createAlertForWarehouseStaff({
     role: "KHO_MO",
     warehouseId: session.user.workplaceWarehouseId,

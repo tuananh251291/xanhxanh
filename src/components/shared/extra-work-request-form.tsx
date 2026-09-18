@@ -16,7 +16,11 @@ import { EXTRA_WORK_REQUEST_STATUS_LABELS, WORK_SESSION_LABELS, EXTRA_WORK_PURPO
 
 type RequestType = "EARLY_COMPLETION" | "OVERTIME";
 type OvertimeSlot = { date: string; startTime: string; endTime: string };
-type OvertimePurpose = "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT";
+// 2 lựa chọn hiện tại — khớp thẳng 2 lối "Giao việc" ở /extra-work-requests/[id]/assign (xem
+// ExtraWorkPurpose, prisma/schema.prisma). COMPLETE_MAIN_INSTRUCTION/INCREASE_OUTPUT là lịch sử cũ,
+// không tạo mới được nữa nhưng vẫn có thể xuất hiện trong "Lịch sử đăng ký" bên dưới.
+type OvertimePurpose = "CAY_THEM" | "HAN_TUI";
+type AnyOvertimePurpose = "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT" | OvertimePurpose;
 
 type RequestHistoryItem = {
   id: string;
@@ -27,7 +31,7 @@ type RequestHistoryItem = {
   expectedEndDate: string | null;
   expectedEndSession: "SANG" | "CHIEU" | null;
   slots: { date: string; startTime: string; endTime: string }[];
-  purpose: OvertimePurpose | null;
+  purpose: AnyOvertimePurpose | null;
 };
 
 const STATUS_BADGE_VARIANT = {
@@ -41,7 +45,17 @@ const emptySlot = (): OvertimeSlot => ({ date: "", startTime: "", endTime: "" })
 // Đăng ký cấy thêm — dùng chung cho cả giao diện nâng cao (/extra-work) và cơ bản
 // (/dashboard-basic/dang-ky-cay-them), CHỈ NV cấy mô. 2 bảng loại trừ nhau (chọn 1 thì khoá bảng kia) —
 // Bảng 1 chỉ báo trước cho Kho mô (không có luồng từ chối), Bảng 2 Kho mô xét duyệt Đồng ý/Từ chối.
-export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeader?: boolean }) {
+// `inspectionLane` truyền từ trang cha (server component, đọc thẳng User.inspectionLane) — "Đăng ký cấy
+// thêm cây" chỉ hiện cho NV luồng Xanh (server vẫn tự chặn lại ở POST /api/extra-work-requests, đây chỉ
+// là ẩn bớt lựa chọn không hợp lệ khỏi UI).
+export default function ExtraWorkRequestForm({
+  hideHeader = false,
+  inspectionLane = null,
+}: {
+  hideHeader?: boolean;
+  inspectionLane?: "XANH" | "VANG" | "DO" | null;
+}) {
+  const canRegisterCayThem = inspectionLane === "XANH";
   const [selected, setSelected] = useState<RequestType | null>(null);
   const [expectedEndDate, setExpectedEndDate] = useState("");
   const [expectedEndSession, setExpectedEndSession] = useState<"SANG" | "CHIEU">("SANG");
@@ -189,22 +203,26 @@ export default function ExtraWorkRequestForm({ hideHeader = false }: { hideHeade
             </p>
 
             <div className="space-y-2">
-              <Label className="text-xs">Lý do đăng ký (chọn 1 trong 2 — Kho mô xem thông tin này để quyết định duyệt)</Label>
+              <Label className="text-xs">
+                Lý do đăng ký ({canRegisterCayThem ? "chọn 1 trong 2" : "chỉ NV luồng Xanh mới đăng ký cấy thêm cây được"} — Kho mô xem thông tin này để quyết định duyệt)
+              </Label>
+              {canRegisterCayThem && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={overtimePurpose === "CAY_THEM"}
+                    disabled={overtimePurpose === "HAN_TUI"}
+                    onCheckedChange={(checked) => setOvertimePurpose(checked ? "CAY_THEM" : null)}
+                  />
+                  <span className="text-sm">Đăng ký cấy thêm cây</span>
+                </label>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <Checkbox
-                  checked={overtimePurpose === "COMPLETE_MAIN_INSTRUCTION"}
-                  disabled={overtimePurpose === "INCREASE_OUTPUT"}
-                  onCheckedChange={(checked) => setOvertimePurpose(checked ? "COMPLETE_MAIN_INSTRUCTION" : null)}
+                  checked={overtimePurpose === "HAN_TUI"}
+                  disabled={overtimePurpose === "CAY_THEM"}
+                  onCheckedChange={(checked) => setOvertimePurpose(checked ? "HAN_TUI" : null)}
                 />
-                <span className="text-sm">Đăng ký làm thêm để hoàn thành chỉ định cấy chính được giao trong tuần</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={overtimePurpose === "INCREASE_OUTPUT"}
-                  disabled={overtimePurpose === "COMPLETE_MAIN_INSTRUCTION"}
-                  onCheckedChange={(checked) => setOvertimePurpose(checked ? "INCREASE_OUTPUT" : null)}
-                />
-                <span className="text-sm">Đăng ký làm thêm để gia tăng sản lượng</span>
+                <span className="text-sm">Đăng ký hàn túi</span>
               </label>
             </div>
 

@@ -474,9 +474,13 @@ export const EXTRA_WORK_REQUEST_STATUS_LABELS = {
   REJECTED: "Từ chối",
 } as const;
 
+// CAY_THEM/HAN_TUI là 2 lựa chọn hiện tại (xem ExtraWorkPurpose, prisma/schema.prisma) — 2 giá trị còn
+// lại là lịch sử cũ, giữ nhãn để hiển thị đúng các đăng ký cũ, không còn chọn được khi tạo mới.
 export const EXTRA_WORK_PURPOSE_LABELS = {
   COMPLETE_MAIN_INSTRUCTION: "Để hoàn thành chỉ định cấy chính được giao trong tuần",
   INCREASE_OUTPUT: "Để gia tăng sản lượng",
+  CAY_THEM: "Đăng ký cấy thêm cây",
+  HAN_TUI: "Đăng ký hàn túi",
 } as const;
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng ở Phòng nhiễm (xem /contamination-proposals).

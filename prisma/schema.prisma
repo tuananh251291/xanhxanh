@@ -2146,10 +2146,17 @@ enum WorkSession {
 }
 
 // Lý do đăng ký làm thêm ngoài giờ (chỉ áp dụng OVERTIME) — bắt buộc chọn 1 trong 2, KHO_MO xem thông tin
-// này để quyết định duyệt hay không (VD ưu tiên duyệt nếu là để hoàn thành chỉ định chính đúng hạn).
+// này để quyết định duyệt hay không. CAY_THEM/HAN_TUI là 2 lựa chọn HIỆN TẠI (khớp thẳng 2 lối "Giao
+// việc" ở /extra-work-requests/[id]/assign — CAY_THEM ứng với "Giao thêm chỉ định cấy", CHỈ NV luồng
+// Xanh (User.inspectionLane) được chọn — validate ở POST /api/extra-work-requests, xem
+// src/components/shared/extra-work-request-form.tsx; HAN_TUI ứng với "Giao việc hàn túi", mọi luồng đều
+// đăng ký được). COMPLETE_MAIN_INSTRUCTION/INCREASE_OUTPUT là 2 giá trị CŨ, không còn tạo mới được (xem
+// POST) — GIỮ LẠI chỉ để hiển thị đúng lịch sử các đăng ký cũ đã có (REJECTED hoặc đã fulfilledAt).
 enum ExtraWorkPurpose {
   COMPLETE_MAIN_INSTRUCTION
   INCREASE_OUTPUT
+  CAY_THEM
+  HAN_TUI
 }
 
 enum ExtraWorkRequestStatus {

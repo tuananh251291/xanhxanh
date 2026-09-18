@@ -22,7 +22,7 @@ type Request = {
   expectedEndSession: "SANG" | "CHIEU" | null;
   respondedBy: { name: string } | null;
   slots: { date: string; startTime: string; endTime: string }[];
-  purpose: "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT" | null;
+  purpose: "COMPLETE_MAIN_INSTRUCTION" | "INCREASE_OUTPUT" | "CAY_THEM" | "HAN_TUI" | null;
   fulfilledAt: string | null;
   fulfilledInstruction: { code: string } | null;
   fulfilledRepackInstruction: { code: string } | null;
