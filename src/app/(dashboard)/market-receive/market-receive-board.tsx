@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PackageCheck, Loader2, Check, X, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { PackageCheck, Loader2, Check, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -103,29 +103,12 @@ export default function MarketReceiveBoard() {
     }
   };
 
-  const reject = async (transferId: string) => {
-    setProcessing(transferId);
-    try {
-      const res = await fetch(`/api/transfers/${transferId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reject" }),
-      });
-      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã từ chối phiếu hàng");
-      setExpanded(null);
-      loadData();
-    } finally {
-      setProcessing(null);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <PackageCheck className="w-6 h-6 text-primary-strong" />
-          Nhận hàng Kho thành phẩm
+          Nhận hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">{transfers.length} phiếu chờ xác nhận</p>
       </div>
@@ -255,15 +238,6 @@ export default function MarketReceiveBoard() {
                                   />
                                 </div>
                                 <div className="flex gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-destructive"
-                                    onClick={() => reject(t.id)}
-                                    disabled={processing === t.id}
-                                  >
-                                    <X className="w-4 h-4 mr-1" /> Từ chối
-                                  </Button>
                                   <Button
                                     size="sm"
                                     className="bg-primary hover:bg-primary-hover"

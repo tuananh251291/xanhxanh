@@ -775,7 +775,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // tồn kho/Phòng cây trồng riêng — mở rộng sau.
   DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/market-receive", label: "Nhận hàng Kho thành phẩm", icon: "PackageCheck" },
+    { href: "/market-receive", label: "Nhận hàng", icon: "PackageCheck" },
     { href: "/market-export", label: "Xuất cây", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
