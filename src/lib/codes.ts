@@ -343,6 +343,19 @@ export async function generateDailyTaskCode(client: Prisma.TransactionClient | t
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
 
+// Mã đánh giá chất lượng cây ra rễ = "DGCL-" + năm tháng tạo "YYYYMM" + số thứ tự 4 chữ số trong tháng —
+// giống hệt công thức generateDailyTaskCode.
+export async function generateRootingQualityEvaluationCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `DGCL-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.rootingQualityEvaluation.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
 // Mã đề xuất Trồng/Hủy hàng nhiễm = 1 ký tự loại ("H" Hủy / "T" Trồng) + ngày tháng năm tạo "ddMMyy"
 // (VD 07/07/2026 → "H070726"). Nhiều đề xuất cùng loại, cùng ngày → thêm hậu tố "-2", "-3"... để tránh
 // trùng (giống generateInstructionCode/generateLotCode). client tuỳ chọn — LUÔN truyền tx khi gọi hàm

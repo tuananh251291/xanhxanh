@@ -17,6 +17,7 @@ import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-
 import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
+import { ensureWeeklyRootingQualityEvaluation, ensureRootingQualityEvaluationReminder } from "@/lib/rooting-quality-evaluation";
 import { ensureMonthlyInspectionLaneUpdate, ensureInspectionLaneOverridesApplied } from "@/lib/inspection-lane";
 import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
 
@@ -43,6 +44,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     await ensureRootingForecastReminder(session.user.workplaceWarehouseId);
     await ensureMotherForecastReminder(session.user.workplaceWarehouseId);
     await ensureMotherOutputShortfallAlerts(session.user.workplaceWarehouseId);
+    await ensureWeeklyRootingQualityEvaluation(session.user.workplaceWarehouseId);
+    await ensureRootingQualityEvaluationReminder(session.user.workplaceWarehouseId);
   }
   if (role === "KHO_MO") {
     await ensureRootingReadyAlerts();

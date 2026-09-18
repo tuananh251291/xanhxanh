@@ -278,6 +278,14 @@ enum AlertType {
   MOTHER_FORECAST_EDIT_APPROVED
   // Admin kỹ thuật/Admin cấp cao từ chối đề xuất chỉnh sửa mẫu mẹ — báo đúng NV đã gửi (userId), kèm lý do.
   MOTHER_FORECAST_EDIT_REJECTED
+  // Nhắc nhiệm vụ "Đánh giá chất lượng cây ra rễ" (RootingQualityEvaluation, tự sinh mỗi Thứ 2 cho Nhóm
+  // tuần ra rễ đến hạn, xem ensureWeeklyRootingQualityEvaluation) chưa hoàn thành, tới hạn nhắc Thứ 4 —
+  // báo đúng NV Kỹ thuật duy nhất của kho sản xuất đó (userId), hạn hoàn thành Thứ 6.
+  ROOTING_QUALITY_EVALUATION_DUE
+  // NV Kỹ thuật vừa hoàn thành đánh giá — báo Kho mô (targetRole qua createAlertForWarehouseStaff) cùng
+  // kho biết tỉ lệ đạt/không đạt + lý do, để bàn giao đúng phần đã đạt. Admin cấp cao/Admin kỹ thuật xem
+  // qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES), không nhận alert cá nhân riêng.
+  ROOTING_QUALITY_EVALUATION_READY
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -457,6 +465,7 @@ model User {
   motherForecastEditProposalsRequested  MotherForecastEditProposal[] @relation("MotherForecastEditProposalRequestedBy")
   motherForecastEditProposalsReviewed   MotherForecastEditProposal[] @relation("MotherForecastEditProposalReviewedBy")
   motherForecastEditProposalItems       MotherForecastEditProposalItem[] @relation("MotherForecastEditProposalItemStaff")
+  rootingQualityEvaluationsAssignedTo   RootingQualityEvaluation[] @relation("RootingQualityEvaluationAssignedTo")
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -754,6 +763,7 @@ model PlantType {
   motherForecastEntries      MotherForecastEntry[]
   motherForecastEditProposalItems MotherForecastEditProposalItem[]
   sealingTaskItems           SealingTaskItem[]
+  rootingQualityEvaluationItems RootingQualityEvaluationItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -1030,6 +1040,7 @@ model Warehouse {
   motherForecastSubmissions   MotherForecastSubmission[]
   motherForecastEditProposals MotherForecastEditProposal[]
   sealingTasks                SealingTask[]
+  rootingQualityEvaluations   RootingQualityEvaluation[]
 
   @@map("warehouses")
 }
@@ -1068,6 +1079,7 @@ model Room {
   dailyTasks                      DailyTask[]
   contaminationProposals          ContaminationProposal[]
   marketExportItems               MarketExportItem[]
+  rootingQualityEvaluations       RootingQualityEvaluation[]
 
   @@map("rooms")
 }
@@ -1178,6 +1190,7 @@ model ShelfGroup {
 
   shelves         Shelf[] @relation("ShelfPhysicalGroup")
   rotationShelves Shelf[] @relation("ShelfRotationGroup")
+  rootingQualityEvaluations RootingQualityEvaluation[] @relation("RootingQualityEvaluationGroup")
 
   @@map("shelf_groups")
 }
@@ -2829,6 +2842,61 @@ model RootingForecastEditProposalItem {
   quantity3       Int
 
   @@map("rooting_forecast_edit_proposal_items")
+}
+
+enum RootingQualityEvaluationStatus {
+  PENDING
+  COMPLETED
+}
+
+// Đánh giá chất lượng hàng tuần của NV Kỹ thuật cho 1 Nhóm tuần ra rễ ĐANG ĐẾN HẠN, trước khi Kho mô được
+// bàn giao sang Kho thành phẩm (Thứ 7) — tự sinh mỗi Thứ 2 (xem ensureWeeklyRootingQualityEvaluation,
+// src/lib/rooting-quality-evaluation.ts), giao thẳng cho đúng NV Kỹ thuật duy nhất của kho sản xuất đó
+// (User.workplaceWarehouseId, không qua bước phân công thủ công — mỗi kho chỉ có 1 người), hạn hoàn
+// thành Thứ 6. Hoàn thành = tách/di dời VẬT LÝ phần "không đạt" sang kệ Nhóm tuần ra rễ KẾ TIẾP ngay
+// trong 1 transaction (xem PATCH /api/rooting-quality-evaluations/[id]) — nhờ vậy Kho mô sau đó chỉ còn
+// thấy đúng phần đã đạt trên kệ, không cần thêm giới hạn số lượng ở luồng bàn giao hiện có
+// (transfers/finished/*).
+model RootingQualityEvaluation {
+  id              String                          @id @default(cuid())
+  code            String                          @unique
+  warehouseId     String
+  warehouse       Warehouse                       @relation(fields: [warehouseId], references: [id])
+  roomId          String
+  room            Room                            @relation(fields: [roomId], references: [id])
+  rotationGroupId String
+  rotationGroup   ShelfGroup                      @relation("RootingQualityEvaluationGroup", fields: [rotationGroupId], references: [id])
+  // Thứ 2 đầu tuần đánh giá, chuẩn hoá qua toStoredWeekStart — cùng quy ước DailyTask.weekStart.
+  weekStart       DateTime                        @db.Date
+  status          RootingQualityEvaluationStatus  @default(PENDING)
+  assignedToId    String
+  assignedTo      User                            @relation("RootingQualityEvaluationAssignedTo", fields: [assignedToId], references: [id])
+  // Lý do chung giải thích tỉ lệ đạt/không đạt của CẢ đợt đánh giá — bắt buộc nhập lúc hoàn thành.
+  reason          String?
+  completedAt     DateTime?
+  createdAt       DateTime                        @default(now())
+
+  items           RootingQualityEvaluationItem[]
+
+  // 1 đánh giá / phòng / Nhóm tuần ra rễ / tuần lịch — chống tạo trùng khi tải trang nhiều lần.
+  @@unique([roomId, rotationGroupId, weekStart])
+  @@map("rooting_quality_evaluations")
+}
+
+// 1 dòng / (mã cây, quy cách) trong 1 đợt đánh giá — snapshot số lượng tại thời điểm hoàn thành.
+model RootingQualityEvaluationItem {
+  id              String                    @id @default(cuid())
+  evaluationId    String
+  evaluation      RootingQualityEvaluation  @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  plantTypeId     String
+  plantType       PlantType                 @relation(fields: [plantTypeId], references: [id])
+  stageCode       String
+  totalQuantity   Int
+  passedQuantity  Int
+  failedQuantity  Int
+
+  @@unique([evaluationId, plantTypeId, stageCode])
+  @@map("rooting_quality_evaluation_items")
 }
 
 // Nhiệm vụ tháng "Dự kiến đáp ứng mẫu mẹ" cho NV Kỹ thuật — CÙNG cơ chế RootingForecastEntry (lộ trình 3

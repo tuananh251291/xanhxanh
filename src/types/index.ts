@@ -426,6 +426,8 @@ export const ALERT_TYPE_LABELS = {
   MOTHER_FORECAST_EDIT_PROPOSAL: "Đề xuất chỉnh sửa kế hoạch mẫu mẹ",
   MOTHER_FORECAST_EDIT_APPROVED: "Đề xuất chỉnh sửa mẫu mẹ đã duyệt",
   MOTHER_FORECAST_EDIT_REJECTED: "Đề xuất chỉnh sửa mẫu mẹ bị từ chối",
+  ROOTING_QUALITY_EVALUATION_DUE: "Đến hạn đánh giá chất lượng cây ra rễ",
+  ROOTING_QUALITY_EVALUATION_READY: "Đã có kết quả đánh giá chất lượng cây ra rễ",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -448,6 +450,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
     "ROOTING_FORECAST_MONTHLY_DUE", "ROOTING_FORECAST_EDIT_PROPOSAL",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
+    "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
   ],
   ADMIN: [
     "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED", "STOCK_LOW", "ORDER_PENDING_PACK",
@@ -457,6 +460,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "ROOTING_FORECAST_MONTHLY_DUE",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
+    "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
   ],
 };
 
@@ -645,6 +649,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },
     { href: "/reports/inventory-lifecycle", label: "Quá hạn", icon: "Package" },
+    { href: "/rooting-quality-evaluation", label: "Đánh giá chất lượng cây ra rễ", icon: "ClipboardCheck" },
+    { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   CAY_MO: [
@@ -686,6 +692,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // /reports/mother-contamination vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/extra-work-requests", label: "Đăng kí làm thêm", icon: "CalendarPlus" },
+    { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Nhận hàng" (/goods-receipts) gộp cả "Nhận hàng từ NCC" lẫn "Nhận bàn giao thành phẩm" (route
