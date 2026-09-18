@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
+import { revertInspectionLaneOverride } from "@/lib/inspection-lane";
 import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, canEditEmployeeName, PRODUCTION_SITE_ROLES } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -31,6 +32,16 @@ const patchSchema = z.union([
   z.object({ resign: z.boolean() }),
   z.object({ plantingCapacity: z.number().int().positive() }),
   z.object({ holdDays: z.number().int().positive().nullable() }),
+  // Ghi đè tạm thời "luồng kiểm tra" (Xanh/Vàng/Đỏ) của 1 NV cấy mô theo khoảng ngày — chỉ Admin
+  // (isAdminRole) cài đặt được, xem User.inspectionLaneOverride*, src/lib/inspection-lane.ts.
+  z.object({
+    inspectionLaneOverride: z.object({
+      lane: z.enum(["XANH", "VANG", "DO"]),
+      startAt: z.string().min(1),
+      endAt: z.string().min(1),
+    }),
+  }),
+  z.object({ cancelInspectionLaneOverride: z.literal(true) }),
   z.object({ employmentType: z.enum(["CHINH_THUC", "THU_VIEC"]).nullable() }),
   z.object({ isTrainee: z.boolean() }),
   z.object({ unlockAccount: z.literal(true) }),
@@ -161,6 +172,68 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { holdDays },
       select: { id: true, code: true, name: true, holdDays: true },
     });
+    return NextResponse.json(updated);
+  }
+
+  // Ghi đè tạm thời luồng kiểm tra theo khoảng ngày — chỉ Admin, chỉ áp dụng NV cấy mô. Nếu khoảng đã
+  // active NGAY lúc cài (startAt <= hôm nay <= endAt) thì set luôn inspectionLane trong CÙNG lượt update
+  // (phản hồi tức thì, không đợi lượt layout render tiếp theo mới thấy hiệu lực — xem
+  // ensureInspectionLaneOverridesApplied, src/lib/inspection-lane.ts).
+  if ("inspectionLaneOverride" in parsed.data) {
+    if (!isAdminRole(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin mới có quyền ghi đè luồng kiểm tra" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    }
+    const { lane, startAt, endAt } = parsed.data.inspectionLaneOverride;
+    const start = new Date(`${startAt}T00:00:00`);
+    const end = new Date(`${endAt}T23:59:59`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return NextResponse.json({ message: "Ngày không hợp lệ" }, { status: 400 });
+    }
+    if (start > end) {
+      return NextResponse.json({ message: "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc" }, { status: 400 });
+    }
+    const now = new Date();
+    if (end < now) {
+      return NextResponse.json({ message: "Ngày kết thúc không được là ngày đã qua" }, { status: 400 });
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        inspectionLaneOverride: lane,
+        inspectionLaneOverrideStartAt: start,
+        inspectionLaneOverrideEndAt: end,
+        inspectionLaneOverrideById: session!.user.id,
+        ...(start <= now ? { inspectionLane: lane } : {}),
+      },
+      select: {
+        id: true, code: true, name: true, inspectionLane: true,
+        inspectionLaneOverride: true, inspectionLaneOverrideStartAt: true, inspectionLaneOverrideEndAt: true,
+      },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Huỷ sớm 1 ghi đè đang áp dụng/đã lên lịch — trả inspectionLane về đúng giá trị hệ thống của tháng
+  // này ngay lập tức (dùng chung logic với lúc hết hạn tự nhiên, xem revertInspectionLaneOverride).
+  if ("cancelInspectionLaneOverride" in parsed.data) {
+    if (!isAdminRole(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin mới có quyền huỷ ghi đè luồng kiểm tra" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true, inspectionLaneOverrideEndAt: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    }
+    if (!target.inspectionLaneOverrideEndAt) {
+      return NextResponse.json({ message: "NV này chưa có ghi đè nào đang áp dụng" }, { status: 400 });
+    }
+    await revertInspectionLaneOverride(id);
+    const updated = await prisma.user.findUnique({ where: { id }, select: { id: true, code: true, name: true, inspectionLane: true } });
     return NextResponse.json(updated);
   }
 

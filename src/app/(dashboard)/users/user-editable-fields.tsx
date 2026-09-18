@@ -9,11 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import type { UserRole, EmploymentType } from "@prisma/client";
+import type { UserRole, EmploymentType, InspectionLane } from "@prisma/client";
 import { EMPLOYMENT_TYPE_LABELS, EMPLOYMENT_TYPE_COLORS, TRAINEE_LABEL, TRAINEE_BADGE_COLOR } from "@/types";
 import EditUserDialog, { type EditableUser } from "./edit-user-dialog";
 import UnlockAccountCell from "./unlock-account-cell";
 import DeleteUserButton from "./delete-user-button";
+import InspectionLaneOverrideDialog from "./inspection-lane-override-dialog";
 
 type WarehouseOption = { id: string; code: string; name: string };
 
@@ -23,6 +24,7 @@ type WarehouseOption = { id: string; code: string; name: string };
 // như trước (dễ bấm nhầm/đổi ý giữa chừng).
 export default function UserEditableFields({
   userId,
+  userName,
   role,
   canApprove,
   canEditCapacity,
@@ -41,9 +43,14 @@ export default function UserEditableFields({
   sanXuatWarehouses,
   thanhPhamWarehouses,
   thiTruongWarehouses,
+  inspectionLane,
+  inspectionLaneOverride,
+  inspectionLaneOverrideStartAt,
+  inspectionLaneOverrideEndAt,
   lockedAt,
 }: {
   userId: string;
+  userName: string;
   role: UserRole | null;
   canApprove: boolean;
   canEditCapacity: boolean;
@@ -67,12 +74,18 @@ export default function UserEditableFields({
   sanXuatWarehouses: WarehouseOption[];
   thanhPhamWarehouses: WarehouseOption[];
   thiTruongWarehouses: WarehouseOption[];
+  inspectionLane: InspectionLane | null;
+  inspectionLaneOverride: InspectionLane | null;
+  inspectionLaneOverrideStartAt: Date | null;
+  inspectionLaneOverrideEndAt: Date | null;
   lockedAt: Date | null;
 }) {
   const canEditWorkplace = isWorkplaceRole && canAssignWorkplace;
   const canEditThisCapacity = role === "CAY_MO" && canEditCapacity;
   const canEditThisHoldDays = role === "SALE" && canEditCapacity;
   const canEditThisEmployment = role === "CAY_MO" && canEditEmployment;
+  // Ghi đè tạm thời luồng kiểm tra — cùng phạm vi quyền với "Năng lực cấy" (isAdminRole), chỉ CAY_MO.
+  const canEditThisInspectionLane = role === "CAY_MO" && canEditCapacity;
 
   const [wp, setWp] = useState(workplaceWarehouseId ?? "NONE");
   const [cap, setCap] = useState(String(plantingCapacity));
@@ -295,6 +308,16 @@ export default function UserEditableFields({
               <EditUserDialog user={editUser} sanXuatWarehouses={sanXuatWarehouses} thanhPhamWarehouses={thanhPhamWarehouses} thiTruongWarehouses={thiTruongWarehouses} />
             )}
             {editUser && <DeleteUserButton id={editUser.id} code={editUser.code} name={editUser.name} />}
+            {canEditThisInspectionLane && (
+              <InspectionLaneOverrideDialog
+                userId={userId}
+                userName={userName}
+                inspectionLane={inspectionLane}
+                inspectionLaneOverride={inspectionLaneOverride}
+                inspectionLaneOverrideStartAt={inspectionLaneOverrideStartAt}
+                inspectionLaneOverrideEndAt={inspectionLaneOverrideEndAt}
+              />
+            )}
             {(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays || canEditThisEmployment) && (
               <Button
                 size="icon-sm"
@@ -307,7 +330,7 @@ export default function UserEditableFields({
                 <span className="sr-only">Lưu</span>
               </Button>
             )}
-            {!editUser && !(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays || canEditThisEmployment) && (
+            {!editUser && !canEditThisInspectionLane && !(canEditWorkplace || canEditThisCapacity || canEditThisHoldDays || canEditThisEmployment) && (
               <span className="text-xs text-text-muted">—</span>
             )}
           </div>

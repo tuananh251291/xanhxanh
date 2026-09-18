@@ -60,9 +60,11 @@ enum WarehouseType {
 }
 
 // Luồng kiểm tra gắn theo NV cấy mô — HỆ THỐNG TỰ TÍNH mỗi tháng từ tỉ lệ nhiễm tháng trước (xem
-// User.inspectionLane, src/lib/inspection-lane.ts) — Kho mô KHÔNG còn tự cài đặt tay được nữa (bỏ PATCH
-// /api/users/[id] nhánh inspectionLane cũ). Dùng để phân loại NV cấy mô theo mức độ cần kiểm tra khi
-// kho mô xử lý/nhận bàn giao — VANG xử lý giống hệt DO (đều phải kiểm tra lại), chỉ khác nhãn hiển thị.
+// User.inspectionLane, src/lib/inspection-lane.ts) — Kho mô KHÔNG tự cài đặt tay được (bỏ PATCH
+// /api/users/[id] nhánh inspectionLane cũ). Admin (isAdminRole) ghi đè TẠM THỜI được theo 1 khoảng ngày
+// cụ thể — xem User.inspectionLaneOverride*, ensureInspectionLaneOverridesApplied. Dùng để phân loại NV
+// cấy mô theo mức độ cần kiểm tra khi kho mô xử lý/nhận bàn giao — VANG xử lý giống hệt DO (đều phải
+// kiểm tra lại), chỉ khác nhãn hiển thị.
 enum InspectionLane {
   XANH
   VANG
@@ -357,10 +359,23 @@ model User {
   workplaceWarehouseId String?
   workplaceWarehouse   Warehouse?      @relation(fields: [workplaceWarehouseId], references: [id])
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), HỆ THỐNG TỰ TÍNH lại đầu mỗi tháng từ tỉ lệ
-  // nhiễm tháng trước (xem ensureMonthlyInspectionLaneUpdate, src/lib/inspection-lane.ts) — không ai
-  // được sửa tay. Null = chưa từng được tính (NV mới, hoặc trước khi tính năng này ra đời).
+  // nhiễm tháng trước (xem ensureMonthlyInspectionLaneUpdate, src/lib/inspection-lane.ts). Null = chưa
+  // từng được tính (NV mới, hoặc trước khi tính năng này ra đời). Admin ghi đè tạm thời được qua 4 field
+  // inspectionLaneOverride* bên dưới — field này VẪN LÀ giá trị đang áp dụng thật (đọc thẳng ở mọi nơi
+  // hiện có, không cần sửa gì thêm), chỉ khác là trong khoảng override thì giá trị này = override.lane
+  // thay vì giá trị hệ thống tính, và tự trả lại đúng giá trị hệ thống khi hết khoảng.
   inspectionLane       InspectionLane?
   inspectionLaneMonthlyResults InspectionLaneMonthlyResult[]
+  // Ghi đè tạm thời luồng kiểm tra theo 1 khoảng ngày cụ thể — Admin (isAdminRole) cài, xem PATCH
+  // /api/users/[id] nhánh inspectionLaneOverride, ensureInspectionLaneOverridesApplied. Giữ nguyên CẢ 4
+  // field trong suốt khoảng active (để UI biết đang ghi đè + hiển thị lại đúng khoảng đã chọn) — xoá về
+  // null khi hết hạn hoặc bị huỷ tay (cancelInspectionLaneOverride).
+  inspectionLaneOverride        InspectionLane?
+  inspectionLaneOverrideStartAt DateTime?
+  inspectionLaneOverrideEndAt   DateTime?
+  inspectionLaneOverrideById    String?
+  inspectionLaneOverrideBy      User?           @relation("InspectionLaneOverrideBy", fields: [inspectionLaneOverrideById], references: [id])
+  inspectionLaneOverridesSet    User[]          @relation("InspectionLaneOverrideBy")
   // Năng lực cấy — chỉ áp dụng cho NV cấy mô (CAY_MO): số cụm mẫu mẹ NV đó dùng hết trong 1 tuần
   // (thể hiện tốc độ cấy), chỉ ADMIN/SUPER_ADMIN cài đặt được (xem /api/users/[id] PATCH).
   plantingCapacity     Int             @default(1920)

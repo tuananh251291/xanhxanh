@@ -17,7 +17,7 @@ import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-
 import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
-import { ensureMonthlyInspectionLaneUpdate } from "@/lib/inspection-lane";
+import { ensureMonthlyInspectionLaneUpdate, ensureInspectionLaneOverridesApplied } from "@/lib/inspection-lane";
 import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +37,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   await ensureMediumOrdersSent();
   await ensureCustomerAutoExpire();
   await ensureMonthlyInspectionLaneUpdate();
+  await ensureInspectionLaneOverridesApplied();
   if (role === "KY_THUAT") {
     await ensureMotherReadyAlerts();
     await ensureRootingForecastReminder(session.user.workplaceWarehouseId);

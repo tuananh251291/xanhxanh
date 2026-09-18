@@ -205,6 +205,7 @@ export default async function UsersPage({
                         </td>
                         <UserEditableFields
                           userId={user.id}
+                          userName={user.name}
                           role={user.role}
                           canApprove={canApprove}
                           canEditCapacity={canEditCapacity}
@@ -241,6 +242,10 @@ export default async function UsersPage({
                           sanXuatWarehouses={sanXuatWarehouses}
                           thanhPhamWarehouses={thanhPhamWarehouses}
                           thiTruongWarehouses={thiTruongWarehouses}
+                          inspectionLane={user.inspectionLane}
+                          inspectionLaneOverride={user.inspectionLaneOverride}
+                          inspectionLaneOverrideStartAt={user.inspectionLaneOverrideStartAt}
+                          inspectionLaneOverrideEndAt={user.inspectionLaneOverrideEndAt}
                           lockedAt={user.lockedAt}
                         />
                       </tr>

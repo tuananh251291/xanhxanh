@@ -1,6 +1,6 @@
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { prisma } from "@/lib/prisma";
-import type { InspectionLane } from "@prisma/client";
+import type { InspectionLane, Prisma } from "@prisma/client";
 
 // "Luồng kiểm tra" (Xanh/Vàng/Đỏ) của NV cấy mô — TỰ TÍNH đầu mỗi tháng từ tỉ lệ nhiễm TỔNG HỢP của
 // tháng trước, không còn do Kho mô cài đặt tay (xem prisma/schema.prisma model InspectionLaneMonthlyResult
@@ -209,5 +209,65 @@ export async function ensureMonthlyInspectionLaneUpdate(): Promise<void> {
       }),
       prisma.user.update({ where: { id: s.id }, data: { inspectionLane: lane } }),
     ]);
+  }
+}
+
+// Giá trị "hệ thống" của THÁNG HIỆN TẠI — dùng để TRẢ VỀ khi 1 ghi đè tay (xem User.inspectionLaneOverride*)
+// hết hạn hoặc bị huỷ. Luôn có sẵn 1 dòng vì ensureMonthlyInspectionLaneUpdate() chạy TRƯỚC trong layout
+// (src/app/(dashboard)/layout.tsx) — fallback "VANG" chỉ phòng hờ (không nên xảy ra trong thực tế).
+export async function getCurrentMonthSystemLane(
+  staffId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<InspectionLane> {
+  const applyMonth = new Date(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const result = await client.inspectionLaneMonthlyResult.findUnique({
+    where: { staffId_applyMonth: { staffId, applyMonth } },
+    select: { lane: true },
+  });
+  return result?.lane ?? "VANG";
+}
+
+// Trả `inspectionLane` về đúng giá trị hệ thống của tháng này + xoá sạch 4 field override — dùng chung
+// cho cả ensureInspectionLaneOverridesApplied (hết hạn tự nhiên) lẫn PATCH /api/users/[id] nhánh
+// cancelInspectionLaneOverride (Admin chủ động huỷ sớm).
+export async function revertInspectionLaneOverride(
+  staffId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<void> {
+  const systemLane = await getCurrentMonthSystemLane(staffId, client);
+  await client.user.update({
+    where: { id: staffId },
+    data: {
+      inspectionLane: systemLane,
+      inspectionLaneOverride: null,
+      inspectionLaneOverrideStartAt: null,
+      inspectionLaneOverrideEndAt: null,
+      inspectionLaneOverrideById: null,
+    },
+  });
+}
+
+// Lazy, gọi sau ensureMonthlyInspectionLaneUpdate() trong layout — áp dụng ghi đè đang trong khoảng
+// active (đề phòng trường hợp API tạo ghi đè không set kịp, hoặc vừa sang tháng mới khiến
+// ensureMonthlyInspectionLaneUpdate() vừa ghi đè lại giá trị hệ thống — ghi đè tay phải LUÔN thắng nếu
+// còn active), và TRẢ VỀ đúng giá trị hệ thống khi khoảng đã kết thúc.
+export async function ensureInspectionLaneOverridesApplied(): Promise<void> {
+  const now = new Date();
+  const withOverride = await prisma.user.findMany({
+    where: { role: "CAY_MO", inspectionLaneOverrideEndAt: { not: null } },
+    select: {
+      id: true,
+      inspectionLane: true,
+      inspectionLaneOverride: true,
+      inspectionLaneOverrideStartAt: true,
+      inspectionLaneOverrideEndAt: true,
+    },
+  });
+  for (const u of withOverride) {
+    if (u.inspectionLaneOverrideEndAt! < now) {
+      await revertInspectionLaneOverride(u.id);
+    } else if (u.inspectionLaneOverrideStartAt! <= now && u.inspectionLane !== u.inspectionLaneOverride) {
+      await prisma.user.update({ where: { id: u.id }, data: { inspectionLane: u.inspectionLaneOverride! } });
+    }
   }
 }
