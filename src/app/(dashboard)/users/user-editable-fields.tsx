@@ -28,6 +28,7 @@ export default function UserEditableFields({
   role,
   canApprove,
   canEditCapacity,
+  canEditInspectionLane,
   canEditWorkplace: canAssignWorkplace,
   isWorkplaceRole,
   workplaceWarehouseId,
@@ -54,6 +55,7 @@ export default function UserEditableFields({
   role: UserRole | null;
   canApprove: boolean;
   canEditCapacity: boolean;
+  canEditInspectionLane: boolean;
   canEditWorkplace: boolean;
   isWorkplaceRole: boolean;
   workplaceWarehouseId: string | null;
@@ -84,8 +86,9 @@ export default function UserEditableFields({
   const canEditThisCapacity = role === "CAY_MO" && canEditCapacity;
   const canEditThisHoldDays = role === "SALE" && canEditCapacity;
   const canEditThisEmployment = role === "CAY_MO" && canEditEmployment;
-  // Ghi đè tạm thời luồng kiểm tra — cùng phạm vi quyền với "Năng lực cấy" (isAdminRole), chỉ CAY_MO.
-  const canEditThisInspectionLane = role === "CAY_MO" && canEditCapacity;
+  // Ghi đè tạm thời luồng kiểm tra — CHỈ Admin cấp cao + Admin kỹ thuật (canOverrideInspectionLane,
+  // hẹp hơn "Năng lực cấy"/isAdminRole vốn gồm cả Admin thường), chỉ áp dụng CAY_MO.
+  const canEditThisInspectionLane = role === "CAY_MO" && canEditInspectionLane;
 
   const [wp, setWp] = useState(workplaceWarehouseId ?? "NONE");
   const [cap, setCap] = useState(String(plantingCapacity));
@@ -301,7 +304,7 @@ export default function UserEditableFields({
           <span className="text-xs text-text-muted">Bình thường</span>
         )}
       </td>
-      {(canApprove || canEditCapacity || canEditEmployment) && (
+      {(canApprove || canEditCapacity || canEditEmployment || canEditInspectionLane) && (
         <td className="px-4 py-3">
           <div className="flex items-center gap-1.5">
             {editUser && (

@@ -96,6 +96,14 @@ export function canManagePayroll(role: UserRole | null | undefined): boolean {
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Ai được ghi đè tạm thời "luồng kiểm tra" (Xanh/Vàng/Đỏ) của NV cấy mô theo khoảng ngày (xem
+// User.inspectionLaneOverride*, PATCH /api/users/[id] nhánh inspectionLaneOverride/
+// cancelInspectionLaneOverride) — CHỈ Admin cấp cao + Admin kỹ thuật, KHÔNG bao gồm Admin thường (khác
+// isAdminRole ở trên, vốn gồm cả 3 role).
+export function canOverrideInspectionLane(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "ADMIN_KY_THUAT";
+}
+
 // Ai được đánh dấu 1 NV "Nghỉ việc" (khoá đăng nhập ngay, giữ nguyên dữ liệu lịch sử — xem
 // User.isActive, PATCH /api/users/[id] nhánh "resign") — cùng phạm vi role với canAssignWorkplace/
 // canEditEmploymentType (SUPER_ADMIN + NV Hành chính nhân sự).
@@ -643,7 +651,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
-    { href: "/extra-work", label: "Đăng ký cấy thêm", icon: "CalendarPlus" },
+    { href: "/extra-work", label: "Đăng ký làm thêm việc", icon: "CalendarPlus" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
     { href: "/product-handover", label: "Bàn giao sản phẩm", icon: "Send" },
     { href: "/handover-record", label: "Ghi nhận bàn giao", icon: "PackageCheck" },

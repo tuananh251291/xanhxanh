@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { revertInspectionLaneOverride } from "@/lib/inspection-lane";
-import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, canEditEmployeeName, PRODUCTION_SITE_ROLES } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkplace, canManageEmploymentStatus, canEditEmployeeCode, canEditEmployeeName, canOverrideInspectionLane, PRODUCTION_SITE_ROLES } from "@/types";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -180,8 +180,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // (phản hồi tức thì, không đợi lượt layout render tiếp theo mới thấy hiệu lực — xem
   // ensureInspectionLaneOverridesApplied, src/lib/inspection-lane.ts).
   if ("inspectionLaneOverride" in parsed.data) {
-    if (!isAdminRole(session?.user?.role)) {
-      return NextResponse.json({ message: "Chỉ Admin mới có quyền ghi đè luồng kiểm tra" }, { status: 403 });
+    if (!canOverrideInspectionLane(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cấp cao/Admin kỹ thuật mới có quyền ghi đè luồng kiểm tra" }, { status: 403 });
     }
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
     if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
@@ -221,8 +221,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Huỷ sớm 1 ghi đè đang áp dụng/đã lên lịch — trả inspectionLane về đúng giá trị hệ thống của tháng
   // này ngay lập tức (dùng chung logic với lúc hết hạn tự nhiên, xem revertInspectionLaneOverride).
   if ("cancelInspectionLaneOverride" in parsed.data) {
-    if (!isAdminRole(session?.user?.role)) {
-      return NextResponse.json({ message: "Chỉ Admin mới có quyền huỷ ghi đè luồng kiểm tra" }, { status: 403 });
+    if (!canOverrideInspectionLane(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cấp cao/Admin kỹ thuật mới có quyền huỷ ghi đè luồng kiểm tra" }, { status: 403 });
     }
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true, inspectionLaneOverrideEndAt: true } });
     if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
