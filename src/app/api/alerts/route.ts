@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { alertTargetRolesFor } from "@/types";
+import { alertTargetRolesFor, DEVIATION_CAUSE_LABELS } from "@/types";
+import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { z } from "zod";
 
 export async function GET(req: NextRequest) {
@@ -66,6 +67,44 @@ export async function PATCH(req: NextRequest) {
       ...(cause ? { cause } : {}),
     },
   });
+
+  // NV Kỹ thuật vừa chọn xong nguyên nhân — báo kết quả cho ĐÚNG NV cấy mô bị đánh giá + NV Kho mô cùng
+  // cơ sở (cùng warehouseId suy ra từ giàn kệ nguồn của chỉ định, khớp cách POST /api/daily-records đang
+  // dùng cho MOTHER_CONTAMINATION_HIGH) — chỉ chạy đúng LẦN ĐẦU cause được ghi (alert.cause cũ null, nếu
+  // không sẽ báo lại mỗi lần NV Kỹ thuật lỡ đổi ý chọn lại nguyên nhân khác cho alert đã resolved).
+  if (cause && alert.type === "OUTPUT_DEVIATION" && alert.cause === null && alert.relatedId) {
+    const instruction = await prisma.plantingInstruction.findUnique({
+      where: { id: alert.relatedId },
+      select: {
+        code: true,
+        assignedToId: true,
+        items: { take: 1, select: { shelf: { select: { warehouseId: true } } } },
+      },
+    });
+    if (instruction) {
+      const warehouseId = instruction.items[0]?.shelf?.warehouseId ?? null;
+      const message = `Chỉ định ${instruction.code} — kết luận: ${DEVIATION_CAUSE_LABELS[cause]}`;
+      if (instruction.assignedToId) {
+        await createAlert({
+          type: "OUTPUT_DEVIATION_RESOLVED",
+          title: "Kết quả đánh giá lệch sản lượng",
+          message,
+          userId: instruction.assignedToId,
+          relatedId: alert.relatedId,
+          relatedType: "PlantingInstruction",
+        });
+      }
+      await createAlertForWarehouseStaff({
+        role: "KHO_MO",
+        warehouseId,
+        type: "OUTPUT_DEVIATION_RESOLVED",
+        title: "Kết quả đánh giá lệch sản lượng",
+        message,
+        relatedId: alert.relatedId,
+        relatedType: "PlantingInstruction",
+      });
+    }
+  }
 
   return NextResponse.json(updated);
 }

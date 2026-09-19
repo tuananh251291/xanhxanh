@@ -171,6 +171,12 @@ enum OrderMarket {
 enum AlertType {
   CONTAMINATION_HIGH
   OUTPUT_DEVIATION
+  // NV Kỹ thuật vừa chọn xong nguyên nhân (DeviationCause) cho 1 alert OUTPUT_DEVIATION — báo cho ĐÚNG NV
+  // cấy mô bị đánh giá (PlantingInstruction.assignedToId, userId) VÀ NV Kho mô cùng cơ sở sản xuất
+  // (createAlertForWarehouseStaff, cùng pattern MOTHER_CONTAMINATION_HIGH) biết kết quả — xem PATCH
+  // /api/alerts. Khác OUTPUT_DEVIATION (báo lúc PHÁT HIỆN lệch, chỉ gửi NV Kỹ thuật) — type này báo lúc
+  // ĐÃ CÓ KẾT LUẬN nguyên nhân.
+  OUTPUT_DEVIATION_RESOLVED
   // Kho thành phẩm "Hoàn thành xử lý" 1 Yêu cầu xử lý đơn hàng nhưng số lượng thực tế thu được
   // (actualOutputQuantity) thấp hơn số thực cần (neededQuantity) — báo cho đúng Sale sở hữu đơn đó
   // (userId) biết đơn có thể thiếu hàng, khác OUTPUT_DEVIATION (chỉ dành riêng cho KY_THUAT/lệch tiến độ

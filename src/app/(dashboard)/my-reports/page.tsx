@@ -10,6 +10,7 @@ import { BarChart3, Leaf, Package, ClipboardList, Search } from "lucide-react";
 import { startOfMonth, startOfDay, endOfDay, subDays, format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
+import { DEVIATION_CAUSE_LABELS } from "@/types";
 import Link from "next/link";
 
 export default async function MyReportsPage({
@@ -59,6 +60,27 @@ export default async function MyReportsPage({
 
   const motherThisMonth = monthLots.filter((l) => l.stage === "MAU_ME").reduce((s, l) => s + l.initialQuantity, 0);
   const finishedThisMonth = monthLots.filter((l) => l.stage === "THANH_PHAM").reduce((s, l) => s + l.initialQuantity, 0);
+
+  // Lịch sử lệch chỉ định của CHÍNH NV này — tìm chỉ định do mình thực hiện trước, rồi lọc alert
+  // OUTPUT_DEVIATION theo đúng relatedId đó (Alert không có FK thẳng tới assignedToId nên phải tra 2 bước).
+  const myInstructionIds = (
+    await prisma.plantingInstruction.findMany({ where: { assignedToId: userId }, select: { id: true } })
+  ).map((i) => i.id);
+  const deviationAlerts = myInstructionIds.length
+    ? await prisma.alert.findMany({
+        where: { type: "OUTPUT_DEVIATION", relatedType: "PlantingInstruction", relatedId: { in: myInstructionIds } },
+        select: { id: true, message: true, cause: true, createdAt: true, relatedId: true },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      })
+    : [];
+  const deviationInstructions = deviationAlerts.length
+    ? await prisma.plantingInstruction.findMany({
+        where: { id: { in: Array.from(new Set(deviationAlerts.map((a) => a.relatedId!))) } },
+        select: { id: true, code: true, plantType: { select: { name: true } } },
+      })
+    : [];
+  const deviationInstructionById = new Map(deviationInstructions.map((i) => [i.id, i]));
 
   const dayRows = new Map<string, { date: string; totalCreated: number; contaminated: number }>();
   for (const insp of darkRoomInspections) {
@@ -178,6 +200,40 @@ export default async function MyReportsPage({
                       {mother > 0 && <Badge className="bg-violet-light text-violet-foreground">MM +{mother.toLocaleString("vi-VN")}</Badge>}
                       {finished > 0 && <Badge className="bg-primary-light text-primary-strong">TP +{finished.toLocaleString("vi-VN")}</Badge>}
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Lịch sử lệch chỉ định</CardTitle></CardHeader>
+        <CardContent>
+          {deviationAlerts.length === 0 ? (
+            <p className="text-sm text-text-muted text-center py-8">Chưa có lần nào bị đánh giá lệch chỉ định</p>
+          ) : (
+            <div className="space-y-2">
+              {deviationAlerts.map((a) => {
+                const instruction = a.relatedId ? deviationInstructionById.get(a.relatedId) : null;
+                return (
+                  <div key={a.id} className="p-3 bg-background rounded-lg text-sm space-y-1">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <p className="font-medium">
+                        <span className="font-mono text-info-foreground">{instruction?.code ?? "—"}</span>
+                        {instruction && <span className="text-text-secondary ml-2">{instruction.plantType.name}</span>}
+                      </p>
+                      {a.cause ? (
+                        <Badge className={a.cause === "KY_THUAT_SAI" ? "bg-warning-light text-warning-foreground" : "bg-danger-light text-destructive"}>
+                          {DEVIATION_CAUSE_LABELS[a.cause]}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Chưa xử lý</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-muted">{format(a.createdAt, "dd/MM/yyyy HH:mm", { locale: vi })}</p>
+                    <p className="text-xs text-text-secondary">{a.message}</p>
                   </div>
                 );
               })}

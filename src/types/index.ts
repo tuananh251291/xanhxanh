@@ -397,6 +397,7 @@ export const DAILY_TASK_STATUS_LABELS = {
 export const ALERT_TYPE_LABELS = {
   CONTAMINATION_HIGH: "Tỉ lệ nhiễm cao",
   OUTPUT_DEVIATION: "Lệch sản lượng",
+  OUTPUT_DEVIATION_RESOLVED: "Kết quả đánh giá lệch sản lượng",
   ORDER_EXPIRING: "Đơn sắp hết hạn",
   ORDER_EXPIRED: "Đơn hết hạn",
   STOCK_LOW: "Tồn kho thấp",
@@ -444,7 +445,7 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
 // Admin chỉ xem để giám sát, không phải người xử lý — widget này chỉ hiển thị, không có nút xử lý).
 export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT", AlertType[]> = {
   SUPER_ADMIN: [
-    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED",
+    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED",
     "STOCK_LOW", "LOT_READY_TRANSFER", "ORDER_PENDING_PACK", "MEDIUM_HANDOVER_READY", "ROOTING_LOT_READY",
     "CONTAMINATION_PROPOSAL", "INSPECTION_RESULT_READY", "ACCOUNT_LOCKED", "PASSWORD_RESET_REQUESTED",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
@@ -457,7 +458,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "CONTAMINATION_PROPOSAL", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
   ],
   ADMIN_KY_THUAT: [
-    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
+    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "ROOTING_FORECAST_MONTHLY_DUE",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
     "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
@@ -649,6 +650,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },
     { href: "/reports/inventory-lifecycle", label: "Quá hạn", icon: "Package" },
+    { href: "/reports/output-deviation", label: "Lệch chỉ định & nguyên nhân", icon: "AlertTriangle" },
     { href: "/rooting-quality-evaluation", label: "Đánh giá chất lượng cây ra rễ", icon: "ClipboardCheck" },
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -679,6 +681,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },
     { href: "/reports/inventory-lifecycle", label: "Quá hạn", icon: "Package" },
+    { href: "/reports/output-deviation", label: "Lệch chỉ định & nguyên nhân", icon: "AlertTriangle" },
     // Gộp "Nhập kho thủ công" + "Gán mã cây & NV mẫu mẹ" + "Cài đặt luồng kiểm tra" vào hub này (xem
     // manual-settings/page.tsx) — 3 route cũ vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/manual-settings", label: "Cài đặt thủ công", icon: "Settings" },

@@ -28,6 +28,7 @@ export default async function ReportCenterPage() {
     { href: "/reports/inspection-lane", icon: Flag, title: "Phân loại luồng kiểm tra", description: "NV cấy mô nào đang thuộc luồng Xanh/Vàng/Đỏ, theo từng khu sản xuất." },
     { href: "/reports/inspection-defects", icon: AlertTriangle, title: "Phiếu kiểm tra không đạt/nhiễm", description: "Phiếu kiểm tra ghi nhận hàng không đạt yêu cầu/hàng nhiễm theo từng NV cấy mô, lọc theo khu sản xuất và tháng." },
     { href: "/reports/rooting-quality-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá chất lượng ra rễ", description: "Tỉ lệ đạt/không đạt cây ra rễ hàng tuần do NV kỹ thuật đánh giá trước khi Kho mô bàn giao Kho thành phẩm." },
+    { href: "/reports/output-deviation", icon: AlertTriangle, title: "Lệch chỉ định & nguyên nhân", description: "Các lần NV cấy mô cấy lệch chỉ định quá ngưỡng, kèm nguyên nhân NV Kỹ thuật đã kết luận (hoặc chưa xử lý)." },
     // Dữ liệu lương nhạy cảm — chỉ hiện thẻ này nếu role hiện tại thật sự xem được (xem canManagePayroll,
     // hiện chỉ SUPER_ADMIN trong số các role admin, KHÔNG gồm ADMIN thường/ADMIN_KY_THUAT).
     ...(canManagePayroll(role) ? [{ href: "/reports/payroll", icon: DollarSign, title: "Bảng lương", description: "Lương NV cấy mô tính theo kỳ lương, xuất Excel tổng hợp + chi tiết theo ngày." }] : []),
