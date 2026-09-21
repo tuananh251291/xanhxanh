@@ -28,6 +28,7 @@ export default function UserEditableFields({
   userId,
   userName,
   role,
+  isActive,
   canApprove,
   canEditCapacity,
   canEditInspectionLane,
@@ -56,6 +57,10 @@ export default function UserEditableFields({
   userId: string;
   userName: string;
   role: UserRole | null;
+  // NV "Nghỉ việc" (isActive = false) — ẩn hẳn khối Loại hợp đồng/Cấy học việc/Ngày bắt đầu thử việc, dù
+  // vẫn còn quyền sửa (canEditThisEmployment) — dữ liệu vẫn giữ nguyên trong DB, chỉ không cho xem/sửa
+  // tiếp vì NV đã nghỉ, tránh HR sửa nhầm hồ sơ người không còn làm việc.
+  isActive: boolean;
   canApprove: boolean;
   canEditCapacity: boolean;
   canEditInspectionLane: boolean;
@@ -89,7 +94,7 @@ export default function UserEditableFields({
   const canEditWorkplace = isWorkplaceRole && canAssignWorkplace;
   const canEditThisCapacity = role === "CAY_MO" && canEditCapacity;
   const canEditThisHoldDays = role === "SALE" && canEditCapacity;
-  const canEditThisEmployment = role === "CAY_MO" && canEditEmployment;
+  const canEditThisEmployment = role === "CAY_MO" && canEditEmployment && isActive;
   // Ghi đè tạm thời luồng kiểm tra — CHỈ Admin cấp cao + Admin kỹ thuật (canOverrideInspectionLane,
   // hẹp hơn "Năng lực cấy"/isAdminRole vốn gồm cả Admin thường), chỉ áp dụng CAY_MO.
   const canEditThisInspectionLane = role === "CAY_MO" && canEditInspectionLane;
@@ -230,7 +235,11 @@ export default function UserEditableFields({
         )}
       </td>
       <td className="px-4 py-3">
-        {role === "CAY_MO" ? (
+        {role === "CAY_MO" && !isActive ? (
+          // NV đã "Nghỉ việc" — ẩn hẳn Loại hợp đồng/Cấy học việc/Ngày bắt đầu thử việc (dữ liệu vẫn giữ
+          // nguyên trong DB, chỉ không hiện/sửa tiếp vì không còn liên quan tới người đã nghỉ).
+          <span className="text-xs text-text-muted">—</span>
+        ) : role === "CAY_MO" ? (
           canEditThisEmployment ? (
             <div className="space-y-1.5">
               <Select
@@ -252,22 +261,26 @@ export default function UserEditableFields({
                 <Checkbox checked={trn} disabled={saving} onCheckedChange={(v) => setTrn(v === true)} />
                 {TRAINEE_LABEL}
               </label>
-              <div className="space-y-0.5">
-                <Input
-                  type="date"
-                  className="w-36 h-8 text-xs"
-                  value={pst}
-                  disabled={saving}
-                  onChange={(e) => setPst(e.target.value)}
-                />
-                <p className="text-[10px] text-text-muted">Ngày bắt đầu thử việc</p>
-              </div>
+              {/* NV "Chính thức" không còn cần theo dõi ngày bắt đầu thử việc — ẩn ngay khi đổi lựa chọn,
+                  không cần chờ bấm Lưu. */}
+              {emp !== "CHINH_THUC" && (
+                <div className="space-y-0.5">
+                  <Input
+                    type="date"
+                    className="w-36 h-8 text-xs"
+                    value={pst}
+                    disabled={saving}
+                    onChange={(e) => setPst(e.target.value)}
+                  />
+                  <p className="text-[10px] text-text-muted">Ngày bắt đầu thử việc</p>
+                </div>
+              )}
             </div>
-          ) : employmentType || isTrainee || probationStartDate ? (
+          ) : employmentType || isTrainee || (probationStartDate && employmentType !== "CHINH_THUC") ? (
             <div className="flex flex-wrap gap-1">
               {employmentType && <Badge className={EMPLOYMENT_TYPE_COLORS[employmentType]}>{EMPLOYMENT_TYPE_LABELS[employmentType]}</Badge>}
               {isTrainee && <Badge className={TRAINEE_BADGE_COLOR}>{TRAINEE_LABEL}</Badge>}
-              {probationStartDate && (
+              {probationStartDate && employmentType !== "CHINH_THUC" && (
                 <span className="text-[10px] text-text-muted w-full">
                   Thử việc từ {new Date(probationStartDate).toLocaleDateString("vi-VN")}
                 </span>

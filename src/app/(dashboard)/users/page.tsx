@@ -208,6 +208,7 @@ export default async function UsersPage({
                           userId={user.id}
                           userName={user.name}
                           role={user.role}
+                          isActive={user.isActive}
                           canApprove={canApprove}
                           canEditCapacity={canEditCapacity}
                           canEditInspectionLane={canEditInspectionLane}
