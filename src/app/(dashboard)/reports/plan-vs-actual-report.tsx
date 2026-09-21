@@ -29,7 +29,7 @@ type Unit = "week" | "month";
 type Scope = "all" | "warehouse";
 
 type PeriodRow = { period: string; "Kế hoạch": number; "Thực tế": number };
-type StaffRow = { staffId: string; code: string; name: string; actual: number; percentOfPlan: number | null };
+type StaffRow = { staffId: string; code: string; name: string; actual: number; plan: number; percentOfPlan: number | null };
 type ReportData = { data: PeriodRow[]; totalPlan: number; totalActual: number; percentAchieved: number | null; staffBreakdown: StaffRow[] };
 
 function periodValueToDateStr(value: string, unit: Unit): string {
@@ -260,12 +260,12 @@ export default function PlanVsActualReport() {
                   // với 1 cột dài lê thê. Ít NV (≤6) thì không cần tách, giữ 1 bảng cho gọn.
                   (() => {
                     const staff = report.staffBreakdown;
-                    if (staff.length <= 6) return <StaffBreakdownTable staff={staff} totalPlan={report.totalPlan} />;
+                    if (staff.length <= 6) return <StaffBreakdownTable staff={staff} />;
                     const half = Math.ceil(staff.length / 2);
                     return (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <StaffBreakdownTable staff={staff.slice(0, half)} totalPlan={report.totalPlan} />
-                        <StaffBreakdownTable staff={staff.slice(half)} totalPlan={report.totalPlan} />
+                        <StaffBreakdownTable staff={staff.slice(0, half)} />
+                        <StaffBreakdownTable staff={staff.slice(half)} />
                       </div>
                     );
                   })()
@@ -280,11 +280,9 @@ export default function PlanVsActualReport() {
 }
 
 // Dùng chung cho dialog "Chi tiết theo nhân sự" — cho phép hiện 1 hoặc 2 bảng cạnh nhau (xem chỗ gọi).
-// Cột "Kế hoạch" hiện ĐÚNG 1 giá trị `totalPlan` lặp lại ở mọi dòng — kế hoạch "Dự kiến đáp ứng cây ra
-// rễ" NV Kỹ thuật nhập theo THÁNG/CƠ SỞ, không giao chỉ tiêu riêng cho từng NV cấy mô — hiện lại số này
-// cạnh "Thực tế" để NV tự đối chiếu ra đúng "% đáp ứng" (= Thực tế / Kế hoạch) mà không cần cuộn lên xem
-// dòng tổng phía trên.
-function StaffBreakdownTable({ staff, totalPlan }: { staff: StaffRow[]; totalPlan: number }) {
+// Cột "Kế hoạch" hiện đúng phần dự kiến NV Kỹ thuật đã giao RIÊNG cho từng NV cấy mô (assignedStaffId ở
+// RootingForecastEntry, xem route.ts) — KHÔNG phải tổng kế hoạch chung của cả kỳ.
+function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -302,7 +300,7 @@ function StaffBreakdownTable({ staff, totalPlan }: { staff: StaffRow[]; totalPla
             <tr key={s.staffId} className="border-b last:border-0 even:bg-primary-light">
               <td className="px-3 py-2 font-mono">{s.code}</td>
               <td className="px-3 py-2">{s.name}</td>
-              <td className="px-3 py-2 text-center tabular-nums text-text-secondary">{fmt(totalPlan)}</td>
+              <td className="px-3 py-2 text-center tabular-nums text-text-secondary">{fmt(s.plan)}</td>
               <td className="px-3 py-2 text-center tabular-nums">{fmt(s.actual)}</td>
               <td className={`px-3 py-2 text-center tabular-nums font-semibold ${percentColorClass(s.percentOfPlan)}`}>
                 {s.percentOfPlan === null ? "—" : `${s.percentOfPlan}%`}

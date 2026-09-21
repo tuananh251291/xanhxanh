@@ -56,26 +56,57 @@ export async function GET(req: NextRequest) {
   }
 
   // Kế hoạch — gom mọi taskMonth cần dùng (tháng chứa mỗi bucket, trừ 1/2/3 tháng — 3 khả năng vì chu kỳ
-  // nhập 3 tháng/lần) rồi 1 lần groupBy, tránh query lặp lại cho từng bucket.
+  // nhập 3 tháng/lần) rồi 1 lần findMany, tránh query lặp lại cho từng bucket. Lấy findMany (không groupBy
+  // nữa) vì còn cần tách riêng theo assignedStaffId cho "Chi tiết theo nhân sự" bên dưới — mỗi dòng
+  // RootingForecastEntry gắn đúng 1 NV cấy mô phụ trách (bắt buộc, xem schema.prisma), KHÔNG phải kế
+  // hoạch chung không rõ ai làm.
   const candidateTaskMonthsForBucket = buckets.map((b) => {
     const displayMonth = startOfMonth(b.start);
     return [subMonths(displayMonth, 1), subMonths(displayMonth, 2), subMonths(displayMonth, 3)];
   });
   const uniqueTaskMonths = Array.from(new Set(candidateTaskMonthsForBucket.flat().map((d) => format(d, "yyyy-MM-dd")))).map((s) => new Date(s));
-  const planRows = uniqueTaskMonths.length
-    ? await prisma.rootingForecastEntry.groupBy({
-        by: ["taskMonth"],
+  const planEntries = uniqueTaskMonths.length
+    ? await prisma.rootingForecastEntry.findMany({
         where: {
           taskMonth: { in: uniqueTaskMonths },
           ...(scopeWarehouseId ? { warehouseId: scopeWarehouseId } : {}),
           ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
         },
-        _sum: { quantity1: true, quantity2: true, quantity3: true },
+        select: { taskMonth: true, assignedStaffId: true, quantity1: true, quantity2: true, quantity3: true },
       })
     : [];
-  const planByTaskMonth = new Map(
-    planRows.map((r) => [format(r.taskMonth, "yyyy-MM-dd"), { q1: r._sum.quantity1 ?? 0, q2: r._sum.quantity2 ?? 0, q3: r._sum.quantity3 ?? 0 }])
-  );
+
+  type PlanAgg = { q1: number; q2: number; q3: number };
+  const emptyPlanMap = new Map<string, PlanAgg>();
+  const planByTaskMonth = new Map<string, PlanAgg>();
+  const planByStaffTaskMonth = new Map<string, Map<string, PlanAgg>>();
+  for (const p of planEntries) {
+    const key = format(p.taskMonth, "yyyy-MM-dd");
+    const total = planByTaskMonth.get(key) ?? { q1: 0, q2: 0, q3: 0 };
+    total.q1 += p.quantity1; total.q2 += p.quantity2; total.q3 += p.quantity3;
+    planByTaskMonth.set(key, total);
+
+    const staffMap = planByStaffTaskMonth.get(p.assignedStaffId) ?? new Map<string, PlanAgg>();
+    const staffAgg = staffMap.get(key) ?? { q1: 0, q2: 0, q3: 0 };
+    staffAgg.q1 += p.quantity1; staffAgg.q2 += p.quantity2; staffAgg.q3 += p.quantity3;
+    staffMap.set(key, staffAgg);
+    planByStaffTaskMonth.set(p.assignedStaffId, staffMap);
+  }
+
+  // Cộng kế hoạch (theo taskMonth candidate ở 1 map bất kỳ — dùng chung cho cả tổng hệ thống lẫn từng NV)
+  // trên TOÀN kỳ đang hiển thị — cùng công thức chia 4 cho tuần như "data" bên dưới, để % đáp ứng theo NV
+  // so đúng cùng đơn vị với % đạt tổng.
+  const sumPlanOverBuckets = (planMap: Map<string, PlanAgg>): number => {
+    let total = 0;
+    for (const [t1, t2, t3] of candidateTaskMonthsForBucket) {
+      const monthPlan =
+        (planMap.get(format(t1, "yyyy-MM-dd"))?.q1 ?? 0) +
+        (planMap.get(format(t2, "yyyy-MM-dd"))?.q2 ?? 0) +
+        (planMap.get(format(t3, "yyyy-MM-dd"))?.q3 ?? 0);
+      total += unit === "week" ? monthPlan / 4 : monthPlan;
+    }
+    return Math.round(total);
+  };
 
   // Thực tế + breakdown nhân sự — 1 query phủ trọn khoảng hiển thị, tự bucket + tự gộp theo staffId cùng
   // lúc (giống fetchDailyRecords/computeActualSeries ở src/lib/production-capacity.ts).
@@ -126,8 +157,14 @@ export async function GET(req: NextRequest) {
   const totalActual = data.reduce((s, d) => s + d["Thực tế"], 0);
   const percentAchieved = totalPlan > 0 ? Math.round((totalActual / totalPlan) * 1000) / 10 : null;
 
+  // % đáp ứng theo NV = thực tế của ĐÚNG NV đó / kế hoạch ĐÃ GIAO CHO ĐÚNG NV đó (assignedStaffId ở
+  // RootingForecastEntry) — KHÔNG phải chia cho totalPlan chung của cả kỳ (đã sửa lỗi trước đây hiện
+  // nhầm 1 số kế hoạch tổng lặp lại cho mọi NV, không phản ánh đúng phần việc NV Kỹ thuật giao riêng).
   const staffBreakdown = Array.from(staffTotals.values())
-    .map((s) => ({ ...s, percentOfPlan: totalPlan > 0 ? Math.round((s.actual / totalPlan) * 1000) / 10 : null }))
+    .map((s) => {
+      const plan = sumPlanOverBuckets(planByStaffTaskMonth.get(s.staffId) ?? emptyPlanMap);
+      return { ...s, plan, percentOfPlan: plan > 0 ? Math.round((s.actual / plan) * 1000) / 10 : null };
+    })
     .sort((a, b) => b.actual - a.actual);
 
   return NextResponse.json({ data, totalPlan, totalActual, percentAchieved, staffBreakdown });
