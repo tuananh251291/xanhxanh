@@ -8,14 +8,23 @@ import { Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 import WarehouseFilterSelect from "@/components/shared/warehouse-filter-select";
 
-type Row = { staffId: string; staffCode: string; staffName: string; warehouseName: string | null; monthlyAmount: number | null };
+type Row = {
+  staffId: string;
+  staffCode: string;
+  staffName: string;
+  warehouseName: string | null;
+  monthlyAmount: number | null;
+  kpiBonusAmount: number | null;
+};
 
 export default function StaffBaseSalaryBoard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [warehouseId, setWarehouseId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [kpiDrafts, setKpiDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingKpiId, setSavingKpiId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,6 +42,7 @@ export default function StaffBaseSalaryBoard() {
   useEffect(() => { load(); }, [load]);
 
   const draftValue = (r: Row) => drafts[r.staffId] ?? (r.monthlyAmount != null ? String(r.monthlyAmount) : "");
+  const kpiDraftValue = (r: Row) => kpiDrafts[r.staffId] ?? (r.kpiBonusAmount != null ? String(r.kpiBonusAmount) : "");
 
   const save = async (r: Row) => {
     const value = Number(draftValue(r));
@@ -49,6 +59,24 @@ export default function StaffBaseSalaryBoard() {
       load();
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const saveKpi = async (r: Row) => {
+    const value = Number(kpiDraftValue(r));
+    if (!Number.isFinite(value) || value < 0) { toast.error("Số tiền không hợp lệ"); return; }
+    setSavingKpiId(r.staffId);
+    try {
+      const res = await fetch("/api/payroll/staff-base-salary", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staffId: r.staffId, kpiBonusAmount: value }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success(`Đã lưu thưởng KPI cho ${r.staffName}`);
+      load();
+    } finally {
+      setSavingKpiId(null);
     }
   };
 
@@ -76,6 +104,8 @@ export default function StaffBaseSalaryBoard() {
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Cơ sở</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Lương công việc/tháng (VNĐ)</th>
                     <th className="px-4 py-3"></th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Thưởng KPI (VNĐ)</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -95,6 +125,19 @@ export default function StaffBaseSalaryBoard() {
                       <td className="px-4 py-3 text-right">
                         <Button size="icon" variant="ghost" className="h-8 w-8" disabled={savingId === r.staffId} onClick={() => save(r)}>
                           {savingId === r.staffId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 text-primary-strong" />}
+                        </Button>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Input
+                          type="number" min={0}
+                          value={kpiDraftValue(r)}
+                          onChange={(e) => setKpiDrafts((p) => ({ ...p, [r.staffId]: e.target.value }))}
+                          className="w-40 h-8 text-right ml-auto"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" disabled={savingKpiId === r.staffId} onClick={() => saveKpi(r)}>
+                          {savingKpiId === r.staffId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 text-primary-strong" />}
                         </Button>
                       </td>
                     </tr>

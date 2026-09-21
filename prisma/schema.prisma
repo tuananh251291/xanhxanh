@@ -3124,6 +3124,11 @@ model StaffBaseSalary {
   staffId       String   @unique
   staff         User     @relation(fields: [staffId], references: [id])
   monthlyAmount Int
+  // Thưởng KPI (VNĐ) — NV Hành chính nhân sự/Admin cấp cao nhập tay ngay cạnh Lương công việc/tháng (xem
+  // staff-base-salary-board.tsx). CHỈ lưu để hiển thị/tra cứu, CHƯA cộng vào "Tổng thu nhập" ở Bảng lương
+  // (src/lib/payroll-calculation.ts) — khác complianceBonus/productionOverBonus (tự tính theo công thức)
+  // và otherBonusAmount (khoản thưởng khác theo từng kỳ, xem PayrollOtherBonus). Null = chưa cài đặt.
+  kpiBonusAmount Int?
   updatedAt     DateTime @updatedAt
 
   @@map("staff_base_salaries")
