@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { AlertTriangle, Search } from "lucide-react";
 import Link from "next/link";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isAdminRole, DEVIATION_CAUSE_LABELS } from "@/types";
 
@@ -97,6 +97,45 @@ export default async function OutputDeviationReportPage({
     })
     .filter((r): r is NonNullable<typeof r> => !!r && (!scopeWarehouseId || r.warehouseId === scopeWarehouseId));
 
+  // Tổng hợp nhanh dưới bộ lọc — 2 mục đếm đầu tính TRÊN CHÍNH `rows` đã lọc (đổi theo bộ lọc Tháng/
+  // Nguyên nhân/Khu sản xuất đang chọn). Riêng cảnh báo "tái phạm" LUÔN tính theo cửa sổ 30 ngày gần nhất
+  // từ HÔM NAY — độc lập với bộ lọc Tháng đang xem (đây là cảnh báo hiện tại, không phải số liệu lịch sử
+  // của kỳ đang duyệt), chỉ tôn trọng phạm vi Khu sản xuất đang chọn (cùng quy ước với `rows` ở trên).
+  const causeCounts = { CAY_MO_SAI: 0, KY_THUAT_SAI: 0, UNRESOLVED: 0 };
+  for (const r of rows) {
+    if (r.cause === "CAY_MO_SAI") causeCounts.CAY_MO_SAI += 1;
+    else if (r.cause === "KY_THUAT_SAI") causeCounts.KY_THUAT_SAI += 1;
+    else causeCounts.UNRESOLVED += 1;
+  }
+
+  const recentCayMoSaiAlerts = await prisma.alert.findMany({
+    where: { type: "OUTPUT_DEVIATION", relatedType: "PlantingInstruction", cause: "CAY_MO_SAI", createdAt: { gte: subDays(new Date(), 30) } },
+    select: { relatedId: true },
+  });
+  const recentInstructionIds = Array.from(new Set(recentCayMoSaiAlerts.map((a) => a.relatedId).filter((v): v is string => !!v)));
+  const recentInstructions = recentInstructionIds.length
+    ? await prisma.plantingInstruction.findMany({
+        where: { id: { in: recentInstructionIds } },
+        select: {
+          assignedToId: true,
+          assignedTo: { select: { code: true, name: true } },
+          items: { take: 1, select: { shelf: { select: { warehouseId: true } } } },
+        },
+      })
+    : [];
+  const repeatCountByStaff = new Map<string, { code: string; name: string; count: number }>();
+  for (const inst of recentInstructions) {
+    if (!inst.assignedToId || !inst.assignedTo) continue;
+    const whId = inst.items[0]?.shelf?.warehouseId ?? null;
+    if (scopeWarehouseId && whId !== scopeWarehouseId) continue;
+    const entry = repeatCountByStaff.get(inst.assignedToId) ?? { code: inst.assignedTo.code, name: inst.assignedTo.name, count: 0 };
+    entry.count += 1;
+    repeatCountByStaff.set(inst.assignedToId, entry);
+  }
+  const repeatOffenders = Array.from(repeatCountByStaff.values())
+    .filter((s) => s.count >= 2)
+    .sort((a, b) => b.count - a.count);
+
   return (
     <div className="space-y-6">
       <Header />
@@ -144,6 +183,34 @@ export default async function OutputDeviationReportPage({
               </Link>
             )}
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4 space-y-2">
+          <p className="text-sm text-text-secondary">
+            Có <strong className="text-foreground">{rows.length}</strong> chỉ định cấy sai (theo bộ lọc đang chọn)
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
+              Bao gồm <strong>{causeCounts.CAY_MO_SAI}</strong> CĐC sai do NV cấy mô cấy sai chỉ định
+            </p>
+            <p className="text-sm bg-warning-light text-warning-foreground rounded-md px-3 py-2">
+              Bao gồm <strong>{causeCounts.KY_THUAT_SAI}</strong> CĐC sai do NV Kỹ thuật ra CĐC sai
+            </p>
+            {causeCounts.UNRESOLVED > 0 && (
+              <p className="text-sm bg-info-light text-info-foreground rounded-md px-3 py-2">
+                Còn <strong>{causeCounts.UNRESOLVED}</strong> CĐC chưa xác định nguyên nhân
+              </p>
+            )}
+          </div>
+          {repeatOffenders.length > 0 && (
+            <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
+              Có những nhân sự sau:{" "}
+              <strong>{repeatOffenders.map((s) => `${s.code} — ${s.name} (${s.count} lần)`).join(", ")}</strong>
+              {" "}đã cấy sai CĐC từ lần thứ 2 trở lên trong vòng 1 tháng gần đây.
+            </p>
+          )}
         </CardContent>
       </Card>
 
