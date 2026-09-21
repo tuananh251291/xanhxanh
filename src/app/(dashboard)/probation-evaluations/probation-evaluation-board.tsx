@@ -5,9 +5,15 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, ClipboardCheck } from "lucide-react";
-import { format } from "date-fns";
+import { Loader2, ClipboardCheck, AlertTriangle } from "lucide-react";
+import { format, addDays } from "date-fns";
 import { vi } from "date-fns/locale";
+
+// Hạn mềm làm phiếu = 3 ngày kể từ ngày kết thúc tuần (weekEnd) — CHỈ hiện cảnh báo, không chặn nộp trễ.
+// Giữ đúng số 3 ở đây (khớp PROBATION_EVALUATION_GRACE_DAYS, src/lib/probation-evaluation.ts) — không
+// import trực tiếp vì file đó có phụ thuộc Prisma (chỉ dùng được ở server).
+const PROBATION_EVALUATION_GRACE_DAYS = 3;
+const isOverdue = (weekEnd: string) => new Date() > addDays(new Date(weekEnd), PROBATION_EVALUATION_GRACE_DAYS);
 
 type Evaluation = {
   id: string;
@@ -82,6 +88,11 @@ export default function ProbationEvaluationBoard() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge variant={STATUS_BADGE[e.status].variant}>{STATUS_BADGE[e.status].label}</Badge>
+              {e.status !== "COMPLETED" && isOverdue(e.weekEnd) && (
+                <Badge className="bg-danger-light text-destructive gap-1">
+                  <AlertTriangle className="w-3 h-3" /> Quá hạn {PROBATION_EVALUATION_GRACE_DAYS} ngày
+                </Badge>
+              )}
               {e.status === "COMPLETED" && e.result && (
                 <>
                   <span className="text-sm font-bold text-foreground">{e.managerPercent}%</span>

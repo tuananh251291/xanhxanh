@@ -2,6 +2,16 @@ import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
 import { generateProbationEvaluationCode } from "@/lib/codes";
 import { getTrainingWeekRange, getCurrentTrainingWeek } from "@/lib/training-roadmap";
+import { addDays } from "date-fns";
+
+// NV cấy mô + NV kỹ thuật được làm phiếu đánh giá trong vòng 3 ngày kể từ ngày kết thúc mốc tuần (weekEnd)
+// — hạn MỀM (chỉ để cảnh báo/hiện "quá hạn" ở Dashboard và danh sách, KHÔNG chặn nộp phiếu trễ), cùng quy
+// ước hạn mềm đang dùng ở các việc khác của NV Kỹ thuật (VD Thứ 5 hàng tuần, xem KyThuatDashboard).
+export const PROBATION_EVALUATION_GRACE_DAYS = 3;
+
+export function isEvaluationOverdue(weekEnd: Date, now: Date = new Date()): boolean {
+  return now > addDays(weekEnd, PROBATION_EVALUATION_GRACE_DAYS);
+}
 
 // Mẫu phiếu "Đánh giá thử việc" 9 tuần — nội dung tiêu chí CỐ ĐỊNH, khớp đúng phiếu giấy doanh nghiệp
 // đang dùng (chỉ đưa vào hệ thống để chấm điểm + lưu kết quả, không đổi nội dung). KHÔNG lưu lại text

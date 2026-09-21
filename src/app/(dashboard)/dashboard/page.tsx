@@ -27,6 +27,7 @@ import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-roadmap";
+import { isEvaluationOverdue } from "@/lib/probation-evaluation";
 
 // Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
 // Admin kỹ thuật (R&D là mục riêng của role này, xem ROLE_NAV.ADMIN_KY_THUAT) — cùng nguồn dữ liệu với
@@ -236,7 +237,7 @@ async function getCayMoStats(userId: string) {
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount, staffUser, rootingTarget] = await Promise.all([
+  const [pendingMotherReceipt, dailyRecordToday, uninspectedDarkRoomLots, handoverToday, unreadInspectionResults, weeklyCorrectionCount, staffUser, rootingTarget, pendingSelfEvaluations] = await Promise.all([
     // Chỉ tính trên các chỉ định Kho mô đã bàn giao (handedOverAt) — chỉ định "Chưa bàn giao" không
     // tính vào đánh giá vì NV cấy mô chưa có gì để xác nhận.
     prisma.plantingInstruction.findFirst({
@@ -277,6 +278,13 @@ async function getCayMoStats(userId: string) {
     }),
     prisma.user.findUnique({ where: { id: userId }, select: { inspectionLane: true, employmentType: true, probationStartDate: true } }),
     computeCayMoRootingTarget(userId),
+    // "Đánh giá thử việc" chưa tự chấm — có thể có NHIỀU hơn 1 (VD lỡ vài tuần chưa chấm, xem
+    // ensureWeeklyProbationEvaluations không chặn tuần sau nếu tuần trước còn dở) nên đếm cả danh sách
+    // thay vì chỉ kiểm tra có/không.
+    prisma.probationEvaluation.findMany({
+      where: { staffId: userId, status: "PENDING_SELF" },
+      select: { weekEnd: true },
+    }),
   ]);
 
   const now = new Date();
@@ -293,6 +301,8 @@ async function getCayMoStats(userId: string) {
     isOnProbation: staffUser?.employmentType === "THU_VIEC",
     probationStartDate: staffUser?.probationStartDate ?? null,
     rootingTarget,
+    pendingProbationSelfCount: pendingSelfEvaluations.length,
+    pendingProbationSelfOverdue: pendingSelfEvaluations.some((e) => isEvaluationOverdue(e.weekEnd)),
   };
 }
 
@@ -387,6 +397,18 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
   const motherPhotoDone = motherPhotoTotal === 0 ? true : motherPhotoDistinctPlantTypes.size >= motherPhotoTotal;
   const motherPhotoPercent = motherPhotoTotal === 0 ? 100 : Math.round((motherPhotoDistinctPlantTypes.size / motherPhotoTotal) * 100);
 
+  // Việc "5. Chấm đánh giá thử việc" — phiếu NV cấy mô cùng khu sản xuất đã tự chấm, đang chờ NV Kỹ
+  // thuật (đúng workplaceWarehouseId) chấm lại. Quá hạn mềm (weekEnd + PROBATION_EVALUATION_GRACE_DAYS)
+  // thì đổi trạng thái cảnh báo khẩn, không chặn chấm trễ.
+  const pendingManagerEvaluations = workplaceWarehouseId
+    ? await prisma.probationEvaluation.findMany({
+        where: { status: "PENDING_MANAGER", staff: { workplaceWarehouseId } },
+        select: { weekEnd: true },
+      })
+    : [];
+  const probationEvalCount = pendingManagerEvaluations.length;
+  const probationEvalOverdue = pendingManagerEvaluations.some((e) => isEvaluationOverdue(e.weekEnd));
+
   return {
     weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent,
     instructionDone: handledItems.length,
@@ -395,6 +417,7 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
     tuesdayDeadline, motherPhotoPercent, motherPhotoDone,
     motherPhotoDoneCount: motherPhotoDistinctPlantTypes.size, motherPhotoTotal,
     rootingSummary,
+    probationEvalCount, probationEvalOverdue,
   };
 }
 
@@ -934,6 +957,20 @@ function cayMoTasks(stats: Awaited<ReturnType<typeof getCayMoStats>>) {
       description: "Bàn giao lô từ phòng tối cho Kho mô",
       done: stats.handoverDone,
     },
+    // Chỉ hiện khi có phiếu "Đánh giá thử việc" chưa tự chấm — biến mất hẳn (không hiện badge "Đã hoàn
+    // thành") sau khi chấm xong hết, giống "Nhận bàn giao mẫu mẹ". Hạn mềm 3 ngày kể từ ngày kết thúc
+    // tuần (xem PROBATION_EVALUATION_GRACE_DAYS) — chỉ đổi câu mô tả, không chặn nộp trễ.
+    {
+      key: "probation-eval",
+      href: "/probation-evaluations",
+      icon: ClipboardCheck,
+      title: "Đánh giá thử việc",
+      description: stats.pendingProbationSelfOverdue
+        ? `Đã quá hạn tự chấm điểm — ${stats.pendingProbationSelfCount} phiếu đang chờ`
+        : `Tự chấm điểm tuần thử việc vừa kết thúc (${stats.pendingProbationSelfCount} phiếu)`,
+      done: stats.pendingProbationSelfCount === 0,
+      hideWhenDone: true,
+    },
   ].filter((task) => !(task.hideWhenDone && task.done));
 }
 
@@ -999,6 +1036,9 @@ function KyThuatDashboard({
   // không cần nhắc lại nữa, xem plan "Cập nhật hình ảnh định kì".
   const isPastTuesdayEnd = new Date() > stats.tuesdayDeadline;
   const motherPhotoBadgeState: TaskBadgeState = isPastTuesdayEnd ? "urgent" : "not_done";
+  // "Việc 5: Chấm đánh giá thử việc" — ẩn hẳn khi không còn phiếu nào chờ (giống việc 4), quá hạn mềm 3
+  // ngày (xem PROBATION_EVALUATION_GRACE_DAYS) thì chuyển "urgent" thay vì chỉ "not_done".
+  const probationEvalBadgeState: TaskBadgeState = stats.probationEvalOverdue ? "urgent" : "not_done";
 
   return (
     <div className="space-y-6">
@@ -1055,6 +1095,17 @@ function KyThuatDashboard({
               percent={stats.motherPhotoPercent}
               countLabel={`${stats.motherPhotoDoneCount}/${stats.motherPhotoTotal} loại cây`}
               badgeState={motherPhotoBadgeState}
+            />
+          )}
+          {stats.probationEvalCount > 0 && (
+            <WeeklyTaskRow
+              href="/probation-evaluations"
+              icon={ClipboardCheck}
+              title="5. Chấm đánh giá thử việc"
+              deadline={`Chấm lại phiếu NV cấy mô đã tự chấm — trong vòng 3 ngày kể từ ngày kết thúc tuần đó`}
+              percent={0}
+              countLabel={`${stats.probationEvalCount} phiếu`}
+              badgeState={probationEvalBadgeState}
             />
           )}
         </CardContent>
