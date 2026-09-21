@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/combobox";
 import PlantTypeMultiFilter from "@/components/shared/plant-type-multi-filter";
 import { Loader2, X, ListChecks } from "lucide-react";
-import { setISOWeek, setISOWeekYear, startOfISOWeek, format as formatDate } from "date-fns";
+import { endOfMonth, format as formatDate } from "date-fns";
 import ReportBarChart from "./charts/report-bar-chart";
 
 type PlantType = { id: string; code: string; name: string };
@@ -32,18 +32,15 @@ type PeriodRow = { period: string; "Kế hoạch": number; "Thực tế": number
 type StaffRow = { staffId: string; code: string; name: string; actual: number; plan: number; percentOfPlan: number | null };
 type ReportData = { data: PeriodRow[]; totalPlan: number; totalActual: number; percentAchieved: number | null; staffBreakdown: StaffRow[] };
 
-function periodValueToDateStr(value: string, unit: Unit): string {
-  if (!value) return "";
-  if (unit === "week") {
-    const m = value.match(/^(\d{4})-W(\d{2})$/);
-    if (!m) return "";
-    const withYear = setISOWeekYear(new Date(), Number(m[1]));
-    const withWeek = setISOWeek(withYear, Number(m[2]));
-    return formatDate(startOfISOWeek(withWeek), "yyyy-MM-dd");
-  }
+// Trước đây phải chọn 2 mốc "Từ kỳ/Đến kỳ" (cùng dạng tuần hoặc tháng tuỳ Đơn vị thời gian) khá rối —
+// giờ chỉ chọn ĐÚNG 1 tháng dương lịch cần xem (input type="month", không đổi theo Đơn vị thời gian nữa),
+// server tự bao trọn từ ngày 1 đến ngày cuối tháng đó — Đơn vị thời gian giờ chỉ còn quyết định độ chi
+// tiết hiển thị TRONG tháng đó (theo tuần ra ~4-5 dòng, theo tháng ra đúng 1 dòng).
+function monthValueToRange(value: string): { from: string; to: string } | null {
   const m = value.match(/^(\d{4})-(\d{2})$/);
-  if (!m) return "";
-  return `${m[1]}-${m[2]}-01`;
+  if (!m) return null;
+  const monthStart = new Date(Number(m[1]), Number(m[2]) - 1, 1);
+  return { from: formatDate(monthStart, "yyyy-MM-dd"), to: formatDate(endOfMonth(monthStart), "yyyy-MM-dd") };
 }
 
 function percentColorClass(pct: number | null): string {
@@ -65,8 +62,7 @@ export default function PlanVsActualReport() {
   const [selectedPlantTypeIds, setSelectedPlantTypeIds] = useState<string[]>([]);
   const [scope, setScope] = useState<Scope>("all");
   const [warehouseOption, setWarehouseOption] = useState<ComboOption | null>(null);
-  const [fromPeriod, setFromPeriod] = useState("");
-  const [toPeriod, setToPeriod] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
 
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,16 +82,15 @@ export default function PlanVsActualReport() {
       const params = new URLSearchParams({ unit, scope });
       if (scope === "warehouse" && warehouseOption) params.set("warehouseId", warehouseOption.value);
       if (selectedPlantTypeIds.length > 0) params.set("plantTypeIds", selectedPlantTypeIds.join(","));
-      const fromStr = periodValueToDateStr(fromPeriod, unit);
-      const toStr = periodValueToDateStr(toPeriod, unit);
-      if (fromStr && toStr) { params.set("from", fromStr); params.set("to", toStr); }
+      const range = monthValueToRange(selectedMonth);
+      if (range) { params.set("from", range.from); params.set("to", range.to); }
       const res = await fetch(`/api/reports/rooting-plan-vs-actual?${params}`);
       const json = await res.json();
       setReport(json);
     } finally {
       setLoading(false);
     }
-  }, [unit, selectedPlantTypeIds, scope, warehouseOption, fromPeriod, toPeriod]);
+  }, [unit, selectedPlantTypeIds, scope, warehouseOption, selectedMonth]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -114,7 +109,7 @@ export default function PlanVsActualReport() {
             <Select
               items={[{ value: "week", label: "Tuần" }, { value: "month", label: "Tháng" }]}
               value={unit}
-              onValueChange={(v) => { setUnit(v as Unit); setFromPeriod(""); setToPeriod(""); }}
+              onValueChange={(v) => setUnit(v as Unit)}
             >
               <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -125,18 +120,14 @@ export default function PlanVsActualReport() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Từ {unit === "week" ? "tuần" : "tháng"}</Label>
-            <Input type={unit === "week" ? "week" : "month"} value={fromPeriod} onChange={(e) => setFromPeriod(e.target.value)} className="w-40" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Đến {unit === "week" ? "tuần" : "tháng"}</Label>
+            <Label className="text-xs">Chọn tháng</Label>
             <div className="flex items-center gap-1">
-              <Input type={unit === "week" ? "week" : "month"} value={toPeriod} onChange={(e) => setToPeriod(e.target.value)} className="w-40" />
-              {(fromPeriod || toPeriod) && (
+              <Input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-40" />
+              {selectedMonth && (
                 <Button
                   type="button" variant="ghost" size="icon-sm"
-                  title="Xoá quãng — dùng mặc định 10 kỳ gần nhất"
-                  onClick={() => { setFromPeriod(""); setToPeriod(""); }}
+                  title="Bỏ chọn — dùng mặc định 10 kỳ gần nhất"
+                  onClick={() => setSelectedMonth("")}
                 >
                   <X className="w-3.5 h-3.5" />
                 </Button>
