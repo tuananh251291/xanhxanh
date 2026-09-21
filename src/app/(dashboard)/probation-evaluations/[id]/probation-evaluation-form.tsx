@@ -134,6 +134,7 @@ export default function ProbationEvaluationForm({
                 <tr className="bg-primary-light">
                   <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Xếp loại</th>
                   <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Ý nghĩa</th>
+                  <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Điểm</th>
                   <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">Tổng %</th>
                 </tr>
               </thead>
@@ -141,16 +142,19 @@ export default function ProbationEvaluationForm({
                 <tr className="border-b even:bg-primary-light/30">
                   <td className="px-3 py-2 font-medium text-success-foreground">Đạt</td>
                   <td className="px-3 py-2 text-text-secondary">Đáp ứng đầy đủ yêu cầu của tuần, có thể chuyển sang giai đoạn tiếp theo</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">9,0 – 10,0</td>
                   <td className="px-3 py-2 text-right">90 - 100</td>
                 </tr>
                 <tr className="border-b even:bg-primary-light/30">
                   <td className="px-3 py-2 font-medium text-warning-foreground">Cần cải thiện</td>
                   <td className="px-3 py-2 text-text-secondary">Đã nắm được phần lớn kỹ năng nhưng còn một số lỗi cần khắc phục</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">7,0 – dưới 9,0</td>
                   <td className="px-3 py-2 text-right">70 - &lt;90</td>
                 </tr>
                 <tr className="even:bg-primary-light/30">
                   <td className="px-3 py-2 font-medium text-destructive">Không đạt</td>
                   <td className="px-3 py-2 text-text-secondary">Chưa đáp ứng yêu cầu đào tạo, cần đào tạo lại hoặc kéo dài thử việc</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">Dưới 7,0</td>
                   <td className="px-3 py-2 text-right">&lt;70</td>
                 </tr>
               </tbody>
