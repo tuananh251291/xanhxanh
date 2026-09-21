@@ -5,11 +5,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { AlertTriangle, Search } from "lucide-react";
 import Link from "next/link";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isAdminRole, DEVIATION_CAUSE_LABELS } from "@/types";
+
+const CAUSE_FILTER_OPTIONS = [
+  { value: "", label: "Tất cả" },
+  { value: "UNRESOLVED", label: "Chưa xử lý" },
+  { value: "KY_THUAT_SAI", label: DEVIATION_CAUSE_LABELS.KY_THUAT_SAI },
+  { value: "CAY_MO_SAI", label: DEVIATION_CAUSE_LABELS.CAY_MO_SAI },
+] as const;
 
 // Báo cáo "Lệch chỉ định & nguyên nhân" — liệt kê mọi lần alert OUTPUT_DEVIATION (NV cấy mô cấy lệch chỉ
 // định quá ngưỡng, xem POST /api/daily-records) kèm nguyên nhân NV Kỹ thuật đã kết luận qua PATCH
@@ -19,7 +27,7 @@ import { isAdminRole, DEVIATION_CAUSE_LABELS } from "@/types";
 export default async function OutputDeviationReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ warehouseId?: string }>;
+  searchParams: Promise<{ warehouseId?: string; cause?: string; month?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -28,6 +36,13 @@ export default async function OutputDeviationReportPage({
   const sp = await searchParams;
   const admin = isAdminRole(role);
   const scopeWarehouseId = admin ? (sp.warehouseId?.trim() || null) : (session?.user?.workplaceWarehouseId ?? null);
+  const causeFilter = sp.cause?.trim() || "";
+  const monthFilter = sp.month?.trim() || "";
+  // input type="month" gửi lên dạng "yyyy-MM" thuần — new Date("yyyy-MM") parse theo UTC, lệch múi giờ VN
+  // (UTC+7) như đã xử lý ở nơi khác (xem parseLocalDate, POST /api/extra-work-requests) — thêm "-01" +
+  // giờ rõ ràng để Date parse theo LOCAL time.
+  const monthDate = monthFilter ? new Date(`${monthFilter}-01T00:00:00`) : null;
+  const hasValidMonth = !!monthDate && !Number.isNaN(monthDate.getTime());
 
   if (!admin && !scopeWarehouseId) {
     return (
@@ -42,7 +57,12 @@ export default async function OutputDeviationReportPage({
 
   const [alerts, warehouses] = await Promise.all([
     prisma.alert.findMany({
-      where: { type: "OUTPUT_DEVIATION", relatedType: "PlantingInstruction" },
+      where: {
+        type: "OUTPUT_DEVIATION",
+        relatedType: "PlantingInstruction",
+        ...(hasValidMonth ? { createdAt: { gte: startOfMonth(monthDate!), lte: endOfMonth(monthDate!) } } : {}),
+        ...(causeFilter === "UNRESOLVED" ? { cause: null } : causeFilter === "KY_THUAT_SAI" || causeFilter === "CAY_MO_SAI" ? { cause: causeFilter } : {}),
+      },
       select: { id: true, relatedId: true, message: true, cause: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     }),
@@ -81,10 +101,10 @@ export default async function OutputDeviationReportPage({
     <div className="space-y-6">
       <Header />
 
-      {admin && (
-        <Card>
-          <CardContent className="pt-4">
-            <form className="flex flex-wrap items-end gap-3">
+      <Card>
+        <CardContent className="pt-4">
+          <form className="flex flex-wrap items-end gap-3">
+            {admin && (
               <div className="space-y-1">
                 <Label className="text-xs">Khu sản xuất</Label>
                 <select
@@ -98,18 +118,34 @@ export default async function OutputDeviationReportPage({
                   ))}
                 </select>
               </div>
-              <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
-                <Search className="w-4 h-4 mr-1" /> Lọc
-              </Button>
-              {scopeWarehouseId && (
-                <Link href="/reports/output-deviation">
-                  <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
-                </Link>
-              )}
-            </form>
-          </CardContent>
-        </Card>
-      )}
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs">Nguyên nhân</Label>
+              <select
+                name="cause"
+                defaultValue={causeFilter}
+                className="h-9 w-56 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                {CAUSE_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Tháng</Label>
+              <Input type="month" name="month" defaultValue={monthFilter} className="w-40" />
+            </div>
+            <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
+              <Search className="w-4 h-4 mr-1" /> Lọc
+            </Button>
+            {((admin && scopeWarehouseId) || causeFilter || monthFilter) && (
+              <Link href="/reports/output-deviation">
+                <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
+              </Link>
+            )}
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-0">
