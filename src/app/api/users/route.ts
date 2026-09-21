@@ -17,6 +17,10 @@ const createSchema = z.object({
   // và các Phòng thị trường được cấp quyền xem thêm, tránh phải cấu hình lại ở 2 chỗ khác sau khi tạo.
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),
+  // Chỉ áp dụng khi tạo tài khoản CAY_MO — HR điền ngày bắt đầu thử việc để hệ thống tính "Lộ trình đào
+  // tạo" 9 tuần (xem src/lib/training-roadmap.ts). Không bắt buộc — bỏ trống thì sửa lại sau qua PATCH
+  // /api/users/[id].
+  probationStartDate: z.string().optional(),
 });
 
 export async function GET() {
@@ -47,7 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds } = parsed.data;
+  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, probationStartDate } = parsed.data;
 
   // NV Hành chính nhân sự chỉ tạo được tài khoản vị trí nhân viên, không tạo được tài khoản Admin.
   if (!allowedRoles.includes(role)) {
@@ -59,6 +63,9 @@ export async function POST(req: NextRequest) {
   }
   if (marketRoomIds !== undefined && role !== "SALE") {
     return NextResponse.json({ message: "Phòng thị trường chỉ áp dụng khi tạo tài khoản Sale" }, { status: 400 });
+  }
+  if (probationStartDate !== undefined && role !== "CAY_MO") {
+    return NextResponse.json({ message: "Ngày bắt đầu thử việc chỉ áp dụng khi tạo tài khoản NV cấy mô" }, { status: 400 });
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -92,6 +99,7 @@ export async function POST(req: NextRequest) {
       data: {
         code, name, email, password: hashed, role, status: "APPROVED", workplaceWarehouseId,
         ...(isNewCayMo ? { employmentType: "THU_VIEC", isTrainee: true } : {}),
+        ...(probationStartDate ? { probationStartDate: new Date(probationStartDate) } : {}),
       },
       select: { id: true, code: true, name: true, email: true, role: true },
     });

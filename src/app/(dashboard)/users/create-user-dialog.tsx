@@ -30,6 +30,7 @@ const schema = z.object({
   code: z.string().min(1, "Nhập mã nhân viên"),
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),
+  probationStartDate: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -76,6 +77,12 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
         // Bỏ qua lỗi nạp danh sách — Admin vẫn gán được sau qua trang Người dùng/Kho & Kệ.
       }
     }
+
+    // Gợi ý sẵn ngày bắt đầu thử việc = hôm nay cho NV cấy mô mới — HR vẫn sửa lại được nếu NV đã bắt đầu
+    // làm từ trước đó.
+    if (role === "CAY_MO") {
+      setValue("probationStartDate", new Date().toISOString().slice(0, 10));
+    }
   };
 
   const toggleMarketRoom = (roomId: string) => {
@@ -90,7 +97,12 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
-      const payload = data.role === "SALE" ? data : { ...data, workplaceWarehouseId: undefined, marketRoomIds: undefined };
+      const payload = {
+        ...data,
+        workplaceWarehouseId: data.role === "SALE" ? data.workplaceWarehouseId : undefined,
+        marketRoomIds: data.role === "SALE" ? data.marketRoomIds : undefined,
+        probationStartDate: data.role === "CAY_MO" ? data.probationStartDate : undefined,
+      };
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,6 +205,14 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {role === "CAY_MO" && (
+            <div className="space-y-1">
+              <Label>Ngày bắt đầu thử việc</Label>
+              <Input {...register("probationStartDate")} type="date" />
+              <p className="text-xs text-text-muted">Dùng để tính Lộ trình đào tạo 9 tuần cho NV.</p>
             </div>
           )}
 

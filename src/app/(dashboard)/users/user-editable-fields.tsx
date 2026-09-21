@@ -18,6 +18,8 @@ import InspectionLaneOverrideDialog from "./inspection-lane-override-dialog";
 
 type WarehouseOption = { id: string; code: string; name: string };
 
+const toDateInputValue = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+
 // Gộp 3 cột "Vị trí làm việc" / "Năng lực cấy" / "Giữ đơn (ngày)" + cột "Thao tác" (nút Chỉnh sửa +
 // Lưu cạnh nhau) của 1 dòng nhân viên thành 1 component để cùng chia sẻ state "đang sửa chưa lưu" —
 // người dùng đổi lựa chọn/nhập số xong bấm "Lưu" mới thực sự PATCH lên server, thay vì lưu ngay từng ô
@@ -39,6 +41,7 @@ export default function UserEditableFields({
   defaultHoldDays,
   employmentType,
   isTrainee,
+  probationStartDate,
   canEditEmployment,
   editUser,
   sanXuatWarehouses,
@@ -69,6 +72,7 @@ export default function UserEditableFields({
   defaultHoldDays: number;
   employmentType: EmploymentType | null;
   isTrainee: boolean;
+  probationStartDate: Date | null;
   canEditEmployment: boolean;
   // null = không được sửa tài khoản này (không phải SUPER_ADMIN, hoặc dòng này là SUPER_ADMIN khác) —
   // cũng dùng chung điều kiện này để hiện nút Xóa (server tự chặn thêm trường hợp tự xóa chính mình).
@@ -95,6 +99,7 @@ export default function UserEditableFields({
   const [hd, setHd] = useState(holdDays != null ? String(holdDays) : "");
   const [emp, setEmp] = useState(employmentType ?? "NONE");
   const [trn, setTrn] = useState(isTrainee);
+  const [pst, setPst] = useState(toDateInputValue(probationStartDate));
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
@@ -127,13 +132,19 @@ export default function UserEditableFields({
     setPrevIsTrainee(isTrainee);
     setTrn(isTrainee);
   }
+  const [prevProbationStartDate, setPrevProbationStartDate] = useState(probationStartDate);
+  if (probationStartDate !== prevProbationStartDate) {
+    setPrevProbationStartDate(probationStartDate);
+    setPst(toDateInputValue(probationStartDate));
+  }
 
   const wpDirty = canEditWorkplace && wp !== (workplaceWarehouseId ?? "NONE");
   const capDirty = canEditThisCapacity && cap !== String(plantingCapacity);
   const hdDirty = canEditThisHoldDays && hd !== (holdDays != null ? String(holdDays) : "");
   const empDirty = canEditThisEmployment && emp !== (employmentType ?? "NONE");
   const trnDirty = canEditThisEmployment && trn !== isTrainee;
-  const dirty = wpDirty || capDirty || hdDirty || empDirty || trnDirty;
+  const pstDirty = canEditThisEmployment && pst !== toDateInputValue(probationStartDate);
+  const dirty = wpDirty || capDirty || hdDirty || empDirty || trnDirty || pstDirty;
 
   const patch = (body: Record<string, unknown>) =>
     fetch(`/api/users/${userId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -176,6 +187,10 @@ export default function UserEditableFields({
       }
       if (trnDirty) {
         const res = await patch({ isTrainee: trn });
+        if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      }
+      if (pstDirty) {
+        const res = await patch({ probationStartDate: pst.trim() === "" ? null : pst });
         if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       }
       toast.success("Đã lưu thay đổi");
@@ -237,11 +252,26 @@ export default function UserEditableFields({
                 <Checkbox checked={trn} disabled={saving} onCheckedChange={(v) => setTrn(v === true)} />
                 {TRAINEE_LABEL}
               </label>
+              <div className="space-y-0.5">
+                <Input
+                  type="date"
+                  className="w-36 h-8 text-xs"
+                  value={pst}
+                  disabled={saving}
+                  onChange={(e) => setPst(e.target.value)}
+                />
+                <p className="text-[10px] text-text-muted">Ngày bắt đầu thử việc</p>
+              </div>
             </div>
-          ) : employmentType || isTrainee ? (
+          ) : employmentType || isTrainee || probationStartDate ? (
             <div className="flex flex-wrap gap-1">
               {employmentType && <Badge className={EMPLOYMENT_TYPE_COLORS[employmentType]}>{EMPLOYMENT_TYPE_LABELS[employmentType]}</Badge>}
               {isTrainee && <Badge className={TRAINEE_BADGE_COLOR}>{TRAINEE_LABEL}</Badge>}
+              {probationStartDate && (
+                <span className="text-[10px] text-text-muted w-full">
+                  Thử việc từ {new Date(probationStartDate).toLocaleDateString("vi-VN")}
+                </span>
+              )}
             </div>
           ) : (
             <span className="text-xs text-text-muted">Chưa cài đặt</span>

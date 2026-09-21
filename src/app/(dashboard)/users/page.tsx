@@ -227,6 +227,7 @@ export default async function UsersPage({
                           defaultHoldDays={defaultHoldDays}
                           employmentType={user.employmentType}
                           isTrainee={user.isTrainee}
+                          probationStartDate={user.probationStartDate}
                           canEditEmployment={canEditEmployment}
                           editUser={
                             canApprove && user.role && user.role !== "SUPER_ADMIN"

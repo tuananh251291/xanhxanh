@@ -44,6 +44,7 @@ const patchSchema = z.union([
   z.object({ cancelInspectionLaneOverride: z.literal(true) }),
   z.object({ employmentType: z.enum(["CHINH_THUC", "THU_VIEC"]).nullable() }),
   z.object({ isTrainee: z.boolean() }),
+  z.object({ probationStartDate: z.string().nullable() }),
   z.object({ unlockAccount: z.literal(true) }),
   z.object({ code: z.string().min(1, "Nhập mã nhân viên") }),
   z.object({ name: z.string().min(2, "Tên tối thiểu 2 ký tự") }),
@@ -276,6 +277,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { isTrainee },
       select: { id: true, code: true, name: true, isTrainee: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Ngày bắt đầu thử việc — cùng quyền + phạm vi NV cấy mô với employmentType/isTrainee ở trên, dùng để
+  // tính lại "Lộ trình đào tạo" (xem src/lib/training-roadmap.ts).
+  if ("probationStartDate" in parsed.data) {
+    if (!canEditEmploymentType(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cấp cao/NV Hành chính nhân sự mới có quyền cài đặt ngày bắt đầu thử việc" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    }
+    const { probationStartDate } = parsed.data;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { probationStartDate: probationStartDate ? new Date(probationStartDate) : null },
+      select: { id: true, code: true, name: true, probationStartDate: true },
     });
     return NextResponse.json(updated);
   }

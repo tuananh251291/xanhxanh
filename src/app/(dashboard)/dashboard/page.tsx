@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Package, Leaf, AlertTriangle, ShoppingCart, Users, Sun, Moon, TrendingUp,
   PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
-  FlaskConical, Bell, ShieldPlus, LayoutList, Camera, Sprout, type LucideIcon,
+  FlaskConical, Bell, ShieldPlus, LayoutList, Camera, Sprout, GraduationCap, type LucideIcon,
 } from "lucide-react";
 import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS, ADMIN_DASHBOARD_ALERT_TYPES } from "@/types";
 import type { UserRole } from "@prisma/client";
@@ -26,6 +26,7 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
+import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-roadmap";
 
 // Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
 // Admin kỹ thuật (R&D là mục riêng của role này, xem ROLE_NAV.ADMIN_KY_THUAT) — cùng nguồn dữ liệu với
@@ -274,7 +275,7 @@ async function getCayMoStats(userId: string) {
     prisma.dailyRecordEdit.count({
       where: { staffId: userId, createdAt: { gte: weekStart, lte: weekEnd } },
     }),
-    prisma.user.findUnique({ where: { id: userId }, select: { inspectionLane: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { inspectionLane: true, employmentType: true, probationStartDate: true } }),
     computeCayMoRootingTarget(userId),
   ]);
 
@@ -289,6 +290,8 @@ async function getCayMoStats(userId: string) {
     unreadInspectionResults,
     weeklyCorrectionCount,
     inspectionLane: staffUser?.inspectionLane ?? null,
+    isOnProbation: staffUser?.employmentType === "THU_VIEC",
+    probationStartDate: staffUser?.probationStartDate ?? null,
     rootingTarget,
   };
 }
@@ -820,6 +823,29 @@ function CayMoDashboard({
         </div>
       </div>
       <GreetingBanner />
+
+      {stats.isOnProbation && (
+        <Link href="/training-roadmap" className="block">
+          <Card className="border border-primary-light bg-primary-light/40 hover:bg-primary-light/60 transition-colors">
+            <CardContent className="py-4 flex items-center gap-3">
+              <GraduationCap className="w-5 h-5 text-primary-strong shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-primary-strong">Lộ trình đào tạo thử việc</p>
+                <p className="text-xs text-text-secondary">
+                  {stats.probationStartDate
+                    ? (() => {
+                        const week = getCurrentTrainingWeek(stats.probationStartDate, TRAINING_ROADMAP_WEEKS.length);
+                        return week
+                          ? `Tuần ${week}: ${TRAINING_ROADMAP_WEEKS[week - 1].goalTitle}`
+                          : "Xem mục tiêu và yêu cầu cần đạt từng tuần";
+                      })()
+                    : "Chưa có ngày bắt đầu thử việc — liên hệ Hành chính nhân sự"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {stats.rootingTarget && <CayMoRootingTargetCard target={stats.rootingTarget} />}
 

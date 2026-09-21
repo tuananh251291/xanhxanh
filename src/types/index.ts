@@ -655,6 +655,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
+  // "Lộ trình đào tạo" chỉ HIỆN THẬT SỰ khi employmentType = THU_VIEC (lọc động ở DashboardLayout, xem
+  // src/app/(dashboard)/layout.tsx) — vẫn khai báo cố định ở đây để lên đúng danh mục trang của ma trận
+  // phân quyền (PermissionMatrix gộp từ ROLE_NAV) và để isPageAllowed hoạt động bình thường.
   CAY_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
@@ -664,6 +667,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/product-handover", label: "Bàn giao sản phẩm", icon: "Send" },
     { href: "/handover-record", label: "Ghi nhận bàn giao", icon: "PackageCheck" },
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
+    { href: "/training-roadmap", label: "Lộ trình đào tạo", icon: "GraduationCap" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_MO: [

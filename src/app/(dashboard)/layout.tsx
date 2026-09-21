@@ -62,7 +62,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   // Avatar KHÔNG nằm trong session (xem comment ở src/lib/auth.config.ts) — query DB riêng ở đây.
-  const currentUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { avatar: true } });
+  // employmentType cũng lấy kèm ở đây để quyết định có hiện mục "Lộ trình đào tạo" cho NV cấy mô thử
+  // việc hay không (xem lọc navItems bên dưới) — không áp dụng vai trò khác nên luôn null với các role đó.
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { avatar: true, employmentType: true },
+  });
 
   const alertCount = await prisma.alert.count({
     where: {
@@ -82,6 +87,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     });
     const disabledHrefs = new Set(disabled.map((p) => p.href));
     navItems = roleNavItems.filter((item) => item.href === "/dashboard" || item.href === "/account" || !disabledHrefs.has(item.href));
+  }
+  // "Lộ trình đào tạo" chỉ hiện cho NV cấy mô ĐANG thử việc (employmentType = THU_VIEC) — NV chính thức
+  // không còn cần xem lại lộ trình này nữa dù trang vẫn được phép qua ma trận phân quyền.
+  if (role === "CAY_MO" && currentUser?.employmentType !== "THU_VIEC") {
+    navItems = navItems.filter((item) => item.href !== "/training-roadmap");
   }
 
   return (

@@ -401,6 +401,11 @@ model User {
   // THU_VIEC (xem POST /api/users); SUPER_ADMIN/HANH_CHINH_NHAN_SU tắt lại khi NV rời nhóm học việc (xem
   // /api/users/[id] PATCH).
   isTrainee            Boolean         @default(false)
+  // Ngày bắt đầu thử việc — chỉ áp dụng NV cấy mô (CAY_MO), HR điền lúc tạo tài khoản (xem POST
+  // /api/users), sửa lại được sau qua PATCH /api/users/[id] (cùng quyền canEditEmploymentType). Dùng để
+  // tính "Lộ trình đào tạo" 9 tuần thử việc (mỗi tuần 8 ngày, xem src/lib/training-roadmap.ts) — chỉ
+  // hiện mục này ở dashboard/sidebar khi employmentType = THU_VIEC. Null = chưa cài đặt.
+  probationStartDate   DateTime?
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
