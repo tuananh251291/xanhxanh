@@ -258,9 +258,9 @@ export async function computeAutoScores(
 }
 
 // Tự sinh (lazy, gọi khi CAY_MO thử việc tải trang — xem (dashboard)/layout.tsx) mọi tuần ĐÃ KẾT THÚC mà
-// NV này chưa có ProbationEvaluation — mỗi tuần 8 ngày tính từ probationStartDate (KHÔNG phải tuần lịch,
-// dùng lại đúng getTrainingWeekRange/getCurrentTrainingWeek đã có ở training-roadmap.ts để khớp đúng
-// tuần NV đang thấy ở trang Lộ trình đào tạo).
+// NV này chưa có ProbationEvaluation — mỗi tuần 7 ngày tính từ probationStartDate, dùng lại đúng
+// getTrainingWeekRange/getCurrentTrainingWeek đã có ở training-roadmap.ts để khớp đúng tuần NV đang thấy
+// ở trang Lộ trình đào tạo.
 export async function ensureWeeklyProbationEvaluations(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },

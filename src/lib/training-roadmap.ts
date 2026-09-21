@@ -1,4 +1,4 @@
-// Lộ trình đào tạo NV cấy mô thử việc — 9 tuần, MỖI TUẦN = 8 NGÀY (không phải 7), tính liên tục từ
+// Lộ trình đào tạo NV cấy mô thử việc — 9 tuần, mỗi tuần 7 ngày (tuần lịch), tính liên tục từ
 // User.probationStartDate (HR điền lúc tạo tài khoản CAY_MO). Nội dung mục tiêu/yêu cầu theo đúng
 // chương trình đào tạo thực tế của doanh nghiệp — chỉ hiển thị, không có bước chấm điểm/duyệt trong hệ
 // thống (đánh giá đạt/không đạt do quản lý trực tiếp thực hiện ngoài phần mềm).
@@ -131,13 +131,13 @@ export const TRAINING_ROADMAP_WEEKS: TrainingWeek[] = [
   },
 ];
 
-// Mỗi "tuần" đào tạo dài đúng 8 ngày (khác tuần lịch 7 ngày) — tuần N bắt đầu N-1 lần 8 ngày sau ngày bắt
-// đầu thử việc, kết thúc 7 ngày sau ngày bắt đầu của chính nó (đủ 8 ngày, tính cả ngày đầu và cuối).
+// Mỗi "tuần" đào tạo dài đúng 7 ngày (tuần lịch) — tuần N bắt đầu N-1 lần 7 ngày sau ngày bắt đầu thử
+// việc, kết thúc 6 ngày sau ngày bắt đầu của chính nó (đủ 7 ngày, tính cả ngày đầu và cuối).
 export function getTrainingWeekRange(probationStartDate: Date, week: number): { start: Date; end: Date } {
   const start = new Date(probationStartDate);
-  start.setDate(start.getDate() + (week - 1) * 8);
+  start.setDate(start.getDate() + (week - 1) * 7);
   const end = new Date(start);
-  end.setDate(end.getDate() + 7);
+  end.setDate(end.getDate() + 6);
   return { start, end };
 }
 
@@ -146,5 +146,5 @@ export function getTrainingWeekRange(probationStartDate: Date, week: number): { 
 export function getCurrentTrainingWeek(probationStartDate: Date, totalWeeks: number): number | null {
   const diffDays = Math.floor((Date.now() - probationStartDate.getTime()) / 86400000);
   if (diffDays < 0) return null;
-  return Math.floor(diffDays / 8) + 1 > totalWeeks ? null : Math.floor(diffDays / 8) + 1;
+  return Math.floor(diffDays / 7) + 1 > totalWeeks ? null : Math.floor(diffDays / 7) + 1;
 }

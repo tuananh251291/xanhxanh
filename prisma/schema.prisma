@@ -412,7 +412,7 @@ model User {
   isTrainee            Boolean         @default(false)
   // Ngày bắt đầu thử việc — chỉ áp dụng NV cấy mô (CAY_MO), HR điền lúc tạo tài khoản (xem POST
   // /api/users), sửa lại được sau qua PATCH /api/users/[id] (cùng quyền canEditEmploymentType). Dùng để
-  // tính "Lộ trình đào tạo" 9 tuần thử việc (mỗi tuần 8 ngày, xem src/lib/training-roadmap.ts) — chỉ
+  // tính "Lộ trình đào tạo" 9 tuần thử việc (mỗi tuần 7 ngày, xem src/lib/training-roadmap.ts) — chỉ
   // hiện mục này ở dashboard/sidebar khi employmentType = THU_VIEC. Null = chưa cài đặt.
   probationStartDate   DateTime?
   createdAt            DateTime        @default(now())
@@ -2930,7 +2930,7 @@ enum ProbationEvaluationStatus {
 // Đánh giá thử việc hàng tuần (9 tuần, nội dung tiêu chí từng tuần xem PROBATION_EVALUATION_WEEKS ở
 // src/lib/probation-evaluation.ts — KHÔNG lưu lại text ở đây, chỉ lưu điểm số) — 1 dòng/(NV cấy mô, số
 // tuần). Tự sinh lazy ngay khi tuần đó (tính theo User.probationStartDate, xem getTrainingWeekRange ở
-// src/lib/training-roadmap.ts — mỗi tuần 8 ngày, KHÔNG phải tuần lịch) đã KẾT THÚC, xem
+// src/lib/training-roadmap.ts — mỗi tuần 7 ngày, tuần lịch) đã KẾT THÚC, xem
 // ensureWeeklyProbationEvaluations. NV cấy mô tự chấm trước (PENDING_SELF → PENDING_MANAGER), NV Kỹ
 // thuật duy nhất của đúng kho sản xuất NV đó chấm sau (PENDING_MANAGER → COMPLETED) — status machine
 // chặn thứ tự, cùng khuôn PATCH /api/sealing-tasks/[id].

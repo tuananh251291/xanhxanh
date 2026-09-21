@@ -36,7 +36,7 @@ export default async function TrainingRoadmapPage() {
           Lộ trình đào tạo thử việc
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          9 tuần thử việc, mỗi tuần 8 ngày, tính từ ngày bắt đầu thử việc.
+          9 tuần thử việc, mỗi tuần 7 ngày, tính từ ngày bắt đầu thử việc.
         </p>
       </div>
 
