@@ -492,6 +492,7 @@ model User {
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated                ViolationType[]
+  plantingErrorTypesCreated             PlantingErrorType[]
   customersAssigned                    Customer[]                   @relation("CustomerAssignedTo")
   salesManagerAssignmentsAsSales       SalesManagerAssignment[]     @relation("SalesManagerAssignmentSales")
   salesManagerAssignmentsAsManager     SalesManagerAssignment[]     @relation("SalesManagerAssignmentManager")
@@ -688,6 +689,20 @@ model ViolationType {
   records ViolationRecord[]
 
   @@map("violation_types")
+}
+
+// Danh mục "Phân loại lỗi cấy" — NV Kỹ thuật tự soạn (Admin cấp cao/Admin kỹ thuật cũng thêm được), dùng
+// CHUNG cho MỌI NV Kỹ thuật (không phải riêng người tạo). KHÔNG có API xoá/sửa — chỉ thêm mới, cố tình để
+// mọi NV Kỹ thuật (kể cả người tạo) không xoá được, tránh vỡ dữ liệu nếu đã có nơi khác tham chiếu tới
+// sau này.
+model PlantingErrorType {
+  id          String   @id @default(cuid())
+  label       String   @unique
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("planting_error_types")
 }
 
 // 1 dòng = 1 lỗi vi phạm cụ thể của 1 NV cấy mô. 2 nguồn tạo: (a) qua 1 lượt "Kiểm tra kho cá nhân"

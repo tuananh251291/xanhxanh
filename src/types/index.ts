@@ -657,6 +657,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/rooting-quality-evaluation", label: "Đánh giá chất lượng cây ra rễ", icon: "ClipboardCheck" },
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
     { href: "/probation-evaluations", label: "Đánh giá thử việc", icon: "ClipboardCheck" },
+    { href: "/planting-error-types", label: "Phân loại lỗi cấy", icon: "Tags" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Lộ trình đào tạo" chỉ HIỆN THẬT SỰ khi employmentType = THU_VIEC (lọc động ở DashboardLayout, xem
