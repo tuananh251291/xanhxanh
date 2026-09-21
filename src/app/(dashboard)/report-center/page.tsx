@@ -28,6 +28,7 @@ export default async function ReportCenterPage() {
     { href: "/reports/inspection-lane", icon: Flag, title: "Phân loại luồng kiểm tra", description: "NV cấy mô nào đang thuộc luồng Xanh/Vàng/Đỏ, theo từng khu sản xuất." },
     { href: "/reports/inspection-defects", icon: AlertTriangle, title: "Phiếu kiểm tra không đạt/nhiễm", description: "Phiếu kiểm tra ghi nhận hàng không đạt yêu cầu/hàng nhiễm theo từng NV cấy mô, lọc theo khu sản xuất và tháng." },
     { href: "/reports/rooting-quality-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá chất lượng ra rễ", description: "Tỉ lệ đạt/không đạt cây ra rễ hàng tuần do NV kỹ thuật đánh giá trước khi Kho mô bàn giao Kho thành phẩm." },
+    { href: "/reports/probation-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá thử việc", description: "Kết quả đánh giá 9 tuần thử việc của từng NV cấy mô, tự chấm rồi NV kỹ thuật chấm lại." },
     { href: "/reports/output-deviation", icon: AlertTriangle, title: "Lệch chỉ định & nguyên nhân", description: "Các lần NV cấy mô cấy lệch chỉ định quá ngưỡng, kèm nguyên nhân NV Kỹ thuật đã kết luận (hoặc chưa xử lý)." },
     // Dữ liệu lương nhạy cảm — chỉ hiện thẻ này nếu role hiện tại thật sự xem được (xem canManagePayroll,
     // hiện chỉ SUPER_ADMIN trong số các role admin, KHÔNG gồm ADMIN thường/ADMIN_KY_THUAT).

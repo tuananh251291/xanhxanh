@@ -429,6 +429,9 @@ export const ALERT_TYPE_LABELS = {
   MOTHER_FORECAST_EDIT_REJECTED: "Đề xuất chỉnh sửa mẫu mẹ bị từ chối",
   ROOTING_QUALITY_EVALUATION_DUE: "Đến hạn đánh giá chất lượng cây ra rễ",
   ROOTING_QUALITY_EVALUATION_READY: "Đã có kết quả đánh giá chất lượng cây ra rễ",
+  PROBATION_EVALUATION_SELF_DUE: "Đến hạn tự đánh giá tuần thử việc",
+  PROBATION_EVALUATION_MANAGER_DUE: "Đến lượt chấm điểm đánh giá thử việc",
+  PROBATION_EVALUATION_COMPLETED: "Đã có kết quả đánh giá thử việc",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -653,6 +656,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/output-deviation", label: "Lệch chỉ định & nguyên nhân", icon: "AlertTriangle" },
     { href: "/rooting-quality-evaluation", label: "Đánh giá chất lượng cây ra rễ", icon: "ClipboardCheck" },
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
+    { href: "/probation-evaluations", label: "Đánh giá thử việc", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Lộ trình đào tạo" chỉ HIỆN THẬT SỰ khi employmentType = THU_VIEC (lọc động ở DashboardLayout, xem
@@ -668,6 +672,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/handover-record", label: "Ghi nhận bàn giao", icon: "PackageCheck" },
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
     { href: "/training-roadmap", label: "Lộ trình đào tạo", icon: "GraduationCap" },
+    { href: "/probation-evaluations", label: "Đánh giá thử việc", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_MO: [
@@ -771,6 +776,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/handover-summary", label: "Bàn giao & ghi nhận theo tháng", icon: "PackageCheck" },
     { href: "/payroll-settings", label: "Cài đặt lương", icon: "Settings" },
     { href: "/reports/payroll", label: "Bảng lương", icon: "DollarSign" },
+    { href: "/reports/probation-evaluations", label: "Báo cáo đánh giá thử việc", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   NHAN_VIEN_SAN_XUAT: [

@@ -292,6 +292,15 @@ enum AlertType {
   // kho biết tỉ lệ đạt/không đạt + lý do, để bàn giao đúng phần đã đạt. Admin cấp cao/Admin kỹ thuật xem
   // qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES), không nhận alert cá nhân riêng.
   ROOTING_QUALITY_EVALUATION_READY
+  // Hết 1 tuần đào tạo thử việc (xem ProbationEvaluation, ensureWeeklyProbationEvaluations) — báo đúng NV
+  // cấy mô thử việc đó (userId) cần tự chấm điểm tuần vừa qua.
+  PROBATION_EVALUATION_SELF_DUE
+  // NV cấy mô vừa tự chấm xong — báo đúng NV Kỹ thuật duy nhất của kho sản xuất đó (userId) tới lượt
+  // chấm lại.
+  PROBATION_EVALUATION_MANAGER_DUE
+  // NV Kỹ thuật vừa chấm xong (đã có kết luận Đạt/Cần cải thiện/Không đạt) — báo đúng NV cấy mô đó
+  // (userId) + toàn bộ Hành chính nhân sự (targetRole).
+  PROBATION_EVALUATION_COMPLETED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -477,6 +486,8 @@ model User {
   motherForecastEditProposalsReviewed   MotherForecastEditProposal[] @relation("MotherForecastEditProposalReviewedBy")
   motherForecastEditProposalItems       MotherForecastEditProposalItem[] @relation("MotherForecastEditProposalItemStaff")
   rootingQualityEvaluationsAssignedTo   RootingQualityEvaluation[] @relation("RootingQualityEvaluationAssignedTo")
+  probationEvaluationsAsStaff           ProbationEvaluation[] @relation("ProbationEvaluationStaff")
+  probationEvaluationsAsManager         ProbationEvaluation[] @relation("ProbationEvaluationManager")
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -2908,6 +2919,61 @@ model RootingQualityEvaluationItem {
 
   @@unique([evaluationId, plantTypeId, stageCode])
   @@map("rooting_quality_evaluation_items")
+}
+
+enum ProbationEvaluationStatus {
+  PENDING_SELF
+  PENDING_MANAGER
+  COMPLETED
+}
+
+// Đánh giá thử việc hàng tuần (9 tuần, nội dung tiêu chí từng tuần xem PROBATION_EVALUATION_WEEKS ở
+// src/lib/probation-evaluation.ts — KHÔNG lưu lại text ở đây, chỉ lưu điểm số) — 1 dòng/(NV cấy mô, số
+// tuần). Tự sinh lazy ngay khi tuần đó (tính theo User.probationStartDate, xem getTrainingWeekRange ở
+// src/lib/training-roadmap.ts — mỗi tuần 8 ngày, KHÔNG phải tuần lịch) đã KẾT THÚC, xem
+// ensureWeeklyProbationEvaluations. NV cấy mô tự chấm trước (PENDING_SELF → PENDING_MANAGER), NV Kỹ
+// thuật duy nhất của đúng kho sản xuất NV đó chấm sau (PENDING_MANAGER → COMPLETED) — status machine
+// chặn thứ tự, cùng khuôn PATCH /api/sealing-tasks/[id].
+model ProbationEvaluation {
+  id              String                    @id @default(cuid())
+  code            String                    @unique
+  staffId         String
+  staff           User                      @relation("ProbationEvaluationStaff", fields: [staffId], references: [id])
+  weekNumber      Int
+  weekStart       DateTime                  @db.Date
+  weekEnd         DateTime                  @db.Date
+  status          ProbationEvaluationStatus @default(PENDING_SELF)
+  selfComment     String?
+  selfScoredAt    DateTime?
+  managerId       String?
+  manager         User?                     @relation("ProbationEvaluationManager", fields: [managerId], references: [id])
+  managerComment  String?
+  managerScoredAt DateTime?
+  // % đạt tính theo điểm NV Kỹ thuật chấm (quy tắc nghiệp vụ — không tính theo điểm NV tự chấm) + kết quả
+  // suy ra (DAT/CAN_CAI_THIEN/KHONG_DAT) — lưu sẵn lúc hoàn thành, không tính lại mỗi lần xem báo cáo.
+  managerPercent  Float?
+  result          String?
+  createdAt       DateTime                  @default(now())
+
+  items           ProbationEvaluationItem[]
+
+  @@unique([staffId, weekNumber])
+  @@map("probation_evaluations")
+}
+
+// 1 dòng tiêu chí trong 1 đợt đánh giá — rowId khớp id của dòng trong PROBATION_EVALUATION_WEEKS (tra nội
+// dung theo weekNumber+rowId lúc hiển thị). Dòng loại SPEED/CONTAMINATION tự tính từ dữ liệu thật, lưu
+// CHUNG 1 giá trị cho cả selfScore lẫn managerScore (số khách quan, không có 2 phiên bản khác nhau).
+model ProbationEvaluationItem {
+  id              String              @id @default(cuid())
+  evaluationId    String
+  evaluation      ProbationEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  rowId           String
+  selfScore       Int?
+  managerScore    Int?
+
+  @@unique([evaluationId, rowId])
+  @@map("probation_evaluation_items")
 }
 
 // Nhiệm vụ tháng "Dự kiến đáp ứng mẫu mẹ" cho NV Kỹ thuật — CÙNG cơ chế RootingForecastEntry (lộ trình 3

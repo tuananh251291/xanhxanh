@@ -18,6 +18,7 @@ import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
 import { ensureWeeklyRootingQualityEvaluation, ensureRootingQualityEvaluationReminder } from "@/lib/rooting-quality-evaluation";
+import { ensureWeeklyProbationEvaluations } from "@/lib/probation-evaluation";
 import { ensureMonthlyInspectionLaneUpdate, ensureInspectionLaneOverridesApplied } from "@/lib/inspection-lane";
 import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
 
@@ -50,6 +51,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (role === "KHO_MO") {
     await ensureRootingReadyAlerts();
     await ensureExpiredExtraWorkReadinessAlertsRead();
+  }
+  if (role === "CAY_MO") {
+    await ensureWeeklyProbationEvaluations(session.user.id);
   }
   if (role === "SALE") await ensureCustomerStatusReminders(session.user.id);
   if (isKhoThanhPhamRole(role)) {
@@ -88,10 +92,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     const disabledHrefs = new Set(disabled.map((p) => p.href));
     navItems = roleNavItems.filter((item) => item.href === "/dashboard" || item.href === "/account" || !disabledHrefs.has(item.href));
   }
-  // "Lộ trình đào tạo" chỉ hiện cho NV cấy mô ĐANG thử việc (employmentType = THU_VIEC) — NV chính thức
-  // không còn cần xem lại lộ trình này nữa dù trang vẫn được phép qua ma trận phân quyền.
+  // "Lộ trình đào tạo"/"Đánh giá thử việc" chỉ hiện cho NV cấy mô ĐANG thử việc (employmentType =
+  // THU_VIEC) — NV chính thức không còn cần xem lại 2 mục này nữa dù trang vẫn được phép qua ma trận
+  // phân quyền.
   if (role === "CAY_MO" && currentUser?.employmentType !== "THU_VIEC") {
-    navItems = navItems.filter((item) => item.href !== "/training-roadmap");
+    navItems = navItems.filter((item) => item.href !== "/training-roadmap" && item.href !== "/probation-evaluations");
   }
 
   return (
