@@ -247,37 +247,28 @@ export default function PlanVsActualReport() {
             </div>
 
             <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Chi tiết theo nhân sự</DialogTitle>
                 </DialogHeader>
                 {report.staffBreakdown.length === 0 ? (
                   <p className="text-sm text-text-muted py-4">Không có NV cấy mô nào sản xuất trong khoảng đã chọn</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-primary-light text-primary-strong">
-                          <th className="px-3 py-2 text-left font-bold text-base">Mã NV</th>
-                          <th className="px-3 py-2 text-left font-bold text-base">Tên NV</th>
-                          <th className="px-3 py-2 text-center font-bold text-base">Thực tế</th>
-                          <th className="px-3 py-2 text-center font-bold text-base">% đáp ứng</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {report.staffBreakdown.map((s) => (
-                          <tr key={s.staffId} className="border-b last:border-0 even:bg-primary-light">
-                            <td className="px-3 py-2 font-mono">{s.code}</td>
-                            <td className="px-3 py-2">{s.name}</td>
-                            <td className="px-3 py-2 text-center tabular-nums">{fmt(s.actual)}</td>
-                            <td className={`px-3 py-2 text-center tabular-nums font-semibold ${percentColorClass(s.percentOfPlan)}`}>
-                              {s.percentOfPlan === null ? "—" : `${s.percentOfPlan}%`}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  // Danh sách dài (nhiều NV) xếp dọc 1 bảng 4 cột trong dialog hẹp trước đây rất dài, phải
+                  // cuộn nhiều — nay dialog rộng hơn nên tách đôi thành 2 bảng 4 cột cạnh nhau (gộp lại
+                  // thành 8 cột hiển thị), nửa đầu danh sách bên trái, nửa sau bên phải, dễ nhìn hơn hẳn so
+                  // với 1 cột dài lê thê. Ít NV (≤6) thì không cần tách, giữ 1 bảng cho gọn.
+                  (() => {
+                    const staff = report.staffBreakdown;
+                    if (staff.length <= 6) return <StaffBreakdownTable staff={staff} />;
+                    const half = Math.ceil(staff.length / 2);
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <StaffBreakdownTable staff={staff.slice(0, half)} />
+                        <StaffBreakdownTable staff={staff.slice(half)} />
+                      </div>
+                    );
+                  })()
                 )}
               </DialogContent>
             </Dialog>
@@ -285,5 +276,35 @@ export default function PlanVsActualReport() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Dùng chung cho dialog "Chi tiết theo nhân sự" — cho phép hiện 1 hoặc 2 bảng cạnh nhau (xem chỗ gọi).
+function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-primary-light text-primary-strong">
+            <th className="px-3 py-2 text-left font-bold text-base">Mã NV</th>
+            <th className="px-3 py-2 text-left font-bold text-base">Tên NV</th>
+            <th className="px-3 py-2 text-center font-bold text-base">Thực tế</th>
+            <th className="px-3 py-2 text-center font-bold text-base">% đáp ứng</th>
+          </tr>
+        </thead>
+        <tbody>
+          {staff.map((s) => (
+            <tr key={s.staffId} className="border-b last:border-0 even:bg-primary-light">
+              <td className="px-3 py-2 font-mono">{s.code}</td>
+              <td className="px-3 py-2">{s.name}</td>
+              <td className="px-3 py-2 text-center tabular-nums">{fmt(s.actual)}</td>
+              <td className={`px-3 py-2 text-center tabular-nums font-semibold ${percentColorClass(s.percentOfPlan)}`}>
+                {s.percentOfPlan === null ? "—" : `${s.percentOfPlan}%`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
