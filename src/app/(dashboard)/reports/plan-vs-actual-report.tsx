@@ -260,12 +260,12 @@ export default function PlanVsActualReport() {
                   // với 1 cột dài lê thê. Ít NV (≤6) thì không cần tách, giữ 1 bảng cho gọn.
                   (() => {
                     const staff = report.staffBreakdown;
-                    if (staff.length <= 6) return <StaffBreakdownTable staff={staff} />;
+                    if (staff.length <= 6) return <StaffBreakdownTable staff={staff} totalPlan={report.totalPlan} />;
                     const half = Math.ceil(staff.length / 2);
                     return (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <StaffBreakdownTable staff={staff.slice(0, half)} />
-                        <StaffBreakdownTable staff={staff.slice(half)} />
+                        <StaffBreakdownTable staff={staff.slice(0, half)} totalPlan={report.totalPlan} />
+                        <StaffBreakdownTable staff={staff.slice(half)} totalPlan={report.totalPlan} />
                       </div>
                     );
                   })()
@@ -280,7 +280,11 @@ export default function PlanVsActualReport() {
 }
 
 // Dùng chung cho dialog "Chi tiết theo nhân sự" — cho phép hiện 1 hoặc 2 bảng cạnh nhau (xem chỗ gọi).
-function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
+// Cột "Kế hoạch" hiện ĐÚNG 1 giá trị `totalPlan` lặp lại ở mọi dòng — kế hoạch "Dự kiến đáp ứng cây ra
+// rễ" NV Kỹ thuật nhập theo THÁNG/CƠ SỞ, không giao chỉ tiêu riêng cho từng NV cấy mô — hiện lại số này
+// cạnh "Thực tế" để NV tự đối chiếu ra đúng "% đáp ứng" (= Thực tế / Kế hoạch) mà không cần cuộn lên xem
+// dòng tổng phía trên.
+function StaffBreakdownTable({ staff, totalPlan }: { staff: StaffRow[]; totalPlan: number }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -288,6 +292,7 @@ function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
           <tr className="bg-primary-light text-primary-strong">
             <th className="px-3 py-2 text-left font-bold text-base">Mã NV</th>
             <th className="px-3 py-2 text-left font-bold text-base">Tên NV</th>
+            <th className="px-3 py-2 text-center font-bold text-base">Kế hoạch</th>
             <th className="px-3 py-2 text-center font-bold text-base">Thực tế</th>
             <th className="px-3 py-2 text-center font-bold text-base">% đáp ứng</th>
           </tr>
@@ -297,6 +302,7 @@ function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
             <tr key={s.staffId} className="border-b last:border-0 even:bg-primary-light">
               <td className="px-3 py-2 font-mono">{s.code}</td>
               <td className="px-3 py-2">{s.name}</td>
+              <td className="px-3 py-2 text-center tabular-nums text-text-secondary">{fmt(totalPlan)}</td>
               <td className="px-3 py-2 text-center tabular-nums">{fmt(s.actual)}</td>
               <td className={`px-3 py-2 text-center tabular-nums font-semibold ${percentColorClass(s.percentOfPlan)}`}>
                 {s.percentOfPlan === null ? "—" : `${s.percentOfPlan}%`}
