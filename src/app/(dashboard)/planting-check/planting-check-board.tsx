@@ -10,6 +10,7 @@ import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { DEVIATION_CAUSE_LABELS } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type DeviationCause = keyof typeof DEVIATION_CAUSE_LABELS;
 
@@ -20,12 +21,17 @@ type Alert = {
   createdAt: string;
 };
 
+type PlantingErrorType = { id: string; label: string };
+
 export default function PlantingCheckBoard() {
   const router = useRouter();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [causeSelection, setCauseSelection] = useState<Record<string, DeviationCause>>({});
+  const [errorTypes, setErrorTypes] = useState<PlantingErrorType[]>([]);
+  const [errorSelection, setErrorSelection] = useState<Record<string, string[]>>({});
+  const [reasonSelection, setReasonSelection] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,16 +42,41 @@ export default function PlantingCheckBoard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/planting-error-types").then((res) => res.ok && res.json()).then((data) => data && setErrorTypes(data));
+  }, []);
+
+  const toggleError = (alertId: string, errorTypeId: string) => {
+    setErrorSelection((prev) => {
+      const current = prev[alertId] ?? [];
+      const next = current.includes(errorTypeId) ? current.filter((id) => id !== errorTypeId) : [...current, errorTypeId];
+      return { ...prev, [alertId]: next };
+    });
+  };
+
+  const canResolve = (id: string) => {
+    const cause = causeSelection[id];
+    if (!cause) return false;
+    if (cause === "CAY_MO_SAI") return (errorSelection[id]?.length ?? 0) > 0;
+    if (cause === "KY_THUAT_SAI") return !!reasonSelection[id]?.trim();
+    return true;
+  };
 
   const resolve = async (id: string) => {
     const cause = causeSelection[id];
-    if (!cause) return;
+    if (!cause || !canResolve(id)) return;
     setProcessing(id);
     try {
       const res = await fetch("/api/alerts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "RESOLVED", cause }),
+        body: JSON.stringify({
+          id,
+          status: "RESOLVED",
+          cause,
+          ...(cause === "CAY_MO_SAI" ? { plantingErrorTypeIds: errorSelection[id] } : {}),
+          ...(cause === "KY_THUAT_SAI" ? { reasonText: reasonSelection[id]?.trim() } : {}),
+        }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       setAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -97,13 +128,46 @@ export default function PlantingCheckBoard() {
                   <Button
                     size="sm"
                     className="bg-primary hover:bg-primary-hover"
-                    disabled={!causeSelection[a.id] || processing === a.id}
+                    disabled={!canResolve(a.id) || processing === a.id}
                     onClick={() => resolve(a.id)}
                   >
                     {processing === a.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
                     Đã xem
                   </Button>
                 </div>
+
+                {causeSelection[a.id] === "CAY_MO_SAI" && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-xs font-medium text-text-secondary">Chọn (các) lỗi cấy:</p>
+                    {errorTypes.length === 0 ? (
+                      <p className="text-xs text-text-muted">Chưa có danh mục lỗi cấy — vào &quot;Phân loại lỗi cấy&quot; để thêm.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        {errorTypes.map((et) => (
+                          <label key={et.id} className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer">
+                            <Checkbox
+                              checked={(errorSelection[a.id] ?? []).includes(et.id)}
+                              onCheckedChange={() => toggleError(a.id, et.id)}
+                            />
+                            {et.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {causeSelection[a.id] === "KY_THUAT_SAI" && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-xs font-medium text-text-secondary">Giải thích nguyên nhân:</p>
+                    <textarea
+                      value={reasonSelection[a.id] ?? ""}
+                      onChange={(e) => setReasonSelection((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                      rows={2}
+                      className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -177,6 +177,13 @@ enum AlertType {
   // /api/alerts. Khác OUTPUT_DEVIATION (báo lúc PHÁT HIỆN lệch, chỉ gửi NV Kỹ thuật) — type này báo lúc
   // ĐÃ CÓ KẾT LUẬN nguyên nhân.
   OUTPUT_DEVIATION_RESOLVED
+  // Báo ĐÚNG NV cấy mô bị đánh giá khi NV Kỹ thuật kết luận nguyên nhân = CAY_MO_SAI (thay cho
+  // OUTPUT_DEVIATION_RESOLVED trong đúng TH này) — relatedId trỏ tới OutputDeviationResolution.id, cần
+  // NV cấy mô phản hồi Đồng ý/Không đồng ý (PATCH /api/output-deviation-resolutions/[id]).
+  OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED
+  // Báo ADMIN_KY_THUAT (mọi NV đang active) + đúng NV Kỹ thuật đã kết luận, khi NV cấy mô bấm "Không đồng
+  // ý với đánh giá" ở OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED.
+  OUTPUT_DEVIATION_DISAGREED
   // Kho thành phẩm "Hoàn thành xử lý" 1 Yêu cầu xử lý đơn hàng nhưng số lượng thực tế thu được
   // (actualOutputQuantity) thấp hơn số thực cần (neededQuantity) — báo cho đúng Sale sở hữu đơn đó
   // (userId) biết đơn có thể thiếu hàng, khác OUTPUT_DEVIATION (chỉ dành riêng cho KY_THUAT/lệch tiến độ
@@ -331,6 +338,12 @@ enum DeviationCause {
   CAY_MO_SAI // Do nhân viên cấy sai
   // KHÔNG phải lỗi — NV cấy mô cấy tốt, sản lượng vượt chỉ định (khác 2 nguyên nhân trên đều là quy lỗi).
   CAY_MO_VUOT_CHI_TIEU
+}
+
+// Phản hồi của NV cấy mô với kết luận CAY_MO_SAI (OutputDeviationResolution.staffResponse).
+enum DeviationStaffResponse {
+  ACCEPTED
+  DISAGREED
 }
 
 enum UserStatus {
@@ -490,6 +503,7 @@ model User {
   rootingQualityEvaluationsAssignedTo   RootingQualityEvaluation[] @relation("RootingQualityEvaluationAssignedTo")
   probationEvaluationsAsStaff           ProbationEvaluation[] @relation("ProbationEvaluationStaff")
   probationEvaluationsAsManager         ProbationEvaluation[] @relation("ProbationEvaluationManager")
+  outputDeviationResolutionsResolved    OutputDeviationResolution[] @relation("OutputDeviationResolvedBy")
   managedGardens                       ProductionGarden[]           @relation("ProductionGardenManager")
   darkRoomInspectionChecksAsStaff      DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy  DarkRoomInspectionCheck[]    @relation("DarkRoomInspectionCheckedBy")
@@ -703,6 +717,8 @@ model PlantingErrorType {
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+
+  outputDeviationResolutions OutputDeviationErrorType[]
 
   @@map("planting_error_types")
 }
@@ -2710,7 +2726,43 @@ model Alert {
   createdAt   DateTime        @default(now())
   readAt      DateTime?
 
+  outputDeviationResolution OutputDeviationResolution?
+
   @@map("alerts")
+}
+
+// 1 dòng/1 lần NV Kỹ thuật kết luận xong 1 alert OUTPUT_DEVIATION (PATCH /api/alerts, cause vừa được ghi
+// lần đầu) — lưu chi tiết mới ngoài Alert.cause: lỗi cấy cụ thể đã tích (CAY_MO_SAI) hoặc lý do tự do
+// (KY_THUAT_SAI), và phản hồi của NV cấy mô nếu là TH CAY_MO_SAI (xem AlertType
+// OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED — relatedId của alert đó = id của dòng này).
+model OutputDeviationResolution {
+  id               String                  @id @default(cuid())
+  alertId          String                  @unique
+  alert            Alert                   @relation(fields: [alertId], references: [id])
+  instructionId    String
+  cause            DeviationCause
+  reasonText       String? // bắt buộc khi cause = KY_THUAT_SAI
+  resolvedById     String
+  resolvedBy       User                    @relation("OutputDeviationResolvedBy", fields: [resolvedById], references: [id])
+  staffResponse    DeviationStaffResponse? // chỉ có giá trị khi cause = CAY_MO_SAI
+  staffRespondedAt DateTime?
+  createdAt        DateTime                @default(now())
+
+  errorTypes OutputDeviationErrorType[]
+
+  @@map("output_deviation_resolutions")
+}
+
+// Bảng nối nhiều-nhiều — (các) lỗi cấy NV Kỹ thuật tích cho 1 lần kết luận CAY_MO_SAI.
+model OutputDeviationErrorType {
+  id           String                    @id @default(cuid())
+  resolutionId String
+  resolution   OutputDeviationResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+  errorTypeId  String
+  errorType    PlantingErrorType         @relation(fields: [errorTypeId], references: [id])
+
+  @@unique([resolutionId, errorTypeId])
+  @@map("output_deviation_error_types")
 }
 
 // ============================================================

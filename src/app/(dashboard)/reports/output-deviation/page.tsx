@@ -92,13 +92,27 @@ export default async function OutputDeviationReportPage({
     : [];
   const instructionById = new Map(instructions.map((i) => [i.id, i]));
 
+  const resolutions = alerts.length
+    ? await prisma.outputDeviationResolution.findMany({
+        where: { alertId: { in: alerts.map((a) => a.id) } },
+        select: {
+          alertId: true,
+          reasonText: true,
+          staffResponse: true,
+          errorTypes: { select: { errorType: { select: { label: true } } } },
+        },
+      })
+    : [];
+  const resolutionByAlertId = new Map(resolutions.map((r) => [r.alertId, r]));
+
   const rows = alerts
     .map((a) => {
       const instruction = a.relatedId ? instructionById.get(a.relatedId) : null;
       if (!instruction) return null;
       const warehouseId = instruction.items[0]?.shelf?.warehouseId ?? null;
       const warehouse = instruction.items[0]?.shelf?.warehouse ?? null;
-      return { alertId: a.id, message: a.message, cause: a.cause, createdAt: a.createdAt, instruction, warehouseId, warehouse };
+      const resolution = resolutionByAlertId.get(a.id) ?? null;
+      return { alertId: a.id, message: a.message, cause: a.cause, createdAt: a.createdAt, instruction, warehouseId, warehouse, resolution };
     })
     .filter((r): r is NonNullable<typeof r> => !!r && (!scopeWarehouseId || r.warehouseId === scopeWarehouseId));
 
@@ -247,6 +261,8 @@ export default async function OutputDeviationReportPage({
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày phát hiện</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chi tiết</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Nguyên nhân</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chi tiết xử lý</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Phản hồi NV</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -270,6 +286,30 @@ export default async function OutputDeviationReportPage({
                           </Badge>
                         ) : (
                           <Badge variant="secondary">Chưa xử lý</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 max-w-xs">
+                        {r.cause === "CAY_MO_SAI" && r.resolution && r.resolution.errorTypes.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {r.resolution.errorTypes.map((et, idx) => (
+                              <Badge key={idx} className="bg-danger-light text-destructive">{et.errorType.label}</Badge>
+                            ))}
+                          </div>
+                        ) : r.cause === "KY_THUAT_SAI" && r.resolution?.reasonText ? (
+                          <span className="text-text-secondary">{r.resolution.reasonText}</span>
+                        ) : (
+                          <span className="text-text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {r.cause !== "CAY_MO_SAI" ? (
+                          <span className="text-text-muted">—</span>
+                        ) : r.resolution?.staffResponse === "ACCEPTED" ? (
+                          <Badge className="bg-success-light text-success-foreground">Đã xác nhận</Badge>
+                        ) : r.resolution?.staffResponse === "DISAGREED" ? (
+                          <Badge className="bg-danger-light text-destructive">Không đồng ý</Badge>
+                        ) : (
+                          <Badge variant="secondary">Chờ phản hồi</Badge>
                         )}
                       </td>
                     </tr>

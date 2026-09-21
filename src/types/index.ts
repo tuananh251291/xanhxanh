@@ -398,6 +398,8 @@ export const ALERT_TYPE_LABELS = {
   CONTAMINATION_HIGH: "Tỉ lệ nhiễm cao",
   OUTPUT_DEVIATION: "Lệch sản lượng",
   OUTPUT_DEVIATION_RESOLVED: "Kết quả đánh giá lệch sản lượng",
+  OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "Cần phản hồi đánh giá lỗi cấy",
+  OUTPUT_DEVIATION_DISAGREED: "NV cấy mô không đồng ý với đánh giá lỗi cấy",
   ORDER_EXPIRING: "Đơn sắp hết hạn",
   ORDER_EXPIRED: "Đơn hết hạn",
   STOCK_LOW: "Tồn kho thấp",
@@ -439,6 +441,7 @@ export const ALERT_TYPE_LABELS = {
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
+  OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "/output-deviation-response",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -448,7 +451,7 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
 // Admin chỉ xem để giám sát, không phải người xử lý — widget này chỉ hiển thị, không có nút xử lý).
 export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT", AlertType[]> = {
   SUPER_ADMIN: [
-    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED",
+    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "OUTPUT_DEVIATION_DISAGREED", "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED",
     "STOCK_LOW", "LOT_READY_TRANSFER", "ORDER_PENDING_PACK", "MEDIUM_HANDOVER_READY", "ROOTING_LOT_READY",
     "CONTAMINATION_PROPOSAL", "INSPECTION_RESULT_READY", "ACCOUNT_LOCKED", "PASSWORD_RESET_REQUESTED",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
@@ -461,7 +464,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "CONTAMINATION_PROPOSAL", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "CUSTOMER_STATUS_UPDATE_DUE",
   ],
   ADMIN_KY_THUAT: [
-    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
+    "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "OUTPUT_DEVIATION_DISAGREED", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "NV_VIOLATION", "ROOTING_FORECAST_MONTHLY_DUE",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
     "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
@@ -676,6 +679,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   CAY_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/my-instructions", label: "Chỉ định của tôi", icon: "ClipboardList" },
+    { href: "/output-deviation-response", label: "Phản hồi đánh giá lệch cấy", icon: "ShieldAlert" },
     { href: "/daily-record", label: "Nhập dữ liệu cấy", icon: "PenLine" },
     { href: "/extra-work", label: "Đăng ký làm thêm việc", icon: "CalendarPlus" },
     { href: "/my-dark-room", label: "Phòng tối cá nhân", icon: "Moon" },
