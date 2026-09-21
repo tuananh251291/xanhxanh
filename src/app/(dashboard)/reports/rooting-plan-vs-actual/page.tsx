@@ -4,14 +4,15 @@ import { Gauge } from "lucide-react";
 import { isAdminRole } from "@/types";
 import PlanVsActualReport from "../plan-vs-actual-report";
 
-// Trang riêng cho NV Kỹ thuật xem báo cáo "Kế hoạch vs thực tế — cây ra rễ" — cùng 1 component/API với
-// tab "Kế hoạch vs thực tế" của Admin cấp cao (xem src/app/(dashboard)/reports/page.tsx và
-// src/app/api/reports/rooting-plan-vs-actual/route.ts), không giới hạn phạm vi xem theo cơ sở của chính
-// NV — xem được toàn hệ thống hoặc chọn cơ sở bất kỳ, giống hệt Admin.
+// Trang riêng cho NV Kỹ thuật/Kho mô xem báo cáo "Kế hoạch vs thực tế — cây ra rễ" — cùng 1 component/API
+// với tab "Kế hoạch vs thực tế" của Admin cấp cao (xem src/app/(dashboard)/reports/page.tsx và
+// src/app/api/reports/rooting-plan-vs-actual/route.ts). NV Kỹ thuật/Kho mô bị ép cứng chỉ xem đúng cơ sở
+// mình đang làm việc (server tự lấy workplaceWarehouseId, bỏ qua scope client gửi lên) — chỉ Admin/Admin
+// cấp cao xem được toàn hệ thống hoặc chọn cơ sở bất kỳ.
 export default async function RootingPlanVsActualPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role) && role !== "KY_THUAT") redirect("/dashboard");
+  if (!isAdminRole(role) && role !== "KY_THUAT" && role !== "KHO_MO") redirect("/dashboard");
 
   return (
     <div className="space-y-6">

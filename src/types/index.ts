@@ -688,6 +688,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/inventory/phong-toi", label: "Phòng tối", icon: "Moon" },
     { href: "/reports/overview-kho-mo", label: "Thống kê trực quan", icon: "TrendingUp" },
+    { href: "/reports/rooting-plan-vs-actual", label: "Kế hoạch vs thực tế cây ra rễ", icon: "Gauge" },
     { href: "/reports/inspection-lane", label: "Phân loại luồng kiểm tra", icon: "Flag" },
     { href: "/reports/inspection-defects", label: "Phiếu kiểm tra không đạt/nhiễm", icon: "AlertTriangle" },
     { href: "/reports/inventory-lifecycle", label: "Quá hạn", icon: "Package" },

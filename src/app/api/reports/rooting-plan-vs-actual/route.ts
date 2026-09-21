@@ -24,7 +24,7 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
-  if (!isAdminRole(role) && role !== "KY_THUAT") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  if (!isAdminRole(role) && role !== "KY_THUAT" && role !== "KHO_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get("unit") === "month" ? "month" : "week";
@@ -39,10 +39,10 @@ export async function GET(req: NextRequest) {
   if (scopeParam === "warehouse" && !warehouseId) {
     return NextResponse.json({ message: "Thiếu cơ sở sản xuất" }, { status: 400 });
   }
-  // NV Kỹ thuật chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server, bỏ qua scope/
+  // NV Kỹ thuật/Kho mô chỉ xem được đúng khu sản xuất mình đang làm việc — ép cứng ở server, bỏ qua scope/
   // warehouseId client gửi lên (Admin/Admin cấp cao vẫn xem toàn hệ thống hoặc chọn cơ sở bất kỳ như cũ).
   const scopeWarehouseId =
-    role === "KY_THUAT" ? session!.user.workplaceWarehouseId ?? null : scopeParam === "warehouse" ? warehouseId : null;
+    role === "KY_THUAT" || role === "KHO_MO" ? session!.user.workplaceWarehouseId ?? null : scopeParam === "warehouse" ? warehouseId : null;
 
   let buckets: WeekBucket[];
   if (fromParam && toParam) {
@@ -57,9 +57,11 @@ export async function GET(req: NextRequest) {
 
   // Kế hoạch — gom mọi taskMonth cần dùng (tháng chứa mỗi bucket, trừ 1/2/3 tháng — 3 khả năng vì chu kỳ
   // nhập 3 tháng/lần) rồi 1 lần findMany, tránh query lặp lại cho từng bucket. Lấy findMany (không groupBy
-  // nữa) vì còn cần tách riêng theo assignedStaffId cho "Chi tiết theo nhân sự" bên dưới — mỗi dòng
-  // RootingForecastEntry gắn đúng 1 NV cấy mô phụ trách (bắt buộc, xem schema.prisma), KHÔNG phải kế
-  // hoạch chung không rõ ai làm.
+  // nữa) vì còn cần tách riêng theo (assignedStaffId, plantTypeId) cho "Chi tiết theo nhân sự" bên dưới —
+  // 1 NV cấy mô có thể được giao nhiều mã cây khác nhau (nhiều dòng RootingForecastEntry cùng
+  // assignedStaffId, khác plantTypeId — xem @@unique ở schema.prisma), phải tách riêng từng mã cây, KHÔNG
+  // gộp chung thành 1 dòng "kế hoạch tổng" của NV đó (dễ hiểu sai % đáp ứng khi NV làm nhiều mã cây có tiến
+  // độ khác nhau).
   const candidateTaskMonthsForBucket = buckets.map((b) => {
     const displayMonth = startOfMonth(b.start);
     return [subMonths(displayMonth, 1), subMonths(displayMonth, 2), subMonths(displayMonth, 3)];
@@ -72,25 +74,27 @@ export async function GET(req: NextRequest) {
           ...(scopeWarehouseId ? { warehouseId: scopeWarehouseId } : {}),
           ...(plantTypeIds.length > 0 ? { plantTypeId: { in: plantTypeIds } } : {}),
         },
-        select: { taskMonth: true, assignedStaffId: true, quantity1: true, quantity2: true, quantity3: true },
+        select: { taskMonth: true, assignedStaffId: true, plantTypeId: true, quantity1: true, quantity2: true, quantity3: true },
       })
     : [];
 
   type PlanAgg = { q1: number; q2: number; q3: number };
   const emptyPlanMap = new Map<string, PlanAgg>();
   const planByTaskMonth = new Map<string, PlanAgg>();
-  const planByStaffTaskMonth = new Map<string, Map<string, PlanAgg>>();
+  // Key "staffId|plantTypeId" — tách riêng kế hoạch từng mã cây trong phần việc của 1 NV, xem comment trên.
+  const planByStaffPlantTaskMonth = new Map<string, Map<string, PlanAgg>>();
   for (const p of planEntries) {
     const key = format(p.taskMonth, "yyyy-MM-dd");
     const total = planByTaskMonth.get(key) ?? { q1: 0, q2: 0, q3: 0 };
     total.q1 += p.quantity1; total.q2 += p.quantity2; total.q3 += p.quantity3;
     planByTaskMonth.set(key, total);
 
-    const staffMap = planByStaffTaskMonth.get(p.assignedStaffId) ?? new Map<string, PlanAgg>();
+    const staffPlantKey = `${p.assignedStaffId}|${p.plantTypeId}`;
+    const staffMap = planByStaffPlantTaskMonth.get(staffPlantKey) ?? new Map<string, PlanAgg>();
     const staffAgg = staffMap.get(key) ?? { q1: 0, q2: 0, q3: 0 };
     staffAgg.q1 += p.quantity1; staffAgg.q2 += p.quantity2; staffAgg.q3 += p.quantity3;
     staffMap.set(key, staffAgg);
-    planByStaffTaskMonth.set(p.assignedStaffId, staffMap);
+    planByStaffPlantTaskMonth.set(staffPlantKey, staffMap);
   }
 
   // Cộng kế hoạch (theo taskMonth candidate ở 1 map bất kỳ — dùng chung cho cả tổng hệ thống lẫn từng NV)
@@ -126,6 +130,7 @@ export async function GET(req: NextRequest) {
       recordDate: true,
       staffId: true,
       staff: { select: { code: true, name: true } },
+      instruction: { select: { plantType: { select: { id: true, code: true, name: true } } } },
       items: { select: { stage: true, quantityCreated: true } },
     },
   });
@@ -140,7 +145,11 @@ export async function GET(req: NextRequest) {
     return { period: b.label, "Kế hoạch": Math.round(bucketPlan), "Thực tế": 0 };
   });
 
-  const staffTotals = new Map<string, { staffId: string; code: string; name: string; actual: number }>();
+  // Key "staffId|plantTypeId" — 1 NV cấy mô nhiều mã cây thì tách riêng từng mã, không gộp chung 1 dòng.
+  const staffPlantTotals = new Map<
+    string,
+    { staffId: string; code: string; name: string; plantTypeId: string; plantTypeCode: string; plantTypeName: string; actual: number }
+  >();
   for (const r of records) {
     const finishedQty = r.items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + i.quantityCreated, 0);
     if (finishedQty === 0) continue;
@@ -148,21 +157,28 @@ export async function GET(req: NextRequest) {
     const idx = bucketIndexForDate(buckets, r.recordDate);
     if (idx !== -1) data[idx]["Thực tế"] += finishedQty;
 
-    const entry = staffTotals.get(r.staffId) ?? { staffId: r.staffId, code: r.staff.code, name: r.staff.name, actual: 0 };
+    const plantType = r.instruction.plantType;
+    const key = `${r.staffId}|${plantType.id}`;
+    const entry = staffPlantTotals.get(key) ?? {
+      staffId: r.staffId, code: r.staff.code, name: r.staff.name,
+      plantTypeId: plantType.id, plantTypeCode: plantType.code, plantTypeName: plantType.name,
+      actual: 0,
+    };
     entry.actual += finishedQty;
-    staffTotals.set(r.staffId, entry);
+    staffPlantTotals.set(key, entry);
   }
 
   const totalPlan = data.reduce((s, d) => s + d["Kế hoạch"], 0);
   const totalActual = data.reduce((s, d) => s + d["Thực tế"], 0);
   const percentAchieved = totalPlan > 0 ? Math.round((totalActual / totalPlan) * 1000) / 10 : null;
 
-  // % đáp ứng theo NV = thực tế của ĐÚNG NV đó / kế hoạch ĐÃ GIAO CHO ĐÚNG NV đó (assignedStaffId ở
-  // RootingForecastEntry) — KHÔNG phải chia cho totalPlan chung của cả kỳ (đã sửa lỗi trước đây hiện
-  // nhầm 1 số kế hoạch tổng lặp lại cho mọi NV, không phản ánh đúng phần việc NV Kỹ thuật giao riêng).
-  const staffBreakdown = Array.from(staffTotals.values())
+  // % đáp ứng theo NV+mã cây = thực tế của ĐÚNG NV+mã cây đó / kế hoạch ĐÃ GIAO CHO ĐÚNG NV+mã cây đó
+  // (assignedStaffId + plantTypeId ở RootingForecastEntry) — KHÔNG phải chia cho totalPlan chung của cả kỳ,
+  // cũng KHÔNG gộp các mã cây khác nhau của cùng 1 NV vào 1 kế hoạch chung (1 NV làm nhiều mã cây có tiến
+  // độ khác nhau, gộp lại sẽ che mất mã nào đang chậm).
+  const staffBreakdown = Array.from(staffPlantTotals.values())
     .map((s) => {
-      const plan = sumPlanOverBuckets(planByStaffTaskMonth.get(s.staffId) ?? emptyPlanMap);
+      const plan = sumPlanOverBuckets(planByStaffPlantTaskMonth.get(`${s.staffId}|${s.plantTypeId}`) ?? emptyPlanMap);
       return { ...s, plan, percentOfPlan: plan > 0 ? Math.round((s.actual / plan) * 1000) / 10 : null };
     })
     .sort((a, b) => b.actual - a.actual);

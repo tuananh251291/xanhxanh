@@ -29,7 +29,12 @@ type Unit = "week" | "month";
 type Scope = "all" | "warehouse";
 
 type PeriodRow = { period: string; "Kế hoạch": number; "Thực tế": number };
-type StaffRow = { staffId: string; code: string; name: string; actual: number; plan: number; percentOfPlan: number | null };
+// 1 dòng = 1 NV cấy mô + 1 mã cây (NV làm nhiều mã cây thì có nhiều dòng riêng, xem StaffBreakdownTable).
+type StaffRow = {
+  staffId: string; code: string; name: string;
+  plantTypeId: string; plantTypeCode: string; plantTypeName: string;
+  actual: number; plan: number; percentOfPlan: number | null;
+};
 type ReportData = { data: PeriodRow[]; totalPlan: number; totalActual: number; percentAchieved: number | null; staffBreakdown: StaffRow[] };
 
 // Trước đây phải chọn 2 mốc "Từ kỳ/Đến kỳ" (cùng dạng tuần hoặc tháng tuỳ Đơn vị thời gian) khá rối —
@@ -271,7 +276,8 @@ export default function PlanVsActualReport() {
 }
 
 // Dùng chung cho dialog "Chi tiết theo nhân sự" — cho phép hiện 1 hoặc 2 bảng cạnh nhau (xem chỗ gọi).
-// Cột "Kế hoạch" hiện đúng phần dự kiến NV Kỹ thuật đã giao RIÊNG cho từng NV cấy mô (assignedStaffId ở
+// Cột "Kế hoạch" hiện đúng phần dự kiến NV Kỹ thuật đã giao RIÊNG cho từng (NV cấy mô, mã cây) — 1 NV làm
+// nhiều mã cây thì tách thành nhiều dòng, không gộp chung (assignedStaffId + plantTypeId ở
 // RootingForecastEntry, xem route.ts) — KHÔNG phải tổng kế hoạch chung của cả kỳ.
 function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
   return (
@@ -281,6 +287,7 @@ function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
           <tr className="bg-primary-light text-primary-strong">
             <th className="px-3 py-2 text-left font-bold text-base">Mã NV</th>
             <th className="px-3 py-2 text-left font-bold text-base">Tên NV</th>
+            <th className="px-3 py-2 text-left font-bold text-base">Mã cây</th>
             <th className="px-3 py-2 text-center font-bold text-base">Kế hoạch</th>
             <th className="px-3 py-2 text-center font-bold text-base">Thực tế</th>
             <th className="px-3 py-2 text-center font-bold text-base">% đáp ứng</th>
@@ -288,9 +295,10 @@ function StaffBreakdownTable({ staff }: { staff: StaffRow[] }) {
         </thead>
         <tbody>
           {staff.map((s) => (
-            <tr key={s.staffId} className="border-b last:border-0 even:bg-primary-light">
+            <tr key={`${s.staffId}-${s.plantTypeId}`} className="border-b last:border-0 even:bg-primary-light">
               <td className="px-3 py-2 font-mono">{s.code}</td>
               <td className="px-3 py-2">{s.name}</td>
+              <td className="px-3 py-2" title={s.plantTypeName}>{s.plantTypeCode}</td>
               <td className="px-3 py-2 text-center tabular-nums text-text-secondary">{fmt(s.plan)}</td>
               <td className="px-3 py-2 text-center tabular-nums">{fmt(s.actual)}</td>
               <td className={`px-3 py-2 text-center tabular-nums font-semibold ${percentColorClass(s.percentOfPlan)}`}>
