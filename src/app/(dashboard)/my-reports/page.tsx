@@ -10,7 +10,7 @@ import { BarChart3, Leaf, Package, ClipboardList, Search } from "lucide-react";
 import { startOfMonth, startOfDay, endOfDay, subDays, format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
-import { DEVIATION_CAUSE_LABELS } from "@/types";
+import { DEVIATION_CAUSE_LABELS, DEVIATION_CAUSE_COLORS } from "@/types";
 import Link from "next/link";
 
 export default async function MyReportsPage({
@@ -225,7 +225,7 @@ export default async function MyReportsPage({
                         {instruction && <span className="text-text-secondary ml-2">{instruction.plantType.name}</span>}
                       </p>
                       {a.cause ? (
-                        <Badge className={a.cause === "KY_THUAT_SAI" ? "bg-warning-light text-warning-foreground" : "bg-danger-light text-destructive"}>
+                        <Badge className={DEVIATION_CAUSE_COLORS[a.cause]}>
                           {DEVIATION_CAUSE_LABELS[a.cause]}
                         </Badge>
                       ) : (

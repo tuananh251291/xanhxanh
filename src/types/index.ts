@@ -543,10 +543,20 @@ export const MEDIUM_ORDER_DAY_STATUS_LABELS = {
   CONFIRMED: "Bàn giao thành công",
 } as const;
 
-// Nguyên nhân KY_THUAT chọn khi xử lý alert lệch sản lượng (OUTPUT_DEVIATION) — bắt buộc chọn 1 trong 2.
+// Nguyên nhân KY_THUAT chọn khi xử lý alert lệch sản lượng (OUTPUT_DEVIATION) — bắt buộc chọn 1 trong 3.
+// CAY_MO_VUOT_CHI_TIEU KHÔNG phải quy lỗi — NV cấy mô cấy tốt, sản lượng vượt chỉ định.
 export const DEVIATION_CAUSE_LABELS = {
   KY_THUAT_SAI: "Do nhân viên kỹ thuật ra chỉ định sai",
   CAY_MO_SAI: "Do nhân viên cấy sai",
+  CAY_MO_VUOT_CHI_TIEU: "Nhân viên cấy tốt, vượt chỉ định",
+} as const;
+
+// Màu badge tương ứng — 2 nguyên nhân đầu đều là quy lỗi (warning/danger), CAY_MO_VUOT_CHI_TIEU là kết
+// quả tốt nên tô success, dùng chung ở reports/output-deviation và my-reports.
+export const DEVIATION_CAUSE_COLORS: Record<keyof typeof DEVIATION_CAUSE_LABELS, string> = {
+  KY_THUAT_SAI: "bg-warning-light text-warning-foreground",
+  CAY_MO_SAI: "bg-danger-light text-destructive",
+  CAY_MO_VUOT_CHI_TIEU: "bg-success-light text-success-foreground",
 } as const;
 
 // Trạng thái khách hàng (Customer.status, CRM Sale) — MAC_DINH = khách VIP/lâu năm gắn cố định với 1 NV,

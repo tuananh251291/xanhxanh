@@ -10,13 +10,14 @@ import { AlertTriangle, Search } from "lucide-react";
 import Link from "next/link";
 import { format, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
-import { isAdminRole, DEVIATION_CAUSE_LABELS } from "@/types";
+import { isAdminRole, DEVIATION_CAUSE_LABELS, DEVIATION_CAUSE_COLORS } from "@/types";
 
 const CAUSE_FILTER_OPTIONS = [
   { value: "", label: "Tất cả" },
   { value: "UNRESOLVED", label: "Chưa xử lý" },
   { value: "KY_THUAT_SAI", label: DEVIATION_CAUSE_LABELS.KY_THUAT_SAI },
   { value: "CAY_MO_SAI", label: DEVIATION_CAUSE_LABELS.CAY_MO_SAI },
+  { value: "CAY_MO_VUOT_CHI_TIEU", label: DEVIATION_CAUSE_LABELS.CAY_MO_VUOT_CHI_TIEU },
 ] as const;
 
 // Báo cáo "Lệch chỉ định & nguyên nhân" — liệt kê mọi lần alert OUTPUT_DEVIATION (NV cấy mô cấy lệch chỉ
@@ -61,7 +62,11 @@ export default async function OutputDeviationReportPage({
         type: "OUTPUT_DEVIATION",
         relatedType: "PlantingInstruction",
         ...(hasValidMonth ? { createdAt: { gte: startOfMonth(monthDate!), lte: endOfMonth(monthDate!) } } : {}),
-        ...(causeFilter === "UNRESOLVED" ? { cause: null } : causeFilter === "KY_THUAT_SAI" || causeFilter === "CAY_MO_SAI" ? { cause: causeFilter } : {}),
+        ...(causeFilter === "UNRESOLVED"
+          ? { cause: null }
+          : causeFilter === "KY_THUAT_SAI" || causeFilter === "CAY_MO_SAI" || causeFilter === "CAY_MO_VUOT_CHI_TIEU"
+            ? { cause: causeFilter }
+            : {}),
       },
       select: { id: true, relatedId: true, message: true, cause: true, createdAt: true },
       orderBy: { createdAt: "desc" },
@@ -205,11 +210,23 @@ export default async function OutputDeviationReportPage({
             )}
           </div>
           {repeatOffenders.length > 0 && (
-            <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2">
-              Có những nhân sự sau:{" "}
-              <strong>{repeatOffenders.map((s) => `${s.code} — ${s.name} (${s.count} lần)`).join(", ")}</strong>
-              {" "}đã cấy sai CĐC từ lần thứ 2 trở lên trong vòng 1 tháng gần đây.
-            </p>
+            <div className="bg-danger-light text-destructive rounded-md px-3 py-2">
+              <p className="text-sm mb-2">
+                Có những nhân sự sau đã cấy sai CĐC từ lần thứ 2 trở lên trong vòng 1 tháng gần đây (nhiều
+                lần nhất ở trên):
+              </p>
+              <table className="text-sm">
+                <tbody>
+                  {repeatOffenders.map((s) => (
+                    <tr key={s.code}>
+                      <td className="pr-3 py-0.5 font-mono">{s.code}</td>
+                      <td className="pr-3 py-0.5">{s.name}</td>
+                      <td className="py-0.5 text-right font-semibold tabular-nums">{s.count} lần</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -248,7 +265,7 @@ export default async function OutputDeviationReportPage({
                       <td className="px-4 py-3 text-text-secondary max-w-xs">{r.message}</td>
                       <td className="px-4 py-3">
                         {r.cause ? (
-                          <Badge className={r.cause === "KY_THUAT_SAI" ? "bg-warning-light text-warning-foreground" : "bg-danger-light text-destructive"}>
+                          <Badge className={DEVIATION_CAUSE_COLORS[r.cause]}>
                             {DEVIATION_CAUSE_LABELS[r.cause]}
                           </Badge>
                         ) : (

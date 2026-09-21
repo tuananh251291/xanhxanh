@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 const patchSchema = z.object({
   id: z.string(),
   status: z.enum(["READ", "RESOLVED"]),
-  cause: z.enum(["KY_THUAT_SAI", "CAY_MO_SAI"]).optional(),
+  cause: z.enum(["KY_THUAT_SAI", "CAY_MO_SAI", "CAY_MO_VUOT_CHI_TIEU"]).optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
-  // Alert lệch sản lượng bắt buộc chọn 1 trong 2 nguyên nhân trước khi được đánh dấu Đã xử lý.
+  // Alert lệch sản lượng bắt buộc chọn 1 trong 3 nguyên nhân trước khi được đánh dấu Đã xử lý.
   if (status === "RESOLVED" && alert.type === "OUTPUT_DEVIATION" && !cause) {
     return NextResponse.json({ message: "Cần chọn nguyên nhân trước khi xử lý" }, { status: 400 });
   }
