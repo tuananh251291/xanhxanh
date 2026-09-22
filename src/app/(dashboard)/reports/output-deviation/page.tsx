@@ -27,7 +27,7 @@ const CAUSE_FILTER_OPTIONS = [
 export default async function OutputDeviationReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ warehouseId?: string; cause?: string; month?: string }>;
+  searchParams: Promise<{ warehouseId?: string; cause?: string; month?: string; staff?: string }>;
 }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
@@ -38,6 +38,7 @@ export default async function OutputDeviationReportPage({
   const scopeWarehouseId = admin ? (sp.warehouseId?.trim() || null) : (session?.user?.workplaceWarehouseId ?? null);
   const causeFilter = sp.cause?.trim() || "";
   const monthFilter = sp.month?.trim() || "";
+  const staffFilter = sp.staff?.trim() || "";
   // input type="month" gửi lên dạng "yyyy-MM" thuần — new Date("yyyy-MM") parse theo UTC, lệch múi giờ VN
   // (UTC+7) như đã xử lý ở nơi khác (xem parseLocalDate, POST /api/extra-work-requests) — thêm "-01" +
   // giờ rõ ràng để Date parse theo LOCAL time.
@@ -55,7 +56,7 @@ export default async function OutputDeviationReportPage({
     );
   }
 
-  const [alerts, warehouses] = await Promise.all([
+  const [alerts, warehouses, staffOptions] = await Promise.all([
     prisma.alert.findMany({
       where: {
         type: "OUTPUT_DEVIATION",
@@ -69,6 +70,14 @@ export default async function OutputDeviationReportPage({
     admin
       ? prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
+    // Gợi ý cho ô lọc "Tên/mã NV" (datalist HTML — điền vào tự ra đề xuất, không cần JS riêng vì trang
+    // này vẫn là server component, submit qua <form> GET như các bộ lọc khác). Giới hạn đúng phạm vi Khu
+    // sản xuất đang chọn (giống warehouses ở trên) để gợi ý không lẫn NV cơ sở khác.
+    prisma.user.findMany({
+      where: { role: "CAY_MO", ...(scopeWarehouseId ? { workplaceWarehouseId: scopeWarehouseId } : {}) },
+      select: { code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const instructionIds = Array.from(new Set(alerts.map((a) => a.relatedId).filter((v): v is string => !!v)));
@@ -99,6 +108,17 @@ export default async function OutputDeviationReportPage({
     : [];
   const resolutionByAlertId = new Map(resolutions.map((r) => [r.alertId, r]));
 
+  // So 2 chiều (chứa/được chứa) vì gợi ý datalist điền nguyên "Mã — Tên" vào ô — nếu chỉ kiểm tra 1 chiều
+  // (code/name chứa filter) thì chọn đúng gợi ý lại KHÔNG khớp được chính NV vừa chọn (chuỗi "Mã — Tên"
+  // dài hơn, không nằm trong code hay name riêng lẻ).
+  const staffFilterLower = staffFilter.toLowerCase();
+  const matchesStaffFilter = (assignedTo: { code: string; name: string } | null): boolean => {
+    if (!staffFilterLower) return true;
+    if (!assignedTo) return false;
+    const code = assignedTo.code.toLowerCase();
+    const name = assignedTo.name.toLowerCase();
+    return code.includes(staffFilterLower) || name.includes(staffFilterLower) || staffFilterLower.includes(code) || staffFilterLower.includes(name);
+  };
   const rows = alerts
     .map((a) => {
       const instruction = a.relatedId ? instructionById.get(a.relatedId) : null;
@@ -107,7 +127,10 @@ export default async function OutputDeviationReportPage({
       const resolution = resolutionByAlertId.get(a.id) ?? null;
       return { alertId: a.id, message: a.message, cause: a.cause, createdAt: a.createdAt, instruction, warehouseId, resolution };
     })
-    .filter((r): r is NonNullable<typeof r> => !!r && (!scopeWarehouseId || r.warehouseId === scopeWarehouseId));
+    .filter(
+      (r): r is NonNullable<typeof r> =>
+        !!r && (!scopeWarehouseId || r.warehouseId === scopeWarehouseId) && matchesStaffFilter(r.instruction.assignedTo)
+    );
 
   // Tổng hợp nhanh dưới bộ lọc — 2 mục đếm đầu tính TRÊN CHÍNH `rows` đã lọc (đổi theo bộ lọc Tháng/
   // Nguyên nhân/Khu sản xuất đang chọn). Riêng cảnh báo "tái phạm" LUÔN tính theo cửa sổ 30 ngày gần nhất
@@ -186,10 +209,26 @@ export default async function OutputDeviationReportPage({
               <Label className="text-xs">Tháng</Label>
               <Input type="month" name="month" defaultValue={monthFilter} className="w-40" />
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Tên hoặc mã NV</Label>
+              <Input
+                type="text"
+                name="staff"
+                list="staffOptions"
+                defaultValue={staffFilter}
+                placeholder="VD: Nguyễn Linh Thuần / NVCM020"
+                className="w-64"
+              />
+              <datalist id="staffOptions">
+                {staffOptions.map((s) => (
+                  <option key={s.code} value={`${s.code} — ${s.name}`} />
+                ))}
+              </datalist>
+            </div>
             <Button type="submit" size="sm" className="bg-primary hover:bg-primary-hover">
               <Search className="w-4 h-4 mr-1" /> Lọc
             </Button>
-            {((admin && scopeWarehouseId) || causeFilter || monthFilter) && (
+            {((admin && scopeWarehouseId) || causeFilter || monthFilter || staffFilter) && (
               <Link href="/reports/output-deviation">
                 <Button type="button" variant="outline" size="sm">Xóa lọc</Button>
               </Link>
