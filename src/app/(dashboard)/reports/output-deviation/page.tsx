@@ -293,7 +293,7 @@ export default async function OutputDeviationReportPage({
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày phát hiện</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chi tiết</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Nguyên nhân</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Lý do cụ thể</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold whitespace-nowrap">Lý do cụ thể</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Phản hồi NV</th>
                   </tr>
                 </thead>
@@ -318,7 +318,7 @@ export default async function OutputDeviationReportPage({
                           <Badge variant="secondary">Chưa xử lý</Badge>
                         )}
                       </td>
-                      <td className="px-4 py-3 max-w-xs">
+                      <td className="px-4 py-3 max-w-xs min-w-[10rem]">
                         <SpecificReasonCell
                           errorLabels={r.cause === "CAY_MO_SAI" ? r.resolution?.errorTypes.map((et) => et.errorType.label) : undefined}
                           reasonText={r.cause === "KY_THUAT_SAI" ? r.resolution?.reasonText : undefined}
