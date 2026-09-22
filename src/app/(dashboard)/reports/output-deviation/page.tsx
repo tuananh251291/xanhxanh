@@ -268,7 +268,7 @@ export default async function OutputDeviationReportPage({
                         {r.instruction.assignedTo ? `${r.instruction.assignedTo.code} — ${r.instruction.assignedTo.name}` : "—"}
                       </td>
                       <td className="px-4 py-3 text-text-secondary">{format(r.createdAt, "dd/MM/yyyy HH:mm", { locale: vi })}</td>
-                      <td className="px-4 py-3 text-text-secondary max-w-xs">{r.message}</td>
+                      <td className="px-4 py-3 text-text-secondary"><DeviationDetailTable message={r.message} /></td>
                       <td className="px-4 py-3">
                         {r.cause ? (
                           <Badge className={DEVIATION_CAUSE_COLORS[r.cause]}>
@@ -324,6 +324,53 @@ function Header() {
         Các lần NV cấy mô cấy lệch chỉ định quá ngưỡng, kèm nguyên nhân NV Kỹ thuật đã kết luận
       </p>
     </div>
+  );
+}
+
+// Cột "Chi tiết" trước đây in nguyên văn Alert.message (dòng đầu "Chỉ định X — NV thực hiện: Y" lặp lại
+// dữ liệu đã có sẵn ở 2 cột "Chỉ định"/"NV cấy mô", rất dài dòng) — nay bỏ dòng đầu, chỉ giữ phần số liệu
+// và đổi sang bảng nhỏ 3 cột (Theo CĐC/Thực tế/Đạt) cho gọn, dễ so sánh. message luôn có dạng: 1 dòng đầu
+// + N khối 3 dòng liên tiếp (thực tế/theo chỉ định/đạt — xem POST /api/daily-records, deviationLines) —
+// tách theo đúng cấu trúc này thay vì regex bắt số, không phụ thuộc định dạng số locale.
+function parseDeviationBlocks(message: string): { label: string; target: string; actual: string; pct: string }[] {
+  const dataLines = message.split("\n").slice(1);
+  const blocks: { label: string; target: string; actual: string; pct: string }[] = [];
+  for (let i = 0; i + 2 < dataLines.length; i += 3) {
+    const [actualLine, targetLine, pctLine] = [dataLines[i], dataLines[i + 1], dataLines[i + 2]];
+    blocks.push({
+      label: actualLine.startsWith("Tỉ lệ nhân MM") ? "Tỉ lệ nhân MM" : "Tỉ lệ ra TP",
+      actual: actualLine.split(":")[1]?.trim() ?? "",
+      target: targetLine.split(":")[1]?.trim() ?? "",
+      pct: pctLine.split(":")[1]?.trim() ?? "",
+    });
+  }
+  return blocks;
+}
+
+function DeviationDetailTable({ message }: { message: string }) {
+  const blocks = parseDeviationBlocks(message);
+  if (blocks.length === 0) return <span className="text-text-muted">—</span>;
+  return (
+    <table className="text-xs">
+      <thead>
+        <tr className="text-text-muted">
+          <th className="text-left font-normal pr-2"></th>
+          <th className="text-right font-normal px-2">Theo CĐC</th>
+          <th className="text-right font-normal px-2">Thực tế</th>
+          <th className="text-right font-normal pl-2">Đạt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {blocks.map((b) => (
+          <tr key={b.label}>
+            <td className="pr-2 whitespace-nowrap">{b.label}:</td>
+            <td className="text-right px-2 tabular-nums">{b.target}</td>
+            <td className="text-right px-2 tabular-nums">{b.actual}</td>
+            <td className="text-right pl-2 tabular-nums font-semibold">{b.pct}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
