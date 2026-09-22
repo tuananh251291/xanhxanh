@@ -80,8 +80,7 @@ export default async function OutputDeviationReportPage({
           code: true,
           plantType: { select: { code: true, name: true } },
           assignedTo: { select: { code: true, name: true } },
-          createdBy: { select: { code: true, name: true } },
-          items: { take: 1, select: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true, name: true } } } } } },
+          items: { take: 1, select: { shelf: { select: { warehouseId: true } } } },
         },
       })
     : [];
@@ -105,9 +104,8 @@ export default async function OutputDeviationReportPage({
       const instruction = a.relatedId ? instructionById.get(a.relatedId) : null;
       if (!instruction) return null;
       const warehouseId = instruction.items[0]?.shelf?.warehouseId ?? null;
-      const warehouse = instruction.items[0]?.shelf?.warehouse ?? null;
       const resolution = resolutionByAlertId.get(a.id) ?? null;
-      return { alertId: a.id, message: a.message, cause: a.cause, createdAt: a.createdAt, instruction, warehouseId, warehouse, resolution };
+      return { alertId: a.id, message: a.message, cause: a.cause, createdAt: a.createdAt, instruction, warehouseId, resolution };
     })
     .filter((r): r is NonNullable<typeof r> => !!r && (!scopeWarehouseId || r.warehouseId === scopeWarehouseId));
 
@@ -252,8 +250,6 @@ export default async function OutputDeviationReportPage({
                   <tr className="bg-primary-light">
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chỉ định</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV cấy mô</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV Kỹ thuật</th>
-                    {admin && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Khu sản xuất</th>}
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày phát hiện</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chi tiết</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Nguyên nhân</th>
@@ -271,8 +267,6 @@ export default async function OutputDeviationReportPage({
                       <td className="px-4 py-3 text-foreground">
                         {r.instruction.assignedTo ? `${r.instruction.assignedTo.code} — ${r.instruction.assignedTo.name}` : "—"}
                       </td>
-                      <td className="px-4 py-3 text-text-secondary">{r.instruction.createdBy.code} — {r.instruction.createdBy.name}</td>
-                      {admin && <td className="px-4 py-3 text-text-secondary">{r.warehouse ? `${r.warehouse.code} — ${r.warehouse.name}` : "—"}</td>}
                       <td className="px-4 py-3 text-text-secondary">{format(r.createdAt, "dd/MM/yyyy HH:mm", { locale: vi })}</td>
                       <td className="px-4 py-3 text-text-secondary max-w-xs">{r.message}</td>
                       <td className="px-4 py-3">
