@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 const patchSchema = z.object({
   id: z.string(),
   status: z.enum(["READ", "RESOLVED"]),
-  cause: z.enum(["KY_THUAT_SAI", "CAY_MO_SAI", "CAY_MO_VUOT_CHI_TIEU"]).optional(),
+  cause: z.enum(["KY_THUAT_SAI", "CAY_MO_SAI"]).optional(),
   reasonText: z.string().trim().min(1).optional(),
   plantingErrorTypeIds: z.array(z.string()).min(1).optional(),
 });
@@ -56,7 +56,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
-  // Alert lệch sản lượng bắt buộc chọn 1 trong 3 nguyên nhân trước khi được đánh dấu Đã xử lý — chọn
+  // Alert lệch sản lượng bắt buộc chọn 1 trong 2 nguyên nhân trước khi được đánh dấu Đã xử lý — chọn
   // CAY_MO_SAI phải tích cụ thể (các) lỗi trong "Phân loại lỗi cấy", chọn KY_THUAT_SAI phải giải thích lý
   // do (xem OutputDeviationResolution, schema.prisma).
   if (status === "RESOLVED" && alert.type === "OUTPUT_DEVIATION") {

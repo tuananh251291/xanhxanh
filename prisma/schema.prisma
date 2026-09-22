@@ -336,8 +336,6 @@ enum AlertStatus {
 enum DeviationCause {
   KY_THUAT_SAI // Do nhân viên kỹ thuật ra chỉ định sai
   CAY_MO_SAI // Do nhân viên cấy sai
-  // KHÔNG phải lỗi — NV cấy mô cấy tốt, sản lượng vượt chỉ định (khác 2 nguyên nhân trên đều là quy lỗi).
-  CAY_MO_VUOT_CHI_TIEU
 }
 
 // Phản hồi của NV cấy mô với kết luận CAY_MO_SAI (OutputDeviationResolution.staffResponse).

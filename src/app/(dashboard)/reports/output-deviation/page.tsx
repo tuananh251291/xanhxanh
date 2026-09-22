@@ -17,7 +17,6 @@ const CAUSE_FILTER_OPTIONS = [
   { value: "UNRESOLVED", label: "Chưa xử lý" },
   { value: "KY_THUAT_SAI", label: DEVIATION_CAUSE_LABELS.KY_THUAT_SAI },
   { value: "CAY_MO_SAI", label: DEVIATION_CAUSE_LABELS.CAY_MO_SAI },
-  { value: "CAY_MO_VUOT_CHI_TIEU", label: DEVIATION_CAUSE_LABELS.CAY_MO_VUOT_CHI_TIEU },
 ] as const;
 
 // Báo cáo "Lệch chỉ định & nguyên nhân" — liệt kê mọi lần alert OUTPUT_DEVIATION (NV cấy mô cấy lệch chỉ
@@ -62,11 +61,7 @@ export default async function OutputDeviationReportPage({
         type: "OUTPUT_DEVIATION",
         relatedType: "PlantingInstruction",
         ...(hasValidMonth ? { createdAt: { gte: startOfMonth(monthDate!), lte: endOfMonth(monthDate!) } } : {}),
-        ...(causeFilter === "UNRESOLVED"
-          ? { cause: null }
-          : causeFilter === "KY_THUAT_SAI" || causeFilter === "CAY_MO_SAI" || causeFilter === "CAY_MO_VUOT_CHI_TIEU"
-            ? { cause: causeFilter }
-            : {}),
+        ...(causeFilter === "UNRESOLVED" ? { cause: null } : causeFilter === "KY_THUAT_SAI" || causeFilter === "CAY_MO_SAI" ? { cause: causeFilter } : {}),
       },
       select: { id: true, relatedId: true, message: true, cause: true, createdAt: true },
       orderBy: { createdAt: "desc" },
@@ -229,17 +224,14 @@ export default async function OutputDeviationReportPage({
                 Có những nhân sự sau đã cấy sai CĐC từ lần thứ 2 trở lên trong vòng 1 tháng gần đây (nhiều
                 lần nhất ở trên):
               </p>
-              <table className="text-sm">
-                <tbody>
-                  {repeatOffenders.map((s) => (
-                    <tr key={s.code}>
-                      <td className="pr-3 py-0.5 font-mono">{s.code}</td>
-                      <td className="pr-3 py-0.5">{s.name}</td>
-                      <td className="py-0.5 text-right font-semibold tabular-nums">{s.count} lần</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {repeatOffenders.length <= 6 ? (
+                <RepeatOffenderTable staff={repeatOffenders} />
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+                  <RepeatOffenderTable staff={repeatOffenders.slice(0, Math.ceil(repeatOffenders.length / 2))} />
+                  <RepeatOffenderTable staff={repeatOffenders.slice(Math.ceil(repeatOffenders.length / 2))} />
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -334,5 +326,23 @@ function Header() {
         Các lần NV cấy mô cấy lệch chỉ định quá ngưỡng, kèm nguyên nhân NV Kỹ thuật đã kết luận
       </p>
     </div>
+  );
+}
+
+// Danh sách tái phạm dài (nhiều NV) xếp dọc 1 cột rất dài, phải cuộn nhiều — tách đôi thành 2 cột cạnh
+// nhau khi trên 6 NV, dễ nhìn hơn hẳn.
+function RepeatOffenderTable({ staff }: { staff: { code: string; name: string; count: number }[] }) {
+  return (
+    <table className="text-sm">
+      <tbody>
+        {staff.map((s) => (
+          <tr key={s.code}>
+            <td className="pr-3 py-0.5 font-mono">{s.code}</td>
+            <td className="pr-3 py-0.5">{s.name}</td>
+            <td className="py-0.5 text-right font-semibold tabular-nums">{s.count} lần</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
