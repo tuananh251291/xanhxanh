@@ -292,7 +292,7 @@ export default async function OutputDeviationReportPage({
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày phát hiện</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chi tiết</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Nguyên nhân</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Chi tiết xử lý</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Lý do cụ thể</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Phản hồi NV</th>
                   </tr>
                 </thead>
