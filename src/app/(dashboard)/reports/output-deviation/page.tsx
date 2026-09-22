@@ -11,6 +11,7 @@ import Link from "next/link";
 import { format, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isAdminRole, DEVIATION_CAUSE_LABELS, DEVIATION_CAUSE_COLORS } from "@/types";
+import SpecificReasonCell from "./specific-reason-cell";
 
 const CAUSE_FILTER_OPTIONS = [
   { value: "", label: "Tất cả" },
@@ -318,17 +319,10 @@ export default async function OutputDeviationReportPage({
                         )}
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        {r.cause === "CAY_MO_SAI" && r.resolution && r.resolution.errorTypes.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {r.resolution.errorTypes.map((et, idx) => (
-                              <Badge key={idx} className="bg-danger-light text-destructive">{et.errorType.label}</Badge>
-                            ))}
-                          </div>
-                        ) : r.cause === "KY_THUAT_SAI" && r.resolution?.reasonText ? (
-                          <span className="text-text-secondary">{r.resolution.reasonText}</span>
-                        ) : (
-                          <span className="text-text-muted">—</span>
-                        )}
+                        <SpecificReasonCell
+                          errorLabels={r.cause === "CAY_MO_SAI" ? r.resolution?.errorTypes.map((et) => et.errorType.label) : undefined}
+                          reasonText={r.cause === "KY_THUAT_SAI" ? r.resolution?.reasonText : undefined}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         {r.cause !== "CAY_MO_SAI" ? (
