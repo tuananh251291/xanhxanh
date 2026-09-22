@@ -394,18 +394,18 @@ function DeviationDetailTable({ message }: { message: string }) {
       <thead>
         <tr className="text-text-muted">
           <th className="text-left font-normal pr-2"></th>
-          <th className="text-right font-normal px-2">Theo CĐC</th>
-          <th className="text-right font-normal px-2">Thực tế</th>
-          <th className="text-right font-normal pl-2">Đạt</th>
+          <th className="text-right font-normal px-2 whitespace-nowrap">Theo CĐC</th>
+          <th className="text-right font-normal px-2 whitespace-nowrap">Thực tế</th>
+          <th className="text-right font-normal pl-2 whitespace-nowrap">Đạt</th>
         </tr>
       </thead>
       <tbody>
         {blocks.map((b) => (
           <tr key={b.label}>
             <td className="pr-2 whitespace-nowrap">{b.label}:</td>
-            <td className="text-right px-2 tabular-nums">{b.target}</td>
-            <td className="text-right px-2 tabular-nums">{b.actual}</td>
-            <td className="text-right pl-2 tabular-nums font-semibold">{b.pct}</td>
+            <td className="text-right px-2 tabular-nums whitespace-nowrap">{b.target}</td>
+            <td className="text-right px-2 tabular-nums whitespace-nowrap">{b.actual}</td>
+            <td className="text-right pl-2 tabular-nums font-semibold whitespace-nowrap">{b.pct}</td>
           </tr>
         ))}
       </tbody>
