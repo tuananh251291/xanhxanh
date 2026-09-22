@@ -227,9 +227,13 @@ export default async function OutputDeviationReportPage({
               {repeatOffenders.length <= 6 ? (
                 <RepeatOffenderTable staff={repeatOffenders} />
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-                  <RepeatOffenderTable staff={repeatOffenders.slice(0, Math.ceil(repeatOffenders.length / 2))} />
-                  <RepeatOffenderTable staff={repeatOffenders.slice(Math.ceil(repeatOffenders.length / 2))} />
+                <div className="divide-y divide-destructive/20 sm:divide-y-0 sm:grid sm:grid-cols-2 sm:divide-x">
+                  <div className="pb-3 sm:pb-0 sm:pr-6">
+                    <RepeatOffenderTable staff={repeatOffenders.slice(0, Math.ceil(repeatOffenders.length / 2))} />
+                  </div>
+                  <div className="pt-3 sm:pt-0 sm:pl-6">
+                    <RepeatOffenderTable staff={repeatOffenders.slice(Math.ceil(repeatOffenders.length / 2))} />
+                  </div>
                 </div>
               )}
             </div>
