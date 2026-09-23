@@ -7,6 +7,7 @@ import { generateLotCode } from "@/lib/codes";
 import { z } from "zod";
 
 const patchSchema = z.union([
+  z.object({ confirmReceived: z.literal(true) }),
   z.object({
     handBack: z.object({
       items: z.array(z.object({ itemId: z.string().min(1), reportedQuantity: z.number().int().min(0) })).min(1),
@@ -64,7 +65,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const task = await loadTask(id);
   if (!task) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
 
-  // ---- NV cấy mô tự khai kết quả cuối cùng ----
+  // ---- NV cấy mô xác nhận "Nhận bàn giao" — giống bước xác nhận nhận mẫu mẹ của chỉ định cấy. Tồn đã
+  // trừ NGAY từ lúc Kho mô giao việc (không trừ lại ở đây, khác RepackInstruction) — bước này chỉ đổi
+  // trạng thái để NV được phép bàn giao kết quả. ----
+  if ("confirmReceived" in body) {
+    if (task.assignedToId !== session.user.id) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    if (task.status !== "ASSIGNED") {
+      return NextResponse.json({ message: "Việc không ở trạng thái chờ xác nhận nhận" }, { status: 400 });
+    }
+    await prisma.sealingTask.update({ where: { id }, data: { staffConfirmedAt: new Date(), status: "IN_PROGRESS" } });
+    return NextResponse.json({ success: true });
+  }
+
+  // ---- NV cấy mô tự khai kết quả cuối cùng — BẮT BUỘC đủ 100% số lượng đã giao mới bàn giao được
+  // (không cho khai thiếu do hao hụt, khác trước đây) ----
   if ("handBack" in body) {
     if (task.assignedToId !== session.user.id) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     if (task.status !== "IN_PROGRESS") {
@@ -75,8 +89,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     for (const ri of reportedItems) {
       const item = itemById.get(ri.itemId);
       if (!item) return NextResponse.json({ message: "Dòng việc không hợp lệ" }, { status: 400 });
-      if (ri.reportedQuantity > item.quantity) {
-        return NextResponse.json({ message: `${item.plantType.name} ${item.stageCode}: số lượng thực làm không được vượt quá ${item.quantity} đã giao` }, { status: 400 });
+      if (ri.reportedQuantity !== item.quantity) {
+        return NextResponse.json({ message: `${item.plantType.name} ${item.stageCode}: cần hàn đủ ${item.quantity} đã giao mới được bàn giao` }, { status: 400 });
       }
     }
     if (reportedItems.length !== task.items.length) {
@@ -141,10 +155,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ success: true });
   }
 
-  // ---- Kho mô/Admin huỷ trước khi NV hoàn thành — hoàn lại tồn Phòng theo dõi ----
+  // ---- Kho mô/Admin huỷ trước khi NV hoàn thành — hoàn lại tồn Phòng theo dõi. Cho phép huỷ cả khi NV
+  // chưa xác nhận nhận (ASSIGNED) lẫn đã xác nhận đang làm (IN_PROGRESS) — tồn đều đã trừ ngay từ lúc
+  // giao việc nên cả 2 trường hợp đều cần hoàn lại. ----
   if ("cancel" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-    if (task.status !== "IN_PROGRESS") {
+    if (task.status !== "ASSIGNED" && task.status !== "IN_PROGRESS") {
       return NextResponse.json({ message: "Chỉ huỷ được khi NV chưa bấm Hoàn thành" }, { status: 400 });
     }
 

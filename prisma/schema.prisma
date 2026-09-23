@@ -1751,7 +1751,8 @@ model RepackInstruction {
 // ============================================================
 
 enum SealingTaskStatus {
-  IN_PROGRESS     // Đã giao việc, đã trừ tồn Phòng theo dõi, NV cấy mô đang làm
+  ASSIGNED        // Kho mô vừa giao việc, đã trừ tồn Phòng theo dõi, chờ NV cấy mô xác nhận "Nhận bàn giao"
+  IN_PROGRESS     // NV đã xác nhận nhận (staffConfirmedAt) — đang làm
   PENDING_RECEIPT // NV đã "Hoàn thành", chờ Kho thành phẩm xác nhận số liệu thật
   COMPLETED       // Kho thành phẩm đã xác nhận, đã cộng vào Phòng hàn túi
   CANCELLED       // Kho mô/Admin huỷ trước khi NV hoàn thành — đã hoàn lại tồn Phòng theo dõi
@@ -1773,8 +1774,13 @@ model SealingTask {
   assignedBy   User     @relation("SealingTaskAssignedBy", fields: [assignedById], references: [id])
   assignedAt   DateTime @default(now())
 
+  // NV cấy mô xác nhận đã nhận việc — giống RepackInstruction.staffConfirmedAt (khác chỗ SealingTask
+  // KHÔNG trừ lại tồn ở bước này, tồn đã trừ ngay lúc Kho mô giao việc — xem POST /api/sealing-tasks).
+  staffConfirmedAt DateTime?
+
   // NV cấy mô tự khai kết quả cuối cùng (1 lần duy nhất, giống RepackInstruction.staffHandedBackAt) —
-  // số lượng thực tế theo từng dòng nằm ở SealingTaskItem.reportedQuantity.
+  // BẮT BUỘC đủ 100% quantity mới bàn giao được (không cho khai thiếu do hao hụt — xem PATCH
+  // /api/sealing-tasks/[id]) — số lượng nằm ở SealingTaskItem.reportedQuantity, luôn = quantity.
   staffHandedBackAt DateTime?
   notes             String?
 
@@ -1784,7 +1790,7 @@ model SealingTask {
   confirmedById String?
   confirmedBy   User?     @relation("SealingTaskConfirmedBy", fields: [confirmedById], references: [id])
 
-  status    SealingTaskStatus @default(IN_PROGRESS)
+  status    SealingTaskStatus @default(ASSIGNED)
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -1808,7 +1814,8 @@ model SealingTaskItem {
   // Giao việc — TRỪ NGAY khỏi Lot ACTIVE (roomId, plantTypeId, stageCode) tại Phòng theo dõi lúc tạo
   // SealingTask (xem POST /api/sealing-tasks), không đợi NV xác nhận nhận như RepackInstruction.
   quantity Int
-  // NV cấy mô tự khai lúc bấm "Hoàn thành" — có thể NHỎ HƠN quantity (hao hụt khi hàn túi).
+  // NV cấy mô tự khai lúc bấm "Hoàn thành" — BẮT BUỘC = quantity (không cho khai thiếu, chỉ bàn giao
+  // được khi đã hàn xong đủ số đã giao — xem PATCH /api/sealing-tasks/[id]).
   reportedQuantity Int?
   // Kho thành phẩm xác nhận lúc nhận lại — đúng số này được cộng vào Phòng hàn túi (upsertLot, xem
   // src/lib/goods-receipt.ts) — mặc định gợi ý = reportedQuantity nhưng Kho thành phẩm sửa được.

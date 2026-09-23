@@ -25,7 +25,9 @@ export async function GET(req: NextRequest) {
   const role = session.user.role;
 
   const where: Record<string, unknown> = {};
-  if (status) where.status = status;
+  // Cho phép truyền nhiều trạng thái cách nhau dấu phẩy (VD "ASSIGNED,IN_PROGRESS") — panel NV cấy mô
+  // cần gộp 2 nhóm "chờ xác nhận nhận" + "đang làm" trong 1 lần gọi.
+  if (status) where.status = status.includes(",") ? { in: status.split(",") } : status;
 
   if (role === "CAY_MO") {
     where.assignedToId = session.user.id;
@@ -58,7 +60,9 @@ export async function GET(req: NextRequest) {
 // Kho mô "Giao việc hàn túi" từ 1 đăng ký làm thêm/hoàn thành sớm ĐÃ DUYỆT và CHƯA dùng (giống hệt cơ
 // chế assignExtraWorkRequestId của chỉ định cấy dự phòng/xử lý) — khác 2 luồng đó ở chỗ TRỪ TỒN NGAY
 // khỏi Phòng theo dõi của Kho thành phẩm (không đợi NV xác nhận nhận), vì đây là việc XUYÊN kho, không
-// có khái niệm "kệ nguồn" để giữ chỗ như RepackInstruction.
+// có khái niệm "kệ nguồn" để giữ chỗ như RepackInstruction. Tạo ở status ASSIGNED — NV cấy mô vẫn phải
+// vào xác nhận "Nhận bàn giao" (giống bước xác nhận nhận mẫu mẹ của chỉ định cấy) trước khi được coi là
+// đang làm/được phép bàn giao kết quả (PATCH /api/sealing-tasks/[id], confirmReceived).
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
