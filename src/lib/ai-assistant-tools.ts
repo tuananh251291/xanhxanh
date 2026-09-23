@@ -46,6 +46,48 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
       },
     },
   },
+  {
+    name: "tra_cuu_chi_dinh_cay",
+    description:
+      "Tra cứu chỉ định cấy (PlantingInstruction) theo trạng thái, mã cây, NV cấy mô được giao, hoặc tuần thực hiện. Trả về mã chỉ định, mã cây, NV, trạng thái, số mẫu mẹ đầu vào, sản lượng dự kiến mẫu mẹ/thành phẩm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED", "ENDED"], description: "Trạng thái chỉ định. Bỏ trống = mọi trạng thái." },
+        plantTypeCode: { type: "string", description: "Mã cây hoặc 1 phần mã cây. Bỏ trống = mọi mã cây." },
+        staffCode: { type: "string", description: "Mã NV cấy mô được giao (assignedTo) hoặc 1 phần mã. Bỏ trống = mọi NV." },
+        days: { type: "number", description: "Chỉ lấy chỉ định có tuần thực hiện (weekStart) trong N ngày gần nhất. Mặc định 30 ngày." },
+      },
+    },
+  },
+  {
+    name: "tra_cuu_ty_le_nhiem",
+    description:
+      "Tra cứu số lượng cây nhiễm và tỉ lệ nhiễm (tự phát hiện lúc NV cấy mô kiểm tra phòng tối) theo NV cấy mô, gộp theo khu sản xuất (kho) của từng NV. Dùng khi được hỏi về tình hình nhiễm theo khu sản xuất hoặc theo nhân sự.",
+    input_schema: {
+      type: "object",
+      properties: {
+        warehouseCode: { type: "string", description: "Mã khu sản xuất (kho) của NV, hoặc 1 phần mã. Bỏ trống = mọi khu sản xuất." },
+        staffCode: { type: "string", description: "Mã NV cấy mô hoặc 1 phần mã. Bỏ trống = mọi NV." },
+        days: { type: "number", description: "Khoảng thời gian tính bằng ngày gần nhất. Mặc định 30 ngày." },
+      },
+    },
+  },
+  {
+    name: "tra_cuu_du_kien_san_luong",
+    description:
+      "Tra cứu dự kiến sản lượng (KY_THUAT nộp theo lộ trình 3 tháng/lần) — chọn loại mẫu mẹ (MAU_ME) hoặc thành phẩm ra rễ (THANH_PHAM). Trả về từng dòng dự kiến kèm 3 tháng kế tiếp (taskMonth+1/+2/+3) và số lượng dự kiến từng tháng, theo khu sản xuất/mã cây/NV phụ trách.",
+    input_schema: {
+      type: "object",
+      properties: {
+        loai: { type: "string", enum: ["MAU_ME", "THANH_PHAM"], description: "Loại dự kiến sản lượng cần tra — bắt buộc." },
+        warehouseCode: { type: "string", description: "Mã khu sản xuất. Bỏ trống = mọi khu sản xuất." },
+        plantTypeCode: { type: "string", description: "Mã cây. Bỏ trống = mọi mã cây." },
+        staffCode: { type: "string", description: "Mã NV Kỹ thuật/cấy mô phụ trách. Bỏ trống = mọi NV." },
+      },
+      required: ["loai"],
+    },
+  },
 ];
 
 type ToolResult = { content: string; is_error?: boolean };
@@ -147,6 +189,127 @@ async function runTraCuuCanhBao(input: { status?: "UNREAD" | "READ"; limit?: num
   return { content: lines.join("\n") };
 }
 
+async function runTraCuuChiDinhCay(input: { status?: string; plantTypeCode?: string; staffCode?: string; days?: number }): Promise<ToolResult> {
+  const days = Math.min(Math.max(input.days ?? 30, 1), 365);
+  const since = new Date(Date.now() - days * 86400000);
+
+  const instructions = await prisma.plantingInstruction.findMany({
+    where: {
+      weekStart: { gte: since },
+      ...(input.status ? { status: input.status as never } : {}),
+      ...(input.plantTypeCode ? { plantType: { code: { contains: input.plantTypeCode, mode: "insensitive" } } } : {}),
+      ...(input.staffCode ? { assignedTo: { code: { contains: input.staffCode, mode: "insensitive" } } } : {}),
+    },
+    orderBy: { weekStart: "desc" },
+    take: 30,
+    select: {
+      code: true,
+      status: true,
+      weekStart: true,
+      inputMotherQuantity: true,
+      expectedMotherOutput: true,
+      expectedFinishedOutput: true,
+      plantType: { select: { code: true, name: true } },
+      assignedTo: { select: { code: true, name: true } },
+    },
+  });
+
+  if (instructions.length === 0) return { content: `Không tìm thấy chỉ định cấy nào khớp bộ lọc trong ${days} ngày gần nhất.` };
+  const lines = instructions.map(
+    (ins) =>
+      `${ins.code} · ${ins.plantType.code} (${ins.plantType.name}) · NV ${ins.assignedTo ? `${ins.assignedTo.name} (${ins.assignedTo.code})` : "chưa gán"} · ${ins.status} · tuần ${ins.weekStart ? ins.weekStart.toISOString().slice(0, 10) : "chưa đặt"} · MM đầu vào ${fmtQty(ins.inputMotherQuantity)} · dự kiến MM ${ins.expectedMotherOutput != null ? fmtQty(ins.expectedMotherOutput) : "—"} · dự kiến TP ${ins.expectedFinishedOutput != null ? fmtQty(ins.expectedFinishedOutput) : "—"}`
+  );
+  return { content: lines.join("\n") };
+}
+
+async function runTraCuuTyLeNhiem(input: { warehouseCode?: string; staffCode?: string; days?: number }): Promise<ToolResult> {
+  const days = Math.min(Math.max(input.days ?? 30, 1), 365);
+  const since = new Date(Date.now() - days * 86400000);
+
+  const inspections = await prisma.lotInspection.findMany({
+    where: {
+      createdAt: { gte: since },
+      ...(input.staffCode ? { staff: { code: { contains: input.staffCode, mode: "insensitive" } } } : {}),
+      ...(input.warehouseCode ? { staff: { workplaceWarehouse: { code: { contains: input.warehouseCode, mode: "insensitive" } } } } : {}),
+    },
+    select: {
+      staffId: true,
+      staff: { select: { code: true, name: true, workplaceWarehouse: { select: { code: true, name: true } } } },
+      items: { select: { initialQuantity: true, contaminatedQuantity: true } },
+    },
+  });
+
+  if (inspections.length === 0) return { content: `Không có dữ liệu kiểm tra nhiễm nào khớp bộ lọc trong ${days} ngày gần nhất.` };
+
+  type Group = { staffCode: string; staffName: string; warehouseCode: string; warehouseName: string; totalCreated: number; totalContaminated: number };
+  const groups = new Map<string, Group>();
+  for (const insp of inspections) {
+    const warehouse = insp.staff.workplaceWarehouse;
+    const key = insp.staffId;
+    const existing = groups.get(key) ?? {
+      staffCode: insp.staff.code,
+      staffName: insp.staff.name,
+      warehouseCode: warehouse?.code ?? "—",
+      warehouseName: warehouse?.name ?? "Chưa gán khu sản xuất",
+      totalCreated: 0,
+      totalContaminated: 0,
+    };
+    for (const item of insp.items) {
+      existing.totalCreated += item.initialQuantity;
+      existing.totalContaminated += item.contaminatedQuantity;
+    }
+    groups.set(key, existing);
+  }
+
+  const rows = Array.from(groups.values())
+    .map((g) => ({ ...g, ratePct: g.totalCreated > 0 ? Math.round((g.totalContaminated / g.totalCreated) * 1000) / 10 : 0 }))
+    .sort((a, b) => b.ratePct - a.ratePct)
+    .slice(0, 50);
+
+  const lines = rows.map(
+    (r) => `${r.staffName} (${r.staffCode}) · khu sản xuất ${r.warehouseCode} (${r.warehouseName}): ${fmtQty(r.totalContaminated)}/${fmtQty(r.totalCreated)} cây nhiễm (${r.ratePct}%)`
+  );
+  return { content: `Tỉ lệ nhiễm tự phát hiện trong ${days} ngày gần nhất (không tính luồng Đỏ kiểm tra lại lúc bàn giao):\n${lines.join("\n")}` };
+}
+
+async function runTraCuuDuKienSanLuong(input: { loai: "MAU_ME" | "THANH_PHAM"; warehouseCode?: string; plantTypeCode?: string; staffCode?: string }): Promise<ToolResult> {
+  const where = {
+    ...(input.warehouseCode ? { warehouse: { code: { contains: input.warehouseCode, mode: "insensitive" as const } } } : {}),
+    ...(input.plantTypeCode ? { plantType: { code: { contains: input.plantTypeCode, mode: "insensitive" as const } } } : {}),
+    ...(input.staffCode ? { assignedStaff: { code: { contains: input.staffCode, mode: "insensitive" as const } } } : {}),
+  };
+
+  const select = {
+    taskMonth: true,
+    quantity1: true,
+    quantity2: true,
+    quantity3: true,
+    warehouse: { select: { code: true, name: true } },
+    plantType: { select: { code: true, name: true } },
+    assignedStaff: { select: { code: true, name: true } },
+  } as const;
+
+  const entries =
+    input.loai === "MAU_ME"
+      ? await prisma.motherForecastEntry.findMany({ where, orderBy: { taskMonth: "desc" }, take: 50, select })
+      : await prisma.rootingForecastEntry.findMany({ where, orderBy: { taskMonth: "desc" }, take: 50, select });
+
+  if (entries.length === 0) return { content: "Không tìm thấy dự kiến sản lượng nào khớp bộ lọc." };
+
+  const addMonths = (d: Date, n: number) => {
+    const r = new Date(d);
+    r.setMonth(r.getMonth() + n);
+    return r.toISOString().slice(0, 7);
+  };
+  const lines = entries.map((e) => {
+    const m1 = addMonths(e.taskMonth, 1);
+    const m2 = addMonths(e.taskMonth, 2);
+    const m3 = addMonths(e.taskMonth, 3);
+    return `${e.plantType.code} (${e.plantType.name}) · khu ${e.warehouse.code} · NV ${e.assignedStaff.name} (${e.assignedStaff.code}): ${m1}=${fmtQty(e.quantity1)}, ${m2}=${fmtQty(e.quantity2)}, ${m3}=${fmtQty(e.quantity3)}`;
+  });
+  return { content: `Dự kiến sản lượng ${input.loai === "MAU_ME" ? "mẫu mẹ" : "thành phẩm ra rễ"} (mỗi dòng là 1 lộ trình 3 tháng nộp gần nhất):\n${lines.join("\n")}` };
+}
+
 export async function runAiAssistantTool(name: string, rawInput: unknown): Promise<ToolResult> {
   try {
     const input = (rawInput ?? {}) as Record<string, unknown>;
@@ -157,6 +320,12 @@ export async function runAiAssistantTool(name: string, rawInput: unknown): Promi
         return await runTraCuuDonHang(input as never);
       case "tra_cuu_canh_bao":
         return await runTraCuuCanhBao(input as never);
+      case "tra_cuu_chi_dinh_cay":
+        return await runTraCuuChiDinhCay(input as never);
+      case "tra_cuu_ty_le_nhiem":
+        return await runTraCuuTyLeNhiem(input as never);
+      case "tra_cuu_du_kien_san_luong":
+        return await runTraCuuDuKienSanLuong(input as never);
       default:
         return { content: `Không có công cụ tên "${name}"`, is_error: true };
     }
