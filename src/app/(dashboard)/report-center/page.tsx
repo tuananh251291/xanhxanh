@@ -15,24 +15,24 @@ export default async function ReportCenterPage() {
   if (!isAdminRole(role)) redirect("/dashboard");
 
   const cards = [
-    { href: "/reports", icon: BarChart3, title: "Báo cáo", description: "Sản lượng, tỉ lệ nhiễm, kế hoạch vs thực tế, tồn kho & vòng đời, checklist." },
-    { href: "/reports/overview", icon: TrendingUp, title: "Thống kê trực quan", description: "Bảng xếp hạng nhân viên, xu hướng tỉ lệ, phân tích nhiễm theo chỉ định." },
-    { href: "/reports/production-capacity", icon: Gauge, title: "Năng lực sản xuất", description: "Dự báo năng lực sản xuất theo nhóm tuần xoay vòng." },
-    { href: "/reports/inventory-flow-summary", icon: ArrowLeftRight, title: "Tổng hợp Nhập - Xuất", description: "Tổng số lượng nhập (theo NCC) và xuất (đơn hàng, khu sản xuất, trồng/hủy), lọc theo thời gian." },
-    { href: "/reports/mother-stock-growth", icon: Sprout, title: "Mẫu mẹ gia tăng", description: "Sản lượng mẫu mẹ 1 cơ sở sản xuất làm tăng thêm, lọc theo mã cây và khoảng tuần." },
-    { href: "/reports/planting-log-summary", icon: BookOpen, title: "Dữ liệu nhật ký cấy", description: "Số cây được cấy, cấy ra mẫu mẹ và thành phẩm theo NV, lọc theo khu sản xuất/nhân sự/mã cây/tuần hoặc tháng." },
-    { href: "/reports/production-record", icon: Boxes, title: "Số lượng ghi nhận", description: "Sản lượng đã được ghi nhận (tính vào KPI) của từng NV cấy mô theo tháng, xem chi tiết theo ngày." },
-    { href: "/reports/instruction-plan-vs-actual", icon: ClipboardList, title: "Dữ liệu chỉ định cấy", description: "So sánh số kỳ vọng lúc tạo chỉ định với thực tế đã cấy ra, lọc theo khu sản xuất/mã cây/mã chỉ định/tháng." },
-    { href: "/mother-photo-update/view", icon: Images, title: "Xem dữ liệu hình ảnh", description: "Ảnh cập nhật tình trạng mẫu mẹ theo giàn kệ/mã cây." },
-    { href: "/reports/downloads", icon: Download, title: "Tải dữ liệu thống kê", description: "File Excel tồn kho mẫu mẹ/thành phẩm cuối kỳ hàng tháng, phân loại theo cơ sở." },
-    { href: "/reports/inspection-lane", icon: Flag, title: "Phân loại luồng kiểm tra", description: "NV cấy mô nào đang thuộc luồng Xanh/Vàng/Đỏ, theo từng khu sản xuất." },
-    { href: "/reports/inspection-defects", icon: AlertTriangle, title: "Phiếu kiểm tra không đạt/nhiễm", description: "Phiếu kiểm tra ghi nhận hàng không đạt yêu cầu/hàng nhiễm theo từng NV cấy mô, lọc theo khu sản xuất và tháng." },
-    { href: "/reports/rooting-quality-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá chất lượng ra rễ", description: "Tỉ lệ đạt/không đạt cây ra rễ hàng tuần do NV kỹ thuật đánh giá trước khi Kho mô bàn giao Kho thành phẩm." },
-    { href: "/reports/probation-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá thử việc", description: "Kết quả đánh giá 9 tuần thử việc của từng NV cấy mô, tự chấm rồi NV kỹ thuật chấm lại." },
-    { href: "/reports/output-deviation", icon: AlertTriangle, title: "Lệch chỉ định & nguyên nhân", description: "Các lần NV cấy mô cấy lệch chỉ định quá ngưỡng, kèm nguyên nhân NV Kỹ thuật đã kết luận (hoặc chưa xử lý)." },
+    { href: "/reports", icon: BarChart3, title: "Báo cáo", description: "Sản lượng, tỉ lệ nhiễm, kế hoạch vs thực tế, tồn kho, checklist." },
+    { href: "/reports/overview", icon: TrendingUp, title: "Thống kê trực quan", description: "Xếp hạng nhân viên, xu hướng tỉ lệ, phân tích nhiễm theo chỉ định." },
+    { href: "/reports/production-capacity", icon: Gauge, title: "Năng lực sản xuất", description: "Dự báo năng lực theo nhóm tuần xoay vòng." },
+    { href: "/reports/inventory-flow-summary", icon: ArrowLeftRight, title: "Tổng hợp Nhập - Xuất", description: "Tổng nhập (theo NCC) và xuất (đơn hàng, khu SX, trồng/hủy)." },
+    { href: "/reports/mother-stock-growth", icon: Sprout, title: "Mẫu mẹ gia tăng", description: "Sản lượng mẫu mẹ tăng thêm, lọc theo mã cây và tuần." },
+    { href: "/reports/planting-log-summary", icon: BookOpen, title: "Dữ liệu nhật ký cấy", description: "Số cây cấy, cấy ra mẫu mẹ/thành phẩm theo NV, tuần/tháng." },
+    { href: "/reports/production-record", icon: Boxes, title: "Số lượng ghi nhận", description: "Sản lượng tính KPI của NV cấy mô theo tháng, chi tiết theo ngày." },
+    { href: "/reports/instruction-plan-vs-actual", icon: ClipboardList, title: "Dữ liệu chỉ định cấy", description: "So sánh kỳ vọng lúc tạo chỉ định với thực tế đã cấy ra." },
+    { href: "/mother-photo-update/view", icon: Images, title: "Xem dữ liệu hình ảnh", description: "Ảnh cập nhật mẫu mẹ theo giàn kệ/mã cây." },
+    { href: "/reports/downloads", icon: Download, title: "Tải dữ liệu thống kê", description: "File Excel tồn kho cuối kỳ hàng tháng, theo cơ sở." },
+    { href: "/reports/inspection-lane", icon: Flag, title: "Phân loại luồng kiểm tra", description: "NV cấy mô thuộc luồng Xanh/Vàng/Đỏ, theo khu sản xuất." },
+    { href: "/reports/inspection-defects", icon: AlertTriangle, title: "Phiếu kiểm tra không đạt/nhiễm", description: "Phiếu ghi nhận hàng không đạt/nhiễm theo NV, tháng." },
+    { href: "/reports/rooting-quality-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá chất lượng ra rễ", description: "Tỉ lệ đạt cây ra rễ hàng tuần, NV kỹ thuật đánh giá." },
+    { href: "/reports/probation-evaluations", icon: ClipboardCheck, title: "Báo cáo đánh giá thử việc", description: "Kết quả đánh giá 9 tuần thử việc của NV cấy mô." },
+    { href: "/reports/output-deviation", icon: AlertTriangle, title: "Lệch chỉ định & nguyên nhân", description: "Lần cấy lệch chỉ định quá ngưỡng, kèm nguyên nhân." },
     // Dữ liệu lương nhạy cảm — chỉ hiện thẻ này nếu role hiện tại thật sự xem được (xem canManagePayroll,
     // hiện chỉ SUPER_ADMIN trong số các role admin, KHÔNG gồm ADMIN thường/ADMIN_KY_THUAT).
-    ...(canManagePayroll(role) ? [{ href: "/reports/payroll", icon: DollarSign, title: "Bảng lương", description: "Lương NV cấy mô tính theo kỳ lương, xuất Excel tổng hợp + chi tiết theo ngày." }] : []),
+    ...(canManagePayroll(role) ? [{ href: "/reports/payroll", icon: DollarSign, title: "Bảng lương", description: "Lương NV cấy mô theo kỳ, xuất Excel tổng hợp." }] : []),
   ];
 
   return (
@@ -48,15 +48,15 @@ export default async function ReportCenterPage() {
         {cards.map((c) => (
           <Link key={c.href} href={c.href}>
             <Card className="h-full hover:border-primary transition-colors">
-              <CardContent className="flex items-start gap-4 py-3.5">
-                <div className="bg-primary-light p-2.5 rounded-lg shrink-0">
-                  <c.icon className="w-6 h-6 text-primary-strong" />
+              <CardContent className="flex items-center gap-3 py-2">
+                <div className="bg-primary-light p-2 rounded-lg shrink-0">
+                  <c.icon className="w-5 h-5 text-primary-strong" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-foreground">{c.title}</p>
-                  <p className="text-sm text-text-secondary mt-1">{c.description}</p>
+                  <p className="text-sm text-text-secondary mt-0.5">{c.description}</p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-text-muted shrink-0 mt-1" />
+                <ChevronRight className="w-5 h-5 text-text-muted shrink-0" />
               </CardContent>
             </Card>
           </Link>
