@@ -32,9 +32,13 @@ type InstructionRow = {
   inputMotherQuantity: number;
   createdAt: string;
   previousInstructionId: string | null;
+  assignedToId: string;
+  assignedTo: { code: string; name: string } | null;
   plantType: { code: string; name: string; transferWaitWeeks: number };
   items: { motherMedium: { code: string; name: string } | null }[];
 };
+
+type CurrentUser = { id: string; code: string; name: string };
 
 // Ngày cấy có thể ở TƯƠNG LAI — Admin kỹ thuật xác nhận trước cho 1 ngày sắp tới (không bắt buộc là hôm
 // nay, xem ConfirmStartDialog), nên phải phân biệt: ngày đã tới (đang/đã cấy thật) hiển thị đậm màu bình
@@ -49,7 +53,7 @@ const STATUS_BADGE: Record<string, string> = {
   CANCELLED: "bg-danger-light text-destructive",
 };
 
-export default function RndProductionBoard() {
+export default function RndProductionBoard({ currentUser }: { currentUser: CurrentUser }) {
   const [instructions, setInstructions] = useState<InstructionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -72,8 +76,13 @@ export default function RndProductionBoard() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <CardTitle className="text-base">Danh sách chỉ định cấy R&D của bạn</CardTitle>
-            <CreateInstructionDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => { setCreateOpen(false); load(); }} />
+            <CardTitle className="text-base">Danh sách chỉ định cấy R&D bạn đã tạo</CardTitle>
+            <CreateInstructionDialog
+              open={createOpen}
+              currentUser={currentUser}
+              onOpenChange={setCreateOpen}
+              onCreated={() => { setCreateOpen(false); load(); }}
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -87,6 +96,7 @@ export default function RndProductionBoard() {
                 <thead>
                   <tr className="bg-primary-light text-left text-primary-strong">
                     <th className="py-2 px-3 font-bold text-base">Mã chỉ định</th>
+                    <th className="py-2 px-3 font-bold text-base">Giao cho</th>
                     <th className="py-2 px-3 font-bold text-base">Mã cây</th>
                     <th className="py-2 px-3 font-bold text-base">Môi trường</th>
                     <th className="py-2 px-3 font-bold text-base text-center">SL mẫu mẹ</th>
@@ -103,6 +113,11 @@ export default function RndProductionBoard() {
                         <td className="py-2 px-3 font-mono text-info-foreground">
                           {inst.code}
                           {inst.previousInstructionId && <span className="text-text-muted text-xs ml-1">(kì tiếp)</span>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {inst.assignedToId === currentUser.id
+                            ? <span className="text-text-secondary">Chính mình</span>
+                            : inst.assignedTo ? `${inst.assignedTo.code} — ${inst.assignedTo.name}` : "—"}
                         </td>
                         <td className="py-2 px-3">{inst.plantType.code} — {inst.plantType.name}</td>
                         <td className="py-2 px-3 text-text-secondary">{medium ? `${medium.code} — ${medium.name}` : "—"}</td>
@@ -158,31 +173,42 @@ export default function RndProductionBoard() {
 type ComboOption = { value: string; label: string };
 type PlantType = { id: string; code: string; name: string };
 type MediumType = { id: string; code: string; name: string };
+type RndStaff = { id: string; code: string; name: string };
 
 function CreateInstructionDialog({
-  open, onOpenChange, onCreated,
+  open, currentUser, onOpenChange, onCreated,
 }: {
   open: boolean;
+  currentUser: CurrentUser;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }) {
   const [plantTypes, setPlantTypes] = useState<PlantType[]>([]);
   const [mediumTypes, setMediumTypes] = useState<MediumType[]>([]);
+  const [rndStaff, setRndStaff] = useState<RndStaff[]>([]);
   const [plantTypeOption, setPlantTypeOption] = useState<ComboOption | null>(null);
   const [mediumTypeOption, setMediumTypeOption] = useState<ComboOption | null>(null);
   const [quantity, setQuantity] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const selfOption: ComboOption = { value: currentUser.id, label: `Chính mình (${currentUser.code} — ${currentUser.name})` };
+  const [assignedToOption, setAssignedToOption] = useState<ComboOption>(selfOption);
+
   useEffect(() => {
     if (!open) return;
     fetch("/api/plant-types").then((r) => r.json()).then((data: PlantType[]) => setPlantTypes(Array.isArray(data) ? data : []));
     fetch("/api/medium-types").then((r) => r.json()).then((data: MediumType[]) => setMediumTypes(Array.isArray(data) ? data : []));
+    // NV cấy mô thật đã được gán làm việc tại Kho SX R&D (canAssignWorkplace, trang Người dùng) — có thể
+    // rỗng nếu chưa NV nào được gán, khi đó chỉ còn lựa chọn "Chính mình". assignedToOption đã tự về lại
+    // selfOption mỗi lần đóng dialog (xem reset(), gọi trong onOpenChange) nên không cần set lại ở đây.
+    fetch("/api/rnd-production/staff").then((r) => r.json()).then((data: RndStaff[]) => setRndStaff(Array.isArray(data) ? data : []));
   }, [open]);
 
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }));
   const mediumTypeOptions: ComboOption[] = mediumTypes.map((m) => ({ value: m.id, label: `${m.code} — ${m.name}` }));
+  const assignedToOptions: ComboOption[] = [selfOption, ...rndStaff.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }))];
 
-  const reset = () => { setPlantTypeOption(null); setMediumTypeOption(null); setQuantity(""); };
+  const reset = () => { setPlantTypeOption(null); setMediumTypeOption(null); setQuantity(""); setAssignedToOption(selfOption); };
 
   const canSubmit = !!plantTypeOption && !!mediumTypeOption && quantity.trim() && !saving;
 
@@ -197,6 +223,7 @@ function CreateInstructionDialog({
           plantTypeId: plantTypeOption.value,
           mediumTypeId: mediumTypeOption.value,
           quantity: Number(quantity),
+          assignedToId: assignedToOption.value,
         }),
       });
       const data = await res.json();
@@ -216,9 +243,29 @@ function CreateInstructionDialog({
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Sprout className="w-5 h-5" /> Tạo chỉ định cấy cho tôi</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Sprout className="w-5 h-5" /> Tạo chỉ định cấy</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 mt-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Giao cho <span className="text-destructive">*</span></Label>
+            <Combobox
+              items={assignedToOptions}
+              value={assignedToOption}
+              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+              onValueChange={(val) => setAssignedToOption((val as ComboOption | null) ?? selfOption)}
+            >
+              <ComboboxInputGroup>
+                <ComboboxInput placeholder="Gõ tên/mã NV…" />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy NV</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+          </div>
           <div className="space-y-1">
             <Label className="text-xs">Mã cây <span className="text-destructive">*</span></Label>
             <Combobox
