@@ -44,8 +44,8 @@ export async function sendRndOutputToWarehouse(params: {
     getOrCreateRndWarehouse(),
   ]);
   const bucketShelf = stage === "MAU_ME"
-    ? await getOrCreateRndInputShelf(rndWarehouse.id)
-    : await getOrCreateRndOutputShelf(rndWarehouse.id);
+    ? await getOrCreateRndInputShelf(rndWarehouse.id, fromUserId)
+    : await getOrCreateRndOutputShelf(rndWarehouse.id, fromUserId);
 
   const lotCode = await generateLotCode({ plantTypeCode: plantType.code, staffCode: staff.code, stageCode });
 

@@ -30,7 +30,7 @@ export async function createNextRndRound(prevInstruction: PrevInstructionForChai
     prisma.user.findUniqueOrThrow({ where: { id: actorId }, select: { code: true } }),
     getOrCreateRndWarehouse(),
   ]);
-  const bucketShelf = await getOrCreateRndInputShelf(rndWarehouse.id);
+  const bucketShelf = await getOrCreateRndInputShelf(rndWarehouse.id, actorId);
 
   const lotCode = await generateLotCode({ plantTypeCode: plantType.code, staffCode: staff.code, stageCode: "M05" });
   const newLot = await prisma.lot.create({

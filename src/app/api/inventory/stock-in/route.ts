@@ -216,8 +216,8 @@ export async function POST(req: NextRequest) {
     // trong 1 lượt, xem stock-in-form.tsx).
     const resolvedShelfId = warehouseIsRnd
       ? (stageOfCode(items[0].stageCode) === "MAU_ME"
-          ? await getOrCreateRndInputShelf(warehouseId)
-          : await getOrCreateRndOutputShelf(warehouseId)
+          ? await getOrCreateRndInputShelf(warehouseId, session!.user.id)
+          : await getOrCreateRndOutputShelf(warehouseId, session!.user.id)
         ).id
       : shelfId!;
 

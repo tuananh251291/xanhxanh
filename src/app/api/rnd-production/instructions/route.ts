@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (!mediumType) return NextResponse.json({ message: "Không tìm thấy môi trường" }, { status: 400 });
 
   const rndWarehouse = await getOrCreateRndWarehouse();
-  const bucketShelf = await getOrCreateRndInputShelf(rndWarehouse.id);
+  const bucketShelf = await getOrCreateRndInputShelf(rndWarehouse.id, session.user.id);
 
   const now = new Date();
   const weekStart = toStoredWeekStart(startOfWeek(now, { weekStartsOn: 1 }));
