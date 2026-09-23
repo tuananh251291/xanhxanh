@@ -633,6 +633,11 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/users", label: "Người dùng", icon: "Users" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
+    // Cho phép Admin kỹ thuật tự nhập lô mẫu mẹ ĐẦU TIÊN cho mã cây vừa tạo ở "Quản lý loại cây" (mã mới
+    // chưa có lô nào thì không hiện được khi tạo chỉ định cấy, vốn chọn theo giàn kệ ĐANG CÓ mẫu mẹ, không
+    // chọn thẳng từ danh mục) — trang /inventory/nhap-kho đã hỗ trợ sẵn mọi role Admin (isAdminRole, xem
+    // nhap-kho-content.tsx), trước đây chỉ thiếu link menu cho ADMIN_KY_THUAT.
+    { href: "/inventory/nhap-kho", label: "Nhập kho thủ công", icon: "PackagePlus" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/instructions/list", label: "Chỉ định cấy đã tạo", icon: "ClipboardList" },
     { href: "/mother-forecast-requests", label: "Duyệt đề xuất mẫu mẹ", icon: "PackageCheck" },
