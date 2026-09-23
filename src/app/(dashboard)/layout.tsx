@@ -21,6 +21,7 @@ import { ensureWeeklyRootingQualityEvaluation, ensureRootingQualityEvaluationRem
 import { ensureWeeklyProbationEvaluations } from "@/lib/probation-evaluation";
 import { ensureMonthlyInspectionLaneUpdate, ensureInspectionLaneOverridesApplied } from "@/lib/inspection-lane";
 import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
+import AiAssistantWidget from "@/components/shared/ai-assistant-widget";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -118,6 +119,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
         </main>
         <Toaster richColors position="top-right" />
+        {/* Giai đoạn 1 — chỉ SUPER_ADMIN/ADMIN_KY_THUAT, cố tình hẹp hơn isAdminRole (không có ADMIN
+            thường). Server (/api/ai-assistant) cũng tự chặn lại, đây chỉ là ẩn UI. */}
+        {(role === "SUPER_ADMIN" || role === "ADMIN_KY_THUAT") && <AiAssistantWidget />}
       </div>
     </AuthSessionProvider>
   );
