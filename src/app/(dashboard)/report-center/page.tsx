@@ -48,7 +48,7 @@ export default async function ReportCenterPage() {
         {cards.map((c) => (
           <Link key={c.href} href={c.href}>
             <Card className="h-full hover:border-primary transition-colors">
-              <CardContent className="flex items-start gap-4 py-6">
+              <CardContent className="flex items-start gap-4 py-3.5">
                 <div className="bg-primary-light p-2.5 rounded-lg shrink-0">
                   <c.icon className="w-6 h-6 text-primary-strong" />
                 </div>
