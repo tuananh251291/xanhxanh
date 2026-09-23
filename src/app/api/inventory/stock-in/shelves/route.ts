@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { sumLotQuantity } from "@/types";
+import { sumLotQuantity, isAdminRole } from "@/types";
 import { shelfMatchesPlantType, isEligibleMotherShelfForStockIn, resolveStockInWarehouseId, STOCK_IN_ROOM_TYPE } from "@/lib/stock-in";
 
 // Danh sách kệ trong kho áp dụng (KHO_MO: đúng kho làm việc; Admin/Admin cấp cao: kho tự chọn qua query
@@ -11,7 +11,7 @@ import { shelfMatchesPlantType, isEligibleMotherShelfForStockIn, resolveStockInW
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
-  if (role !== "KHO_MO" && role !== "ADMIN" && role !== "SUPER_ADMIN") {
+  if (role !== "KHO_MO" && !isAdminRole(role)) {
     return NextResponse.json({ message: "Bạn không có quyền dùng chức năng này" }, { status: 403 });
   }
 

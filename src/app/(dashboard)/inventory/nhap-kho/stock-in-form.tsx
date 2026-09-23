@@ -21,7 +21,7 @@ import {
 import { PackagePlus, Loader2, Warehouse as WarehouseIcon, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-type Warehouse = { id: string; name: string };
+type Warehouse = { id: string; name: string; isRnd: boolean };
 type PlantType = { id: string; code: string; name: string };
 type EligibleShelf = { id: string; code: string; name: string; capacity: number | null; used: number; capLeft: number | null; full: boolean };
 type StaffOption = { id: string; code: string; name: string };
@@ -74,6 +74,10 @@ export default function StockInForm({
 }) {
   const isAdmin = !fixedWarehouse;
   const [warehouseId, setWarehouseId] = useState(fixedWarehouse?.id ?? "");
+
+  // Kho SX R&D không chia giàn kệ (coi cả kho như 1 phòng chung) — bỏ hẳn bước chọn giàn kệ, server tự
+  // gán vào đúng 1 kệ ẩn theo khu vực (xem getOrCreateRndInputShelf/getOrCreateRndOutputShelf, route.ts).
+  const isRndWarehouse = fixedWarehouse ? fixedWarehouse.isRnd : (warehouses.find((w) => w.id === warehouseId)?.isRnd ?? false);
 
   // Nơi nhập — 2 lựa chọn loại trừ nhau, chọn 1 sẽ mờ hẳn phần nhập liệu còn lại.
   const [destination, setDestination] = useState<Destination>("SHELF");
@@ -189,7 +193,7 @@ export default function StockInForm({
   const updateRowPlantType = (rowKey: number, plantTypeId: string) => {
     const idx = rows.findIndex((r) => r.key === rowKey);
     setRows((prev) => prev.map((r) => (r.key === rowKey ? { ...r, plantTypeId } : r)));
-    if (destination === "SHELF" && idx === 0) {
+    if (destination === "SHELF" && idx === 0 && !isRndWarehouse) {
       setShelfId("");
       loadShelves(warehouseId, shelfStage, plantTypeId);
     }
@@ -204,7 +208,7 @@ export default function StockInForm({
 
   const submit = async () => {
     if (isAdmin && !warehouseId) { toast.error("Chọn kho sản xuất"); return; }
-    if (destination === "SHELF" && !shelfId) { toast.error("Chọn giàn kệ"); return; }
+    if (destination === "SHELF" && !isRndWarehouse && !shelfId) { toast.error("Chọn giàn kệ"); return; }
     if (destination === "DARK_ROOM" && !staffId) { toast.error("Chọn NV cấy mô"); return; }
 
     const items: { plantTypeId: string; stageCode: string; quantity: number; enteredDate?: string }[] = [];
@@ -241,7 +245,7 @@ export default function StockInForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination,
-          shelfId: destination === "SHELF" ? shelfId : undefined,
+          shelfId: destination === "SHELF" && !isRndWarehouse ? shelfId : undefined,
           staffId: destination === "DARK_ROOM" ? staffId : undefined,
           mode,
           warehouseId,
@@ -264,7 +268,7 @@ export default function StockInForm({
       }
 
       setRows([makeRow(defaultRowStageCode)]);
-      if (destination === "SHELF" && representativePlantTypeId) loadShelves(warehouseId, shelfStage, representativePlantTypeId);
+      if (destination === "SHELF" && !isRndWarehouse && representativePlantTypeId) loadShelves(warehouseId, shelfStage, representativePlantTypeId);
     } finally {
       setSubmitting(false);
     }
@@ -322,36 +326,45 @@ export default function StockInForm({
             </div>
           </div>
 
-          <div className="space-y-1 sm:col-span-2">
-            <Label>Giàn kệ * {loadingShelves && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}</Label>
-            <Combobox
-              items={shelfOptions}
-              value={shelfOptions.find((o) => o.value === shelfId) ?? null}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => setShelfId(v ? (v as ComboOption).value : "")}
-              disabled={destination !== "SHELF" || !rows[0]?.plantTypeId || loadingShelves}
-            >
-              <ComboboxInputGroup className="w-full h-11 md:h-8">
-                <ComboboxInput placeholder={rows[0]?.plantTypeId ? "Gõ mã giàn kệ…" : "Chọn mã cây ở dòng đầu tiên trước"} />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không có giàn kệ nào phù hợp mã cây này</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item} disabled={item.disabled}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-            {shelfStage === "MAU_ME" && (
+          {isRndWarehouse ? (
+            <div className="space-y-1 sm:col-span-2">
               <p className="text-xs text-text-secondary">
-                Chỉ đề xuất kệ đang chứa sẵn mã cây này, hoặc kệ mẫu mẹ chung chưa gắn NV (khớp đúng
-                &quot;Cho phép xếp&quot; đã cài đặt cho kệ đó nếu có) — không yêu cầu kệ còn trống.
+                Kho R&amp;D không chia giàn kệ — hệ thống tự gộp chung vào đúng 1 khu theo khu vực đã chọn ở
+                trên, không cần chọn giàn kệ.
               </p>
-            )}
-            {shelfStage === "THANH_PHAM" && (
-              <p className="text-xs text-text-secondary">Không ràng buộc mã cây — đề xuất theo đúng kho đã chọn.</p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="space-y-1 sm:col-span-2">
+              <Label>Giàn kệ * {loadingShelves && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}</Label>
+              <Combobox
+                items={shelfOptions}
+                value={shelfOptions.find((o) => o.value === shelfId) ?? null}
+                isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                onValueChange={(v) => setShelfId(v ? (v as ComboOption).value : "")}
+                disabled={destination !== "SHELF" || !rows[0]?.plantTypeId || loadingShelves}
+              >
+                <ComboboxInputGroup className="w-full h-11 md:h-8">
+                  <ComboboxInput placeholder={rows[0]?.plantTypeId ? "Gõ mã giàn kệ…" : "Chọn mã cây ở dòng đầu tiên trước"} />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Không có giàn kệ nào phù hợp mã cây này</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: ComboOption) => <ComboboxItem key={item.value} value={item} disabled={item.disabled}>{item.label}</ComboboxItem>}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+              {shelfStage === "MAU_ME" && (
+                <p className="text-xs text-text-secondary">
+                  Chỉ đề xuất kệ đang chứa sẵn mã cây này, hoặc kệ mẫu mẹ chung chưa gắn NV (khớp đúng
+                  &quot;Cho phép xếp&quot; đã cài đặt cho kệ đó nếu có) — không yêu cầu kệ còn trống.
+                </p>
+              )}
+              {shelfStage === "THANH_PHAM" && (
+                <p className="text-xs text-text-secondary">Không ràng buộc mã cây — đề xuất theo đúng kho đã chọn.</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Khối Phòng tối — mờ đi khi đang chọn Phòng sáng */}

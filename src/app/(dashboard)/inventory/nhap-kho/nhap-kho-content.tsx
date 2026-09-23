@@ -19,10 +19,10 @@ export default async function NhapKhoContent({
   // cấp cao được thao tác mọi kho sản xuất nên cần tự chọn trong form, không có kho mặc định cố định.
   const [fixedWarehouse, warehouses, plantTypes] = await Promise.all([
     !isAdmin && workplaceWarehouseId
-      ? prisma.warehouse.findUnique({ where: { id: workplaceWarehouseId }, select: { id: true, name: true } })
+      ? prisma.warehouse.findUnique({ where: { id: workplaceWarehouseId }, select: { id: true, name: true, isRnd: true } })
       : Promise.resolve(null),
     isAdmin
-      ? prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+      ? prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, name: true, isRnd: true }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
     prisma.plantType.findMany({
       where: { isActive: true },

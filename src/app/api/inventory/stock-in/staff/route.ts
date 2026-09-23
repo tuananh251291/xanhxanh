@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { resolveStockInWarehouseId } from "@/lib/stock-in";
+import { isAdminRole } from "@/types";
 
 // Danh sách NV cấy mô của đúng kho áp dụng (KHO_MO: kho làm việc; Admin/Admin cấp cao: kho tự chọn) —
 // dùng cho trang /inventory/nhap-kho khi nhập kho thủ công vào Phòng tối (lô gắn thẳng vào Phòng tối cá
@@ -9,7 +10,7 @@ import { resolveStockInWarehouseId } from "@/lib/stock-in";
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
-  if (role !== "KHO_MO" && role !== "ADMIN" && role !== "SUPER_ADMIN") {
+  if (role !== "KHO_MO" && !isAdminRole(role)) {
     return NextResponse.json({ message: "Bạn không có quyền dùng chức năng này" }, { status: 403 });
   }
 

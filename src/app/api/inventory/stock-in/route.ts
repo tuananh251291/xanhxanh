@@ -9,6 +9,8 @@ import { shelfMatchesPlantType, isEligibleMotherShelfForStockIn, resolveStockInW
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
+import { getOrCreateRndInputShelf, getOrCreateRndOutputShelf } from "@/lib/rnd-instruction-warehouse";
+import { isAdminRole } from "@/types";
 
 const itemSchema = z.object({
   plantTypeId: z.string().min(1),
@@ -35,9 +37,11 @@ const schema = z
     // rễ xếp nhiều quy cách/mã cây khác nhau trong cùng 1 đợt.
     items: z.array(itemSchema).min(1),
   })
-  .refine((data) => (data.destination === "SHELF" ? !!data.shelfId : !!data.staffId), {
-    message: "Thiếu giàn kệ hoặc NV cấy mô",
+  .refine((data) => data.destination !== "DARK_ROOM" || !!data.staffId, {
+    message: "Thiếu NV cấy mô",
   })
+  // shelfId chỉ bắt buộc kiểm tra kỹ hơn bên dưới trong handler (sau khi biết kho có phải Kho SX R&D hay
+  // không — R&D không có khái niệm giàn kệ, hệ thống tự gán kệ ẩn duy nhất, xem comment ở handler).
   .refine((data) => data.destination !== "DARK_ROOM" || data.items.every((i) => !!i.enteredDate), {
     message: "Thiếu ngày nhập kho tối",
   });
@@ -73,7 +77,7 @@ class StockInError extends Error {}
 export async function POST(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role;
-  if (role !== "KHO_MO" && role !== "ADMIN" && role !== "SUPER_ADMIN") {
+  if (role !== "KHO_MO" && !isAdminRole(role)) {
     return NextResponse.json({ message: "Bạn không có quyền dùng chức năng này" }, { status: 403 });
   }
 
@@ -94,6 +98,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: resolved.error }, { status: 400 });
   }
   const warehouseId = resolved.warehouseId;
+
+  // Kho SX R&D không có khái niệm giàn kệ — coi cả kho như 1 phòng chung, hệ thống tự gán vào đúng 1 kệ
+  // ẩn duy nhất theo khu vực (getOrCreateRndInputShelf/getOrCreateRndOutputShelf, xem rnd-instruction-
+  // warehouse.ts) thay vì bắt NV chọn giàn kệ như kho sản xuất thường.
+  const warehouseIsRnd = (await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { isRnd: true } }))?.isRnd ?? false;
+  if (destination === "SHELF" && !warehouseIsRnd && !shelfId) {
+    return NextResponse.json({ message: "Chọn giàn kệ" }, { status: 400 });
+  }
 
   const [plantTypes, creatingUser] = await Promise.all([
     prisma.plantType.findMany({
@@ -199,8 +211,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ results }, { status: 200 });
     }
 
+    // Kho R&D: bỏ qua shelfId client gửi lên (nếu có) — luôn tự gán vào đúng 1 kệ ẩn theo khu vực (khu vực
+    // suy ra từ dòng đầu tiên, đại diện cho cả lượt nhập — UI chỉ cho phép gộp nhiều dòng CÙNG khu vực
+    // trong 1 lượt, xem stock-in-form.tsx).
+    const resolvedShelfId = warehouseIsRnd
+      ? (stageOfCode(items[0].stageCode) === "MAU_ME"
+          ? await getOrCreateRndInputShelf(warehouseId)
+          : await getOrCreateRndOutputShelf(warehouseId)
+        ).id
+      : shelfId!;
+
     const shelf = await prisma.shelf.findUnique({
-      where: { id: shelfId! },
+      where: { id: resolvedShelfId },
       select: {
         id: true,
         code: true,
@@ -248,7 +270,7 @@ export async function POST(req: NextRequest) {
         const stage = stageOfCode(item.stageCode)!;
 
         const existingLot = await tx.lot.findFirst({
-          where: { shelfId: shelfId!, plantTypeId: item.plantTypeId, stageCode: item.stageCode, status: "ACTIVE" },
+          where: { shelfId: resolvedShelfId, plantTypeId: item.plantTypeId, stageCode: item.stageCode, status: "ACTIVE" },
           orderBy: { enteredAt: "asc" },
         });
         const previousQuantity = existingLot?.quantity ?? 0;
@@ -297,7 +319,7 @@ export async function POST(req: NextRequest) {
             plantTypeId: item.plantTypeId,
             stage,
             stageCode: item.stageCode,
-            shelfId: shelfId!,
+            shelfId: resolvedShelfId,
             quantity: item.quantity,
             initialQuantity: item.quantity,
             status: "ACTIVE",
