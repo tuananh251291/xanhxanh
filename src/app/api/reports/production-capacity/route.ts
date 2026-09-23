@@ -17,24 +17,23 @@ const DEFAULT_HISTORY_BUCKETS = 10;
 
 // Trang "Năng suất sản xuất" (Admin). Trục ngang gồm mọi kỳ từ "from" tới "to" NV tự nhập (làm tròn
 // chẵn tuần/chẵn tháng — getWeekBucketsInRange/getMonthBucketsInRange), hoặc mặc định 10 kỳ gần nhất +
-// 1 kỳ kế tiếp nếu không nhập gì. LUÔN trả về cả 3 quy cách (Mẫu mẹ/Thành phẩm/Tổng) cùng lúc — không lọc
-// theo 1 quy cách nữa — mỗi quy cách 2 khoá: khoá "gốc" (VD "Mẫu mẹ") phủ mọi kỳ <= kỳ hiện tại THẬT
-// (đã xảy ra, FE vẽ nét đậm), khoá "(dự kiến)" (VD "Mẫu mẹ (dự kiến)") phủ kỳ hiện tại (để nối liền, cùng
-// giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh). Mỗi khoá là số LŨY KẾ cộng dồn từ kỳ ĐẦU TIÊN
-// đang hiển thị trên trục ngang (không phải sản lượng riêng của từng kỳ), dù xem theo Tuần hay Tháng.
-// Riêng "Mẫu mẹ" LÀ TỒN THỰC (không phải delta) — neo về tồn mẫu mẹ THẬT hiện có rồi suy ngược lùi về mốc
-// bắt đầu khung hiển thị bằng NET từng kỳ (sinh ra − dùng làm vốn cấy, xem computeMotherNetSince/
-// computeCurrentMotherStock, production-capacity.ts) nên đường này CÓ THỂ đi xuống nếu kỳ đó dùng mẫu mẹ
-// làm vốn nhiều hơn mẫu mẹ mới sinh ra — "Thành phẩm" vẫn neo ở 0 (sản lượng thu hoạch cộng dồn, không
-// phải tồn có sẵn từ trước). Phần dự kiến MÔ PHỎNG TỪNG TUẦN (simulateWeeklyForecast) rồi cộng dồn tiếp vào đúng lũy
-// kế thực tế: mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy" (không phải chỉ 1 Nhóm
-// duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt, mỗi Nhóm có 1 chuỗi cộng
-// dồn RIÊNG cách nhau N tuần = transferWaitWeeks). Hệ số trung bình luôn tính theo 3 TUẦN GẦN NHẤT CÓ DỮ
-// LIỆU thật tính tới "now" (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng, không bao giờ
-// dùng dữ liệu tương lai. Vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng LỰC tối đa có
-// thể đạt nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy xu hướng quá khứ) nên ĐỘ DỐC (không
-// phải giá trị tuyệt đối, vì đã lũy kế từ cùng 1 điểm nối) có thể lệch hẳn nhau ngay sau điểm nối. Query
-// params: unit=week|month,
+// 1 kỳ kế tiếp nếu không nhập gì. Trả về 2 quy cách (Mẫu mẹ/Thành phẩm) — mỗi quy cách 2 khoá: khoá "gốc"
+// (VD "Mẫu mẹ") phủ mọi kỳ <= kỳ hiện tại THẬT (đã xảy ra, FE vẽ nét đậm), khoá "(dự kiến)" (VD "Mẫu mẹ
+// (dự kiến)") phủ kỳ hiện tại (để nối liền, cùng giá trị thực tế) + mọi kỳ tương lai (FE vẽ nét mảnh).
+// "Mẫu mẹ" LÀ TỒN THỰC LŨY KẾ (không phải sản lượng riêng từng kỳ) — neo về tồn mẫu mẹ THẬT hiện có rồi
+// suy ngược lùi về mốc bắt đầu khung hiển thị bằng NET từng kỳ (sinh ra − dùng làm vốn cấy, xem
+// computeMotherNetSince/computeCurrentMotherStock, production-capacity.ts) nên đường này CÓ THỂ đi xuống
+// nếu kỳ đó dùng mẫu mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra. Riêng "Thành phẩm" LÀ SẢN LƯỢNG RIÊNG TỪNG
+// KỲ (KHÔNG cộng dồn — mỗi điểm chỉ là số cây thành phẩm sinh ra trong đúng kỳ đó). Phần dự kiến MÔ PHỎNG
+// TỪNG TUẦN (simulateWeeklyForecast): mỗi tuần chỉ (các) Nhóm tuần mẫu mẹ ĐÚNG LƯỢT xoay vòng mới "cấy"
+// (không phải chỉ 1 Nhóm duy nhất áp dụng suốt — qua nhiều tuần/tháng LẦN LƯỢT cả N Nhóm đều tới lượt,
+// mỗi Nhóm có 1 chuỗi cộng dồn RIÊNG cách nhau N tuần = transferWaitWeeks) — "Mẫu mẹ (dự kiến)" cộng dồn
+// tiếp vào đúng lũy kế thực tế, còn "Thành phẩm (dự kiến)" mỗi kỳ tương lai chỉ lấy tổng sản lượng mô
+// phỏng rơi vào đúng kỳ đó (cũng KHÔNG cộng dồn qua các kỳ). Hệ số trung bình luôn tính theo 3 TUẦN GẦN
+// NHẤT CÓ DỮ LIỆU thật tính tới "now" (computeAverageRatios) — bất kể đơn vị đang xem Tuần hay Tháng,
+// không bao giờ dùng dữ liệu tương lai. Vốn dự báo và sản lượng thực tế là 2 khái niệm khác nhau (năng
+// LỰC tối đa có thể đạt nếu tận dụng hết tồn đủ tuổi mọi Nhóm, không phải ngoại suy xu hướng quá khứ).
+// Query params: unit=week|month,
 // plantTypeId (bắt buộc), scope=all|warehouse|staff, scopeId (bắt buộc nếu scope khác all), from/to (tuỳ
 // chọn, yyyy-MM-dd — có cả 2 mới dùng quãng tự nhập, "to" có thể ở tương lai để kéo dài đường dự kiến).
 // Response còn thêm `staffing` — mỗi kỳ TƯƠNG LAI cần bao nhiêu ngày công NV cấy để đạt đúng kịch bản tối
@@ -115,41 +114,38 @@ export async function GET(req: NextRequest) {
   // phải tổng sản lượng gộp — mỗi lượt cấy lấy 1 lô mẫu mẹ hiện có làm vốn (bị trừ hết, motherUsed) rồi
   // sinh ra mẫu mẹ mới + thành phẩm, nên chỉ phần CHÊNH LỆCH (net) mới đúng là mẫu mẹ THỰC tăng thêm vào
   // hệ thống trong kỳ — cộng thẳng motherOutput (gộp cả phần vừa tạo ra đã bị dùng luôn làm vốn cấy tiếp
-  // trong cùng kỳ) sẽ đếm trùng, ra số cao hơn thực tế nhiều lần khi xem kỳ dài. "Tổng" = Mẫu mẹ (net) +
-  // Thành phẩm, để 2 đường con luôn cộng đúng ra đường Tổng trên biểu đồ.
-  const SPECS = [
-    { label: "Mẫu mẹ", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.motherNet },
-    { label: "Thành phẩm", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.finishedOutput },
-    { label: "Tổng", valueFor: (p: { motherNet: number; finishedOutput: number }) => p.motherNet + p.finishedOutput },
-  ];
+  // trong cùng kỳ) sẽ đếm trùng, ra số cao hơn thực tế nhiều lần khi xem kỳ dài.
 
-  // Biểu đồ vẽ LŨY KẾ TỒN THỰC (không phải delta tính từ mốc 0): "Mẫu mẹ" neo về tồn mẫu mẹ THẬT hiện có
+  // "Mẫu mẹ" vẽ LŨY KẾ TỒN THỰC (không phải delta tính từ mốc 0): neo về tồn mẫu mẹ THẬT hiện có
   // (motherStockNow) rồi suy ngược lùi về đúng tồn tại mốc BẮT ĐẦU khung hiển thị (trừ đi phần net đã phát
   // sinh từ mốc đó tới giờ — motherNetSinceWindowStart), đúng công thức "tồn cuối kỳ = tồn đầu kỳ − mẫu mẹ
   // đem cấy + mẫu mẹ sinh ra" lặp lại từng kỳ (VD: đầu có 10, kỳ 1 cấy 3 sinh 6 → cuối kỳ 1 = 10-3+6=13,
   // kỳ 2 tương tự tiếp tục từ 13...). Nhờ vậy điểm "hôm nay" trên đường Mẫu mẹ luôn khớp đúng tồn thật,
-  // đường CÓ THỂ đi xuống nếu kỳ đó dùng mẫu mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra. "Thành phẩm" vẫn neo
-  // ở 0 (sản lượng thu hoạch cộng dồn trong kỳ, không phải tồn kho có sẵn từ trước — không có gì để neo
-  // vào). Cộng dồn trên giá trị THÔ (chưa làm tròn) rồi mới làm tròn từng điểm hiển thị — tránh lệch dần do
-  // làm tròn nhiều lần cộng lại. Đường dự kiến (tương lai) cộng tiếp từ đúng lũy kế thực tế tới hết kỳ hiện
-  // tại, không tính lại từ mốc neo.
+  // đường CÓ THỂ đi xuống nếu kỳ đó dùng mẫu mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra. Cộng dồn trên giá trị
+  // THÔ (chưa làm tròn) rồi mới làm tròn từng điểm hiển thị — tránh lệch dần do làm tròn nhiều lần cộng lại.
+  // "Thành phẩm" KHÔNG cộng dồn — mỗi điểm chỉ là sản lượng thành phẩm sinh ra riêng trong đúng kỳ đó
+  // (lịch sử: finishedOutput của kỳ; dự kiến: tổng finishedForecast của các tuần mô phỏng rơi vào đúng kỳ).
   const motherBaseline = motherStockNow - motherNetSinceWindowStart;
-  const cumulative: Record<string, number> = { "Mẫu mẹ": motherBaseline, "Thành phẩm": 0, "Tổng": motherBaseline };
+  let motherCumulative = motherBaseline;
   const data: Record<string, string | number>[] = buckets.map((b) => {
     const row: Record<string, string | number> = { period: b.label };
     if (b.start <= todayBucket.start) {
       const idx = historyBuckets.findIndex((h) => h.start.getTime() === b.start.getTime());
       const point = idx !== -1 ? actualPoints[idx] : { motherOutput: 0, finishedOutput: 0, motherUsed: 0 };
-      const normalized = { motherNet: point.motherOutput - point.motherUsed, finishedOutput: point.finishedOutput };
-      for (const s of SPECS) {
-        cumulative[s.label] += s.valueFor(normalized);
-        const cumulativeValue = Math.round(cumulative[s.label]);
-        row[s.label] = cumulativeValue;
-        if (b.start.getTime() === todayBucket.start.getTime()) row[`${s.label} (dự kiến)`] = cumulativeValue;
+      const motherNet = point.motherOutput - point.motherUsed;
+      motherCumulative += motherNet;
+      const motherValue = Math.round(motherCumulative);
+      const finishedValue = Math.round(point.finishedOutput);
+      row["Mẫu mẹ"] = motherValue;
+      row["Thành phẩm"] = finishedValue;
+      if (b.start.getTime() === todayBucket.start.getTime()) {
+        row["Mẫu mẹ (dự kiến)"] = motherValue;
+        row["Thành phẩm (dự kiến)"] = finishedValue;
       }
     } else {
       // Cộng dồn mọi tuần mô phỏng rơi vào đúng kỳ hiển thị này — 1 kỳ Tháng thường gồm ~4 tuần, mỗi
-      // tuần có thể là 1 Nhóm tuần mẫu mẹ khác nhau tới lượt cấy (xem simulateWeeklyForecast).
+      // tuần có thể là 1 Nhóm tuần mẫu mẹ khác nhau tới lượt cấy (xem simulateWeeklyForecast). "Mẫu mẹ
+      // (dự kiến)" cộng dồn tiếp vào lũy kế thực tế; "Thành phẩm (dự kiến)" chỉ lấy riêng đúng kỳ này.
       const pointsInBucket = weeklyForecast.filter((p) => p.weekStart >= b.start && p.weekStart <= b.end);
       const summed = pointsInBucket.reduce(
         (acc, p) => ({
@@ -159,11 +155,9 @@ export async function GET(req: NextRequest) {
         }),
         { motherForecast: 0, finishedForecast: 0, motherProcessed: 0 }
       );
-      const normalized = { motherNet: summed.motherForecast - summed.motherProcessed, finishedOutput: summed.finishedForecast };
-      for (const s of SPECS) {
-        cumulative[s.label] += s.valueFor(normalized);
-        row[`${s.label} (dự kiến)`] = Math.round(cumulative[s.label]);
-      }
+      motherCumulative += summed.motherForecast - summed.motherProcessed;
+      row["Mẫu mẹ (dự kiến)"] = Math.round(motherCumulative);
+      row["Thành phẩm (dự kiến)"] = Math.round(summed.finishedForecast);
     }
     return row;
   });

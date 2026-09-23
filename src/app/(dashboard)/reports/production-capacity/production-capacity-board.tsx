@@ -170,35 +170,34 @@ export default function ProductionCapacityBoard({ kyThuatWarehouseId = null }: {
         <div className="space-y-4">
           <ul className="text-sm text-text-secondary space-y-1.5 list-disc pl-5">
             <li>
-              Biểu đồ vẽ <span className="font-semibold text-foreground">số lũy kế</span>, không phải sản
-              lượng riêng từng kỳ. Đường <span className="font-semibold text-foreground">Mẫu mẹ</span> (và{" "}
-              <span className="font-semibold text-foreground">Tổng</span>, vì Tổng = Mẫu mẹ + Thành phẩm) là{" "}
+              Đường <span className="font-semibold text-foreground">Mẫu mẹ</span> vẽ{" "}
+              <span className="font-semibold text-foreground">số lũy kế</span> — tức{" "}
               <span className="font-semibold text-foreground">tồn mẫu mẹ thực</span> — neo đúng tồn thật
               tại kỳ hiện tại rồi cộng/trừ theo từng kỳ (tồn cuối kỳ = tồn đầu kỳ − mẫu mẹ đem cấy + mẫu mẹ
               sinh ra), nên <span className="font-semibold text-foreground">CÓ THỂ đi xuống</span> nếu kỳ đó
               dùng mẫu mẹ làm vốn nhiều hơn mẫu mẹ mới sinh ra. Riêng đường{" "}
-              <span className="font-semibold text-foreground">Thành phẩm</span> là sản lượng thu hoạch cộng
-              dồn từ kỳ đầu tiên đang hiển thị (không phải tồn có sẵn từ trước) nên luôn đi lên hoặc đi
-              ngang.
+              <span className="font-semibold text-foreground">Thành phẩm</span> là{" "}
+              <span className="font-semibold text-foreground">số lượng sinh ra riêng trong từng kỳ</span> —
+              KHÔNG cộng dồn các kỳ trước.
             </li>
             <li>
-              Luôn hiện <span className="font-semibold text-foreground">cả 3 đường</span> cùng lúc, phân
+              Luôn hiện <span className="font-semibold text-foreground">cả 2 đường</span> cùng lúc, phân
               biệt bằng màu:{" "}
-              <span className="font-semibold" style={{ color: "#2e9e5b" }}>Tổng (xanh)</span>,{" "}
               <span className="font-semibold" style={{ color: "#d9a72e" }}>Mẫu mẹ (vàng)</span>,{" "}
               <span className="font-semibold" style={{ color: "#d9483d" }}>Thành phẩm (đỏ)</span>.
             </li>
             <li>
               Mỗi đường tự phân biệt <span className="font-semibold text-foreground">đã xảy ra</span> (nét
-              đậm — lũy kế sản lượng thực tế) với <span className="font-semibold text-foreground">dự kiến</span>{" "}
-              (nét mảnh — lũy kế tiếp theo NĂNG LỰC tối đa, không phải ngoại suy xu hướng quá khứ). Điểm nối
-              2 đoạn là kỳ hiện tại.
+              đậm — số liệu thực tế) với <span className="font-semibold text-foreground">dự kiến</span>{" "}
+              (nét mảnh — theo NĂNG LỰC tối đa, không phải ngoại suy xu hướng quá khứ). Điểm nối 2 đoạn là
+              kỳ hiện tại.
             </li>
             <li>
               Từ kỳ kế tiếp trở đi, phần nét mảnh mô phỏng <span className="font-semibold text-foreground">từng tuần</span>:
               mỗi tuần chỉ Nhóm giàn mẫu mẹ đúng lượt xoay vòng mới được cấy — không phải 1 Nhóm áp dụng
-              suốt, mà qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, mỗi Nhóm tự cộng dồn theo chu
-              kỳ riêng, rồi cộng tiếp vào lũy kế chung.
+              suốt, mà qua nhiều tuần/tháng lần lượt mọi Nhóm đều tới lượt, rồi gộp vào đúng kỳ hiển thị
+              (đường Mẫu mẹ cộng tiếp vào lũy kế chung, đường Thành phẩm chỉ lấy riêng sản lượng đúng kỳ
+              đó).
             </li>
             <li>
               Hệ số nhân MM/ra rễ dùng để tính lấy trung bình{" "}
@@ -363,8 +362,6 @@ export default function ProductionCapacityBoard({ kyThuatWarehouseId = null }: {
               data={data}
               xKey="period"
               series={[
-                { key: "Tổng", label: "Tổng", color: "#2e9e5b", strokeWidth: 3 },
-                { key: "Tổng (dự kiến)", label: "Tổng (dự kiến)", color: "#2e9e5b", strokeWidth: 1.5, showInLegend: false },
                 { key: "Mẫu mẹ", label: "Mẫu mẹ", color: "#d9a72e", strokeWidth: 3 },
                 { key: "Mẫu mẹ (dự kiến)", label: "Mẫu mẹ (dự kiến)", color: "#d9a72e", strokeWidth: 1.5, showInLegend: false },
                 { key: "Thành phẩm", label: "Thành phẩm", color: "#d9483d", strokeWidth: 3 },
