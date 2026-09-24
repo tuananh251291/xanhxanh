@@ -60,7 +60,7 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
       properties: {
         status: { type: "string", enum: ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED", "ENDED"], description: "Trạng thái chỉ định. Bỏ trống = mọi trạng thái." },
         plantTypeCode: { type: "string", description: "Mã cây hoặc 1 phần mã cây. Bỏ trống = mọi mã cây." },
-        staffCode: { type: "string", description: "Mã NV cấy mô được giao (assignedTo) hoặc 1 phần mã. Bỏ trống = mọi NV." },
+        staffCode: { type: "string", description: "Mã NV cấy mô được giao (assignedTo) HOẶC tên NV (tìm theo cả 2, không phân biệt hoa thường). Bỏ trống = mọi NV." },
         days: { type: "number", description: "Chỉ lấy chỉ định có tuần thực hiện (weekStart) trong N ngày gần nhất. Mặc định 30 ngày." },
       },
     },
@@ -73,7 +73,7 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         warehouseCode: { type: "string", description: "Mã khu sản xuất (kho) của NV, hoặc 1 phần mã. Bỏ trống = mọi khu sản xuất." },
-        staffCode: { type: "string", description: "Mã NV cấy mô hoặc 1 phần mã. Bỏ trống = mọi NV." },
+        staffCode: { type: "string", description: "Mã NV cấy mô HOẶC tên NV (tìm theo cả 2, không phân biệt hoa thường). Bỏ trống = mọi NV." },
         days: { type: "number", description: "Khoảng thời gian tính bằng ngày gần nhất. Mặc định 30 ngày." },
       },
     },
@@ -88,7 +88,7 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
         loai: { type: "string", enum: ["MAU_ME", "THANH_PHAM"], description: "Loại dự kiến sản lượng cần tra — bắt buộc." },
         warehouseCode: { type: "string", description: "Mã khu sản xuất. Bỏ trống = mọi khu sản xuất." },
         plantTypeCode: { type: "string", description: "Mã cây. Bỏ trống = mọi mã cây." },
-        staffCode: { type: "string", description: "Mã NV Kỹ thuật/cấy mô phụ trách. Bỏ trống = mọi NV." },
+        staffCode: { type: "string", description: "Mã NV Kỹ thuật/cấy mô phụ trách HOẶC tên NV (tìm theo cả 2). Bỏ trống = mọi NV." },
       },
       required: ["loai"],
     },
@@ -127,7 +127,7 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
       properties: {
         mode: { type: "string", enum: ["week", "month"], description: "Xem theo tuần (Thứ 2 - Chủ nhật) hay theo tháng lịch. Mặc định 'week'." },
         warehouseCode: { type: "string", description: "Mã khu sản xuất. Bỏ trống = mọi khu sản xuất." },
-        staffCode: { type: "string", description: "Mã NV cấy mô. Bỏ trống = mọi NV." },
+        staffCode: { type: "string", description: "Mã NV cấy mô HOẶC tên NV (tìm theo cả 2). Bỏ trống = mọi NV." },
       },
     },
   },
@@ -210,7 +210,7 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         cause: { type: "string", enum: ["UNRESOLVED", "KY_THUAT_SAI", "CAY_MO_SAI", "CAY_MO_VUOT_CHI_TIEU"], description: "Nguyên nhân. Bỏ trống = mọi nguyên nhân." },
-        staffCode: { type: "string", description: "Mã NV cấy mô. Bỏ trống = mọi NV." },
+        staffCode: { type: "string", description: "Mã NV cấy mô HOẶC tên NV (tìm theo cả 2). Bỏ trống = mọi NV." },
         month: { type: "string", description: "Tháng cần tra, dạng yyyy-MM. Bỏ trống = mọi thời điểm." },
       },
     },
@@ -246,6 +246,13 @@ type ToolResult = { content: string; is_error?: boolean };
 
 function fmtQty(n: number): string {
   return n.toLocaleString("vi-VN");
+}
+
+// Cho phép các tool tra cứu "staffCode" tìm được CẢ theo mã NV lẫn tên NV (Claude thường được hỏi bằng
+// tên, không phải mã) — dùng chung 1 chỗ để mọi tool áp cùng 1 cách tìm, tránh tool nọ hỗ trợ tên, tool
+// kia lại chỉ nhận mã.
+function staffNameOrCodeFilter(query: string) {
+  return { OR: [{ code: { contains: query, mode: "insensitive" as const } }, { name: { contains: query, mode: "insensitive" as const } }] };
 }
 
 async function runTraCuuTonKho(input: { plantTypeCode?: string; warehouseCode?: string; stage?: "MAU_ME" | "THANH_PHAM" }): Promise<ToolResult> {
@@ -350,7 +357,7 @@ async function runTraCuuChiDinhCay(input: { status?: string; plantTypeCode?: str
       weekStart: { gte: since },
       ...(input.status ? { status: input.status as never } : {}),
       ...(input.plantTypeCode ? { plantType: { code: { contains: input.plantTypeCode, mode: "insensitive" } } } : {}),
-      ...(input.staffCode ? { assignedTo: { code: { contains: input.staffCode, mode: "insensitive" } } } : {}),
+      ...(input.staffCode ? { assignedTo: staffNameOrCodeFilter(input.staffCode) } : {}),
     },
     orderBy: { weekStart: "desc" },
     take: 30,
@@ -381,8 +388,14 @@ async function runTraCuuTyLeNhiem(input: { warehouseCode?: string; staffCode?: s
   const inspections = await prisma.lotInspection.findMany({
     where: {
       createdAt: { gte: since },
-      ...(input.staffCode ? { staff: { code: { contains: input.staffCode, mode: "insensitive" } } } : {}),
-      ...(input.warehouseCode ? { staff: { workplaceWarehouse: { code: { contains: input.warehouseCode, mode: "insensitive" } } } } : {}),
+      ...(input.staffCode || input.warehouseCode
+        ? {
+            staff: {
+              ...(input.staffCode ? staffNameOrCodeFilter(input.staffCode) : {}),
+              ...(input.warehouseCode ? { workplaceWarehouse: { code: { contains: input.warehouseCode, mode: "insensitive" as const } } } : {}),
+            },
+          }
+        : {}),
     },
     select: {
       staffId: true,
@@ -428,7 +441,7 @@ async function runTraCuuDuKienSanLuong(input: { loai: "MAU_ME" | "THANH_PHAM"; w
   const where = {
     ...(input.warehouseCode ? { warehouse: { code: { contains: input.warehouseCode, mode: "insensitive" as const } } } : {}),
     ...(input.plantTypeCode ? { plantType: { code: { contains: input.plantTypeCode, mode: "insensitive" as const } } } : {}),
-    ...(input.staffCode ? { assignedStaff: { code: { contains: input.staffCode, mode: "insensitive" as const } } } : {}),
+    ...(input.staffCode ? { assignedStaff: staffNameOrCodeFilter(input.staffCode) } : {}),
   };
 
   const select = {
@@ -574,7 +587,7 @@ async function runTraCuuNhatKyCay(input: { mode?: "week" | "month"; warehouseCod
       staff: {
         role: "CAY_MO",
         ...(warehouse ? { workplaceWarehouseId: warehouse.id } : {}),
-        ...(input.staffCode ? { code: { contains: input.staffCode, mode: "insensitive" } } : {}),
+        ...(input.staffCode ? staffNameOrCodeFilter(input.staffCode) : {}),
       },
     },
     select: {
@@ -771,7 +784,13 @@ async function runTraCuuLechChiDinh(input: { cause?: string; staffCode?: string;
   const staffFilterLower = input.staffCode?.toLowerCase();
   const rows = alerts
     .map((a) => ({ alert: a, instruction: a.relatedId ? instructionById.get(a.relatedId) : null }))
-    .filter((r) => !!r.instruction && (!staffFilterLower || r.instruction!.assignedTo?.code.toLowerCase().includes(staffFilterLower)))
+    .filter(
+      (r) =>
+        !!r.instruction &&
+        (!staffFilterLower ||
+          r.instruction!.assignedTo?.code.toLowerCase().includes(staffFilterLower) ||
+          r.instruction!.assignedTo?.name.toLowerCase().includes(staffFilterLower))
+    )
     .slice(0, 30);
 
   if (rows.length === 0) return { content: "Không tìm thấy lần lệch chỉ định nào khớp bộ lọc." };
