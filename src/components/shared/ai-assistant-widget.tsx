@@ -53,11 +53,32 @@ export default function AiAssistantWidget() {
     setSpeechSupported(!!SpeechRecognitionCtor && typeof window.speechSynthesis !== "undefined");
   }, []);
 
+  // Chrome trên điện thoại (và hầu hết trình duyệt mobile) chỉ cho speechSynthesis.speak() phát ra tiếng
+  // nếu nó bắt nguồn TRỰC TIẾP, ĐỒNG BỘ từ 1 thao tác chạm của người dùng — câu trả lời thật lại đến SAU
+  // 1 lượt gọi API (có độ trễ) nên bị chặn âm thầm, không kêu. Cách xử lý chuẩn: phát 1 utterance rỗng
+  // ngay TRONG sự kiện bấm nút (primeSpeech, gọi ở các onClick bên dưới) để "mở khoá" — sau đó speak()
+  // thật ở đây mới phát được dù gọi muộn/bất đồng bộ. Chỉ cần mở khoá 1 lần/phiên trang.
+  const speechPrimedRef = useRef(false);
+  const primeSpeech = () => {
+    if (speechPrimedRef.current || typeof window === "undefined" || !window.speechSynthesis) return;
+    speechPrimedRef.current = true;
+    const unlock = new SpeechSynthesisUtterance(" ");
+    unlock.volume = 0;
+    window.speechSynthesis.speak(unlock);
+  };
+
   const speak = useCallback((text: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
+    // Android Chrome đôi khi bỏ qua utterance.lang nếu không gán thẳng .voice — ưu tiên tìm đúng giọng
+    // tiếng Việt đã cài trên máy, không có thì vẫn phát bằng giọng mặc định (còn hơn im lặng).
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "vi-VN";
+    const viVoice = window.speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("vi"));
+    if (viVoice) utterance.voice = viVoice;
+    // .resume() phòng trường hợp hàng đợi phát bị "kẹt" ở trạng thái paused — lỗi đã biết trên Chrome sau
+    // khi tab bị chuyển nền/không hoạt động một lúc.
+    window.speechSynthesis.resume();
     window.speechSynthesis.speak(utterance);
   }, []);
 
@@ -152,7 +173,11 @@ export default function AiAssistantWidget() {
                 size="icon-sm"
                 title={voiceReplyEnabled ? "Tắt đọc câu trả lời" : "Bật đọc câu trả lời bằng giọng nói"}
                 onClick={() => {
-                  if (voiceReplyEnabled) window.speechSynthesis?.cancel();
+                  if (voiceReplyEnabled) {
+                    window.speechSynthesis?.cancel();
+                  } else {
+                    primeSpeech();
+                  }
                   setVoiceReplyEnabled((v) => !v);
                 }}
               >
@@ -197,6 +222,7 @@ export default function AiAssistantWidget() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
+                primeSpeech();
                 send();
               }
             }}
@@ -212,12 +238,12 @@ export default function AiAssistantWidget() {
               className={listening ? "bg-destructive hover:bg-destructive/90 shrink-0 animate-pulse" : "shrink-0"}
               disabled={loading}
               title={listening ? "Dừng ghi âm" : "Ghi âm câu hỏi"}
-              onClick={toggleListening}
+              onClick={() => { primeSpeech(); toggleListening(); }}
             >
               {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </Button>
           )}
-          <Button size="icon" className="bg-primary hover:bg-primary-hover shrink-0" disabled={loading || !input.trim()} onClick={() => send()}>
+          <Button size="icon" className="bg-primary hover:bg-primary-hover shrink-0" disabled={loading || !input.trim()} onClick={() => { primeSpeech(); send(); }}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
