@@ -17,6 +17,7 @@ type Evaluation = {
   status: "PENDING_SELF" | "PENDING_MANAGER" | "COMPLETED";
   managerPercent: number | null;
   result: "DAT" | "CAN_CAI_THIEN" | "KHONG_DAT" | null;
+  managerComment: string | null;
   staff: { name: string; code: string; workplaceWarehouse: { name: string } | null };
   manager: { name: string; code: string } | null;
 };
@@ -99,13 +100,18 @@ export default function ProbationEvaluationReportBoard() {
                       <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Trạng thái</th>
                       <th className="text-right px-3 py-2 text-primary-strong font-bold text-base">%</th>
                       <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Kết quả</th>
+                      <th className="text-left px-3 py-2 text-primary-strong font-bold text-base">Nhận xét NV Kỹ thuật</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sorted.map((e) => (
                       <tr key={e.id} className="border-b last:border-0 even:bg-primary-light/30">
                         <td className="px-3 py-2">
-                          <Link href={`/probation-evaluations/${e.id}`} className="text-info-foreground hover:underline">
+                          <Link
+                            href={`/probation-evaluations/${e.id}`}
+                            className="text-info-foreground hover:underline"
+                            title="Xem chi tiết điểm từng tiêu chí"
+                          >
                             Tuần {e.weekNumber}
                           </Link>
                         </td>
@@ -117,6 +123,7 @@ export default function ProbationEvaluationReportBoard() {
                         <td className="px-3 py-2">
                           {e.result ? <Badge className={RESULT_BADGE[e.result]}>{RESULT_LABEL[e.result]}</Badge> : "—"}
                         </td>
+                        <td className="px-3 py-2 text-text-secondary max-w-sm whitespace-pre-line">{e.managerComment || "—"}</td>
                       </tr>
                     ))}
                   </tbody>

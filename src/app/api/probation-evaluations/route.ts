@@ -29,7 +29,9 @@ export async function GET(req: NextRequest) {
     where,
     select: {
       id: true, code: true, weekNumber: true, weekStart: true, weekEnd: true, status: true,
-      managerPercent: true, result: true, createdAt: true,
+      // managerComment thêm cho báo cáo Hành chính nhân sự — trước đây chỉ trả %+kết quả, HR phải bấm vào
+      // từng tuần mới thấy được nhận xét cụ thể của NV Kỹ thuật (xem probation-evaluation-report-board.tsx).
+      managerPercent: true, result: true, createdAt: true, managerComment: true,
       staff: { select: { name: true, code: true, workplaceWarehouse: { select: { name: true } } } },
       manager: { select: { name: true, code: true } },
     },
