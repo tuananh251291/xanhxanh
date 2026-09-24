@@ -35,6 +35,7 @@ export default function AiAssistantWidget() {
   const [listening, setListening] = useState(false);
   const [voiceReplyEnabled, setVoiceReplyEnabled] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [speechRate, setSpeechRate] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   // Câu vừa gửi bằng giọng nói cần TỰ ĐỘNG gửi luôn (không chờ bấm nút) — cờ này tránh đóng closure cũ của
@@ -74,13 +75,14 @@ export default function AiAssistantWidget() {
     // tiếng Việt đã cài trên máy, không có thì vẫn phát bằng giọng mặc định (còn hơn im lặng).
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "vi-VN";
+    utterance.rate = speechRate;
     const viVoice = window.speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("vi"));
     if (viVoice) utterance.voice = viVoice;
     // .resume() phòng trường hợp hàng đợi phát bị "kẹt" ở trạng thái paused — lỗi đã biết trên Chrome sau
     // khi tab bị chuyển nền/không hoạt động một lúc.
     window.speechSynthesis.resume();
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [speechRate]);
 
   const send = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
@@ -168,21 +170,52 @@ export default function AiAssistantWidget() {
               <Sparkles className="w-5 h-5" /> Trợ lý AI
             </SheetTitle>
             {speechSupported && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title={voiceReplyEnabled ? "Tắt đọc câu trả lời" : "Bật đọc câu trả lời bằng giọng nói"}
-                onClick={() => {
-                  if (voiceReplyEnabled) {
-                    window.speechSynthesis?.cancel();
-                  } else {
-                    primeSpeech();
-                  }
-                  setVoiceReplyEnabled((v) => !v);
-                }}
-              >
-                {voiceReplyEnabled ? <Volume2 className="w-4 h-4 text-primary-strong" /> : <VolumeX className="w-4 h-4 text-text-muted" />}
-              </Button>
+              <div className="flex items-center gap-1.5">
+                {voiceReplyEnabled && (
+                  <select
+                    value={speechRate}
+                    onChange={(e) => {
+                      const rate = Number(e.target.value);
+                      setSpeechRate(rate);
+                      // Đổi tốc độ ngay khi đang đọc dở — đọc lại câu hiện tại (SpeechSynthesisUtterance
+                      // không cho đổi .rate của utterance đang phát) theo đúng tốc độ mới chọn.
+                      const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content;
+                      if (window.speechSynthesis?.speaking && lastReply) {
+                        window.speechSynthesis.cancel();
+                        const utterance = new SpeechSynthesisUtterance(lastReply);
+                        utterance.lang = "vi-VN";
+                        utterance.rate = rate;
+                        const viVoice = window.speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("vi"));
+                        if (viVoice) utterance.voice = viVoice;
+                        window.speechSynthesis.speak(utterance);
+                      }
+                    }}
+                    title="Tốc độ đọc"
+                    className="h-7 rounded-md border border-input bg-transparent px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value={0.75}>0.75x</option>
+                    <option value={1}>1x</option>
+                    <option value={1.25}>1.25x</option>
+                    <option value={1.5}>1.5x</option>
+                    <option value={2}>2x</option>
+                  </select>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title={voiceReplyEnabled ? "Tắt đọc câu trả lời" : "Bật đọc câu trả lời bằng giọng nói"}
+                  onClick={() => {
+                    if (voiceReplyEnabled) {
+                      window.speechSynthesis?.cancel();
+                    } else {
+                      primeSpeech();
+                    }
+                    setVoiceReplyEnabled((v) => !v);
+                  }}
+                >
+                  {voiceReplyEnabled ? <Volume2 className="w-4 h-4 text-primary-strong" /> : <VolumeX className="w-4 h-4 text-text-muted" />}
+                </Button>
+              </div>
             )}
           </div>
         </SheetHeader>
