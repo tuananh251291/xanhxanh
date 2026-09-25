@@ -394,6 +394,12 @@ model User {
   // được tài khoản. SUPER_ADMIN/HANH_CHINH_NHAN_SU được sửa field này (xem canAssignWorkplace).
   workplaceWarehouseId String?
   workplaceWarehouse   Warehouse?      @relation(fields: [workplaceWarehouseId], references: [id])
+  // "Quản lý bán lẻ" — chỉ áp dụng NV bán hàng (SALE), Admin/Admin cao nhất bật/tắt + gán kèm 1 hoặc
+  // nhiều Kho thị trường (WarehouseType.THI_TRUONG, xem RetailWarehouseAccess) qua PATCH /api/users/[id].
+  // Chỉ cho phép XEM tồn kho ở /inventory/thi-truong (giống Admin cấp cao xem được nhiều kho) — KHÔNG có
+  // quyền thao tác nhận/xuất hàng như Đối tác vận hành (đó vẫn ràng buộc qua workplaceWarehouseId).
+  isRetailManager       Boolean         @default(false)
+  retailWarehouseAccess RetailWarehouseAccess[]
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), HỆ THỐNG TỰ TÍNH lại đầu mỗi tháng từ tỉ lệ
   // nhiễm tháng trước (xem ensureMonthlyInspectionLaneUpdate, src/lib/inspection-lane.ts). Null = chưa
   // từng được tính (NV mới, hoặc trước khi tính năng này ra đời). Admin ghi đè tạm thời được qua 4 field
@@ -1095,6 +1101,7 @@ model Warehouse {
   sealingTasks                SealingTask[]
   rootingQualityEvaluations   RootingQualityEvaluation[]
   marketOrders                Order[]
+  retailWarehouseAccess       RetailWarehouseAccess[]
 
   @@map("warehouses")
 }
@@ -1149,6 +1156,21 @@ model RoomAccess {
 
   @@unique([userId, roomId])
   @@map("room_access")
+}
+
+// Gán 1 NV bán hàng (User.isRetailManager = true) được XEM tồn kho 1 hoặc nhiều Kho thị trường
+// (WarehouseType.THI_TRUONG) ở /inventory/thi-truong — chỉ xem, KHÔNG có quyền nhận/xuất hàng như Đối
+// tác vận hành (đó vẫn qua Warehouse.staff/User.workplaceWarehouseId).
+model RetailWarehouseAccess {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, warehouseId])
+  @@map("retail_warehouse_access")
 }
 
 // ============================================================

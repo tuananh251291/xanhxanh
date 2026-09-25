@@ -73,7 +73,7 @@ export default async function UsersPage({
     prisma.user.findMany({
       where,
       orderBy: [{ role: "asc" }, { name: "asc" }],
-      include: { workplaceWarehouse: { select: { code: true, name: true } } },
+      include: { workplaceWarehouse: { select: { code: true, name: true } }, retailWarehouseAccess: { select: { warehouseId: true } } },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -240,6 +240,8 @@ export default async function UsersPage({
                                   code: user.code,
                                   isActive: user.isActive,
                                   workplaceWarehouseId: user.workplaceWarehouseId,
+                                  isRetailManager: user.isRetailManager,
+                                  retailWarehouseIds: user.retailWarehouseAccess.map((a) => a.warehouseId),
                                 }
                               : null
                           }

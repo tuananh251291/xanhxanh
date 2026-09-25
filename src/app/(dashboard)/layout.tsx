@@ -69,9 +69,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Avatar KHÔNG nằm trong session (xem comment ở src/lib/auth.config.ts) — query DB riêng ở đây.
   // employmentType cũng lấy kèm ở đây để quyết định có hiện mục "Lộ trình đào tạo" cho NV cấy mô thử
   // việc hay không (xem lọc navItems bên dưới) — không áp dụng vai trò khác nên luôn null với các role đó.
+  // isRetailManager tương tự — quyết định có hiện mục "Tồn kho Kho thị trường" cho NV bán hàng hay không.
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { avatar: true, employmentType: true },
+    select: { avatar: true, employmentType: true, isRetailManager: true },
   });
 
   const alertCount = await prisma.alert.count({
@@ -98,6 +99,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // phân quyền.
   if (role === "CAY_MO" && currentUser?.employmentType !== "THU_VIEC") {
     navItems = navItems.filter((item) => item.href !== "/training-roadmap" && item.href !== "/probation-evaluations");
+  }
+  // "Tồn kho Kho thị trường" chỉ hiện cho NV bán hàng có bật "Quản lý bán lẻ" — không nằm sẵn trong
+  // ROLE_NAV.SALE (khác đa số role khác, trang này vốn dành cho Đối tác vận hành) nên chèn động vào đây
+  // thay vì lọc bớt.
+  if (role === "SALE" && currentUser?.isRetailManager) {
+    navItems = [...navItems, { href: "/inventory/thi-truong", label: "Tồn kho Kho thị trường", icon: "Boxes" }];
   }
 
   return (

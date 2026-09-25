@@ -17,6 +17,10 @@ const createSchema = z.object({
   // và các Phòng thị trường được cấp quyền xem thêm, tránh phải cấu hình lại ở 2 chỗ khác sau khi tạo.
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),
+  // "Quản lý bán lẻ" — chỉ áp dụng khi tạo tài khoản SALE, gán sẵn quyền xem tồn kho 1 hoặc nhiều Kho
+  // thị trường (xem User.isRetailManager, RetailWarehouseAccess).
+  isRetailManager: z.boolean().optional(),
+  retailWarehouseIds: z.array(z.string()).optional(),
   // Chỉ áp dụng khi tạo tài khoản CAY_MO — HR điền ngày bắt đầu thử việc để hệ thống tính "Lộ trình đào
   // tạo" 9 tuần (xem src/lib/training-roadmap.ts). Không bắt buộc — bỏ trống thì sửa lại sau qua PATCH
   // /api/users/[id].
@@ -51,7 +55,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, probationStartDate } = parsed.data;
+  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, isRetailManager, retailWarehouseIds, probationStartDate } = parsed.data;
 
   // NV Hành chính nhân sự chỉ tạo được tài khoản vị trí nhân viên, không tạo được tài khoản Admin.
   if (!allowedRoles.includes(role)) {
@@ -63,6 +67,9 @@ export async function POST(req: NextRequest) {
   }
   if (marketRoomIds !== undefined && role !== "SALE") {
     return NextResponse.json({ message: "Phòng thị trường chỉ áp dụng khi tạo tài khoản Sale" }, { status: 400 });
+  }
+  if ((isRetailManager !== undefined || retailWarehouseIds !== undefined) && role !== "SALE") {
+    return NextResponse.json({ message: "Quản lý bán lẻ chỉ áp dụng khi tạo tài khoản Sale" }, { status: 400 });
   }
   if (probationStartDate !== undefined && role !== "CAY_MO") {
     return NextResponse.json({ message: "Ngày bắt đầu thử việc chỉ áp dụng khi tạo tài khoản NV cấy mô" }, { status: 400 });
@@ -89,6 +96,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Danh sách Phòng thị trường không hợp lệ" }, { status: 400 });
     }
   }
+  if (retailWarehouseIds && retailWarehouseIds.length > 0) {
+    const retailWarehouses = await prisma.warehouse.findMany({ where: { id: { in: retailWarehouseIds } }, select: { id: true, type: true } });
+    if (retailWarehouses.length !== retailWarehouseIds.length || retailWarehouses.some((w) => w.type !== "THI_TRUONG")) {
+      return NextResponse.json({ message: "Danh sách Kho thị trường không hợp lệ" }, { status: 400 });
+    }
+  }
 
   const hashed = await bcrypt.hash(password, 10);
   // NV cấy mô mới tạo luôn bắt đầu ở "Thử việc" + "Cấy học việc" — HR/Admin cấp cao gỡ dần qua PATCH
@@ -99,12 +112,16 @@ export async function POST(req: NextRequest) {
       data: {
         code, name, email, password: hashed, role, status: "APPROVED", workplaceWarehouseId,
         ...(isNewCayMo ? { employmentType: "THU_VIEC", isTrainee: true } : {}),
+        ...(isRetailManager !== undefined ? { isRetailManager } : {}),
         ...(probationStartDate ? { probationStartDate: new Date(probationStartDate) } : {}),
       },
       select: { id: true, code: true, name: true, email: true, role: true },
     });
     if (marketRoomIds && marketRoomIds.length > 0) {
       await tx.roomAccess.createMany({ data: marketRoomIds.map((roomId) => ({ userId: created.id, roomId })) });
+    }
+    if (retailWarehouseIds && retailWarehouseIds.length > 0) {
+      await tx.retailWarehouseAccess.createMany({ data: retailWarehouseIds.map((warehouseId) => ({ userId: created.id, warehouseId })) });
     }
     return created;
   });

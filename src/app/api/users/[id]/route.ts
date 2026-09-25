@@ -42,6 +42,10 @@ const patchSchema = z.union([
     }),
   }),
   z.object({ cancelInspectionLaneOverride: z.literal(true) }),
+  // "Quản lý bán lẻ" — chỉ áp dụng NV bán hàng (SALE), ADMIN/SUPER_ADMIN cài đặt (xem User.isRetailManager,
+  // RetailWarehouseAccess). Luôn gửi kèm cả 2 field, kể cả tắt Quản lý bán lẻ vẫn xóa hết Kho thị trường
+  // đã gán trước đó (retailWarehouseIds rỗng) để không giữ lại quyền xem cũ.
+  z.object({ isRetailManager: z.boolean(), retailWarehouseIds: z.array(z.string()) }),
   z.object({ employmentType: z.enum(["CHINH_THUC", "THU_VIEC"]).nullable() }),
   z.object({ isTrainee: z.boolean() }),
   z.object({ probationStartDate: z.string().nullable() }),
@@ -235,6 +239,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     await revertInspectionLaneOverride(id);
     const updated = await prisma.user.findUnique({ where: { id }, select: { id: true, code: true, name: true, inspectionLane: true } });
+    return NextResponse.json(updated);
+  }
+
+  // "Quản lý bán lẻ" — chỉ áp dụng NV bán hàng, ADMIN/SUPER_ADMIN cài đặt. Ghi đè toàn bộ danh sách Kho
+  // thị trường được gán (xoá hết rồi tạo lại) thay vì diff — đơn giản hơn và số lượng kho luôn nhỏ.
+  if ("isRetailManager" in parsed.data) {
+    if (!isAdminRole(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin/Admin cao nhất mới có quyền cài đặt Quản lý bán lẻ" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "SALE") {
+      return NextResponse.json({ message: "Chỉ áp dụng cho NV bán hàng" }, { status: 400 });
+    }
+    const { isRetailManager, retailWarehouseIds } = parsed.data;
+    if (retailWarehouseIds.length > 0) {
+      const retailWarehouses = await prisma.warehouse.findMany({ where: { id: { in: retailWarehouseIds } }, select: { id: true, type: true } });
+      if (retailWarehouses.length !== retailWarehouseIds.length || retailWarehouses.some((w) => w.type !== "THI_TRUONG")) {
+        return NextResponse.json({ message: "Danh sách Kho thị trường không hợp lệ" }, { status: 400 });
+      }
+    }
+    await prisma.$transaction([
+      prisma.user.update({ where: { id }, data: { isRetailManager } }),
+      prisma.retailWarehouseAccess.deleteMany({ where: { userId: id } }),
+      ...(retailWarehouseIds.length > 0
+        ? [prisma.retailWarehouseAccess.createMany({ data: retailWarehouseIds.map((warehouseId) => ({ userId: id, warehouseId })) })]
+        : []),
+    ]);
+    const updated = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, code: true, name: true, isRetailManager: true, retailWarehouseAccess: { select: { warehouseId: true } } },
+    });
     return NextResponse.json(updated);
   }
 

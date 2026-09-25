@@ -56,6 +56,8 @@ export type EditableUser = {
   code: string;
   isActive: boolean;
   workplaceWarehouseId?: string | null;
+  isRetailManager?: boolean;
+  retailWarehouseIds?: string[];
 };
 
 export default function EditUserDialog({
@@ -72,7 +74,13 @@ export default function EditUserDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [workplaceWarehouseId, setWorkplaceWarehouseId] = useState(user.workplaceWarehouseId ?? NO_WAREHOUSE);
+  const [isRetailManager, setIsRetailManager] = useState(user.isRetailManager ?? false);
+  const [retailWarehouseIds, setRetailWarehouseIds] = useState<string[]>(user.retailWarehouseIds ?? []);
   const router = useRouter();
+
+  const toggleRetailWarehouse = (warehouseId: string) => {
+    setRetailWarehouseIds((prev) => (prev.includes(warehouseId) ? prev.filter((id) => id !== warehouseId) : [...prev, warehouseId]));
+  };
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -171,6 +179,27 @@ export default function EditUserDialog({
         }
       }
 
+      // "Quản lý bán lẻ" dùng API riêng (PATCH { isRetailManager, retailWarehouseIds }) — chỉ gửi khi vai
+      // trò cuối cùng vẫn là Sale và có gì đó thực sự thay đổi (bật/tắt hoặc đổi danh sách Kho thị trường).
+      const isFinalSale = data.role === "SALE";
+      const retailWarehouseIdsChanged =
+        JSON.stringify([...retailWarehouseIds].sort()) !== JSON.stringify([...(user.retailWarehouseIds ?? [])].sort());
+      const retailManagerChanged = isRetailManager !== (user.isRetailManager ?? false) || retailWarehouseIdsChanged;
+      if (isFinalSale && retailManagerChanged) {
+        const rmRes = await fetch(`/api/users/${user.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isRetailManager, retailWarehouseIds }),
+        });
+        if (!rmRes.ok) {
+          const err = await rmRes.json();
+          toast.error(err.message ?? "Đã cập nhật tài khoản nhưng không đổi được Quản lý bán lẻ");
+          setOpen(false);
+          router.refresh();
+          return;
+        }
+      }
+
       toast.success("Đã cập nhật tài khoản");
       setOpen(false);
       router.refresh();
@@ -188,6 +217,8 @@ export default function EditUserDialog({
           reset();
           prevRoleRef.current = user.role;
           setWorkplaceWarehouseId(user.workplaceWarehouseId ?? NO_WAREHOUSE);
+          setIsRetailManager(user.isRetailManager ?? false);
+          setRetailWarehouseIds(user.retailWarehouseIds ?? []);
         }
       }}
     >
@@ -259,6 +290,28 @@ export default function EditUserDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+          {role === "SALE" && (
+            <div className="space-y-1 rounded-lg border border-border p-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={isRetailManager} onCheckedChange={(v) => setIsRetailManager(v === true)} />
+                Quản lý bán lẻ
+              </label>
+              {isRetailManager && (
+                thiTruongWarehouses.length === 0 ? (
+                  <p className="text-xs text-text-muted pl-6">Chưa có Kho thị trường nào trong hệ thống.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pl-6">
+                    {thiTruongWarehouses.map((w) => (
+                      <label key={w.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox checked={retailWarehouseIds.includes(w.id)} onCheckedChange={() => toggleRetailWarehouse(w.id)} />
+                        {w.name} ({w.code})
+                      </label>
+                    ))}
+                  </div>
+                )
+              )}
             </div>
           )}
           <div className="flex items-center gap-2">

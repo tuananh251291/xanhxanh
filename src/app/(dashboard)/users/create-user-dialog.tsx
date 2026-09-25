@@ -30,6 +30,8 @@ const schema = z.object({
   code: z.string().min(1, "Nhập mã nhân viên"),
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),
+  isRetailManager: z.boolean().optional(),
+  retailWarehouseIds: z.array(z.string()).optional(),
   probationStartDate: z.string().optional(),
 });
 
@@ -37,22 +39,26 @@ type FormData = z.infer<typeof schema>;
 
 type MarketRoom = { id: string; name: string; warehouseName: string };
 type ThanhPhamWarehouse = { id: string; code: string; name: string; rooms: { id: string; name: string; type: string }[] };
+type ThiTruongWarehouse = { id: string; code: string; name: string };
 
 export default function CreateUserDialog({ assignableRoles }: { assignableRoles: UserRole[] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [thanhPhamWarehouses, setThanhPhamWarehouses] = useState<ThanhPhamWarehouse[]>([]);
+  const [thiTruongWarehouses, setThiTruongWarehouses] = useState<ThiTruongWarehouse[]>([]);
   const router = useRouter();
 
   // Mật khẩu mặc định "demo123" cho mọi tài khoản mới — Admin vẫn sửa lại được trước khi tạo nếu muốn
   // đặt mật khẩu riêng cho nhân viên đó.
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { marketRoomIds: [], password: "demo123" },
+    defaultValues: { marketRoomIds: [], isRetailManager: false, retailWarehouseIds: [], password: "demo123" },
   });
 
   const role = watch("role");
   const marketRoomIds = watch("marketRoomIds") ?? [];
+  const isRetailManager = watch("isRetailManager") ?? false;
+  const retailWarehouseIds = watch("retailWarehouseIds") ?? [];
 
   const onRoleChange = async (role: FormData["role"]) => {
     setValue("role", role);
@@ -77,6 +83,15 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
         // Bỏ qua lỗi nạp danh sách — Admin vẫn gán được sau qua trang Người dùng/Kho & Kệ.
       }
     }
+    // Nạp sẵn danh sách Kho thị trường để chọn khi bật "Quản lý bán lẻ".
+    if (role === "SALE" && thiTruongWarehouses.length === 0) {
+      try {
+        const res = await fetch("/api/warehouses?type=THI_TRUONG");
+        if (res.ok) setThiTruongWarehouses(await res.json());
+      } catch {
+        // Bỏ qua lỗi nạp danh sách — Admin vẫn gán được sau qua trang Người dùng.
+      }
+    }
 
     // Gợi ý sẵn ngày bắt đầu thử việc = hôm nay cho NV cấy mô mới — HR vẫn sửa lại được nếu NV đã bắt đầu
     // làm từ trước đó.
@@ -90,6 +105,11 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
     setValue("marketRoomIds", next);
   };
 
+  const toggleRetailWarehouse = (warehouseId: string) => {
+    const next = retailWarehouseIds.includes(warehouseId) ? retailWarehouseIds.filter((id) => id !== warehouseId) : [...retailWarehouseIds, warehouseId];
+    setValue("retailWarehouseIds", next);
+  };
+
   const marketRooms: MarketRoom[] = thanhPhamWarehouses.flatMap((w) =>
     w.rooms.filter((r) => r.type === "PHONG_THI_TRUONG").map((r) => ({ id: r.id, name: r.name, warehouseName: w.name }))
   );
@@ -101,6 +121,8 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
         ...data,
         workplaceWarehouseId: data.role === "SALE" ? data.workplaceWarehouseId : undefined,
         marketRoomIds: data.role === "SALE" ? data.marketRoomIds : undefined,
+        isRetailManager: data.role === "SALE" ? data.isRetailManager : undefined,
+        retailWarehouseIds: data.role === "SALE" ? data.retailWarehouseIds : undefined,
         probationStartDate: data.role === "CAY_MO" ? data.probationStartDate : undefined,
       };
       const res = await fetch("/api/users", {
@@ -203,6 +225,30 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
                       </label>
                     ))}
                   </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={isRetailManager}
+                    onCheckedChange={(v) => setValue("isRetailManager", v === true)}
+                  />
+                  Quản lý bán lẻ
+                </label>
+                {isRetailManager && (
+                  thiTruongWarehouses.length === 0 ? (
+                    <p className="text-xs text-text-muted pl-6">Chưa có Kho thị trường nào trong hệ thống.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pl-6">
+                      {thiTruongWarehouses.map((w) => (
+                        <label key={w.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox checked={retailWarehouseIds.includes(w.id)} onCheckedChange={() => toggleRetailWarehouse(w.id)} />
+                          {w.name} ({w.code})
+                        </label>
+                      ))}
+                    </div>
+                  )
                 )}
               </div>
             </div>

@@ -7,16 +7,31 @@ import ThiTruongInventoryBoard from "./thi-truong-inventory-board";
 
 // Tồn kho Kho thị trường cho Đối tác vận hành — đúng 3 phòng cố định lúc tạo kho (Phòng sản phẩm
 // đạt/không đạt/cây trồng, xem enum WarehouseType.THI_TRUONG). Đối tác chỉ xem đúng kho mình phụ trách
-// (session.user.workplaceWarehouseId), Admin cấp cao xem được tất cả Kho thị trường.
+// (session.user.workplaceWarehouseId), Admin cấp cao xem được tất cả Kho thị trường. NV bán hàng có bật
+// "Quản lý bán lẻ" (User.isRetailManager) cũng xem được — CHỈ XEM, đúng các Kho thị trường được gán qua
+// RetailWarehouseAccess (có thể nhiều kho, khác Đối tác vận hành chỉ đúng 1 kho).
 export default async function ThiTruongInventoryPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (role !== "DOI_TAC_VAN_HANH" && !isAdminRole(role)) redirect("/dashboard");
+  const isAdmin = isAdminRole(role);
+  const isDoiTacVanHanh = role === "DOI_TAC_VAN_HANH";
+
+  let isSaleRetailManager = false;
+  let retailWarehouseIds: string[] = [];
+  if (role === "SALE" && session?.user?.id) {
+    const saleUser = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { isRetailManager: true, retailWarehouseAccess: { select: { warehouseId: true } } },
+    });
+    isSaleRetailManager = saleUser?.isRetailManager ?? false;
+    retailWarehouseIds = saleUser?.retailWarehouseAccess.map((a) => a.warehouseId) ?? [];
+  }
+
+  if (!isDoiTacVanHanh && !isAdmin && !isSaleRetailManager) redirect("/dashboard");
   if (!(await isPageAllowed(role, "/inventory/thi-truong"))) redirect("/dashboard");
 
-  const isAdmin = isAdminRole(role);
   const warehouseId = session!.user.workplaceWarehouseId;
-  if (!isAdmin && !warehouseId) {
+  if (isDoiTacVanHanh && !warehouseId) {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold text-foreground">Tồn kho</h1>
@@ -26,12 +41,22 @@ export default async function ThiTruongInventoryPage() {
       </div>
     );
   }
+  if (isSaleRetailManager && retailWarehouseIds.length === 0) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-foreground">Tồn kho</h1>
+        <p className="text-text-secondary text-sm">
+          Bạn chưa được gán Kho thị trường nào — liên hệ Admin.
+        </p>
+      </div>
+    );
+  }
 
   const rooms = await prisma.room.findMany({
     where: {
       type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"] },
       isActive: true,
-      ...(isAdmin ? {} : { warehouseId: warehouseId! }),
+      ...(isAdmin ? {} : isDoiTacVanHanh ? { warehouseId: warehouseId! } : { warehouseId: { in: retailWarehouseIds } }),
     },
     include: {
       lots: {
@@ -57,5 +82,5 @@ export default async function ThiTruongInventoryPage() {
     lots: r.lots,
   }));
 
-  return <ThiTruongInventoryBoard rooms={roomsData} showWarehouseName={isAdmin} />;
+  return <ThiTruongInventoryBoard rooms={roomsData} showWarehouseName={isAdmin || isSaleRetailManager} />;
 }
