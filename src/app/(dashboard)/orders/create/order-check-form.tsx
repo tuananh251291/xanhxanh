@@ -113,6 +113,7 @@ const availabilityKey = (plantTypeId: string, stageCode: string) => `${plantType
 // với Quản lý kho thành phẩm tạo hộ (xem canActAsSale) là của ĐÚNG NV bán hàng đang phụ trách khách đó
 // (có thể khác nhau giữa các khách) — xem src/app/(dashboard)/orders/page.tsx.
 type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; holdDays: number | null };
+type MarketWarehouse = { id: string; code: string; name: string };
 
 export default function OrderCheckForm({
   plantTypes, customers,
@@ -130,6 +131,13 @@ export default function OrderCheckForm({
   const [customerId, setCustomerId] = useState("");
   const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
   const holdDays = selectedCustomer?.holdDays ?? null;
+  // Tích "Kho thị trường" — thay thế hẳn vai trò khách hàng, đơn gửi nội bộ sang 1 Kho thị trường (Đối
+  // tác vận hành quản lý) thay vì bán cho khách ngoài. Xem POST /api/orders (marketWarehouseId) và
+  // shipOrder (src/app/api/orders/[id]/route.ts — tự tạo phiếu Transfer gửi sang kho này lúc Xuất kho).
+  const [sendToMarketWarehouse, setSendToMarketWarehouse] = useState(false);
+  const [marketWarehouseId, setMarketWarehouseId] = useState("");
+  const [marketWarehouses, setMarketWarehouses] = useState<MarketWarehouse[]>([]);
+  const [loadingMarketWarehouses, setLoadingMarketWarehouses] = useState(false);
   const [market, setMarket] = useState("");
   const [expectedShipAt, setExpectedShipAt] = useState("");
   const [exportCode, setExportCode] = useState("");
@@ -161,6 +169,23 @@ export default function OrderCheckForm({
         });
     });
   }, [rows, availability]);
+
+  // Chỉ tra danh sách Kho thị trường khi thật sự cần (tích checkbox lần đầu) — tránh gọi API thừa cho
+  // NV chỉ tạo đơn khách hàng thường (đa số trường hợp).
+  useEffect(() => {
+    if (!sendToMarketWarehouse || marketWarehouses.length > 0) return;
+    setLoadingMarketWarehouses(true);
+    fetch("/api/warehouses?type=THI_TRUONG")
+      .then((r) => r.json())
+      .then((data: MarketWarehouse[]) => setMarketWarehouses(Array.isArray(data) ? data : []))
+      .finally(() => setLoadingMarketWarehouses(false));
+  }, [sendToMarketWarehouse, marketWarehouses.length]);
+
+  const toggleMarketWarehouse = (checked: boolean) => {
+    setSendToMarketWarehouse(checked);
+    if (checked) setCustomerId("");
+    else setMarketWarehouseId("");
+  };
 
   const updateRow = (key: string, patch: Partial<DemandRow>) => {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -217,7 +242,12 @@ export default function OrderCheckForm({
   // Gọi chung cho cả 2 chế độ (nhập tay/Excel) — giữ nguyên contract POST /api/orders (đã tự kiểm tra
   // tồn kho real-time trong transaction Serializable), chỉ khác cách `items` được dựng.
   const submitHold = async (items: { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string }[]) => {
-    if (!customerId) { toast.error("Cần chọn khách hàng"); return; }
+    if (sendToMarketWarehouse) {
+      if (!marketWarehouseId) { toast.error("Cần chọn Kho thị trường"); return; }
+    } else if (!customerId) {
+      toast.error("Cần chọn khách hàng");
+      return;
+    }
     if (!market) { toast.error("Cần chọn thị trường"); return; }
     if (!expectedShipAt) { toast.error("Cần chọn thời gian dự kiến xuất"); return; }
     if (items.length === 0) { toast.error("Không có dòng nào để giữ đơn"); return; }
@@ -227,17 +257,24 @@ export default function OrderCheckForm({
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId, market, expectedShipAt, exportCode: exportCode || undefined, items }),
+        body: JSON.stringify({
+          customerId: sendToMarketWarehouse ? undefined : customerId,
+          marketWarehouseId: sendToMarketWarehouse ? marketWarehouseId : undefined,
+          market, expectedShipAt, exportCode: exportCode || undefined, items,
+        }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      const holdLabel = selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`;
-      toast.success(`Đã tạo đơn ${json.code} — giữ trong ${holdLabel}`);
+      const holdLabel = sendToMarketWarehouse
+        ? "đã gửi Kho thị trường"
+        : `giữ trong ${selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`}`;
+      toast.success(`Đã tạo đơn ${json.code} — ${holdLabel}`);
       setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
       setResults(null);
       setExcelItems([]);
       setExcelErrors([]);
       setCustomerId("");
+      toggleMarketWarehouse(false);
       setMarket("");
       setExpectedShipAt("");
       setExportCode("");
@@ -604,12 +641,13 @@ export default function OrderCheckForm({
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Khách hàng *</Label>
+                <Label>Khách hàng {!sendToMarketWarehouse && "*"}</Label>
                 <Combobox
                   items={customerOptions}
                   value={customerOptions.find((o) => o.value === customerId) ?? null}
                   isItemEqualToValue={(a, b) => a.value === b.value}
                   onValueChange={(v) => setCustomerId(v?.value ?? "")}
+                  disabled={sendToMarketWarehouse}
                 >
                   <ComboboxInputGroup>
                     <ComboboxInput placeholder="Gõ mã hoặc tên khách hàng…" />
@@ -624,6 +662,30 @@ export default function OrderCheckForm({
                 </Combobox>
                 {selectedCustomer?.customerGroup && (
                   <p className="text-xs text-text-muted">{CUSTOMER_GROUP_LABELS[selectedCustomer.customerGroup]}</p>
+                )}
+                <label className="flex items-center gap-2 pt-1.5 cursor-pointer">
+                  <Checkbox checked={sendToMarketWarehouse} onCheckedChange={(v) => toggleMarketWarehouse(!!v)} />
+                  <span className="text-sm text-text-secondary">Kho thị trường — gửi nội bộ thay vì bán cho khách hàng</span>
+                </label>
+                {sendToMarketWarehouse && (
+                  loadingMarketWarehouses ? (
+                    <div className="flex items-center gap-2 text-xs text-text-muted pt-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang tải danh sách Kho thị trường…
+                    </div>
+                  ) : marketWarehouses.length === 0 ? (
+                    <p className="text-xs text-text-muted pt-1">Chưa có Kho thị trường nào — liên hệ Admin cấp cao tạo kho.</p>
+                  ) : (
+                    <Select
+                      items={marketWarehouses.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))}
+                      value={marketWarehouseId || null}
+                      onValueChange={(v) => setMarketWarehouseId(v as string)}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Chọn Kho thị trường" /></SelectTrigger>
+                      <SelectContent>
+                        {marketWarehouses.map((w) => <SelectItem key={w.id} value={w.id}>{w.name} ({w.code})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )
                 )}
               </div>
               <div className="space-y-1">
@@ -646,7 +708,11 @@ export default function OrderCheckForm({
                 <Input value={exportCode} onChange={(e) => setExportCode(e.target.value)} placeholder="Tuỳ chọn — hiện trên phiếu in" />
               </div>
             </div>
-            <Button className="w-full bg-primary hover:bg-primary-hover" disabled={holding || !holdDays} onClick={mode === "manual" ? onHoldManual : onHoldExcel}>
+            <Button
+              className="w-full bg-primary hover:bg-primary-hover"
+              disabled={holding || (sendToMarketWarehouse ? !marketWarehouseId : !holdDays)}
+              onClick={mode === "manual" ? onHoldManual : onHoldExcel}
+            >
               {holding ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-2" />}
               Tạm giữ đơn hàng
             </Button>

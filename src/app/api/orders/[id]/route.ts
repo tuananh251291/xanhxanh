@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
+import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode, generateTransferCode } from "@/lib/codes";
+import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
 
@@ -238,7 +238,12 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
     include: {
       items: {
         include: {
-          lot: { select: { id: true, stageCode: true, quantity: true, status: true } },
+          lot: {
+            select: {
+              id: true, stageCode: true, quantity: true, status: true, roomId: true, plantTypeId: true,
+              room: { select: { warehouseId: true } },
+            },
+          },
           processingRequest: { select: { status: true } },
         },
       },
@@ -267,6 +272,15 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
     );
   }
 
+  // Đơn gửi Kho thị trường (marketWarehouseId, xem POST /api/orders) — các dòng THƯỜNG (không qua Yêu
+  // cầu xử lý) vừa trừ tồn thực ở trên chính là số cây thật sự rời Kho thành phẩm, nên dùng lại ĐÚNG
+  // lô/số lượng đó để tự tạo phiếu Transfer gửi sang Kho thị trường (thay vì phải tự tạo tay ở trang
+  // "Gửi hàng Kho thị trường"). Dòng đã qua Yêu cầu xử lý KHÔNG có lô nào để gửi tiếp (actualOutputQuantity
+  // coi như đã cam kết thẳng cho đơn, không tạo lô mới — xem PATCH /api/order-processing-requests/[id]),
+  // nên bỏ qua, không đưa vào phiếu Transfer.
+  const plainItems = order.items.filter((i) => !i.processingRequest);
+  const firstPlainItem = plainItems[0];
+
   try {
     await prisma.$transaction(async (tx) => {
       for (const item of order.items) {
@@ -279,6 +293,24 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
       }
 
       await tx.order.update({ where: { id: order.id }, data: { status: "SHIPPED", shippedAt: new Date() } });
+
+      if (order.marketWarehouseId && firstPlainItem) {
+        const code = await generateTransferCode(tx);
+        await tx.transfer.create({
+          data: {
+            code,
+            fromWarehouseId: firstPlainItem.lot.room!.warehouseId,
+            fromRoomId: firstPlainItem.lot.roomId,
+            toWarehouseId: order.marketWarehouseId,
+            fromUserId: user.id,
+            orderId: order.id,
+            notes: `Tự động tạo khi xuất đơn hàng ${order.code}`,
+            items: {
+              create: plainItems.map((item) => ({ lotId: item.lot.id, quantity: item.quantity })),
+            },
+          },
+        });
+      }
     });
 
     if (order.assignedToId && order.assignedById) {
@@ -287,6 +319,18 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
         title: "NV đã hoàn thành việc được giao",
         message: `Đã xuất kho xong đơn hàng ${order.code}`,
         userId: order.assignedById,
+        relatedId: order.id,
+        relatedType: "Order",
+      });
+    }
+
+    if (order.marketWarehouseId && firstPlainItem) {
+      await createAlertForWarehouseStaff({
+        role: "DOI_TAC_VAN_HANH",
+        warehouseId: order.marketWarehouseId,
+        type: "LOT_READY_TRANSFER",
+        title: "Có phiếu gửi hàng từ Kho thành phẩm chờ nhận",
+        message: `Đơn hàng ${order.code} đã xuất kho — chờ xác nhận nhận hàng`,
         relatedId: order.id,
         relatedType: "Order",
       });

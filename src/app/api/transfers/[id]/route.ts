@@ -373,9 +373,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const staffCode = staffUser?.code ?? "000";
 
     await prisma.$transaction(async (tx) => {
-      // Trừ NGUYÊN số đã gửi khỏi từng lô nguồn — hàng đã rời Kho thành phẩm dù nhận thiếu.
-      for (const item of transfer.items) {
-        await tx.lot.update({ where: { id: item.lotId }, data: { quantity: { decrement: item.quantity } } });
+      // Trừ NGUYÊN số đã gửi khỏi từng lô nguồn — hàng đã rời Kho thành phẩm dù nhận thiếu. Phiếu do hệ
+      // thống tự tạo lúc Xuất đơn hàng (orderId khác null, xem shipOrder ở /api/orders/[id]) đã trừ tồn
+      // thực NGAY lúc đó rồi — bỏ qua bước này để tránh trừ đôi.
+      if (!transfer.orderId) {
+        for (const item of transfer.items) {
+          await tx.lot.update({ where: { id: item.lotId }, data: { quantity: { decrement: item.quantity } } });
+        }
       }
       for (const s of marketSplit) {
         const plantTypeCode = transfer.items.find((i) => i.lot.plantTypeId === s.plantTypeId)!.lot.plantType.code;

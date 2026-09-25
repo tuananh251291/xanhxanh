@@ -1094,6 +1094,7 @@ model Warehouse {
   motherForecastEditProposals MotherForecastEditProposal[]
   sealingTasks                SealingTask[]
   rootingQualityEvaluations   RootingQualityEvaluation[]
+  marketOrders                Order[]
 
   @@map("warehouses")
 }
@@ -2411,6 +2412,14 @@ model Transfer {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  // Có giá trị khi phiếu này được HỆ THỐNG TỰ TẠO lúc Kho thành phẩm "Xuất kho" 1 Đơn hàng có
+  // Order.marketWarehouseId (xem shipOrder, src/app/api/orders/[id]/route.ts) — tồn thực đã trừ ngay
+  // lúc đó rồi, nên lúc Đối tác vận hành xác nhận nhận hàng KHÔNG được trừ lại lần nữa (xem PATCH
+  // /api/transfers/[id]), khác hẳn phiếu "Gửi hàng Kho thị trường" tạo tay bình thường (orderId null)
+  // vẫn trừ tồn lúc xác nhận như cũ.
+  orderId         String?
+  order           Order?         @relation(fields: [orderId], references: [id])
+
   // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách xử lý phiếu này (chỉ áp dụng cho
   // phiếu "Nhận bàn giao thành phẩm" — Phòng ra rễ → Kho thành phẩm) — không giới hạn ai được XEM/xác
   // nhận phiếu (NV kho thành phẩm khác vẫn thấy và xác nhận được như cũ), chỉ mang tính phân công/theo
@@ -2513,6 +2522,16 @@ model Order {
   customerCode   String
   customerId     String?
   customer       Customer?   @relation(fields: [customerId], references: [id])
+  // Kho thị trường đích — có giá trị khi đơn này KHÔNG bán cho khách hàng ngoài mà gửi nội bộ sang 1 Kho
+  // thị trường (Đối tác vận hành quản lý), thay thế hẳn vai trò khách hàng (customerId để trống lúc
+  // này, customerCode snapshot lại mã Kho thị trường để mọi nơi hiển thị hiện có không cần đổi gì).
+  // Đơn vẫn qua đúng luồng Tạm giữ → Xác nhận → Xuất kho như đơn khách hàng thường (trừ tồn y hệt) —
+  // chỉ khác: lúc Kho thành phẩm "Xuất kho" (shipOrder), hệ thống tự tạo thêm 1 Transfer (orderId trỏ
+  // về đơn này) gửi đúng các lô/số lượng vừa xuất sang Kho thị trường này, thay vì phải tự tạo tay ở
+  // trang "Gửi hàng Kho thị trường". Transfer đó được đánh dấu SKIP trừ tồn lúc Đối tác vận hành xác
+  // nhận nhận hàng (xem PATCH /api/transfers/[id]) vì tồn thực đã trừ ngay lúc Xuất kho rồi, tránh trừ đôi.
+  marketWarehouseId String?
+  marketWarehouse   Warehouse? @relation(fields: [marketWarehouseId], references: [id])
   market         OrderMarket
   status         OrderStatus @default(DRAFT)
   holdUntil      DateTime?
@@ -2540,8 +2559,10 @@ model Order {
 
   items              OrderItem[]
   processingRequests OrderProcessingRequest[]
+  transfers          Transfer[]
 
   @@index([customerId])
+  @@index([marketWarehouseId])
   @@map("orders")
 }
 
