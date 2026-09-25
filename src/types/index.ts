@@ -808,11 +808,11 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Nhận hàng gửi từ Kho thành phẩm (xem /transfers/send-market, KHO_THANH_PHAM/QUAN_LY_KHO_THANH_PHAM) —
-  // nhập số lượng thực nhận, chia vào Phòng sản phẩm đạt/không đạt (/market-receive). Chưa có trang xem
-  // tồn kho/Phòng cây trồng riêng — mở rộng sau.
+  // nhập số lượng thực nhận, chia vào Phòng sản phẩm đạt/không đạt (/market-receive).
   DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/market-receive", label: "Nhận hàng", icon: "PackageCheck" },
+    { href: "/inventory/thi-truong", label: "Tồn kho", icon: "Boxes" },
     { href: "/market-export", label: "Xuất cây", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
