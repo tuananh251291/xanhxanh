@@ -10,13 +10,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { compressImageToDataUrl } from "@/lib/image-compress";
+import { CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS } from "@/lib/contamination-proposal-constants";
+import MultiPhotoSlotGroup from "@/components/shared/multi-photo-slot-group";
 
 type Room = { id: string; name: string; type: string };
 type Garden = { id: string; code: string; name: string };
 type Lot = { id: string; plantTypeId: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
+type RowValue = { huy: string; trong: string; huyPhotos: string[]; trongPhotos: string[] };
 
 export default function DeXuatExecuteForm({
-  taskId, taskCode, taskTitle, deadlineLabel, rooms, gardens, initialRoomId, plantCategoryCodes,
+  taskId, taskCode, taskTitle, deadlineLabel, rooms, gardens, initialRoomId, plantCategoryCodes, isMarketPartner,
 }: {
   taskId: string;
   taskCode: string;
@@ -27,6 +31,9 @@ export default function DeXuatExecuteForm({
   initialRoomId: string | null;
   // Rỗng = không giới hạn (việc "kho thị trường", đã giới hạn sẵn bằng roomId/initialRoomId thay vào đó).
   plantCategoryCodes: string[];
+  // Chỉ Đối tác vận hành mới bắt buộc/hiện ô đính ảnh bằng chứng — xem POST /api/contamination-proposals
+  // nhánh isMarketPartner. Kho thành phẩm dùng chung form này nhưng không bị ràng buộc ảnh.
+  isMarketPartner: boolean;
 }) {
   const router = useRouter();
   const [roomId, setRoomId] = useState(initialRoomId ?? "");
@@ -36,9 +43,11 @@ export default function DeXuatExecuteForm({
     ? allLots
     : allLots.filter((l) => plantCategoryCodes.includes(l.plantType.code.slice(0, 2)));
   const [loadingLots, setLoadingLots] = useState(false);
-  const [values, setValues] = useState<Record<string, { huy: string; trong: string }>>({});
+  const [values, setValues] = useState<Record<string, RowValue>>({});
   const [productionGardenId, setProductionGardenId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // key = `${lotId}:huy|trong` — ô nào đang tải ảnh lên.
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
 
   const loadLots = useCallback(async (id: string) => {
     setLoadingLots(true);
@@ -54,13 +63,47 @@ export default function DeXuatExecuteForm({
 
   useEffect(() => { if (roomId) loadLots(roomId); }, [roomId, loadLots]);
 
-  const getValue = (lotId: string) => values[lotId] ?? { huy: "", trong: "" };
-  const setValue = (lotId: string, patch: Partial<{ huy: string; trong: string }>) =>
+  const getValue = (lotId: string): RowValue => values[lotId] ?? { huy: "", trong: "", huyPhotos: [], trongPhotos: [] };
+  const setValue = (lotId: string, patch: Partial<RowValue>) =>
     setValues((prev) => ({ ...prev, [lotId]: { ...getValue(lotId), ...patch } }));
+
+  const addPhoto = async (lotId: string, kind: "huy" | "trong", file: File) => {
+    const key = `${lotId}:${kind}`;
+    setUploadingKey(key);
+    try {
+      const compressed = await compressImageToDataUrl(file, CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS);
+      const res = await fetch("/api/contamination-proposals/photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl: compressed }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Tải ảnh lên thất bại"); return; }
+      const field = kind === "huy" ? "huyPhotos" : "trongPhotos";
+      setValue(lotId, { [field]: [...getValue(lotId)[field], json.url] } as Partial<RowValue>);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không nén được ảnh — thử lại");
+    } finally {
+      setUploadingKey(null);
+    }
+  };
+
+  const removePhoto = async (lotId: string, kind: "huy" | "trong", url: string) => {
+    const field = kind === "huy" ? "huyPhotos" : "trongPhotos";
+    setValue(lotId, { [field]: getValue(lotId)[field].filter((u) => u !== url) } as Partial<RowValue>);
+    await fetch("/api/contamination-proposals/photos", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }).catch(() => {});
+  };
 
   const submit = async () => {
     const rows = lots
-      .map((l) => ({ lot: l, huy: parseInt(getValue(l.id).huy, 10) || 0, trong: parseInt(getValue(l.id).trong, 10) || 0 }))
+      .map((l) => {
+        const v = getValue(l.id);
+        return { lot: l, huy: parseInt(v.huy, 10) || 0, trong: parseInt(v.trong, 10) || 0, huyPhotos: v.huyPhotos, trongPhotos: v.trongPhotos };
+      })
       .filter((r) => r.huy > 0 || r.trong > 0);
     if (rows.length === 0) { toast.error("Chưa nhập số lượng dòng nào"); return; }
     for (const r of rows) {
@@ -68,6 +111,10 @@ export default function DeXuatExecuteForm({
       // Không bắt buộc chọn Vườn sản xuất khi không có vườn nào để chọn (Đối tác vận hành ở Kho thị
       // trường — xem page.tsx truyền gardens=[] cho trường hợp này).
       if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error("Chưa chọn Vườn sản xuất cho dòng Trồng"); return; }
+      if (isMarketPartner) {
+        if (r.huy > 0 && r.huyPhotos.length === 0) { toast.error(`${r.lot.plantType.code}: cần đính kèm ảnh cho phần đề xuất huỷ`); return; }
+        if (r.trong > 0 && r.trongPhotos.length === 0) { toast.error(`${r.lot.plantType.code}: cần đính kèm ảnh cho phần đề xuất trồng`); return; }
+      }
     }
 
     setSubmitting(true);
@@ -75,9 +122,9 @@ export default function DeXuatExecuteForm({
     let successCount = 0;
     try {
       for (const r of rows) {
-        const calls: { type: "HUY" | "TRONG"; quantity: number }[] = [];
-        if (r.huy > 0) calls.push({ type: "HUY", quantity: r.huy });
-        if (r.trong > 0) calls.push({ type: "TRONG", quantity: r.trong });
+        const calls: { type: "HUY" | "TRONG"; quantity: number; photoUrls: string[] }[] = [];
+        if (r.huy > 0) calls.push({ type: "HUY", quantity: r.huy, photoUrls: r.huyPhotos });
+        if (r.trong > 0) calls.push({ type: "TRONG", quantity: r.trong, photoUrls: r.trongPhotos });
         for (const c of calls) {
           const res = await fetch("/api/contamination-proposals", {
             method: "POST",
@@ -90,6 +137,7 @@ export default function DeXuatExecuteForm({
               quantity: c.quantity,
               batchCode,
               dailyTaskId: taskId,
+              photoUrls: c.photoUrls,
               // productionGardenId (state) có thể là null (chưa chọn/không có vườn nào, xem gardens.length
               // === 0) — gửi undefined thay vì null vì z.string().optional() không nhận null.
               productionGardenId: c.type === "TRONG" && productionGardenId ? productionGardenId : undefined,
@@ -147,6 +195,11 @@ export default function DeXuatExecuteForm({
         <Card>
           <CardHeader><CardTitle className="text-base">Tồn kho trong phòng — nhập số lượng đề xuất</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            {isMarketPartner && (
+              <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3">
+                Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/trồng để quản lý kĩ thuật xác nhận lại.
+              </p>
+            )}
             {loadingLots ? (
               <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-text-muted" /></div>
             ) : lots.length === 0 ? (
@@ -165,11 +218,17 @@ export default function DeXuatExecuteForm({
                         <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Tồn kho</th>
                         <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-28">Đề xuất hủy</th>
                         <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-28">Đề xuất trồng</th>
+                        {isMarketPartner && (
+                          <>
+                            <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh huỷ</th>
+                            <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh trồng</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
                       {lots.map((l) => (
-                        <tr key={l.id} className="border-t border-divider even:bg-primary-light/30">
+                        <tr key={l.id} className="border-t border-divider even:bg-primary-light/30 align-top">
                           <td className="px-3 py-2 text-foreground">{l.plantType.name}</td>
                           <td className="px-3 py-2 font-mono text-xs text-text-secondary">{l.plantType.code}</td>
                           <td className="px-3 py-2 text-text-secondary">{l.stageCode}</td>
@@ -188,6 +247,28 @@ export default function DeXuatExecuteForm({
                               onChange={(e) => setValue(l.id, { trong: e.target.value })}
                             />
                           </td>
+                          {isMarketPartner && (
+                            <>
+                              <td className="px-3 py-2">
+                                <MultiPhotoSlotGroup
+                                  urls={getValue(l.id).huyPhotos}
+                                  editable
+                                  uploading={uploadingKey === `${l.id}:huy`}
+                                  onAdd={(f) => addPhoto(l.id, "huy", f)}
+                                  onRemove={(u) => removePhoto(l.id, "huy", u)}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <MultiPhotoSlotGroup
+                                  urls={getValue(l.id).trongPhotos}
+                                  editable
+                                  uploading={uploadingKey === `${l.id}:trong`}
+                                  onAdd={(f) => addPhoto(l.id, "trong", f)}
+                                  onRemove={(u) => removePhoto(l.id, "trong", u)}
+                                />
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>

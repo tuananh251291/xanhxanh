@@ -33,6 +33,7 @@ export type Proposal = {
   requestedBy: { name: string };
   requestedById: string;
   approvedBy: { name: string } | null;
+  photoUrls: string[];
 };
 export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
 
@@ -226,6 +227,20 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
                 {p.productionGarden ? ` · Vườn: ${p.productionGarden.name} (${p.productionGarden.code})` : ""}
                 {p.status === "REJECTED" && p.rejectionReason && (
                   <p className="text-xs text-destructive mt-0.5">Lý do: {p.rejectionReason}</p>
+                )}
+                {p.photoUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {p.photoUrls.map((url) => (
+                      // eslint-disable-next-line @next/next/no-img-element -- ảnh từ Supabase Storage, không phải asset tĩnh
+                      <img
+                        key={url}
+                        src={url}
+                        alt="Ảnh bằng chứng"
+                        className="w-10 h-10 rounded-md object-cover border border-border cursor-pointer"
+                        onClick={() => window.open(url, "_blank")}
+                      />
+                    ))}
+                  </div>
                 )}
               </td>
               <td className="px-3 py-2 text-foreground">{p.stageCode}</td>

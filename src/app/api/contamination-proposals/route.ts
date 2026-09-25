@@ -27,6 +27,9 @@ const createSchema = z.object({
   // Có giá trị khi gửi từ "Thực hiện" 1 DailyTask (type=DE_XUAT_TRONG_HUY, xem
   // /task-assignment/de-xuat/[taskId]) — dùng để tính nhiệm vụ đó đã hoàn thành hay chưa.
   dailyTaskId: z.string().optional(),
+  // Ảnh bằng chứng (đã tải lên trước qua POST /api/contamination-proposals/photos) — CHỈ bắt buộc khi
+  // người gửi là Đối tác vận hành (xem nhánh isMarketPartner bên dưới), Kho mô/Kho thành phẩm bỏ trống.
+  photoUrls: z.array(z.string()).default([]),
 });
 
 const include = {
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode, productionGardenId, dailyTaskId } = parsed.data;
+  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode, productionGardenId, dailyTaskId, photoUrls } = parsed.data;
   const warehouseId = session!.user.workplaceWarehouseId;
 
   let lotId: string;
@@ -116,6 +119,9 @@ export async function POST(req: NextRequest) {
     // Đối tác vận hành ở Kho thị trường — KHÔNG bắt buộc chọn Vườn sản xuất kể cả với đề xuất Trồng
     // (khác hẳn Kho thành phẩm) vì kho thị trường không gắn với 1 vườn cụ thể nào, xem
     // de-xuat-execute-form.tsx (gardens=[] cho vai trò này).
+    // Bắt buộc ≥1 ảnh bằng chứng cho đúng luồng này (Kho mô/Kho thành phẩm không bị ràng buộc) — Admin
+    // duyệt cần ảnh đối chiếu, giống hệt tính năng Phân loại hàng không đạt.
+    if (photoUrls.length === 0) return NextResponse.json({ message: "Cần đính kèm ít nhất 1 ảnh bằng chứng" }, { status: 400 });
     if (!roomId) return NextResponse.json({ message: "Chưa chọn phòng" }, { status: 400 });
     const room = await prisma.room.findUnique({ where: { id: roomId } });
     if (!room || room.warehouseId !== warehouseId || !(MARKET_ROOM_TYPES as readonly string[]).includes(room.type)) {
@@ -180,6 +186,7 @@ export async function POST(req: NextRequest) {
         stageCode,
         quantity,
         notes,
+        photoUrls,
         requestedById: session!.user.id,
       },
       include,

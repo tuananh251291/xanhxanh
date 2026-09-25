@@ -66,6 +66,7 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
       gardens={gardens}
       initialRoomId={defaultRoomId}
       plantCategoryCodes={task.plantCategoryCodes}
+      isMarketPartner={isMarketPartner}
     />
   );
 }

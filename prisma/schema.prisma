@@ -2113,6 +2113,12 @@ model ContaminationProposal {
   // form tự do (FinishedGoodsProposalSubmit) hoặc luồng Kho mô, không gắn với nhiệm vụ ngày nào.
   dailyTaskId        String?
   dailyTask          DailyTask?                  @relation(fields: [dailyTaskId], references: [id])
+  // Ảnh bằng chứng — CHỈ bắt buộc/dùng cho đề xuất do Đối tác vận hành gửi (xem nhánh isMarketPartner ở
+  // POST /api/contamination-proposals); Kho mô/Kho thành phẩm luôn để rỗng. Gắn 1 lần lúc tạo, KHÔNG đổi
+  // qua "Sửa & gửi lại" (ảnh chứng minh hiện trạng lô hàng, không phụ thuộc quyết định Trồng/Hủy lại) —
+  // nên createdAt là mốc chính xác để tự xoá sau 1 tháng, không cần field riêng (xem
+  // cleanupExpiredContaminationProposalPhotos, src/lib/contamination-proposal-storage.ts).
+  photoUrls          String[]                    @default([])
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
