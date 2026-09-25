@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { SURPLUS_TRANSFER_TAG, sumLotQuantity, isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { planShelfAssignments, planSurplusPlacement, ShelfAssignError } from "@/lib/shelf-assignment";
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
-import { generateLotCode } from "@/lib/codes";
+import { generateLotCode, generateRejectClassificationCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
@@ -372,7 +372,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const staffUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
     const staffCode = staffUser?.code ?? "000";
 
-    await prisma.$transaction(async (tx) => {
+    // Tổng Không đạt của phiếu > 0 — sau khi commit xong việc nhận hàng, tự tạo 1 "nhiệm vụ" phân loại
+    // Huỷ/Trồng (xem RejectedGoodsClassification) để Đối tác vận hành xử lý tiếp, thay vì để hàng không
+    // đạt nằm im ở Phòng sản phẩm không đạt không ai theo dõi.
+    const totalFailed = marketSplit.reduce((sum, s) => sum + s.failedQuantity, 0);
+
+    const rejectClassificationId = await prisma.$transaction(async (tx) => {
       // Trừ NGUYÊN số đã gửi khỏi từng lô nguồn — hàng đã rời Kho thành phẩm dù nhận thiếu. Phiếu do hệ
       // thống tự tạo lúc Xuất đơn hàng (orderId khác null, xem shipOrder ở /api/orders/[id]) đã trừ tồn
       // thực NGAY lúc đó rồi — bỏ qua bước này để tránh trừ đôi.
@@ -395,9 +400,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(receiveNotes ? { notes: transfer.notes ? `${transfer.notes}\nGhi chú nhận hàng: ${receiveNotes}` : `Ghi chú nhận hàng: ${receiveNotes}` } : {}),
         },
       });
+
+      if (totalFailed === 0) return null;
+
+      const code = await generateRejectClassificationCode(tx);
+      const classification = await tx.rejectedGoodsClassification.create({
+        data: {
+          code,
+          transferId: id,
+          warehouseId: transfer.toWarehouseId,
+          createdById: session.user.id,
+          items: {
+            create: marketSplit
+              .filter((s) => s.failedQuantity > 0)
+              .map((s) => ({
+                plantTypeId: s.plantTypeId,
+                stageCode: s.stageCode,
+                rejectedQuantity: s.failedQuantity,
+                plantQuantity: s.failedQuantity,
+              })),
+          },
+        },
+        select: { id: true },
+      });
+      return classification.id;
     });
 
-    return NextResponse.json({ success: true });
+    if (rejectClassificationId) {
+      await createAlert({
+        type: "REJECTED_GOODS_CLASSIFICATION_PENDING",
+        title: "Cần phân loại hàng không đạt",
+        message: `Phiếu ${transfer.code} có ${totalFailed.toLocaleString("vi-VN")} cây không đạt — vào "Phân loại hàng không đạt" để đề xuất Huỷ/Trồng.`,
+        userId: session.user.id,
+        relatedId: rejectClassificationId,
+        relatedType: "RejectedGoodsClassification",
+      });
+    }
+
+    return NextResponse.json({ success: true, rejectClassificationId });
   }
 
   // Các loại bàn giao khác: vẫn chọn kệ thủ công như trước.

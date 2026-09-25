@@ -67,26 +67,32 @@ function releaseCanvas(canvas: HTMLCanvasElement) {
   canvas.height = 0;
 }
 
-export async function compressImageToDataUrl(file: File): Promise<string> {
+export async function compressImageToDataUrl(
+  file: File,
+  options?: { targetMaxBytes?: number; hardLimitBytes?: number; dimensionSteps?: readonly number[] }
+): Promise<string> {
+  const dimensionSteps = options?.dimensionSteps ?? DIMENSION_STEPS;
+  const targetMaxBytes = options?.targetMaxBytes ?? TARGET_MAX_BYTES;
+  const hardLimitBytes = options?.hardLimitBytes ?? HARD_LIMIT_BYTES;
   const bitmap = await loadBitmap(file);
 
   try {
     let bestBlob: Blob | null = null;
 
-    for (const maxDimension of DIMENSION_STEPS) {
+    for (const maxDimension of dimensionSteps) {
       const canvas = drawToCanvas(bitmap, maxDimension);
       try {
         for (const quality of QUALITY_STEPS) {
           const blob = await canvasToBlob(canvas, quality);
           bestBlob = blob;
-          if (blob.size <= TARGET_MAX_BYTES) return await blobToDataUrl(blob);
+          if (blob.size <= targetMaxBytes) return await blobToDataUrl(blob);
         }
       } finally {
         releaseCanvas(canvas);
       }
-      // Hết bậc chất lượng ở kích thước này mà chưa đạt mục tiêu 700KB nhưng đã dưới hard limit 2MB —
+      // Hết bậc chất lượng ở kích thước này mà chưa đạt mục tiêu nhưng đã dưới hard limit —
       // dừng luôn, không thu nhỏ thêm để giữ ảnh nét nhất có thể trong giới hạn cho phép.
-      if (bestBlob && bestBlob.size <= HARD_LIMIT_BYTES) return await blobToDataUrl(bestBlob);
+      if (bestBlob && bestBlob.size <= hardLimitBytes) return await blobToDataUrl(bestBlob);
       // Ngược lại (vẫn vượt hard limit) mới thử bậc kích thước nhỏ hơn tiếp theo.
     }
 

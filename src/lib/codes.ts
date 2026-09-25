@@ -409,3 +409,17 @@ export async function generateReplantHandoverCode(date: Date = new Date()): Prom
   const existing = await prisma.replantHandover.findMany({ where: { code: { startsWith: base } }, select: { code: true } });
   return nextCodeWithSuffix(base, existing.map((e) => e.code));
 }
+
+// Mã phân loại hàng không đạt = "PLKD-" + năm tháng tạo "YYYYMM" + số thứ tự 4 chữ số trong tháng —
+// giống hệt công thức generateGoodsReceiptCode. client tuỳ chọn — LUÔN truyền tx vì hàm này được gọi
+// ngay trong transaction "Xác nhận nhận hàng" (PATCH /api/transfers/[id]).
+export async function generateRejectClassificationCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `PLKD-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.rejectedGoodsClassification.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}

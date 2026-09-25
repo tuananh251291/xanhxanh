@@ -434,6 +434,9 @@ export const ALERT_TYPE_LABELS = {
   PROBATION_EVALUATION_SELF_DUE: "Đến hạn tự đánh giá tuần thử việc",
   PROBATION_EVALUATION_MANAGER_DUE: "Đến lượt chấm điểm đánh giá thử việc",
   PROBATION_EVALUATION_COMPLETED: "Đã có kết quả đánh giá thử việc",
+  REJECTED_GOODS_CLASSIFICATION_PENDING: "Cần phân loại hàng không đạt",
+  REJECTED_GOODS_PROPOSAL_SUBMITTED: "Đề xuất phân loại hàng không đạt mới",
+  REJECTED_GOODS_PROPOSAL_APPROVED: "Đề xuất phân loại hàng không đạt đã duyệt",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -442,6 +445,9 @@ export const ALERT_TYPE_LABELS = {
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
   OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "/output-deviation-response",
+  REJECTED_GOODS_CLASSIFICATION_PENDING: "/market-receive/reject-classification",
+  REJECTED_GOODS_PROPOSAL_SUBMITTED: "/reject-classification",
+  REJECTED_GOODS_PROPOSAL_APPROVED: "/market-receive/reject-classification",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -812,9 +818,11 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   DOI_TAC_VAN_HANH: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/market-receive", label: "Nhận hàng", icon: "PackageCheck" },
+    { href: "/market-receive/reject-classification", label: "Phân loại hàng không đạt", icon: "ClipboardCheck" },
     { href: "/inventory/thi-truong", label: "Tồn kho", icon: "Boxes" },
     { href: "/market-export", label: "Xuất cây", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/reports/partner", label: "Báo cáo", icon: "BarChart3" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

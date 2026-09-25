@@ -72,3 +72,22 @@ export async function createAlertForWarehouseStaff(params: {
 
   await Promise.all(targetStaff.map((s) => createAlert({ ...alertData, userId: s.id })));
 }
+
+// Gửi cảnh báo cho NV bán hàng (role SALE, isRetailManager=true) được gán RetailWarehouseAccess tới ĐÚNG
+// 1 Kho thị trường — dùng cho RejectedGoodsClassification (khác createAlertForWarehouseStaff vì đây là
+// quan hệ nhiều-nhiều qua RetailWarehouseAccess, không phải User.workplaceWarehouseId 1-1).
+export async function createAlertForMarketSaleStaff(params: {
+  warehouseId: string;
+  type: AlertType;
+  title: string;
+  message: string;
+  relatedId?: string;
+  relatedType?: string;
+}): Promise<void> {
+  const { warehouseId, ...alertData } = params;
+  const access = await prisma.retailWarehouseAccess.findMany({
+    where: { warehouseId, user: { isActive: true, role: "SALE", isRetailManager: true } },
+    select: { userId: true },
+  });
+  await Promise.all(access.map((a) => createAlert({ ...alertData, userId: a.userId })));
+}

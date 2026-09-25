@@ -104,7 +104,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // ROLE_NAV.SALE (khác đa số role khác, trang này vốn dành cho Đối tác vận hành) nên chèn động vào đây
   // thay vì lọc bớt.
   if (role === "SALE" && currentUser?.isRetailManager) {
-    navItems = [...navItems, { href: "/inventory/thi-truong", label: "Tồn kho Kho thị trường", icon: "Boxes" }];
+    navItems = [
+      ...navItems,
+      { href: "/inventory/thi-truong", label: "Tồn kho Kho thị trường", icon: "Boxes" },
+      { href: "/reject-classification", label: "Duyệt hàng không đạt", icon: "ClipboardCheck" },
+    ];
   }
 
   return (

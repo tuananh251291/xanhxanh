@@ -308,6 +308,16 @@ enum AlertType {
   // NV Kỹ thuật vừa chấm xong (đã có kết luận Đạt/Cần cải thiện/Không đạt) — báo đúng NV cấy mô đó
   // (userId) + toàn bộ Hành chính nhân sự (targetRole).
   PROBATION_EVALUATION_COMPLETED
+  // Đối tác vận hành vừa "Xác nhận nhận hàng" ở Kho thị trường có phát sinh số lượng Không đạt — hệ
+  // thống tự tạo 1 RejectedGoodsClassification (status PENDING_CLASSIFICATION, đóng vai "nhiệm vụ" khi
+  // bấm "Để sau" ở popup) — báo đúng NV vừa xác nhận (userId), tự chuyển READ khi NV "Gửi đề xuất".
+  REJECTED_GOODS_CLASSIFICATION_PENDING
+  // Đối tác vận hành vừa "Gửi đề xuất" phân loại hàng không đạt (Huỷ/Trồng, kèm ảnh) — báo các NV bán
+  // hàng có RetailWarehouseAccess tới đúng kho thị trường đó (createAlertForMarketSaleStaff).
+  REJECTED_GOODS_PROPOSAL_SUBMITTED
+  // NV bán hàng đã "Duyệt" đề xuất phân loại hàng không đạt (có thể đã sửa số Huỷ/Trồng) — báo lại đúng
+  // NV Đối tác vận hành đã gửi đề xuất đó (userId = RejectedGoodsClassification.createdById).
+  REJECTED_GOODS_PROPOSAL_APPROVED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -396,8 +406,9 @@ model User {
   workplaceWarehouse   Warehouse?      @relation(fields: [workplaceWarehouseId], references: [id])
   // "Quản lý bán lẻ" — chỉ áp dụng NV bán hàng (SALE), Admin/Admin cao nhất bật/tắt + gán kèm 1 hoặc
   // nhiều Kho thị trường (WarehouseType.THI_TRUONG, xem RetailWarehouseAccess) qua PATCH /api/users/[id].
-  // Chỉ cho phép XEM tồn kho ở /inventory/thi-truong (giống Admin cấp cao xem được nhiều kho) — KHÔNG có
-  // quyền thao tác nhận/xuất hàng như Đối tác vận hành (đó vẫn ràng buộc qua workplaceWarehouseId).
+  // Cho phép XEM tồn kho ở /inventory/thi-truong (giống Admin cấp cao xem được nhiều kho) VÀ nhận/duyệt
+  // đề xuất Huỷ/Trồng hàng không đạt (RejectedGoodsClassification) của đúng kho được gán — vẫn KHÔNG có
+  // quyền thao tác nhận/xuất hàng vật lý như Đối tác vận hành (đó vẫn ràng buộc qua workplaceWarehouseId).
   isRetailManager       Boolean         @default(false)
   retailWarehouseAccess RetailWarehouseAccess[]
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), HỆ THỐNG TỰ TÍNH lại đầu mỗi tháng từ tỉ lệ
@@ -443,6 +454,8 @@ model User {
   returnedInstructions                 PlantingInstruction[]        @relation("ReturnedBy")
   contaminationProposalsRequested      ContaminationProposal[]      @relation("ContaminationProposalRequestedBy")
   contaminationProposalsApproved       ContaminationProposal[]      @relation("ContaminationProposalApprovedBy")
+  rejectedGoodsClassificationsCreated  RejectedGoodsClassification[] @relation("RejectClassCreatedBy")
+  rejectedGoodsClassificationsApproved RejectedGoodsClassification[] @relation("RejectClassApprovedBy")
   contaminationRoomEntries             ContaminationRoomEntry[]
   personalContaminationChecksAsStaff   PersonalContaminationCheck[] @relation("PersonalContaminationCheckStaff")
   personalContaminationChecksAsChecker PersonalContaminationCheck[] @relation("PersonalContaminationCheckedBy")
@@ -823,6 +836,7 @@ model PlantType {
   motherForecastEditProposalItems MotherForecastEditProposalItem[]
   sealingTaskItems           SealingTaskItem[]
   rootingQualityEvaluationItems RootingQualityEvaluationItem[]
+  rejectedGoodsClassificationItems RejectedGoodsClassificationItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -1102,6 +1116,7 @@ model Warehouse {
   rootingQualityEvaluations   RootingQualityEvaluation[]
   marketOrders                Order[]
   retailWarehouseAccess       RetailWarehouseAccess[]
+  rejectedGoodsClassifications RejectedGoodsClassification[]
 
   @@map("warehouses")
 }
@@ -1159,8 +1174,10 @@ model RoomAccess {
 }
 
 // Gán 1 NV bán hàng (User.isRetailManager = true) được XEM tồn kho 1 hoặc nhiều Kho thị trường
-// (WarehouseType.THI_TRUONG) ở /inventory/thi-truong — chỉ xem, KHÔNG có quyền nhận/xuất hàng như Đối
-// tác vận hành (đó vẫn qua Warehouse.staff/User.workplaceWarehouseId).
+// (WarehouseType.THI_TRUONG) ở /inventory/thi-truong, và từ RejectedGoodsClassification trở đi còn được
+// NHẬN + DUYỆT đề xuất Huỷ/Trồng hàng không đạt của đúng (các) kho được gán ở đây (xem
+// createAlertForMarketSaleStaff, PATCH /api/reject-classifications/[id]) — vẫn KHÔNG có quyền nhận/xuất
+// hàng vật lý như Đối tác vận hành (đó luôn qua Warehouse.staff/User.workplaceWarehouseId).
 model RetailWarehouseAccess {
   id          String    @id @default(cuid())
   userId      String
@@ -2122,6 +2139,68 @@ model ProductionGarden {
   @@map("production_gardens")
 }
 
+enum RejectedGoodsClassificationStatus {
+  // "Nhiệm vụ" — hệ thống tự tạo ngay khi Đối tác vận hành "Xác nhận nhận hàng" có Không đạt > 0 (xem
+  // PATCH /api/transfers/[id] nhánh THI_TRUONG). Vẫn ở trạng thái này nếu NV bấm "Để sau" ở popup —
+  // hiện lại trong danh sách nhiệm vụ tới khi NV vào điền "Gửi đề xuất".
+  PENDING_CLASSIFICATION
+  // Đối tác vận hành đã "Gửi đề xuất" (nhập số Huỷ + đính kèm ảnh, số Trồng tự tính) — chờ đúng NV bán
+  // hàng có RetailWarehouseAccess tới kho đó (hoặc Admin) duyệt.
+  PENDING_APPROVAL
+  // NV bán hàng đã "Duyệt" (có thể đã sửa số Huỷ/Trồng + ghi chú) — đã trừ tồn Phòng sản phẩm không đạt
+  // và cộng tồn Phòng cây trồng tương ứng, không đổi trạng thái nữa.
+  APPROVED
+}
+
+// Đề xuất Huỷ/Trồng cho phần "Không đạt" phát sinh khi Đối tác vận hành nhận hàng ở Kho thị trường (xem
+// PATCH /api/transfers/[id]) — tách riêng khỏi ContaminationProposal (Đề xuất Trồng/Hủy hiện có, chỉ
+// Admin duyệt, không có ảnh) vì luồng này do NV bán hàng phụ trách thị trường (RetailWarehouseAccess)
+// duyệt thay vì Admin, và bắt buộc đính kèm ảnh làm bằng chứng cho kỹ thuật đối chiếu (ảnh tự xoá sau 1
+// tháng, xem cleanupExpiredRejectClassificationPhotos ở src/lib/reject-classification-storage.ts).
+model RejectedGoodsClassification {
+  id           String                             @id @default(cuid())
+  code         String                             @unique
+  transferId   String                             @unique
+  transfer     Transfer                           @relation(fields: [transferId], references: [id])
+  warehouseId  String
+  warehouse    Warehouse                          @relation(fields: [warehouseId], references: [id])
+  status       RejectedGoodsClassificationStatus  @default(PENDING_CLASSIFICATION)
+  createdById  String
+  createdBy    User                               @relation("RejectClassCreatedBy", fields: [createdById], references: [id])
+  // Có giá trị khi Đối tác vận hành bấm "Gửi đề xuất" (status -> PENDING_APPROVAL).
+  submittedAt  DateTime?
+  approvedById String?
+  approvedBy   User?                              @relation("RejectClassApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  createdAt    DateTime                           @default(now())
+
+  items RejectedGoodsClassificationItem[]
+
+  @@map("rejected_goods_classifications")
+}
+
+// 1 dòng = 1 loại cây + quy cách có Không đạt trong cùng 1 phiếu nhận hàng — destroyQuantity nhập tay
+// (Đối tác vận hành lúc gửi, NV bán hàng có thể sửa lại lúc duyệt), plantQuantity LUÔN tự tính =
+// rejectedQuantity - destroyQuantity (không nhận trực tiếp từ client, giữ đúng quy ước "cột tự tính
+// không cho sửa tay" đã dùng ở market-receive-board.tsx) — đảm bảo Huỷ + Trồng luôn bằng đúng Không đạt.
+model RejectedGoodsClassificationItem {
+  id               String                       @id @default(cuid())
+  classificationId String
+  classification   RejectedGoodsClassification @relation(fields: [classificationId], references: [id])
+  plantTypeId      String
+  plantType        PlantType                    @relation(fields: [plantTypeId], references: [id])
+  stageCode        String
+  rejectedQuantity Int
+  destroyQuantity  Int                          @default(0)
+  plantQuantity    Int                          @default(0)
+  destroyPhotoUrls String[]                     @default([])
+  plantPhotoUrls   String[]                     @default([])
+  // NV bán hàng ghi khi duyệt (tuỳ chọn, gõ tay) — Đối tác vận hành không nhập được field này.
+  saleNote         String?
+
+  @@map("rejected_goods_classification_items")
+}
+
 enum ReplantHandoverStatus {
   PENDING
   CONFIRMED
@@ -2456,6 +2535,7 @@ model Transfer {
 
   items      TransferItem[]
   inspection TransferInspection?
+  rejectedGoodsClassification RejectedGoodsClassification?
 
   @@map("transfers")
 }

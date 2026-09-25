@@ -1,10 +1,12 @@
 "use client";
 
 import { Fragment, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PackageCheck, Loader2, Check, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { PackageCheck, Loader2, Check, ChevronDown, ChevronUp, AlertTriangle, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -32,6 +34,7 @@ type SplitGroup = { plantTypeId: string; plantTypeCode: string; plantTypeName: s
 type InputField = "customsHeld" | "actualReceived" | "failed";
 
 export default function MarketReceiveBoard() {
+  const router = useRouter();
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -39,6 +42,9 @@ export default function MarketReceiveBoard() {
   const [splitInputs, setSplitInputs] = useState<Record<string, number>>({});
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState<string | null>(null);
+  // Có giá trị khi phiếu vừa xác nhận có Không đạt > 0 — hệ thống đã tự tạo 1 "nhiệm vụ" phân loại
+  // Huỷ/Trồng (xem PATCH /api/transfers/[id]), hỏi NV xử lý ngay hay để sau.
+  const [rejectPromptId, setRejectPromptId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -110,6 +116,7 @@ export default function MarketReceiveBoard() {
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã xác nhận nhận hàng");
       setExpanded(null);
+      if (json.rejectClassificationId) setRejectPromptId(json.rejectClassificationId);
       loadData();
     } finally {
       setProcessing(null);
@@ -292,6 +299,31 @@ export default function MarketReceiveBoard() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!rejectPromptId} onOpenChange={(v) => { if (!v) setRejectPromptId(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-warning" />
+              Cần phân loại hàng không đạt
+            </DialogTitle>
+            <DialogDescription>
+              Phiếu vừa nhận có hàng Không đạt — cần đề xuất Huỷ/Trồng (kèm ảnh) để NV bán hàng phụ trách
+              kho duyệt. Bạn có thể xử lý ngay hoặc để sau (hệ thống đã tự tạo nhiệm vụ, tìm lại ở &ldquo;Phân
+              loại hàng không đạt&rdquo;).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectPromptId(null)}>Để sau</Button>
+            <Button
+              className="bg-primary hover:bg-primary-hover"
+              onClick={() => { if (rejectPromptId) router.push(`/market-receive/reject-classification/${rejectPromptId}`); }}
+            >
+              Tiếp tục
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
