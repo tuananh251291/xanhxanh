@@ -28,11 +28,14 @@ type Transfer = {
 
 type SplitGroup = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; total: number };
 
+// Đúng 3 cột đối tác vận hành tự nhập trên Phiếu nhận hàng — Đạt và Lệch đều tính tự động, không nhập.
+type InputField = "customsHeld" | "actualReceived" | "failed";
+
 export default function MarketReceiveBoard() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
-  // key = `${transferId}:${plantTypeId}:${stageCode}:passed|failed`
+  // key = `${transferId}:${plantTypeId}:${stageCode}:customsHeld|actualReceived|failed`
   const [splitInputs, setSplitInputs] = useState<Record<string, number>>({});
   const [receiveNotes, setReceiveNotes] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState<string | null>(null);
@@ -51,7 +54,7 @@ export default function MarketReceiveBoard() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const groupKey = (plantTypeId: string, stageCode: string) => `${plantTypeId}:${stageCode}`;
-  const splitKey = (transferId: string, plantTypeId: string, stageCode: string, kind: "passed" | "failed") =>
+  const splitKey = (transferId: string, plantTypeId: string, stageCode: string, kind: InputField) =>
     `${transferId}:${plantTypeId}:${stageCode}:${kind}`;
 
   const groupsFor = (t: Transfer): SplitGroup[] => {
@@ -74,24 +77,34 @@ export default function MarketReceiveBoard() {
     );
   };
 
-  const getSplit = (t: Transfer, g: SplitGroup, kind: "passed" | "failed") => splitInputs[splitKey(t.id, g.plantTypeId, g.stageCode, kind)] ?? 0;
-  const setSplit = (t: Transfer, g: SplitGroup, kind: "passed" | "failed", value: number) =>
+  const getInput = (t: Transfer, g: SplitGroup, kind: InputField) => splitInputs[splitKey(t.id, g.plantTypeId, g.stageCode, kind)] ?? 0;
+  const setInput = (t: Transfer, g: SplitGroup, kind: InputField, value: number) =>
     setSplitInputs((prev) => ({ ...prev, [splitKey(t.id, g.plantTypeId, g.stageCode, kind)]: Math.max(0, value) }));
+
+  // Cột 5 (Đạt) = cột 3 (Thực tế nhận) − cột 4 (Không đạt) — không cho nhập tay.
+  const getPassed = (t: Transfer, g: SplitGroup) => Math.max(0, getInput(t, g, "actualReceived") - getInput(t, g, "failed"));
+  // Lệch = cột 1 (Đã gửi) − cột 2 (Hải quan giữ) − cột 3 (Thực tế nhận) — phần hao hụt chưa giải thích được.
+  const getDeviation = (t: Transfer, g: SplitGroup) => g.total - getInput(t, g, "customsHeld") - getInput(t, g, "actualReceived");
 
   const confirm = async (t: Transfer) => {
     const groups = groupsFor(t);
     const marketSplit = groups.map((g) => ({
       plantTypeId: g.plantTypeId,
       stageCode: g.stageCode,
-      passedQuantity: getSplit(t, g, "passed"),
-      failedQuantity: getSplit(t, g, "failed"),
+      passedQuantity: getPassed(t, g),
+      failedQuantity: getInput(t, g, "failed"),
     }));
+    const customsNotes = groups
+      .filter((g) => getInput(t, g, "customsHeld") > 0)
+      .map((g) => `Hải quan giữ ${g.plantTypeName} ${g.stageCode}: ${getInput(t, g, "customsHeld").toLocaleString("vi-VN")}`)
+      .join("; ");
+    const combinedNotes = [customsNotes, receiveNotes[t.id]?.trim()].filter(Boolean).join(" — ");
     setProcessing(t.id);
     try {
       const res = await fetch(`/api/transfers/${t.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "confirm", marketSplit, receiveNotes: receiveNotes[t.id] || undefined }),
+        body: JSON.stringify({ action: "confirm", marketSplit, receiveNotes: combinedNotes || undefined }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
@@ -136,8 +149,12 @@ export default function MarketReceiveBoard() {
                 <tbody>
                   {transfers.map((t) => {
                     const groups = groupsFor(t);
-                    const rowSum = (g: SplitGroup) => getSplit(t, g, "passed") + getSplit(t, g, "failed");
-                    const anyExceeds = groups.some((g) => rowSum(g) > g.total);
+                    // Không được nhận + hải quan giữ nhiều hơn số đã gửi, và Không đạt không được vượt Thực tế nhận.
+                    const anyExceeds = groups.some(
+                      (g) =>
+                        getInput(t, g, "customsHeld") + getInput(t, g, "actualReceived") > g.total ||
+                        getInput(t, g, "failed") > getInput(t, g, "actualReceived")
+                    );
                     const isExpanded = expanded === t.id;
 
                     return (
@@ -171,7 +188,7 @@ export default function MarketReceiveBoard() {
                             <td colSpan={4} className="bg-muted/30 px-4 py-4">
                               <div className="space-y-3">
                                 <p className="text-xs text-text-secondary bg-info-light rounded p-2">
-                                  Nhập số lượng THỰC NHẬN theo từng loại cây + quy cách, chia vào Phòng sản phẩm đạt / không đạt — được phép ít hơn số đã gửi (hao hụt vận chuyển), không được nhiều hơn.
+                                  Nhập Hải quan giữ và Thực tế nhận theo từng loại cây + quy cách — Đạt (= Thực tế nhận − Không đạt) và Lệch (= Đã gửi − Hải quan giữ − Thực tế nhận) hệ thống tự tính.
                                 </p>
                                 <div className="overflow-x-auto border rounded-lg bg-background">
                                   <table className="w-full text-sm">
@@ -181,14 +198,17 @@ export default function MarketReceiveBoard() {
                                         <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây</th>
                                         <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Quy cách</th>
                                         <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Đã gửi</th>
-                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Phòng sản phẩm đạt</th>
-                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Phòng sản phẩm không đạt</th>
-                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Thực nhận</th>
+                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Hải quan giữ</th>
+                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Thực tế nhận</th>
+                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Không đạt</th>
+                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Đạt</th>
+                                        <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Lệch</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {groups.map((g) => {
-                                        const exceeds = rowSum(g) > g.total;
+                                        const deviation = getDeviation(t, g);
+                                        const failedTooHigh = getInput(t, g, "failed") > getInput(t, g, "actualReceived");
                                         return (
                                           <tr key={`${g.plantTypeId}:${g.stageCode}`} className="border-b last:border-0 even:bg-primary-light">
                                             <td className="px-3 py-2 font-mono text-xs">{g.plantTypeCode}</td>
@@ -200,8 +220,8 @@ export default function MarketReceiveBoard() {
                                                 type="number"
                                                 min={0}
                                                 className="w-24 h-8"
-                                                value={getSplit(t, g, "passed") || ""}
-                                                onChange={(e) => setSplit(t, g, "passed", parseInt(e.target.value, 10) || 0)}
+                                                value={getInput(t, g, "customsHeld") || ""}
+                                                onChange={(e) => setInput(t, g, "customsHeld", parseInt(e.target.value, 10) || 0)}
                                               />
                                             </td>
                                             <td className="px-3 py-2">
@@ -209,12 +229,24 @@ export default function MarketReceiveBoard() {
                                                 type="number"
                                                 min={0}
                                                 className="w-24 h-8"
-                                                value={getSplit(t, g, "failed") || ""}
-                                                onChange={(e) => setSplit(t, g, "failed", parseInt(e.target.value, 10) || 0)}
+                                                value={getInput(t, g, "actualReceived") || ""}
+                                                onChange={(e) => setInput(t, g, "actualReceived", parseInt(e.target.value, 10) || 0)}
                                               />
                                             </td>
-                                            <td className={`px-3 py-2 font-medium ${exceeds ? "text-destructive" : "text-primary-strong"}`}>
-                                              {rowSum(g).toLocaleString("vi-VN")} / {g.total.toLocaleString("vi-VN")}
+                                            <td className="px-3 py-2">
+                                              <Input
+                                                type="number"
+                                                min={0}
+                                                className={`w-24 h-8 ${failedTooHigh ? "border-destructive" : ""}`}
+                                                value={getInput(t, g, "failed") || ""}
+                                                onChange={(e) => setInput(t, g, "failed", parseInt(e.target.value, 10) || 0)}
+                                              />
+                                            </td>
+                                            <td className="px-3 py-2 font-medium text-primary-strong">
+                                              {getPassed(t, g).toLocaleString("vi-VN")}
+                                            </td>
+                                            <td className="px-3 py-2 font-medium text-destructive">
+                                              {deviation.toLocaleString("vi-VN")}
                                             </td>
                                           </tr>
                                         );
@@ -224,7 +256,7 @@ export default function MarketReceiveBoard() {
                                 </div>
                                 {anyExceeds && (
                                   <p className="text-sm text-destructive flex items-center gap-1.5">
-                                    <AlertTriangle className="w-4 h-4" /> Số lượng thực nhận không được vượt quá số đã gửi.
+                                    <AlertTriangle className="w-4 h-4" /> Hải quan giữ + Thực tế nhận không được vượt quá số đã gửi, và Không đạt không được vượt quá Thực tế nhận.
                                   </p>
                                 )}
                                 <div className="space-y-1">
