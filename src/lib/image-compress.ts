@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+
 // Nén ảnh phía client trước khi gửi lên server — ảnh chụp từ điện thoại thường vài MB, resize + nén
 // JPEG để giữ dung lượng mỗi ảnh nhỏ (Cập nhật hình ảnh định kì tích luỹ nhiều ảnh/tuần, không nén sẽ
 // tốn băng thông/Storage không cần thiết, mạng hiện trường sản xuất cũng thường yếu).
@@ -67,9 +69,34 @@ function releaseCanvas(canvas: HTMLCanvasElement) {
   canvas.height = 0;
 }
 
+// "Đóng dấu" ngày giờ hiện tại vào góc dưới phải ảnh — dùng cho ảnh bằng chứng bắt buộc chụp trực tiếp
+// (xem MultiPhotoSlotGroup, capture="environment") để quản lý kĩ thuật xác nhận đúng thời điểm chụp, vẽ
+// thẳng lên pixel canvas (không phải EXIF) nên hiện ra ở MỌI nơi xem ảnh, kể cả khi tải ảnh về máy khác.
+// Cỡ chữ tính theo % chiều rộng canvas để không quá nhỏ/quá to giữa các bậc kích thước resize khác nhau.
+function stampTimestamp(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const text = format(new Date(), "dd/MM/yyyy HH:mm");
+  const fontSize = Math.max(14, Math.round(canvas.width * 0.035));
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  const paddingX = fontSize * 0.6;
+  const paddingY = fontSize * 0.4;
+  const margin = fontSize * 0.5;
+  const textWidth = ctx.measureText(text).width;
+  const boxWidth = textWidth + paddingX * 2;
+  const boxHeight = fontSize + paddingY * 2;
+  const x = canvas.width - boxWidth - margin;
+  const y = canvas.height - boxHeight - margin;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.fillRect(x, y, boxWidth, boxHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x + paddingX, y + boxHeight / 2);
+}
+
 export async function compressImageToDataUrl(
   file: File,
-  options?: { targetMaxBytes?: number; hardLimitBytes?: number; dimensionSteps?: readonly number[] }
+  options?: { targetMaxBytes?: number; hardLimitBytes?: number; dimensionSteps?: readonly number[]; stampTimestamp?: boolean }
 ): Promise<string> {
   const dimensionSteps = options?.dimensionSteps ?? DIMENSION_STEPS;
   const targetMaxBytes = options?.targetMaxBytes ?? TARGET_MAX_BYTES;
@@ -81,6 +108,7 @@ export async function compressImageToDataUrl(
 
     for (const maxDimension of dimensionSteps) {
       const canvas = drawToCanvas(bitmap, maxDimension);
+      if (options?.stampTimestamp) stampTimestamp(canvas);
       try {
         for (const quality of QUALITY_STEPS) {
           const blob = await canvasToBlob(canvas, quality);

@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Camera, X, Send, Check, Info } from "lucide-react";
+import { Loader2, Send, Check, Info } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 import { REJECT_CLASSIFICATION_COMPRESS_OPTIONS } from "@/lib/reject-classification-constants";
+import MultiPhotoSlotGroup from "@/components/shared/multi-photo-slot-group";
 
 type Item = {
   id: string;
@@ -44,58 +45,6 @@ const STATUS_BADGE_VARIANT: Record<Classification["status"], "info" | "in-progre
   PENDING_APPROVAL: "in-progress",
   APPROVED: "completed",
 };
-
-function PhotoSlotGroup({
-  urls, editable, uploading, onAdd, onRemove,
-}: {
-  urls: string[];
-  editable: boolean;
-  uploading: boolean;
-  onAdd: (file: File) => void;
-  onRemove: (url: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  return (
-    <div className="flex flex-wrap gap-2">
-      {urls.map((url) => (
-        <div key={url} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element -- ảnh từ Supabase Storage, không phải asset tĩnh */}
-          <img src={url} alt="Ảnh bằng chứng" className="w-full h-full object-cover cursor-pointer" onClick={() => window.open(url, "_blank")} />
-          {editable && (
-            <button
-              type="button"
-              onClick={() => onRemove(url)}
-              className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5"
-              aria-label="Xoá ảnh"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      ))}
-      {editable && (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onAdd(f); }}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            className="w-16 h-16 shrink-0"
-            disabled={uploading}
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-          </Button>
-        </>
-      )}
-    </div>
-  );
-}
 
 export default function RejectClassificationDetailBoard({ id, canSubmit, canApprove }: { id: string; canSubmit: boolean; canApprove: boolean }) {
   const [data, setData] = useState<Classification | null>(null);
@@ -140,7 +89,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
     const key = `${item.id}:${kind}`;
     setUploadingKey(key);
     try {
-      const compressed = await compressImageToDataUrl(file, REJECT_CLASSIFICATION_COMPRESS_OPTIONS);
+      const compressed = await compressImageToDataUrl(file, { ...REJECT_CLASSIFICATION_COMPRESS_OPTIONS, stampTimestamp: true });
       const res = await fetch(`/api/reject-classifications/${id}/photos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -304,7 +253,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <PhotoSlotGroup
+                        <MultiPhotoSlotGroup
                           urls={item.destroyPhotoUrls}
                           editable={isSubmitMode}
                           uploading={uploadingKey === `${item.id}:destroy`}
@@ -314,7 +263,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
                       </td>
                       <td className="px-3 py-2 font-medium text-primary-strong">{plantQty.toLocaleString("vi-VN")}</td>
                       <td className="px-3 py-2">
-                        <PhotoSlotGroup
+                        <MultiPhotoSlotGroup
                           urls={item.plantPhotoUrls}
                           editable={isSubmitMode}
                           uploading={uploadingKey === `${item.id}:plant`}

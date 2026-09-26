@@ -8,6 +8,13 @@ import { Camera, Loader2, X } from "lucide-react";
 // tải lên), không giữ ở dạng data URL chờ submit chung. Dùng ở Phân loại hàng không đạt (nội bộ,
 // reject-classification-detail-board.tsx) và Đề xuất Trồng/Hủy của Đối tác vận hành
 // (de-xuat-execute-form.tsx) — tách thành component dùng chung để không viết lại logic hiển thị/xoá ảnh.
+//
+// `capture="environment"` — bắt buộc chụp trực tiếp bằng camera sau, KHÔNG cho chọn ảnh có sẵn trong thư
+// viện (yêu cầu nghiệp vụ: ảnh bằng chứng phải là ảnh chụp tại chỗ, không phải ảnh cũ/ảnh lấy từ nơi
+// khác) — khác PhotoCaptureSlot (cố tình bỏ trống capture để NV chọn được ảnh có sẵn, dùng cho ảnh sinh
+// trưởng định kì không cần "tại chỗ"). Trình duyệt di động (Chrome/Safari Android/iOS) tôn trọng thuộc
+// tính này và mở thẳng camera; trên desktop KHÔNG có camera thì input rơi về chọn file thường — đây là
+// giới hạn của web, không có cách nào chặn tuyệt đối 100% qua HTML/JS thuần.
 export default function MultiPhotoSlotGroup({
   urls, editable, uploading, onAdd, onRemove,
 }: {
@@ -42,6 +49,7 @@ export default function MultiPhotoSlotGroup({
             ref={inputRef}
             type="file"
             accept="image/*"
+            capture="environment"
             className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onAdd(f); }}
           />

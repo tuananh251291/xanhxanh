@@ -71,7 +71,7 @@ export default function DeXuatExecuteForm({
     const key = `${lotId}:${kind}`;
     setUploadingKey(key);
     try {
-      const compressed = await compressImageToDataUrl(file, CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS);
+      const compressed = await compressImageToDataUrl(file, { ...CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS, stampTimestamp: true });
       const res = await fetch("/api/contamination-proposals/photos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
