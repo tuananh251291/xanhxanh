@@ -50,8 +50,13 @@ const patchSchema = z.union([
   z.object({ isTrainee: z.boolean() }),
   z.object({ probationStartDate: z.string().nullable() }),
   z.object({ unlockAccount: z.literal(true) }),
-  z.object({ code: z.string().min(1, "Nhập mã nhân viên") }),
-  z.object({ name: z.string().min(2, "Tên tối thiểu 2 ký tự") }),
+  // Sửa tài khoản đầy đủ PHẢI đứng trước 2 schema sửa nhanh "code"/"name" bên dưới — z.union thử theo thứ
+  // tự và z.object() mặc định strip field lạ thay vì báo lỗi, nên nếu 2 schema 1-field kia đứng trước,
+  // body đầy đủ {name,email,role,code,isActive} cũng "khớp" luôn với chúng (chỉ giữ lại đúng field code/
+  // name, các field còn lại bị strip mất) — sửa tài khoản qua dialog đầy đủ sẽ bị hiểu nhầm thành sửa
+  // nhanh 1 field, sai quyền (canEditEmployeeCode/canEditEmployeeName) và âm thầm bỏ qua các field khác.
+  // Đặt schema đầy đủ lên trước thì không còn bị 2 schema hẹp hơn "cướp" trước vì nó đòi hỏi thêm
+  // email/role/isActive mà 2 payload sửa nhanh kia không có.
   z.object({
     name: z.string().min(2),
     email: z.string().email(),
@@ -60,6 +65,8 @@ const patchSchema = z.union([
     isActive: z.boolean(),
     password: z.string().min(6).optional(),
   }),
+  z.object({ code: z.string().min(1, "Nhập mã nhân viên") }),
+  z.object({ name: z.string().min(2, "Tên tối thiểu 2 ký tự") }),
 ]);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
