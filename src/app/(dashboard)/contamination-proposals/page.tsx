@@ -12,11 +12,22 @@ export default async function ContaminationProposalsPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/contamination-proposals"))) redirect("/dashboard");
-  if (role !== "KHO_MO" && !isAdminRole(role) && !isKhoThanhPhamRole(role) && role !== "DOI_TAC_VAN_HANH") redirect("/dashboard");
+
+  // isRetailManager KHÔNG nằm trong session (giống /reject-classification/page.tsx) — tra riêng từ DB để
+  // biết NV bán hàng này có được gán RetailWarehouseAccess hay không trước khi cho vào trang. Sale chỉ
+  // DUYỆT (canSubmit=false) đúng các đề xuất do Đối tác vận hành gửi cho (các) kho được gán — xem lọc
+  // warehouseId ở GET /api/contamination-proposals.
+  let isSaleRetailManager = false;
+  if (role === "SALE") {
+    const user = await prisma.user.findUnique({ where: { id: session!.user!.id }, select: { isRetailManager: true } });
+    isSaleRetailManager = !!user?.isRetailManager;
+  }
+  if (role !== "KHO_MO" && !isAdminRole(role) && !isKhoThanhPhamRole(role) && role !== "DOI_TAC_VAN_HANH" && !isSaleRetailManager) redirect("/dashboard");
 
   const canSubmit = role === "KHO_MO" || isKhoThanhPhamRole(role) || role === "DOI_TAC_VAN_HANH";
   const isFinishedGoods = isKhoThanhPhamRole(role);
   const isMarketPartner = role === "DOI_TAC_VAN_HANH";
+  const canApprove = isAdminRole(role) || isSaleRetailManager;
 
   const [rooms, gardens] = await Promise.all([
     isFinishedGoods && session?.user?.workplaceWarehouseId
@@ -41,16 +52,18 @@ export default async function ContaminationProposalsPage() {
           {isFinishedGoods
             ? "Chọn phòng, chọn lô hàng thực tế, nhập số lượng Trồng/Hủy rồi gửi Admin duyệt."
             : isMarketPartner
-              ? "Lịch sử các đề xuất đã gửi Admin duyệt — tạo đề xuất mới ở mục \"Công việc hôm nay của bạn\" tại Tổng quan"
+              ? "Lịch sử các đề xuất đã gửi NV bán hàng quản lý thị trường duyệt — tạo đề xuất mới ở mục \"Công việc hôm nay của bạn\" tại Tổng quan"
               : canSubmit
                 ? "Lịch sử các đề xuất đã gửi Admin duyệt — tạo đề xuất mới ở mục \"Kiểm tra kho nhiễm cá nhân\" trong Nhiệm vụ ngày"
-                : "Duyệt các đề xuất Trồng/Hủy do Kho mô/Kho thành phẩm/Đối tác vận hành gửi lên"}
+                : isSaleRetailManager
+                  ? "Duyệt các đề xuất Trồng/Hủy do Đối tác vận hành (các) kho thị trường bạn phụ trách gửi lên"
+                  : "Duyệt các đề xuất Trồng/Hủy do Kho mô/Kho thành phẩm/Đối tác vận hành gửi lên"}
         </p>
       </div>
 
       {isFinishedGoods && <FinishedGoodsProposalSubmit rooms={rooms} gardens={gardens} />}
 
-      <ContaminationProposalBoard canApprove={isAdminRole(role)} />
+      <ContaminationProposalBoard canApprove={canApprove} />
     </div>
   );
 }

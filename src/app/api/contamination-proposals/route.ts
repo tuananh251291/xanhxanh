@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { generateContaminationProposalCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
+import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
 import { MARKET_ROOM_TYPES } from "@/lib/market-inspection";
 import { z } from "zod";
@@ -53,10 +53,19 @@ export async function GET(req: NextRequest) {
   // GET /api/contamination-proposal-drafts cho phiếu chung đang gộp dở của Kho mô.
   const where: Record<string, unknown> = status ? { status } : { status: { not: "DRAFT" } };
   // Kho mô/Kho thành phẩm/Đối tác vận hành chỉ thấy đề xuất của đúng kho mình đang làm việc — Admin thấy
-  // tất cả để duyệt.
+  // tất cả để duyệt. NV bán hàng (isRetailManager) chỉ thấy đề xuất của (các) Kho thị trường được gán qua
+  // RetailWarehouseAccess (đúng những đề xuất do Đối tác vận hành gửi — kho SAN_XUAT/THANH_PHAM không ai
+  // gán RetailWarehouseAccess tới nên không lộ nhầm sang đây).
   if (role === "KHO_MO" || isKhoThanhPhamRole(role) || role === "DOI_TAC_VAN_HANH") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
     where.warehouseId = session.user.workplaceWarehouseId;
+  } else if (role === "SALE") {
+    const access = await prisma.retailWarehouseAccess.findMany({
+      where: { userId: session.user.id },
+      select: { warehouseId: true },
+    });
+    if (access.length === 0) return NextResponse.json([]);
+    where.warehouseId = { in: access.map((a) => a.warehouseId) };
   } else if (!isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
@@ -195,15 +204,29 @@ export async function POST(req: NextRequest) {
 
   const typeLabel = type === "TRONG" ? "Trồng lại" : "Hủy bỏ";
   const locationSuffix = sourceRoomName ? ` tại ${sourceRoomName}` : "";
-  for (const targetRole of ["ADMIN", "SUPER_ADMIN"] as const) {
-    await createAlert({
+  const alertMessage = `${session!.user.name} đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${stageCode})${locationSuffix} — phiếu ${code}`;
+  // Đề xuất của Đối tác vận hành báo NV bán hàng phụ trách thị trường (RetailWarehouseAccess) duyệt,
+  // KHÁC Kho mô/Kho thành phẩm vẫn báo Admin như cũ (xem canApprove ở page.tsx/PATCH bên dưới).
+  if (isMarketPartner) {
+    await createAlertForMarketSaleStaff({
+      warehouseId,
       type: "CONTAMINATION_PROPOSAL",
       title: "Có đề xuất Trồng/Hủy mới",
-      message: `${session!.user.name} đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${stageCode})${locationSuffix} — phiếu ${code}`,
-      targetRole,
+      message: alertMessage,
       relatedId: proposal.id,
       relatedType: "ContaminationProposal",
     });
+  } else {
+    for (const targetRole of ["ADMIN", "SUPER_ADMIN"] as const) {
+      await createAlert({
+        type: "CONTAMINATION_PROPOSAL",
+        title: "Có đề xuất Trồng/Hủy mới",
+        message: alertMessage,
+        targetRole,
+        relatedId: proposal.id,
+        relatedType: "ContaminationProposal",
+      });
+    }
   }
 
   return NextResponse.json(proposal, { status: 201 });

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
-import { createAlert } from "@/lib/inventory";
+import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { z } from "zod";
 
 const schema = z.union([
@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const proposal = await prisma.contaminationProposal.findUnique({
       where: { id },
-      include: { plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true, name: true } } },
+      include: { plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true, name: true, type: true } } },
     });
     if (!proposal) return NextResponse.json({ message: "Không tìm thấy đề xuất" }, { status: 404 });
     if (proposal.status !== "REJECTED") {
@@ -91,22 +91,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     const typeLabel = type === "TRONG" ? "Trồng lại" : "Hủy bỏ";
-    for (const targetRole of ["ADMIN", "SUPER_ADMIN"] as const) {
-      await createAlert({
+    const resubmitMessage = `${session.user.name} đã sửa & gửi lại đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${proposal.stageCode}) — phiếu ${proposal.code}`;
+    if (proposal.warehouse.type === "THI_TRUONG") {
+      await createAlertForMarketSaleStaff({
+        warehouseId: proposal.warehouseId,
         type: "CONTAMINATION_PROPOSAL",
         title: "Đề xuất Trồng/Hủy đã được sửa & gửi lại",
-        message: `${session.user.name} đã sửa & gửi lại đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${proposal.stageCode}) — phiếu ${proposal.code}`,
-        targetRole,
+        message: resubmitMessage,
         relatedId: proposal.id,
         relatedType: "ContaminationProposal",
       });
+    } else {
+      for (const targetRole of ["ADMIN", "SUPER_ADMIN"] as const) {
+        await createAlert({
+          type: "CONTAMINATION_PROPOSAL",
+          title: "Đề xuất Trồng/Hủy đã được sửa & gửi lại",
+          message: resubmitMessage,
+          targetRole,
+          relatedId: proposal.id,
+          relatedType: "ContaminationProposal",
+        });
+      }
     }
 
     return NextResponse.json(updated);
-  }
-
-  if (!isAdminRole(session?.user?.role)) {
-    return NextResponse.json({ message: "Chỉ Admin mới có quyền duyệt đề xuất" }, { status: 403 });
   }
 
   const proposal = await prisma.contaminationProposal.findUnique({
@@ -114,6 +122,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true } }, requestedBy: { select: { code: true } } },
   });
   if (!proposal) return NextResponse.json({ message: "Không tìm thấy đề xuất" }, { status: 404 });
+
+  // NV bán hàng có RetailWarehouseAccess tới đúng kho này (đề xuất do Đối tác vận hành gửi) cũng duyệt
+  // được, KHÔNG chỉ Admin — Kho mô/Kho thành phẩm không ai gán RetailWarehouseAccess nên vẫn chỉ Admin
+  // duyệt được như cũ (xem canApprove ở page.tsx, khớp isSaleApprover ở PATCH /api/reject-classifications/[id]).
+  const isSaleApprover = session?.user?.role === "SALE" && !!(await prisma.retailWarehouseAccess.findUnique({
+    where: { userId_warehouseId: { userId: session.user.id, warehouseId: proposal.warehouseId } },
+  }));
+  if (!isSaleApprover && !isAdminRole(session?.user?.role)) {
+    return NextResponse.json({ message: "Bạn không có quyền duyệt đề xuất này" }, { status: 403 });
+  }
   if (proposal.status !== "PENDING") return NextResponse.json({ message: "Đề xuất đã được xử lý" }, { status: 400 });
 
   const { action, reason } = parsed.data;

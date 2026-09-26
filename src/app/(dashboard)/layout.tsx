@@ -108,6 +108,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       ...navItems,
       { href: "/inventory/thi-truong", label: "Tồn kho Kho thị trường", icon: "Boxes" },
       { href: "/reject-classification", label: "Duyệt hàng không đạt", icon: "ClipboardCheck" },
+      { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
       { href: "/reports/partner", label: "Báo cáo Kho thị trường", icon: "BarChart3" },
     ];
   }
