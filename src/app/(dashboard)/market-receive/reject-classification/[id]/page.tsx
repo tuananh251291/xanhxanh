@@ -28,5 +28,8 @@ export default async function RejectClassificationDetailPage({ params }: { param
 
   if (!isOwnerPartner && !isSaleApprover && !isAdmin) redirect("/dashboard");
 
-  return <RejectClassificationDetailBoard id={id} canSubmit={isOwnerPartner || isAdmin} canApprove={isSaleApprover || isAdmin} />;
+  // Duyệt Huỷ/Trồng CHỈ thuộc về NV bán hàng phụ trách kho đó (RetailWarehouseAccess) — Admin xem được
+  // (isAdmin vẫn qua được guard ở trên để theo dõi) nhưng KHÔNG còn duyệt thay được nữa, tránh chồng chéo
+  // trách nhiệm với Sale (xem permission khớp ở PATCH /api/reject-classifications/[id]).
+  return <RejectClassificationDetailBoard id={id} canSubmit={isOwnerPartner || isAdmin} canApprove={isSaleApprover} />;
 }

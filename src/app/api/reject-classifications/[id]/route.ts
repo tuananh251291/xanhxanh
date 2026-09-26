@@ -140,11 +140,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ success: true });
   }
 
-  // action === "approve"
+  // action === "approve" — CHỈ đúng NV bán hàng có RetailWarehouseAccess tới kho này được duyệt, kể cả
+  // Admin cũng KHÔNG duyệt thay được nữa (trước đây có quyền dự phòng) — tránh chồng chéo trách nhiệm,
+  // việc duyệt Huỷ/Trồng thuộc hẳn về Sale phụ trách thị trường (khớp canApprove ở [id]/page.tsx).
   const isSaleApprover = session.user.role === "SALE" && (await prisma.retailWarehouseAccess.findUnique({
     where: { userId_warehouseId: { userId: session.user.id, warehouseId: classification.warehouseId } },
   }));
-  if (!isSaleApprover && !isAdminRole(session.user.role)) {
+  if (!isSaleApprover) {
     return NextResponse.json({ message: "Bạn không có quyền duyệt đề xuất này" }, { status: 403 });
   }
   if (classification.status !== "PENDING_APPROVAL") {
