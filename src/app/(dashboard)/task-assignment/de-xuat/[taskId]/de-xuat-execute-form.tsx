@@ -198,6 +198,9 @@ export default function DeXuatExecuteForm({
             {isMarketPartner && (
               <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3">
                 Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/trồng để quản lý kĩ thuật xác nhận lại.
+                <br />
+                Lưu ý hình ảnh cần chụp trên nền trắng, sắp xếp gọn gàng để hiển thị rõ số lượng, các lỗi
+                của cây, tem tên cây quay ra mặt trước.
               </p>
             )}
             {loadingLots ? (
