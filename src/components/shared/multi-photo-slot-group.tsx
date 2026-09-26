@@ -1,20 +1,20 @@
 "use client";
 
-import { useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, Loader2, X } from "lucide-react";
+import CameraCaptureDialog from "@/components/shared/camera-capture-dialog";
 
 // Nhiều ảnh/1 ô (khác PhotoCaptureSlot — chỉ 1 ảnh) — mỗi ảnh thêm vào gọi upload ngay (onAdd tự nén +
 // tải lên), không giữ ở dạng data URL chờ submit chung. Dùng ở Phân loại hàng không đạt (nội bộ,
 // reject-classification-detail-board.tsx) và Đề xuất Trồng/Hủy của Đối tác vận hành
 // (de-xuat-execute-form.tsx) — tách thành component dùng chung để không viết lại logic hiển thị/xoá ảnh.
 //
-// `capture="environment"` — bắt buộc chụp trực tiếp bằng camera sau, KHÔNG cho chọn ảnh có sẵn trong thư
-// viện (yêu cầu nghiệp vụ: ảnh bằng chứng phải là ảnh chụp tại chỗ, không phải ảnh cũ/ảnh lấy từ nơi
-// khác) — khác PhotoCaptureSlot (cố tình bỏ trống capture để NV chọn được ảnh có sẵn, dùng cho ảnh sinh
-// trưởng định kì không cần "tại chỗ"). Trình duyệt di động (Chrome/Safari Android/iOS) tôn trọng thuộc
-// tính này và mở thẳng camera; trên desktop KHÔNG có camera thì input rơi về chọn file thường — đây là
-// giới hạn của web, không có cách nào chặn tuyệt đối 100% qua HTML/JS thuần.
+// Dùng CameraCaptureDialog (mở thẳng luồng camera qua getUserMedia) thay vì <input type="file"> — kể cả
+// có capture="environment", input file vẫn chỉ là GỢI Ý cho trình duyệt và trên máy tính/laptop rơi về
+// hộp thoại chọn file thường (chọn được bất kỳ ảnh có sẵn). Yêu cầu nghiệp vụ là khoá TUYỆT ĐỐI, chỉ nhận
+// ảnh chụp trực tiếp từ điện thoại — CameraCaptureDialog tự chặn hẳn thiết bị không phải điện thoại và
+// không đi qua bất kỳ hộp thoại hệ điều hành nào để "trốn" ra ngoài chọn file.
 export default function MultiPhotoSlotGroup({
   urls, editable, uploading, onAdd, onRemove,
 }: {
@@ -24,7 +24,7 @@ export default function MultiPhotoSlotGroup({
   onAdd: (file: File) => void;
   onRemove: (url: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   return (
     <div className="flex flex-wrap gap-2">
       {urls.map((url) => (
@@ -45,23 +45,16 @@ export default function MultiPhotoSlotGroup({
       ))}
       {editable && (
         <>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onAdd(f); }}
-          />
           <Button
             type="button"
             variant="outline"
             className="w-16 h-16 shrink-0"
             disabled={uploading}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => setCameraOpen(true)}
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
           </Button>
+          <CameraCaptureDialog open={cameraOpen} onOpenChange={setCameraOpen} onCaptured={onAdd} />
         </>
       )}
     </div>
