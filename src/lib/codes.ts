@@ -423,3 +423,17 @@ export async function generateRejectClassificationCode(client: Prisma.Transactio
   const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
+
+// Mã đơn vận hành lỗi = "LVH-" + năm tháng TẠO "YYYYMM" + số thứ tự 4 chữ số trong tháng — giống hệt
+// công thức generateRejectClassificationCode. Dùng tháng TẠO bản ghi (không phải occurredAt) để đánh số
+// thứ tự, giữ đúng quy ước "prefix theo tháng" nhất quán với các mã khác trong file này.
+export async function generateOperationErrorTicketCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `LVH-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.operationErrorTicket.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}

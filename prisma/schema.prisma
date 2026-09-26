@@ -456,6 +456,7 @@ model User {
   contaminationProposalsApproved       ContaminationProposal[]      @relation("ContaminationProposalApprovedBy")
   rejectedGoodsClassificationsCreated  RejectedGoodsClassification[] @relation("RejectClassCreatedBy")
   rejectedGoodsClassificationsApproved RejectedGoodsClassification[] @relation("RejectClassApprovedBy")
+  operationErrorTicketsCreated         OperationErrorTicket[]        @relation("OperationErrorTicketCreatedBy")
   contaminationRoomEntries             ContaminationRoomEntry[]
   personalContaminationChecksAsStaff   PersonalContaminationCheck[] @relation("PersonalContaminationCheckStaff")
   personalContaminationChecksAsChecker PersonalContaminationCheck[] @relation("PersonalContaminationCheckedBy")
@@ -1117,6 +1118,7 @@ model Warehouse {
   marketOrders                Order[]
   retailWarehouseAccess       RetailWarehouseAccess[]
   rejectedGoodsClassifications RejectedGoodsClassification[]
+  operationErrorTickets       OperationErrorTicket[]
 
   @@map("warehouses")
 }
@@ -2205,6 +2207,34 @@ model RejectedGoodsClassificationItem {
   saleNote         String?
 
   @@map("rejected_goods_classification_items")
+}
+
+// "Đơn vận hành lỗi" — NV bán hàng quản lý bán lẻ (RetailWarehouseAccess) của 1 Kho thị trường tự ghi
+// nhận từng trường hợp lỗi vận hành (VD gửi nhầm cây, gửi sai cây...) kèm chi phí phát sinh + tự thoả
+// thuận chia phần Xanh Xanh chịu, dùng cho báo cáo /reports/partner tab "Đơn vận hành lỗi" — Đối tác vận
+// hành CHỈ XEM (không tự tạo/sửa được), NV bán hàng phụ trách kho đó tạo bằng form hoặc nhập Excel hàng
+// loạt (xem POST/GET /api/operation-errors). partnerCost LUÔN tự tính = costAmount - xanhxanhCost
+// (không nhận trực tiếp từ client — giữ đúng quy ước "cột tự tính không cho sửa tay" đã dùng ở
+// market-receive-board.tsx/RejectedGoodsClassificationItem.plantQuantity).
+model OperationErrorTicket {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  warehouseId  String
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+  // Ngày xảy ra lỗi (NV bán hàng tự chọn, không phải ngày tạo bản ghi) — dùng để tính vào tháng nào ở
+  // báo cáo, cho phép nhập bổ sung lỗi phát hiện muộn nhưng vẫn tính đúng tháng xảy ra thật.
+  occurredAt   DateTime
+  description  String
+  costAmount   Int
+  xanhxanhCost Int      @default(0)
+  partnerCost  Int      @default(0)
+  createdById  String
+  createdBy    User     @relation("OperationErrorTicketCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([warehouseId])
+  @@map("operation_error_tickets")
 }
 
 enum ReplantHandoverStatus {
