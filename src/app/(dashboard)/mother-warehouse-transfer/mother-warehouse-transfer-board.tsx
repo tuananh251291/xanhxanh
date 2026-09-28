@@ -425,9 +425,9 @@ function IncomingTab() {
   );
 }
 
-export default function MotherWarehouseTransferBoard() {
+export default function MotherWarehouseTransferBoard({ defaultTab = "send" }: { defaultTab?: string }) {
   return (
-    <Tabs defaultValue="send">
+    <Tabs defaultValue={defaultTab}>
       <TabsList>
         <TabsTrigger value="send" className="flex items-center gap-1.5"><Send className="w-3.5 h-3.5" /> Gửi đi</TabsTrigger>
         <TabsTrigger value="incoming" className="flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" /> Nhận về</TabsTrigger>
