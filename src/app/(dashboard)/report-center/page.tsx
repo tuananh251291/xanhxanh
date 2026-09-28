@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { BarChart3, TrendingUp, Gauge, Images, ChevronRight, ArrowLeftRight, Sprout, BookOpen, ClipboardList, Download, Flag, DollarSign, Boxes, AlertTriangle, ClipboardCheck } from "lucide-react";
+import { BarChart3, TrendingUp, Gauge, Images, ChevronRight, ArrowLeftRight, Sprout, BookOpen, ClipboardList, Download, Flag, DollarSign, Boxes, AlertTriangle, ClipboardCheck, Layers } from "lucide-react";
 import { isAdminRole, canManagePayroll } from "@/types";
 
 // Hub liên kết nhẹ (KHÔNG dùng Tabs) — 2/3 trang báo cáo gốc đã bị tách riêng CÓ CHỦ ĐÍCH trước đây (xem
@@ -20,6 +20,7 @@ export default async function ReportCenterPage() {
     { href: "/reports/production-capacity", icon: Gauge, title: "Năng lực sản xuất", description: "Dự báo năng lực theo nhóm tuần xoay vòng." },
     { href: "/reports/inventory-flow-summary", icon: ArrowLeftRight, title: "Tổng hợp Nhập - Xuất", description: "Tổng nhập (theo NCC) và xuất (đơn hàng, khu SX, trồng/hủy)." },
     { href: "/reports/mother-stock-growth", icon: Sprout, title: "Mẫu mẹ gia tăng", description: "Sản lượng mẫu mẹ tăng thêm, lọc theo mã cây và tuần." },
+    { href: "/reports/mother-forecast", icon: Layers, title: "Dự kiến đáp ứng mẫu mẹ", description: "Bản kế hoạch 3 tháng tới từng cơ sở đã nộp, kèm tải Excel." },
     { href: "/reports/planting-log-summary", icon: BookOpen, title: "Dữ liệu nhật ký cấy", description: "Số cây cấy, cấy ra mẫu mẹ/thành phẩm theo NV, tuần/tháng." },
     { href: "/reports/production-record", icon: Boxes, title: "Số lượng ghi nhận", description: "Sản lượng tính KPI của NV cấy mô theo tháng, chi tiết theo ngày." },
     { href: "/reports/instruction-plan-vs-actual", icon: ClipboardList, title: "Dữ liệu chỉ định cấy", description: "So sánh kỳ vọng lúc tạo chỉ định với thực tế đã cấy ra." },

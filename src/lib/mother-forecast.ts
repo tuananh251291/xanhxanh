@@ -117,6 +117,70 @@ export async function getForecastStatus(warehouseId: string, taskMonth: Date): P
   };
 }
 
+export type MotherForecastWarehouseOverview = {
+  warehouseId: string; warehouseCode: string; warehouseName: string;
+  isLocked: boolean;
+  submittedByCode: string | null; submittedByName: string | null;
+  submittedAt: Date | null; isOnTime: boolean | null;
+  entries: ForecastEntryRow[];
+};
+
+// Toàn cảnh mọi cơ sở sản xuất cho 1 taskMonth — dùng cho Admin kỹ thuật xem bản đã nộp (khác
+// getForecastStatus chỉ trả về 1 cơ sở, dành cho chính NV Kỹ thuật đang nhập), xem
+// src/app/api/reports/mother-forecast/route.ts.
+export async function getMotherForecastOverview(taskMonth: Date): Promise<MotherForecastWarehouseOverview[]> {
+  const deadline = getForecastDeadline(taskMonth);
+  const warehouses = await prisma.warehouse.findMany({
+    where: { type: "SAN_XUAT" },
+    select: { id: true, code: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  const warehouseIds = warehouses.map((w) => w.id);
+
+  const [entries, submissions] = await Promise.all([
+    prisma.motherForecastEntry.findMany({
+      where: { taskMonth, warehouseId: { in: warehouseIds } },
+      select: {
+        id: true, warehouseId: true, plantTypeId: true, quantity1: true, quantity2: true, quantity3: true, assignedStaffId: true,
+        plantType: { select: { code: true, name: true } },
+        assignedStaff: { select: { code: true, name: true } },
+      },
+      orderBy: { plantType: { code: "asc" } },
+    }),
+    prisma.motherForecastSubmission.findMany({
+      where: { taskMonth, warehouseId: { in: warehouseIds } },
+      select: { warehouseId: true, submittedAt: true, submittedBy: { select: { code: true, name: true } } },
+    }),
+  ]);
+
+  const entriesByWarehouse = new Map<string, ForecastEntryRow[]>();
+  for (const e of entries) {
+    const row: ForecastEntryRow = {
+      entryId: e.id,
+      plantTypeId: e.plantTypeId, plantTypeCode: e.plantType.code, plantTypeName: e.plantType.name,
+      assignedStaffId: e.assignedStaffId, staffCode: e.assignedStaff.code, staffName: e.assignedStaff.name,
+      quantity1: e.quantity1, quantity2: e.quantity2, quantity3: e.quantity3,
+    };
+    const list = entriesByWarehouse.get(e.warehouseId) ?? [];
+    list.push(row);
+    entriesByWarehouse.set(e.warehouseId, list);
+  }
+  const submissionByWarehouse = new Map(submissions.map((s) => [s.warehouseId, s]));
+
+  return warehouses.map((w) => {
+    const submission = submissionByWarehouse.get(w.id) ?? null;
+    return {
+      warehouseId: w.id, warehouseCode: w.code, warehouseName: w.name,
+      isLocked: !!submission,
+      submittedByCode: submission?.submittedBy.code ?? null,
+      submittedByName: submission?.submittedBy.name ?? null,
+      submittedAt: submission?.submittedAt ?? null,
+      isOnTime: submission ? submission.submittedAt.getTime() <= deadline.getTime() : null,
+      entries: entriesByWarehouse.get(w.id) ?? [],
+    };
+  });
+}
+
 // Gọi lazy từ layout (giống ensureRootingForecastReminder) — gửi thông báo nhiệm vụ mở, chưa nộp.
 export async function ensureMotherForecastReminder(warehouseId: string | null): Promise<void> {
   if (!warehouseId) return;
