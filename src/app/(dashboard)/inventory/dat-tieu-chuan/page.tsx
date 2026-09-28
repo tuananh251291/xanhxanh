@@ -8,6 +8,7 @@ import { Package, PackageCheck, Globe, Layers, Search } from "lucide-react";
 import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeSummary from "../thanh-pham/plant-type-summary";
+import ThiTruongInventoryBoard from "../thi-truong/thi-truong-inventory-board";
 
 const LOT_SELECT = {
   quantity: true,
@@ -37,7 +38,7 @@ export default async function AvailableInventoryPage() {
   const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
   const userId = session?.user?.id ?? "";
 
-  const [homeRoom, marketRooms] = await Promise.all([
+  const [homeRoom, marketRooms, retailManagerUser] = await Promise.all([
     workplaceWarehouseId
       ? prisma.room.findFirst({
           where: { warehouseId: workplaceWarehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
@@ -55,9 +56,46 @@ export default async function AvailableInventoryPage() {
       },
       orderBy: [{ warehouse: { name: "asc" } }, { name: "asc" }],
     }),
+    // "Quản lý bán lẻ" (User.isRetailManager) — chỉ NV bán hàng, xem thêm tồn kho (các) Kho thị trường
+    // được gán (RetailWarehouseAccess) ở 1 section RIÊNG bên dưới (xem render cuối file), KHÔNG cộng vào
+    // tồn đạt tiêu chuẩn ở trên vì khác hẳn công thức/ý nghĩa (CLAUDE.md "Quy tắc tồn kho" chỉ áp dụng
+    // Kho thành phẩm).
+    role === "SALE" && userId
+      ? prisma.user.findUnique({
+          where: { id: userId },
+          select: { isRetailManager: true, retailWarehouseAccess: { select: { warehouseId: true } } },
+        })
+      : Promise.resolve(null),
   ]);
 
   const rooms = [...(homeRoom ? [homeRoom] : []), ...marketRooms];
+
+  const retailWarehouseIds = retailManagerUser?.retailWarehouseAccess.map((a) => a.warehouseId) ?? [];
+  const isRetailManager = retailManagerUser?.isRetailManager ?? false;
+  const retailRooms = isRetailManager && retailWarehouseIds.length > 0
+    ? await prisma.room.findMany({
+        where: {
+          type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"] },
+          isActive: true,
+          warehouseId: { in: retailWarehouseIds },
+        },
+        include: {
+          lots: {
+            where: { status: "ACTIVE", quantity: { gt: 0 } },
+            select: { quantity: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } } },
+          },
+          warehouse: { select: { name: true } },
+        },
+        orderBy: [{ warehouse: { name: "asc" } }, { type: "asc" }],
+      })
+    : [];
+  const retailRoomsData = retailRooms.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    warehouseName: r.warehouse.name,
+    lots: r.lots,
+  }));
 
   // T10 chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực tiếp từ Phòng
   // ra rễ) — vẫn hiển thị ở đây vì trang này đọc thẳng lô trong Phòng đạt tiêu chuẩn/Phòng thị trường.
@@ -97,12 +135,12 @@ export default async function AvailableInventoryPage() {
         </p>
       </div>
 
-      {rooms.length === 0 ? (
+      {rooms.length === 0 && !isRetailManager ? (
         <Card><CardContent className="py-12 text-center text-text-muted flex flex-col items-center gap-2">
           <Layers className="w-8 h-8 text-text-muted" />
           Chưa được cấp quyền xem kho nào — liên hệ Admin để được gán Kho thành phẩm làm việc hoặc cấp quyền xem Phòng thị trường.
         </CardContent></Card>
-      ) : (
+      ) : rooms.length === 0 ? null : (
         <>
           <Card>
             <CardHeader><CardTitle className="text-base">Tồn kho theo loại cây</CardTitle></CardHeader>
@@ -141,6 +179,12 @@ export default async function AvailableInventoryPage() {
             );
           })}
         </>
+      )}
+
+      {isRetailManager && (
+        <div className="pt-2 border-t border-divider">
+          <ThiTruongInventoryBoard rooms={retailRoomsData} showWarehouseName={retailWarehouseIds.length > 1} embedded />
+        </div>
       )}
     </div>
   );

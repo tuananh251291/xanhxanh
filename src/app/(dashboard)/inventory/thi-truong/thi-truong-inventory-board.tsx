@@ -31,9 +31,14 @@ const ROOM_ICONS: Partial<Record<RoomType, typeof Package>> = {
 export default function ThiTruongInventoryBoard({
   rooms,
   showWarehouseName,
+  embedded = false,
 }: {
   rooms: RoomData[];
   showWarehouseName: boolean;
+  // true khi nhúng vào 1 trang khác (VD /inventory/dat-tieu-chuan cho NV bán hàng "Quản lý bán lẻ") —
+  // đổi <h1> thành <h2> + đổi nhãn cho khớp ngữ cảnh section con, KHÔNG đổi số liệu/logic tính toán (vẫn
+  // tách riêng hoàn toàn khỏi tồn đạt tiêu chuẩn của trang cha, chỉ gộp chung hiển thị).
+  embedded?: boolean;
 }) {
   const [search, setSearch] = useState("");
 
@@ -60,9 +65,15 @@ export default function ThiTruongInventoryBoard({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Boxes className="w-6 h-6 text-primary-strong" /> Tồn kho
-        </h1>
+        {embedded ? (
+          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <Boxes className="w-5 h-5 text-primary-strong" /> Tồn kho Kho thị trường
+          </h2>
+        ) : (
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Boxes className="w-6 h-6 text-primary-strong" /> Tồn kho
+          </h1>
+        )}
         <p className="text-text-secondary text-sm mt-1">
           Tồn thực tế tại 3 phòng Kho thị trường · {totalQuantity.toLocaleString("vi-VN")} cây
         </p>

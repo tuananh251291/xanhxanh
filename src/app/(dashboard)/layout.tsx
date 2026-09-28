@@ -100,13 +100,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (role === "CAY_MO" && currentUser?.employmentType !== "THU_VIEC") {
     navItems = navItems.filter((item) => item.href !== "/training-roadmap" && item.href !== "/probation-evaluations");
   }
-  // "Tồn kho Kho thị trường" chỉ hiện cho NV bán hàng có bật "Quản lý bán lẻ" — không nằm sẵn trong
-  // ROLE_NAV.SALE (khác đa số role khác, trang này vốn dành cho Đối tác vận hành) nên chèn động vào đây
-  // thay vì lọc bớt.
+  // Các mục "Quản lý bán lẻ" chỉ hiện cho NV bán hàng có bật User.isRetailManager — không nằm sẵn trong
+  // ROLE_NAV.SALE (khác đa số role khác, các trang này vốn dành cho Đối tác vận hành) nên chèn động vào
+  // đây thay vì lọc bớt. "Tồn kho Kho thị trường" KHÔNG có mục riêng nữa — đã gộp hiển thị (số liệu vẫn
+  // tách riêng) vào section cuối trang "/inventory/dat-tieu-chuan" (mục "Xem tồn đạt tiêu chuẩn" có sẵn
+  // trong ROLE_NAV.SALE), trang /inventory/thi-truong vẫn còn hoạt động nếu có ai truy cập thẳng URL.
   if (role === "SALE" && currentUser?.isRetailManager) {
     navItems = [
       ...navItems,
-      { href: "/inventory/thi-truong", label: "Tồn kho Kho thị trường", icon: "Boxes" },
       { href: "/reject-classification", label: "Duyệt hàng không đạt", icon: "ClipboardCheck" },
       { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
       { href: "/reports/partner", label: "Báo cáo Kho thị trường", icon: "BarChart3" },
