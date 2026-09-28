@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { differenceInCalendarDays } from "date-fns";
 import { isNearExpiry } from "@/lib/report-utils";
-import StageLotTable, { type StageLotRow } from "./stage-lot-table";
+import { type StageLotRow } from "./stage-lot-table";
+import NearExpiryLotsSection from "./near-expiry-lots-section";
 
 // warehouseId (tuỳ chọn) — thu hẹp xuống ĐÚNG 1 kho sản xuất, dùng cho trang riêng
 // /reports/inventory-lifecycle (NV Kỹ thuật/Kho mô chỉ xem đúng cơ sở mình làm việc, xem page.tsx ở đó).
@@ -19,7 +18,7 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
       quantity: true,
       enteredAt: true,
       expectedMoveAt: true,
-      plantType: { select: { name: true } },
+      plantType: { select: { id: true, code: true, name: true } },
       // shelf = lô ở kho sản xuất (Phòng mẫu mẹ/Phòng ra rễ, xếp theo giàn kệ). room = lô ở kho thành
       // phẩm (không quản lý theo giàn kệ, gắn thẳng vào phòng) — 1 lô chỉ có ĐÚNG 1 trong 2, dùng cả 2 để
       // ghép ra "đang nằm ở khu vực nào" bên dưới.
@@ -52,12 +51,6 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
   const nearExpiryLots = activeLots
     .filter((l) => l.quantity > 0 && isNearExpiry(l.expectedMoveAt) && isPendingTransfer(l))
     .sort((a, b) => (a.expectedMoveAt?.getTime() ?? 0) - (b.expectedMoveAt?.getTime() ?? 0));
-  const overdueMotherQuantity = nearExpiryLots
-    .filter((l) => l.stage === "MAU_ME" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
-    .reduce((sum, l) => sum + l.quantity, 0);
-  const overdueFinishedQuantity = nearExpiryLots
-    .filter((l) => l.stage === "THANH_PHAM" && l.expectedMoveAt && differenceInCalendarDays(l.expectedMoveAt, new Date()) < 0)
-    .reduce((sum, l) => sum + l.quantity, 0);
 
   // "Đang nằm ở khu vực nào" — kho sản xuất (có shelf) hiện Kho + mã giàn kệ, kho thành phẩm (chỉ có
   // room, không qua giàn kệ) hiện Kho + tên phòng.
@@ -75,46 +68,23 @@ export default async function InventoryLifecycleReport({ warehouseId = null }: {
     code: lot.code,
     quantity: lot.quantity,
     expectedMoveAt: lot.expectedMoveAt,
+    plantTypeId: lot.plantType.id,
     plantTypeName: lot.plantType.name,
     location: locationLabel(lot),
   });
   const motherLots = nearExpiryLots.filter((l) => l.stage === "MAU_ME").map(toRow);
   const finishedLots = nearExpiryLots.filter((l) => l.stage === "THANH_PHAM").map(toRow);
 
+  // Chỉ đưa vào gợi ý lọc những mã cây THỰC SỰ có mặt trong danh sách sắp/quá hạn (không phải toàn bộ mã
+  // cây trong hệ thống) — gõ mã nào cũng ra kết quả, tránh chọn nhầm mã không liên quan.
+  const plantTypesById = new Map(activeLots.map((l) => [l.plantType.id, l.plantType]));
+  const plantTypes = [...new Set([...motherLots, ...finishedLots].map((l) => l.plantTypeId))]
+    .map((id) => plantTypesById.get(id)!)
+    .sort((a, b) => a.code.localeCompare(b.code));
+
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Lô sắp/quá hạn chuyển giai đoạn</CardTitle>
-          <p className="text-sm text-text-secondary">Còn ≤3 ngày hoặc đã quá hạn dự kiến chuyển giai đoạn</p>
-        </CardHeader>
-        <CardContent className="p-0">
-          {nearExpiryLots.length === 0 ? (
-            <p className="text-sm text-text-muted text-center py-6">Không có lô nào sắp/quá hạn</p>
-          ) : (
-            <div className="divide-y divide-divider">
-              <div className="p-4">
-                <h3 className="font-bold text-primary-strong mb-2">Mẫu mẹ — chờ cấy chuyển</h3>
-                {overdueMotherQuantity > 0 && (
-                  <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2 mb-3">
-                    <strong>{overdueMotherQuantity.toLocaleString("vi-VN")} cụm</strong> đã quá hạn cấy chuyển (chưa ra chỉ định cấy)
-                  </p>
-                )}
-                <StageLotTable lots={motherLots} />
-              </div>
-              <div className="p-4">
-                <h3 className="font-bold text-primary-strong mb-2">Thành phẩm — chờ chuyển kho</h3>
-                {overdueFinishedQuantity > 0 && (
-                  <p className="text-sm bg-danger-light text-destructive rounded-md px-3 py-2 mb-3">
-                    <strong>{overdueFinishedQuantity.toLocaleString("vi-VN")} cây</strong> đã quá hạn chuyển kho thành phẩm
-                  </p>
-                )}
-                <StageLotTable lots={finishedLots} />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <NearExpiryLotsSection motherLots={motherLots} finishedLots={finishedLots} plantTypes={plantTypes} />
     </div>
   );
 }

@@ -12,6 +12,7 @@ export type StageLotRow = {
   code: string;
   quantity: number;
   expectedMoveAt: Date | null;
+  plantTypeId: string;
   plantTypeName: string;
   location: string;
 };
