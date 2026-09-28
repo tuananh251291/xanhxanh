@@ -58,10 +58,12 @@ export async function resolveShelfAttributeUpdate(
   }
 
   if (input.plantTypeId !== undefined) {
-    // Đổi loại cây khi kệ đang còn lô của loại cây khác thì sẽ gây nhầm lẫn — chặn lại.
+    // Đổi loại cây khi kệ đang còn lô của loại cây khác thì sẽ gây nhầm lẫn — chặn lại. quantity > 0 —
+    // loại rác lô ACTIVE nhưng tồn đã về 0 (không xoá khỏi DB, chỉ hết hàng thật), nếu không lọc sẽ báo
+    // nhầm "còn lô của loại cây khác" cho 1 kệ đã trống thật (mirror comment ở mother-stock-reshelf.ts).
     if (input.plantTypeId) {
       const mismatched = await tx.lot.count({
-        where: { shelfId, status: "ACTIVE", plantTypeId: { not: input.plantTypeId } },
+        where: { shelfId, status: "ACTIVE", quantity: { gt: 0 }, plantTypeId: { not: input.plantTypeId } },
       });
       if (mismatched > 0) {
         return { ok: false, message: "Kệ đang có lô của loại cây khác — chuyển/xử lý hết lô cũ trước khi đổi" };
