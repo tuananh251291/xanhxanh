@@ -23,6 +23,7 @@ import { isMediumOrderInProgress, isMediumSurplusEntryDay, toVnCalendarDate } fr
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
+import { summarizeMotherWeekGroups, getMotherRotationEpoch } from "@/lib/mother-week-group";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
@@ -306,10 +307,12 @@ async function getCayMoStats(userId: string) {
   };
 }
 
-// Việc 1: tính theo số lô — mẫu mẹ do chính KY_THUAT này phụ trách (qua chỉ định gốc tạo ra lô) đã
-// "đủ thời gian đợi cấy chuyển" (expectedMoveAt <= hôm nay), kể cả lô quá hạn từ tuần trước chưa xử lý
-// (không giới hạn theo tuần hiện tại) — bấy nhiêu lô phải có mặt trong 1 chỉ định (bất kỳ ai tạo) thì
-// mới tính là xong; hạn chót là thứ 5 tuần này.
+// Việc 1: tính theo số KỆ (không phải số lô) — cùng 1 định nghĩa "kệ đến hạn cấy chuyển" và "kệ chưa có
+// chỉ định" với danh sách "kệ cần đưa ra chỉ định cấy" ở /instructions và /instructions/mother-due/[id]
+// (xem summarizeMotherWeekGroups + notLockedByActiveInstruction), scope theo đúng kho làm việc của
+// KY_THUAT này (toàn hệ thống nếu chưa gán kho). Trước đây tính theo số LÔ mẫu mẹ do chính người này tạo
+// chỉ định gốc — 1 kệ thường có nhiều lô nên số lô luôn lớn hơn hẳn số kệ hiển thị ở danh sách bên dưới,
+// gây hiểu nhầm 2 số liệu lệch nhau (VD "8/183 lô" nhưng danh sách chỉ có "41 kệ").
 // Việc 2: khi CAY_MO nhập số liệu lệch quá ngưỡng so với chỉ định, hệ thống đã tự tạo alert
 // OUTPUT_DEVIATION cho KY_THUAT (xem /api/daily-records) — KY_THUAT phải vào trang Thông báo chọn
 // nguyên nhân (KY_THUAT_SAI/CAY_MO_SAI) để xử lý. % = số alert lệch trong tuần đã chọn nguyên nhân /
@@ -331,16 +334,35 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
   ]);
   const myInstructionIds = myInstructions.map((i) => i.id);
 
-  const [dueMotherLots, deviationAlerts] = await Promise.all([
-    prisma.lot.findMany({
+  const [motherShelves, motherEpochMonday, deviationAlerts] = await Promise.all([
+    prisma.shelf.findMany({
       where: {
-        stage: "MAU_ME",
-        status: "ACTIVE",
-        expectedMoveAt: { lte: now },
-        instruction: { createdById: userId },
+        isActive: true,
+        room: { type: "PHONG_MAU_ME" },
+        rotationGroupId: { not: null },
+        ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}),
       },
-      select: { id: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        rowNumber: true,
+        colNumber: true,
+        block: true,
+        warehouse: { select: { id: true, code: true, name: true } },
+        rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
+        plantType: { select: { code: true, transferWaitWeeks: true } },
+        lots: {
+          where: { status: "ACTIVE" },
+          select: {
+            quantity: true,
+            expectedMoveAt: true,
+            instructionItems: { select: { instruction: { select: { status: true } } } },
+          },
+        },
+      },
     }),
+    getMotherRotationEpoch(),
     myInstructionIds.length === 0
       ? Promise.resolve([])
       : prisma.alert.findMany({
@@ -353,17 +375,28 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
           select: { cause: true },
         }),
   ]);
-  const dueLotIds = dueMotherLots.map((l) => l.id);
 
-  const handledItems = dueLotIds.length === 0
-    ? []
-    : await prisma.plantingInstructionItem.findMany({
-        where: { lotId: { in: dueLotIds } },
-        distinct: ["lotId"],
-        select: { lotId: true },
-      });
+  // Lô đã được dùng làm nguồn cho 1 chỉ định CÒN HIỆU LỰC (ACTIVE/DRAFT) coi như đã "có chủ" — loại khỏi
+  // biến thể "chưa xử lý" bên dưới, y hệt notLockedByActiveInstruction ở /instructions/mother-due/[id].
+  const isLotLocked = (lot: { instructionItems: { instruction: { status: string } }[] }) =>
+    lot.instructionItems.some((ii) => ii.instruction.status === "ACTIVE" || ii.instruction.status === "DRAFT");
+  const toGroupShelves = (onlyUnlocked: boolean) =>
+    motherShelves.map((s) => ({
+      ...s,
+      lots: s.lots
+        .filter((l) => !onlyUnlocked || !isLotLocked(l))
+        .map(({ quantity, expectedMoveAt }) => ({ quantity, expectedMoveAt })),
+    }));
+  const totalDueShelves = summarizeMotherWeekGroups(toGroupShelves(false), now, motherEpochMonday)
+    .filter((g) => g.isDue)
+    .flatMap((g) => g.shelves).length;
+  const pendingDueShelves = summarizeMotherWeekGroups(toGroupShelves(true), now, motherEpochMonday)
+    .filter((g) => g.isDue)
+    .flatMap((g) => g.shelves).length;
+  const instructionTotal = totalDueShelves;
+  const instructionDone = totalDueShelves - pendingDueShelves;
 
-  const instructionPercent = dueLotIds.length === 0 ? 100 : Math.round((handledItems.length / dueLotIds.length) * 100);
+  const instructionPercent = instructionTotal === 0 ? 100 : Math.round((instructionDone / instructionTotal) * 100);
   const resolvedDeviations = deviationAlerts.filter((a) => a.cause !== null).length;
   const checkPercent = deviationAlerts.length === 0 ? 100 : Math.round((resolvedDeviations / deviationAlerts.length) * 100);
 
@@ -411,8 +444,8 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
 
   return {
     weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent,
-    instructionDone: handledItems.length,
-    instructionTotal: dueLotIds.length,
+    instructionDone,
+    instructionTotal,
     backupCount, backupPercent,
     tuesdayDeadline, motherPhotoPercent, motherPhotoDone,
     motherPhotoDoneCount: motherPhotoDistinctPlantTypes.size, motherPhotoTotal,
@@ -1067,7 +1100,7 @@ function KyThuatDashboard({
             title="1. Tạo chỉ định cấy"
             deadline={`Cần hoàn thiện trong ngày Thứ 5 hàng tuần (${format(stats.thursdayDeadline, "dd/MM", { locale: vi })})`}
             percent={stats.instructionPercent}
-            countLabel={`${stats.instructionDone}/${stats.instructionTotal} lô`}
+            countLabel={`${stats.instructionDone}/${stats.instructionTotal} kệ`}
             badgeState={instructionBadgeState}
           />
           <WeeklyTaskRow
