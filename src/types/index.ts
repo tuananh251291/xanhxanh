@@ -449,7 +449,7 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   REJECTED_GOODS_CLASSIFICATION_PENDING: "/market-receive/reject-classification",
   REJECTED_GOODS_PROPOSAL_SUBMITTED: "/reject-classification",
   REJECTED_GOODS_PROPOSAL_APPROVED: "/market-receive/reject-classification",
-  MOTHER_WAREHOUSE_TRANSFER_INCOMING: "/mother-warehouse-transfer?tab=incoming",
+  MOTHER_WAREHOUSE_TRANSFER_INCOMING: "/handover-in?tab=mother-stock",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -720,11 +720,15 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // manual-settings/page.tsx) — 3 route cũ vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/manual-settings", label: "Cài đặt thủ công", icon: "Settings" },
     { href: "/mother-stock-reshelf", label: "Sắp xếp kho mẫu mẹ", icon: "ArrowLeftRight" },
-    { href: "/transfers/finished", label: "Bàn giao thành phẩm", icon: "Package" },
-    { href: "/medium-orders/receive", label: "Nhận môi trường", icon: "FlaskConical" },
+    // Gộp "Bàn giao mẫu mẹ" (giàn Phòng mẫu mẹ → kho sản xuất khác) + "Bàn giao thành phẩm"
+    // (/transfers/finished) + "Bàn giao cây trồng" (/replant-handovers) vào hub này (xem
+    // handover-out/page.tsx) — 2 route sau vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
+    { href: "/handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
-    { href: "/replant-handovers", label: "Bàn giao cây trồng", icon: "Sprout" },
-    { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
+    // Gộp "Nhận bàn giao mẫu mẹ" + "Nhận bàn giao môi trường" (/medium-orders/receive) + "Nhận bàn giao
+    // R&D" (/rnd-warehouse-handover) vào hub này (xem handover-in/page.tsx) — 2 route sau vẫn hoạt động
+    // độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
+    { href: "/handover-in", label: "Nhận bàn giao liên kho", icon: "PackageCheck" },
     // "Báo cáo tỉ lệ nhiễm" gộp vào tab trong hub này (xem violation-report/page.tsx) — route
     // /reports/mother-contamination vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },

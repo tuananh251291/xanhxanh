@@ -63,7 +63,7 @@ function destShelfLabel(s: DestShelf): string {
   return `${s.code} — ${s.name} — ${destShelfOwnerText(s)} — ${capText}`;
 }
 
-function SendTab() {
+export function SendTab() {
   const [shelves, setShelves] = useState<SendShelf[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
@@ -351,7 +351,7 @@ function IncomingRowForm({ row, destShelves, onDone }: { row: IncomingRow; destS
   );
 }
 
-function IncomingTab() {
+export function IncomingTab() {
   const [rows, setRows] = useState<IncomingRow[]>([]);
   const [destShelves, setDestShelves] = useState<DestShelf[]>([]);
   const [loading, setLoading] = useState(true);

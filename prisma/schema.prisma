@@ -239,7 +239,7 @@ enum AlertType {
   MOTHER_WAREHOUSE_TRANSFER_SHORTFALL
   // Kho mô đích có phiếu "Bàn giao mẫu mẹ" liên kho sản xuất đang chờ xác nhận (xem
   // MOTHER_WAREHOUSE_TRANSFER_TAG, sendMotherStockToWarehouse) — báo cho MỌI NV Kho mô của kho đích
-  // (workplaceWarehouseId), bấm "Xem chi tiết" đưa thẳng tới /mother-warehouse-transfer?tab=incoming (xem
+  // (workplaceWarehouseId), bấm "Xem chi tiết" đưa thẳng tới /handover-in?tab=mother-stock (xem
   // ALERT_DETAIL_LINKS). Tự chuyển READ cho MỌI người nhận (không chỉ người đã bấm xem) ngay khi có ai xác
   // nhận xong phiếu đó (xem confirmMotherStockReceipt) — khác LOT_READY_TRANSFER (dùng chung nhiều luồng
   // khác đích khác nhau nên không có 1 nơi xử lý cụ thể để điều hướng).
