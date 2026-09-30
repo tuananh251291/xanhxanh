@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   await prisma.$transaction([
     prisma.outputDeviationResolution.update({
       where: { id },
-      data: { staffResponse, staffRespondedAt: new Date() },
+      data: { staffResponse, staffRespondedAt: new Date(), staffFeedback: staffResponse === "DISAGREED" ? feedback : null },
     }),
     prisma.alert.updateMany({
       where: {

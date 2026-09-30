@@ -103,6 +103,7 @@ export default async function OutputDeviationReportPage({
           alertId: true,
           reasonText: true,
           staffResponse: true,
+          staffFeedback: true,
           errorTypes: { select: { errorType: { select: { label: true } } } },
         },
       })
@@ -330,7 +331,12 @@ export default async function OutputDeviationReportPage({
                         ) : r.resolution?.staffResponse === "ACCEPTED" ? (
                           <Badge className="bg-success-light text-success-foreground">Đã xác nhận</Badge>
                         ) : r.resolution?.staffResponse === "DISAGREED" ? (
-                          <Badge className="bg-danger-light text-destructive">Không đồng ý</Badge>
+                          <div className="space-y-1 max-w-xs">
+                            <Badge className="bg-danger-light text-destructive">Không đồng ý</Badge>
+                            {r.resolution.staffFeedback && (
+                              <p className="text-xs text-text-secondary whitespace-pre-line">Ý kiến: {r.resolution.staffFeedback}</p>
+                            )}
+                          </div>
                         ) : (
                           <Badge variant="secondary">Chờ phản hồi</Badge>
                         )}

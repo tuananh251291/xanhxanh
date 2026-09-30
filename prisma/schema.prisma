@@ -2917,6 +2917,7 @@ model OutputDeviationResolution {
   resolvedBy       User                    @relation("OutputDeviationResolvedBy", fields: [resolvedById], references: [id])
   staffResponse    DeviationStaffResponse? // chỉ có giá trị khi cause = CAY_MO_SAI
   staffRespondedAt DateTime?
+  staffFeedback    String? // ý kiến NV cấy mô, bắt buộc khi staffResponse = DISAGREED
   createdAt        DateTime                @default(now())
 
   errorTypes OutputDeviationErrorType[]
