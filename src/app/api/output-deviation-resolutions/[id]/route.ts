@@ -35,6 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       instructionId: true,
       resolvedById: true,
       resolvedBy: { select: { name: true, code: true } },
+      errorTypes: { select: { errorType: { select: { label: true } } } },
     },
   });
   if (!resolution) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
@@ -71,7 +72,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   ]);
 
   if (parsed.data.action === "disagree") {
-    const message = `NV cấy mô ${instruction.assignedTo?.code} — ${instruction.assignedTo?.name} không đồng ý với đánh giá lỗi cấy cho chỉ định ${instruction.code}.\nÝ kiến phản hồi: ${feedback}`;
+    // Kèm (các) lỗi cấy NV Kỹ thuật đã tích lúc kết luận CAY_MO_SAI — người nhận thấy ngay NV cấy mô đang
+    // phản đối lỗi nào mà không phải tra lại báo cáo.
+    const errorLabels = resolution.errorTypes.map((et) => et.errorType.label);
+    const message = [
+      `NV cấy mô ${instruction.assignedTo?.code} — ${instruction.assignedTo?.name} không đồng ý với đánh giá lỗi cấy cho chỉ định ${instruction.code}.`,
+      `Lỗi cấy NV Kỹ thuật đánh giá: ${errorLabels.length ? errorLabels.join(", ") : "—"}`,
+      `Ý kiến phản hồi: ${feedback}`,
+    ].join("\n");
+    // Admin kỹ thuật cần biết thêm NV Kỹ thuật nào đã đánh giá (NV Kỹ thuật đó thì tự biết rồi).
+    const adminMessage = `${message}\nNV Kỹ thuật đánh giá: ${resolution.resolvedBy.code} — ${resolution.resolvedBy.name}`;
     await createAlert({
       type: "OUTPUT_DEVIATION_DISAGREED",
       title: "NV cấy mô không đồng ý với đánh giá lỗi cấy",
@@ -88,7 +98,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await createAlert({
         type: "OUTPUT_DEVIATION_DISAGREED",
         title: "NV cấy mô không đồng ý với đánh giá lỗi cấy",
-        message,
+        message: adminMessage,
         userId: admin.id,
         relatedId: resolution.id,
         relatedType: "OutputDeviationResolution",
