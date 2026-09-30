@@ -48,11 +48,13 @@ export default function SealingTaskReceiveBoard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirm: { items } }),
       });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(json.message ?? "Xác nhận nhận hàng thất bại — vui lòng thử lại"); return; }
       toast.success("Đã xác nhận nhận hàn túi");
       setExpanded(null);
       load();
+    } catch {
+      toast.error("Không kết nối được máy chủ — vui lòng thử lại");
     } finally {
       setProcessing(null);
     }

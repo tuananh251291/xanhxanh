@@ -102,8 +102,10 @@ export default function TransferReceiveBoard() {
           ...(mode === "split" ? { finishedSplit } : {}),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      // Server lỗi 500 (VD transaction quá hạn) trả về body không phải JSON — không được để res.json() ném
+      // lỗi nuốt mất thông báo, người dùng phải luôn biết thao tác thành công hay thất bại.
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(json.message ?? "Xác nhận nhận hàng thất bại — vui lòng thử lại"); return; }
       if (mode === "auto" && Array.isArray(json.placements)) {
         const lines = json.placements.map((p: { lotCode: string; shelfCode: string; quantity: number; pool: string }) =>
           `${p.lotCode} → ${p.shelfCode} (${p.quantity.toLocaleString("vi-VN")}${
@@ -116,6 +118,8 @@ export default function TransferReceiveBoard() {
       }
       setExpanded(null);
       loadData();
+    } catch {
+      toast.error("Không kết nối được máy chủ — vui lòng thử lại");
     } finally { setProcessing(null); }
   };
 
@@ -127,10 +131,16 @@ export default function TransferReceiveBoard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reject" }),
       });
-      if (!res.ok) { toast.error("Có lỗi xảy ra"); return; }
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        toast.error(json.message ?? "Có lỗi xảy ra");
+        return;
+      }
       toast.success("Đã từ chối bàn giao");
       setExpanded(null);
       loadData();
+    } catch {
+      toast.error("Không kết nối được máy chủ — vui lòng thử lại");
     } finally { setProcessing(null); }
   };
 

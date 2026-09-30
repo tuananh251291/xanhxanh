@@ -47,11 +47,13 @@ export default function GoodsReceiptConfirmForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "confirm", items: payloadItems }),
       });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(json.message ?? "Nhập kho thất bại — vui lòng thử lại"); return; }
       toast.success(`Đã xác nhận số liệu thật cho kế hoạch ${code}`);
       router.push("/goods-receipts");
       router.refresh();
+    } catch {
+      toast.error("Không kết nối được máy chủ — vui lòng thử lại");
     } finally {
       setSubmitting(false);
     }

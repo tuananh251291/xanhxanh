@@ -33,6 +33,10 @@ const confirmSchema = z.object({
   assignedToId: z.string().nullable().optional(),
 });
 
+// Transaction nhận hàng chạy tuần tự nhiều lệnh (mỗi lô 1 update/create + sinh mã lô) qua pooler
+// Supabase — phiếu nhiều lô dễ vượt timeout 5s mặc định của Prisma (P2028), nên nới rộng ra.
+const RECEIVE_TX_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
+
 // Báo cho đúng Quản lý kho thành phẩm đã gán việc — CHỈ gọi khi phiếu thật sự đã được gán (assignedToId
 // + assignedById đều có), không phải mọi phiếu (đa số NV kho thành phẩm tự xử lý không qua gán việc).
 async function notifyAssignmentCompleted(
@@ -192,7 +196,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { status: "READ", readAt: new Date() },
         });
       }
-    });
+    }, RECEIVE_TX_OPTIONS);
 
     return NextResponse.json({
       success: true,
@@ -236,6 +240,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
+      // Lấy trước mã NV phụ trách chỉ định (dùng sinh mã lô con) NGOÀI transaction — trước đây gọi
+      // prisma.user.findUnique ngay trong vòng lặp của transaction, cộng dồn thời gian làm transaction
+      // vượt timeout 5s mặc định (P2028) → rollback, client không nhận được JSON nên không hiện thông báo.
+      const staffIds = [...new Set(transfer.items.map((i) => i.lot.instruction?.assignedToId).filter((v): v is string => !!v))];
+      const staffCodeById = new Map(
+        (await prisma.user.findMany({ where: { id: { in: staffIds } }, select: { id: true, code: true } })).map((u) => [u.id, u.code])
+      );
+
       await prisma.$transaction(async (tx) => {
         for (const key of totalsByGroup.keys()) {
           const [plantTypeId, stageCode] = key.split(":");
@@ -259,12 +271,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 });
                 firstAllocDone.add(currentItem.lotId);
               } else {
-                const staffUser = currentItem.lot.instruction?.assignedToId
-                  ? await prisma.user.findUnique({ where: { id: currentItem.lot.instruction.assignedToId }, select: { code: true } })
-                  : null;
+                const assignedToId = currentItem.lot.instruction?.assignedToId;
                 const code = await generateLotCode({
                   plantTypeCode: currentItem.lot.plantType.code,
-                  staffCode: staffUser?.code ?? "000",
+                  staffCode: (assignedToId && staffCodeById.get(assignedToId)) || "000",
                   stageCode: currentItem.lot.stageCode,
                   client: tx,
                 });
@@ -302,7 +312,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
           data: { status: "READ", readAt: new Date() },
         });
-      });
+      }, RECEIVE_TX_OPTIONS);
 
       await notifyAssignmentCompleted(
         transfer.assignedToId,
@@ -329,7 +339,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
         data: { status: "READ", readAt: new Date() },
       });
-    });
+    }, RECEIVE_TX_OPTIONS);
 
     await notifyAssignmentCompleted(
       transfer.assignedToId,
@@ -439,7 +449,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         select: { id: true },
       });
       return classification.id;
-    });
+    }, RECEIVE_TX_OPTIONS);
 
     if (rejectClassificationId) {
       await createAlert({
@@ -513,7 +523,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { status: "CONFIRMED", confirmedAt: new Date() },
     });
-  });
+  }, RECEIVE_TX_OPTIONS);
 
   return NextResponse.json({ success: true });
 }
