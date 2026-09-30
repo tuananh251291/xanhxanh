@@ -197,6 +197,11 @@ export async function confirmRndOutputReceipt(params: {
     }
     await tx.transferItem.updateMany({ where: { transferId: transfer.id }, data: { confirmedAt: new Date() } });
     await tx.transfer.update({ where: { id: transfer.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+    // Tắt thông báo "Có phiếu bàn giao từ R&D chờ nhận" cho mọi NV kho đích, không chỉ người vừa xác nhận.
+    await tx.alert.updateMany({
+      where: { type: "LOT_READY_TRANSFER", relatedId: transfer.id, status: "UNREAD" },
+      data: { status: "READ", readAt: new Date() },
+    });
   });
 
   return { createdLotCodes };

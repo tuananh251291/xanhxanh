@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bell, Loader2, Check, Eye } from "lucide-react";
+import { Bell, Loader2, Check, Eye, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -17,6 +17,9 @@ type Alert = {
   title: string;
   message: string;
   createdAt: string;
+  // Có giá trị khi thông báo cần NV tự thực hiện 1 tác vụ (xem GET /api/alerts) — bấm "Thực hiện" chỉ
+  // điều hướng tới màn hình tác vụ, KHÔNG đánh dấu đã xem; thông báo tự tắt khi tác vụ xử lý xong.
+  actionLink?: string | null;
 };
 
 export default function AlertsPage() {
@@ -81,6 +84,7 @@ export default function AlertsPage() {
         <div className="space-y-2">
           {alerts.map((a) => {
             const detailLink = ALERT_DETAIL_LINKS[a.type];
+            const actionLink = a.actionLink ?? null;
             return (
               <Card key={a.id} className="border-l-4 border-l-destructive">
                 <CardContent className="py-3">
@@ -94,11 +98,13 @@ export default function AlertsPage() {
                     <Button
                       size="sm"
                       className="bg-primary hover:bg-primary-hover shrink-0"
-                      onClick={() => (detailLink ? viewDetail(a.id, detailLink) : markSeen(a.id))}
+                      onClick={() => (actionLink ? router.push(actionLink) : detailLink ? viewDetail(a.id, detailLink) : markSeen(a.id))}
                       disabled={processing === a.id}
                     >
                       {processing === a.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : actionLink ? (
+                        <><PlayCircle className="w-4 h-4 mr-1" /> Thực hiện</>
                       ) : detailLink ? (
                         <><Eye className="w-4 h-4 mr-1" /> Xem chi tiết</>
                       ) : (

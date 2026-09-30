@@ -137,6 +137,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (action === "reject") {
     await prisma.transfer.update({ where: { id }, data: { status: "REJECTED" } });
+    // Phiếu bị từ chối thì không còn gì để nhận — tắt thông báo "chờ nhận" cho mọi người nhận.
+    await prisma.alert.updateMany({
+      where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
+      data: { status: "READ", readAt: new Date() },
+    });
     return NextResponse.json({ success: true });
   }
 
@@ -291,6 +296,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
         await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
         await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+        // Nhận xong — tắt thông báo "Có phiếu bàn giao thành phẩm chờ nhận" (nút "Thực hiện" ở trang
+        // Thông báo của Kho thành phẩm, xem GET /api/alerts) cho mọi NV Kho thành phẩm.
+        await tx.alert.updateMany({
+          where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
+          data: { status: "READ", readAt: new Date() },
+        });
       });
 
       await notifyAssignmentCompleted(
@@ -314,6 +325,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
       await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+      await tx.alert.updateMany({
+        where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
+        data: { status: "READ", readAt: new Date() },
+      });
     });
 
     await notifyAssignmentCompleted(

@@ -19,10 +19,21 @@ import TransferReceiveBoard from "./transfer-receive-board";
 import GoodsReceiptActions from "./goods-receipt-actions";
 import SealingTaskReceiveBoard from "./sealing-task-receive-board";
 
-export default async function GoodsReceiptsPage() {
+const TAB_VALUES = ["ncc", "transfer", "sealing", "planned"] as const;
+
+export default async function GoodsReceiptsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/goods-receipts"))) redirect("/dashboard");
+
+  // Cho phép trỏ thẳng tới 1 tab qua ?tab=... — nút "Thực hiện" ở thông báo "Có phiếu bàn giao thành
+  // phẩm chờ nhận" trỏ tới ?tab=transfer (xem GET /api/alerts), mặc định "ncc" như trước.
+  const sp = await searchParams;
+  const defaultTab = (TAB_VALUES as readonly string[]).includes(sp.tab ?? "") ? sp.tab! : "ncc";
 
   // NV kho thành phẩm chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) —
   // khác các nơi khác dùng getFinishedQualifiedRooms (VD Xử lý cây) vốn KHÔNG giới hạn theo kho.
@@ -90,7 +101,7 @@ export default async function GoodsReceiptsPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="ncc">
+      <Tabs defaultValue={defaultTab}>
         <TabsList>
           <TabsTrigger value="ncc">Nhận hàng từ NCC</TabsTrigger>
           <TabsTrigger value="transfer">Nhận bàn giao thành phẩm</TabsTrigger>

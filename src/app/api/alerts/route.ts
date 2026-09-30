@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { alertTargetRolesFor, DEVIATION_CAUSE_LABELS } from "@/types";
+import { alertTargetRolesFor, DEVIATION_CAUSE_LABELS, isKhoThanhPhamRole, RND_OUTPUT_TRANSFER_TAG } from "@/types";
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { z } from "zod";
 
@@ -29,7 +29,35 @@ export async function GET(req: NextRequest) {
     take: 100,
   });
 
-  return NextResponse.json(alerts);
+  // NV Kho thành phẩm: thông báo "có phiếu bàn giao chờ nhận" (LOT_READY_TRANSFER gắn 1 Transfer còn
+  // PENDING) có nút "Thực hiện" đưa thẳng tới màn hình nhận hàng — KHÔNG đánh dấu đã xem khi bấm, thông
+  // báo chỉ tự tắt khi phiếu được xác nhận/từ chối xong (xem PATCH /api/transfers/[id],
+  // confirmRndOutputReceipt). Phiếu đã xử lý rồi (alert cũ còn sót) thì không có actionLink → nút "Đã xem".
+  const actionLinks = new Map<string, string>();
+  if (isKhoThanhPhamRole(session.user.role)) {
+    const transferIds = alerts
+      .filter((a) => a.type === "LOT_READY_TRANSFER" && a.relatedType === "Transfer" && a.relatedId && a.status === "UNREAD")
+      .map((a) => a.relatedId!);
+    if (transferIds.length > 0) {
+      const pending = await prisma.transfer.findMany({
+        where: { id: { in: transferIds }, status: "PENDING" },
+        select: { id: true, notes: true },
+      });
+      for (const t of pending) {
+        actionLinks.set(
+          t.id,
+          t.notes?.startsWith(RND_OUTPUT_TRANSFER_TAG) ? "/rnd-warehouse-handover" : "/goods-receipts?tab=transfer"
+        );
+      }
+    }
+  }
+
+  return NextResponse.json(
+    alerts.map((a) => ({
+      ...a,
+      actionLink: a.type === "LOT_READY_TRANSFER" && a.relatedId ? actionLinks.get(a.relatedId) ?? null : null,
+    }))
+  );
 }
 
 const patchSchema = z.object({
