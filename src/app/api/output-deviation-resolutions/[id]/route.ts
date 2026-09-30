@@ -4,7 +4,12 @@ import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
 
-const patchSchema = z.object({ action: z.enum(["accept", "disagree"]) });
+const patchSchema = z.object({
+  action: z.enum(["accept", "disagree"]),
+  // Ý kiến phản hồi của NV cấy mô — bắt buộc khi không đồng ý, gửi kèm trong thông báo cho NV Kỹ thuật
+  // đã đánh giá + Admin kỹ thuật.
+  feedback: z.string().trim().max(1000).optional(),
+});
 
 // Phản hồi của NV cấy mô với kết luận CAY_MO_SAI của NV Kỹ thuật (xem PATCH /api/alerts — tạo
 // OutputDeviationResolution + gửi alert OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED có relatedId = id ở đây).
@@ -16,6 +21,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
+  const feedback = parsed.data.feedback ?? "";
+  if (parsed.data.action === "disagree" && !feedback) {
+    return NextResponse.json({ message: "Vui lòng ghi ý kiến phản hồi khi không đồng ý" }, { status: 400 });
+  }
 
   const resolution = await prisma.outputDeviationResolution.findUnique({
     where: { id },
@@ -62,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   ]);
 
   if (parsed.data.action === "disagree") {
-    const message = `NV cấy mô ${instruction.assignedTo?.code} — ${instruction.assignedTo?.name} không đồng ý với đánh giá lỗi cấy cho chỉ định ${instruction.code}.`;
+    const message = `NV cấy mô ${instruction.assignedTo?.code} — ${instruction.assignedTo?.name} không đồng ý với đánh giá lỗi cấy cho chỉ định ${instruction.code}.\nÝ kiến phản hồi: ${feedback}`;
     await createAlert({
       type: "OUTPUT_DEVIATION_DISAGREED",
       title: "NV cấy mô không đồng ý với đánh giá lỗi cấy",
