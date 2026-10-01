@@ -38,7 +38,7 @@ export default async function BanGiaoMMDuPage() {
                     <p className="text-sm font-mono font-bold text-info-foreground truncate">{c.code}</p>
                     <p className="text-xs text-text-secondary">Còn dư {c.surplus.toLocaleString("vi-VN")} cụm mẫu mẹ</p>
                   </div>
-                  <SurplusHandoverButton instructionId={c.id} surplus={c.surplus} />
+                  <SurplusHandoverButton instructionId={c.id} instructionCode={c.code} surplus={c.surplus} />
                 </CardContent>
               </Card>
             ))}

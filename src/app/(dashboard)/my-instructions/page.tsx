@@ -188,7 +188,7 @@ export default async function MyInstructionsPage() {
                               <Link href={`/instructions/${inst.id}`}>
                                 <Button size="sm"><Eye className="w-4 h-4 mr-1" /> Xem</Button>
                               </Link>
-                              {canHandoverSurplus && <SurplusHandoverButton instructionId={inst.id} surplus={surplus} />}
+                              {canHandoverSurplus && <SurplusHandoverButton instructionId={inst.id} instructionCode={inst.code} surplus={surplus} />}
                             </div>
                           </td>
                         </tr>
