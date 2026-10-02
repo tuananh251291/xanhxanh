@@ -29,6 +29,7 @@ export default function ExcelImportCard({
   disabled = false,
   disabledHint,
   successLabel,
+  onImported,
   children,
 }: {
   icon?: React.ReactNode;
@@ -40,6 +41,9 @@ export default function ExcelImportCard({
   disabled?: boolean;
   disabledHint?: string;
   successLabel?: (count: number) => string;
+  // Gọi sau khi nhập thành công — cho các board tự fetch dữ liệu phía client (router.refresh() không
+  // làm chúng tải lại).
+  onImported?: () => void;
   children?: React.ReactNode;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -82,6 +86,7 @@ export default function ExcelImportCard({
         const zeroedSuffix = importResult.zeroedCount ? ` — kèm ${importResult.zeroedCount} lô trùng dữ liệu bị dồn về 0` : "";
         const duplicateSuffix = importResult.duplicateCount ? ` — bỏ qua ${importResult.duplicateCount} dòng trùng đã nhập trước đó` : "";
         toast.success(`${label}${zeroedSuffix}${duplicateSuffix}`);
+        onImported?.();
       } else {
         // File có dòng lỗi = KHÔNG ghi gì cả (xem các route /api/data-import/*) — báo rõ chưa nhập được
         // gì, tránh hiểu nhầm "đã nhập 0 dòng" là hệ thống có lỗi, thay vì hiểu đúng là cần sửa & tải lại.

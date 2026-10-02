@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import ExcelImportCard from "@/components/shared/excel-import-card";
+import { Loader2, Check, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 
 type Row = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; vndPerUnit: number | null };
@@ -15,6 +17,7 @@ export default function PlantTypeKpiRateBoard() {
   const [query, setQuery] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [excelOpen, setExcelOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,8 +60,24 @@ export default function PlantTypeKpiRateBoard() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-2">
           <Input placeholder="Tìm theo mã hoặc tên cây…" value={query} onChange={(e) => setQuery(e.target.value)} className="w-64" />
+          <Dialog open={excelOpen} onOpenChange={setExcelOpen}>
+            <DialogTrigger render={<Button size="sm" variant="outline" />}>
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Nhập đơn giá bằng Excel
+            </DialogTrigger>
+            <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-xl max-h-[90vh] overflow-y-auto">
+              <ExcelImportCard
+                icon={<FileSpreadsheet className="w-5 h-5" />}
+                title="Nhập đơn giá bằng Excel"
+                description="File mẫu đã điền sẵn mọi mã cây kèm đơn giá hiện tại — sửa cột Đơn giá rồi tải lên. Dòng để trống Đơn giá được giữ nguyên."
+                templateUrl="/api/payroll/plant-type-kpi-rate/import"
+                uploadUrl="/api/payroll/plant-type-kpi-rate/import"
+                successLabel={(n) => `Đã cập nhật đơn giá cho ${n} mã cây`}
+                onImported={() => { setDrafts({}); load(); }}
+              />
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 
