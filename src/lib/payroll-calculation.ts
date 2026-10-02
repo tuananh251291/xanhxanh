@@ -114,8 +114,8 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
         fromUserId: true,
         createdAt: true,
         status: true,
-        items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true } } } },
-        inspection: { select: { items: { select: { plantTypeId: true, creditedQuantity: true } } } },
+        items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, stageCode: true } } } },
+        inspection: { select: { items: { select: { plantTypeId: true, stageCode: true, creditedQuantity: true } } } },
       },
     }),
     prisma.violationRecord.groupBy({
@@ -144,7 +144,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       where: { assignedToId: { in: staffIds }, weekStart: { gte: rangeStart, lt: rangeEnd } },
       select: { assignedToId: true, inputMotherQuantity: true, dailyRecords: { select: { motherContaminatedM05: true } } },
     }),
-    prisma.plantTypeKpiRate.findMany({ select: { plantTypeId: true, vndPerUnit: true } }),
+    prisma.plantTypeKpiRate.findMany({ select: { plantTypeId: true, stageCode: true, vndPerUnit: true } }),
   ]);
 
   // Ngày công tiêu chuẩn/số ngày nghỉ lễ hưởng lương — GIỐNG NHAU cho mọi NV trong cùng kỳ, tính 1 lần.
@@ -178,23 +178,25 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   // "Sản lượng đủ điều kiện" theo mã cây — luồng Xanh tính trực tiếp từng dòng (đã tách sẵn theo lô/mã
   // cây); luồng Đỏ dùng thẳng TransferInspectionItem.plantTypeId (Kho mô kiểm tra đã tách riêng CREDIT
   // theo từng mã cây ngay từ lúc lưu, xem POST /api/transfers/receive-phong-toi/inspect/[transferId] —
-  // không cần suy đoán/phân bổ tỉ lệ nữa).
+  // không cần suy đoán/phân bổ tỉ lệ nữa). Đơn giá quy đổi theo (mã cây + quy cách) — key rateKey().
   const recordedByStaffAndPlant = new Map<string, Map<string, number>>();
-  const addRecorded = (staffId: string, plantTypeId: string, qty: number) => {
+  const rateKey = (plantTypeId: string, stageCode: string) => `${plantTypeId}|${stageCode}`;
+  const addRecorded = (staffId: string, key: string, qty: number) => {
     const m = recordedByStaffAndPlant.get(staffId) ?? new Map<string, number>();
-    m.set(plantTypeId, (m.get(plantTypeId) ?? 0) + qty);
+    m.set(key, (m.get(key) ?? 0) + qty);
     recordedByStaffAndPlant.set(staffId, m);
   };
-  const plantRateMap = new Map(plantRates.map((r) => [r.plantTypeId, r.vndPerUnit]));
+  const plantRateMap = new Map(plantRates.map((r) => [rateKey(r.plantTypeId, r.stageCode), r.vndPerUnit]));
 
   for (const t of transfers) {
     const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
     dayEntry.active = true;
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
-        addRecorded(t.fromUserId, insItem.plantTypeId, insItem.creditedQuantity);
+        const key = rateKey(insItem.plantTypeId, insItem.stageCode);
+        addRecorded(t.fromUserId, key, insItem.creditedQuantity);
         dayEntry.quantity += insItem.creditedQuantity;
-        dayEntry.amount += insItem.creditedQuantity * (plantRateMap.get(insItem.plantTypeId) ?? 0);
+        dayEntry.amount += insItem.creditedQuantity * (plantRateMap.get(key) ?? 0);
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
@@ -205,10 +207,11 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       // production-record-report.ts — xem giải thích đầy đủ ở đó).
       for (const item of t.items) {
         const credited = item.quantity - item.unqualifiedQuantity;
-        addRecorded(t.fromUserId, item.lot.plantTypeId, credited);
+        const key = rateKey(item.lot.plantTypeId, item.lot.stageCode);
+        addRecorded(t.fromUserId, key, credited);
         dayEntry.quantity += credited;
         dayEntry.unqualified += item.unqualifiedQuantity;
-        dayEntry.amount += credited * (plantRateMap.get(item.lot.plantTypeId) ?? 0);
+        dayEntry.amount += credited * (plantRateMap.get(key) ?? 0);
       }
     }
     // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa ghi nhận được, bỏ qua.
@@ -261,7 +264,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
 
     const recordedMap = recordedByStaffAndPlant.get(s.id);
     const eligibleProductionAmount = recordedMap
-      ? [...recordedMap.entries()].reduce((sum, [plantTypeId, qty]) => sum + qty * (plantRateMap.get(plantTypeId) ?? 0), 0)
+      ? [...recordedMap.entries()].reduce((sum, [key, qty]) => sum + qty * (plantRateMap.get(key) ?? 0), 0)
       : 0;
 
     const contam = contaminationByStaff.get(s.id);

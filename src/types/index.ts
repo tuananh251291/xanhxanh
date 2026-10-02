@@ -246,6 +246,10 @@ export const FINISHED_SPEC_LABELS = {
   T10: "T10 — túi 10 cây",
 } as const;
 
+// Quy cách có đơn giá riêng trong "Quy đổi sản lượng – KPI" (PlantTypeKpiRate) — đúng các quy cách NV cấy
+// mô bàn giao phòng tối. Bàn giao quy cách ngoài danh sách (hoặc chưa đặt đơn giá) = quy đổi 0đ.
+export const KPI_RATE_STAGE_CODES = ["M05", "T01", "T05"] as const;
+
 // Số cây trong 1 túi theo quy cách — dùng để quy đổi số cây sang số túi (VD: T05 → chia 5)
 export const FINISHED_SPEC_BAG_SIZE = {
   T01: 1,

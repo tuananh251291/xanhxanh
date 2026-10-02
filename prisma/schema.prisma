@@ -833,7 +833,7 @@ model PlantType {
   goodsReceiptItems          GoodsReceiptItem[]
   repackInstructions         RepackInstruction[]
   motherPhotos               MotherPhoto[]
-  kpiRate                    PlantTypeKpiRate?
+  kpiRates                   PlantTypeKpiRate[]
   transferInspectionItems    TransferInspectionItem[]
   dailyTasks                 DailyTask[]
   motherStockWeekSnapshots   MotherStockWeekSnapshot[]
@@ -3411,15 +3411,20 @@ model SalesManagerAssignment {
 // sổ/đóng băng theo kỳ.
 // ============================================================
 
-// "Quy đổi sản lượng – KPI" — đơn giá VNĐ/đơn vị theo từng mã cây, dùng quy đổi số lượng thành phẩm
-// NV cấy mô bàn giao (đã được Kho mô xác nhận) sang giá trị VNĐ để so với Sản lượng chỉ tiêu.
+// "Quy đổi sản lượng – KPI" — đơn giá VNĐ/đơn vị theo từng (mã cây + quy cách M05/T01/T05, xem
+// KPI_RATE_STAGE_CODES), dùng quy đổi số lượng NV cấy mô bàn giao (đã được Kho mô xác nhận) sang giá trị
+// VNĐ để so với Sản lượng chỉ tiêu. Đơn vị = cây (T01/T05) hoặc cụm (M05), giống Lot.quantity.
+// stageCode @default("T01") chỉ để db push thêm cột được trên bảng đã có dữ liệu (đơn giá cũ theo mã cây,
+// áp chung mọi quy cách) — xem prisma/migrate-kpi-rate-stage-codes.ts nhân bản sang M05/T05.
 model PlantTypeKpiRate {
   id          String    @id @default(cuid())
-  plantTypeId String    @unique
+  plantTypeId String
   plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  stageCode   String    @default("T01")
   vndPerUnit  Int
   updatedAt   DateTime  @updatedAt
 
+  @@unique([plantTypeId, stageCode])
   @@map("plant_type_kpi_rates")
 }
 
