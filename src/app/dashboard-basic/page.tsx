@@ -9,6 +9,8 @@ import { Leaf, LayoutDashboard } from "lucide-react";
 import { getCayMoQuestStats } from "@/lib/cay-mo-quest-stats";
 import { randomGreetingQuote } from "@/lib/greetings";
 import { ensureInstructionsEnded } from "@/lib/instruction-lifecycle";
+import { prisma } from "@/lib/prisma";
+import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-roadmap";
 import CayMoQuestDashboard from "./quest-dashboard";
 import LogoutFab from "./logout-fab";
 
@@ -20,6 +22,27 @@ export default async function DashboardBasicPage() {
   const today = format(new Date(), "EEEE, dd/MM/yyyy", { locale: vi });
   const role = session.user.role;
   const userName = session.user.name ?? "";
+
+  // Thẻ "Lộ trình đào tạo thử việc" — chỉ NV cấy mô đang thử việc, giống Giao diện nâng cao.
+  let training: { subtitle: string } | null = null;
+  if (role === "CAY_MO") {
+    const staff = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { employmentType: true, probationStartDate: true },
+    });
+    if (staff?.employmentType === "THU_VIEC") {
+      const week = staff.probationStartDate
+        ? getCurrentTrainingWeek(staff.probationStartDate, TRAINING_ROADMAP_WEEKS.length)
+        : null;
+      training = {
+        subtitle: !staff.probationStartDate
+          ? "Chưa có ngày bắt đầu thử việc — liên hệ Hành chính nhân sự"
+          : week
+          ? `Tuần ${week}: ${TRAINING_ROADMAP_WEEKS[week - 1].goalTitle}`
+          : "Xem mục tiêu và yêu cầu cần đạt từng tuần",
+      };
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -47,6 +70,7 @@ export default async function DashboardBasicPage() {
             userId={session.user.id}
             quote={randomGreetingQuote()}
             today={today}
+            training={training}
           />
         ) : (
           <div className="max-w-3xl mx-auto space-y-6">

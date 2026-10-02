@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   Flame, Trophy, Swords, Medal, Bell, CheckCircle2, XCircle,
-  PackageCheck, PenLine, Moon, Send, Volume2, VolumeX, CalendarPlus, ChevronRight, PackageMinus, RefreshCw, type LucideIcon,
+  PackageCheck, PenLine, Moon, Send, Volume2, VolumeX, CalendarPlus, ChevronRight, PackageMinus, RefreshCw, GraduationCap, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,13 +29,15 @@ const QUEST_ICONS: Record<Quest["key"], LucideIcon> = {
 const MUTE_STORAGE_KEY = "caymo-quest-sound-muted";
 
 export default function CayMoQuestDashboard({
-  stats, userName, userId, quote, today,
+  stats, userName, userId, quote, today, training,
 }: {
   stats: CayMoQuestStats;
   userName: string;
   userId: string;
   quote: string;
   today: string;
+  // Chỉ có khi NV đang thử việc — thẻ dẫn tới Lộ trình đào tạo thử việc.
+  training: { subtitle: string } | null;
 }) {
   const [confettiBurst, setConfettiBurst] = useState(0);
   const [muted, setMuted] = useState(false);
@@ -152,6 +154,23 @@ export default function CayMoQuestDashboard({
       <p className="text-sm font-bold text-primary-strong bg-primary-light border border-primary-light rounded-2xl px-4 py-3">
         {quote}
       </p>
+
+      {training && (
+        <Link href="/dashboard-basic/lo-trinh-dao-tao" className="block">
+          <Card className="border border-primary-light bg-primary-light/40 hover:bg-primary-light/60 transition-colors">
+            <CardContent className="py-4 flex items-center gap-3">
+              <div className="bg-primary text-primary-foreground p-2.5 rounded-xl shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-primary-strong">Lộ trình đào tạo thử việc</p>
+                <p className="text-xs text-text-secondary">{training.subtitle}</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {stats.rootingTarget && <CayMoRootingTargetCard target={stats.rootingTarget} />}
 
