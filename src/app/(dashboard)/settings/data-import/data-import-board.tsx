@@ -1,6 +1,6 @@
 "use client";
 
-import { UploadCloud, Users, Layers, Sprout, ClipboardList, Send, Leaf, PenLine, Handshake } from "lucide-react";
+import { UploadCloud, Users, Layers, Sprout, ClipboardList, Send, Leaf, PenLine, Handshake, Moon } from "lucide-react";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 
 export default function DataImportBoard() {
@@ -98,6 +98,14 @@ export default function DataImportBoard() {
         templateUrl="/api/data-import/customers"
         uploadUrl="/api/data-import/customers"
         successLabel={(n) => `Đã nhập/cập nhật ${n} khách hàng`}
+      />
+
+      <ExcelImportCard
+        icon={<Moon className="w-5 h-5" />}
+        title="10. Tồn kho phòng tối cá nhân"
+        description={'Nhập số lượng đang nằm trong Phòng tối cá nhân của từng NV cấy mô (chưa lên kệ), không cần chỉ định cấy — mỗi dòng là 1 NV + 1 mã cây + 1 ngày vào phòng tối, kèm số lượng M05/T01/T05. Lô vào đúng phòng tối của NV tại kho làm việc; NV vẫn Kiểm tra nhiễm rồi Bàn giao như bình thường. CẬP NHẬT THAY THẾ: combo (NV + mã cây + quy cách + ngày) có trong file bị ghi đè số lượng (để trống ô = 0), combo không có trong file giữ nguyên. Cần NV đã có (mục 1) và đã gán kho sản xuất làm việc.'}
+        templateUrl="/api/data-import/dark-room-lots"
+        uploadUrl="/api/data-import/dark-room-lots"
       />
     </div>
   );
