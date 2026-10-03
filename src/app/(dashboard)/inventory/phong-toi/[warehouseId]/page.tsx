@@ -85,7 +85,7 @@ export default async function PhongToiWarehousePage({
       {contaminationRoom && (
         <Card>
           <CardContent className="flex items-center justify-between py-4">
-            <span className="text-base font-bold text-primary-strong">Phòng nhiễm</span>
+            <span className="text-base font-bold text-primary-strong">Kho nhiễm chung (Phòng nhiễm)</span>
             <Link href={`/inventory/phong-toi/${warehouse.id}/${contaminationRoom.id}`}>
               <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
                 <Search className="w-3.5 h-3.5 mr-1.5" /> Xem chi tiết

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { COMMON_CONTAMINATION_STAFF_ID, COMMON_CONTAMINATION_LABEL } from "@/types";
 
 // Số nhiễm đang "chờ xử lý" (chưa gộp vào dòng nháp nào) của kho sản xuất Kho mô đang làm việc, tách
 // theo NV cấy mô báo nhiễm — dùng đổ danh sách tên NV + số lượng cho "Kiểm tra kho nhiễm cá nhân" (xem
@@ -17,7 +18,7 @@ export async function GET() {
   });
   if (balances.length === 0) return NextResponse.json([]);
 
-  const staffIds = [...new Set(balances.map((b) => b.staffId).filter((id) => id !== ""))];
+  const staffIds = [...new Set(balances.map((b) => b.staffId).filter((id) => id !== "" && id !== COMMON_CONTAMINATION_STAFF_ID))];
   const staffList = staffIds.length
     ? await prisma.user.findMany({ where: { id: { in: staffIds } }, select: { id: true, code: true, name: true } })
     : [];
@@ -28,7 +29,7 @@ export async function GET() {
       .map((b) => ({
         staffId: b.staffId,
         staffCode: staffById.get(b.staffId)?.code ?? null,
-        staffName: staffById.get(b.staffId)?.name ?? null,
+        staffName: b.staffId === COMMON_CONTAMINATION_STAFF_ID ? COMMON_CONTAMINATION_LABEL : staffById.get(b.staffId)?.name ?? null,
         plantTypeId: b.plantTypeId,
         plantTypeCode: b.plantType.code,
         plantTypeName: b.plantType.name,

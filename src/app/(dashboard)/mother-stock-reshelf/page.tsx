@@ -15,7 +15,7 @@ export default async function MotherStockReshelfPage() {
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <ArrowLeftRight className="w-6 h-6 text-primary-strong" /> Sắp xếp kho mẫu mẹ
         </h1>
-        <p className="text-text-secondary text-sm mt-1">Đổi giàn kệ mẫu mẹ nội bộ trong kho.</p>
+        <p className="text-text-secondary text-sm mt-1">Đổi giàn kệ mẫu mẹ nội bộ trong kho, hoặc chuyển mẫu mẹ nhiễm xuống Kho nhiễm chung.</p>
       </div>
       <MotherStockReshelfBoard />
     </div>

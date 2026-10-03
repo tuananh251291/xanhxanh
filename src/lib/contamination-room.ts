@@ -12,6 +12,7 @@ const BALANCE_CATEGORY_BY_REASON: Record<ContaminationEntryReason, Contamination
   DARK_ROOM_SELF_CHECK_UNDONE: "LO_BAN_GIAO",
   RED_LANE_INSPECTION: "LO_BAN_GIAO",
   PROPOSAL_REJECTED_REFUND: "LO_BAN_GIAO",
+  MOTHER_STOCK_TO_CONTAMINATION: "LO_BAN_GIAO",
 };
 
 // Phòng nhiễm — 1 phòng/kho sản xuất, đã seed sẵn (xem prisma/seed.ts, code "{warehouseCode}-NHIEM").

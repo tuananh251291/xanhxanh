@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/combobox";
 import { ArrowLeftRight, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { COMMON_CONTAMINATION_LABEL } from "@/types";
 
 type LotOnShelf = {
   code: string;
@@ -42,6 +43,11 @@ type ShelfOption = {
 };
 
 type ComboOption = { value: string; label: string };
+
+// Giá trị "giàn đích" đặc biệt — chuyển mẫu mẹ xuống Kho nhiễm chung (Phòng nhiễm, khu kho tối) thay vì
+// sang 1 giàn khác (xem moveMotherStockToContamination).
+const CONTAMINATION_TARGET = "__KHO_NHIEM_CHUNG__";
+const CONTAMINATION_OPTION: ComboOption = { value: CONTAMINATION_TARGET, label: `${COMMON_CONTAMINATION_LABEL} (kho tối) — chuyển mẫu mẹ nhiễm xuống để đề xuất trồng/hủy` };
 
 function ownerText(s: ShelfOption): string {
   return s.assignedStaffName
@@ -81,13 +87,14 @@ export default function MotherStockReshelfBoard() {
   const shelfByCode = useMemo(() => new Map(shelves.map((s) => [s.code, s])), [shelves]);
   const fromShelf = fromOption ? shelfByCode.get(fromOption.value) ?? null : null;
   const toShelf = toOption ? shelfByCode.get(toOption.value) ?? null : null;
+  const toContamination = toOption?.value === CONTAMINATION_TARGET;
 
   const fromOptions = useMemo(
     () => shelves.filter((s) => s.used > 0).map((s) => ({ value: s.code, label: shelfComboLabel(s) })),
     [shelves]
   );
   const toOptions = useMemo(
-    () => shelves.filter((s) => s.code !== fromOption?.value).map((s) => ({ value: s.code, label: shelfComboLabel(s) })),
+    () => [CONTAMINATION_OPTION, ...shelves.filter((s) => s.code !== fromOption?.value).map((s) => ({ value: s.code, label: shelfComboLabel(s) }))],
     [shelves, fromOption]
   );
 
@@ -130,19 +137,18 @@ export default function MotherStockReshelfBoard() {
       const res = await fetch("/api/mother-stock-reshelf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromShelfCode: fromOption.value,
-          quantity: qty,
-          toShelfCode: toOption.value,
-          plantTypeId: plantTypeOption.value,
-        }),
+        body: JSON.stringify(
+          toContamination
+            ? { fromShelfCode: fromOption.value, quantity: qty, toContamination: true, plantTypeId: plantTypeOption.value }
+            : { fromShelfCode: fromOption.value, quantity: qty, toShelfCode: toOption.value, plantTypeId: plantTypeOption.value }
+        ),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       const lotsText = (json.movedLots ?? [])
         .map((l: { lotCode: string; quantity: number }) => `${l.lotCode} (${l.quantity.toLocaleString("vi-VN")})`)
         .join(", ");
-      toast.success(`Đã chuyển ${qty.toLocaleString("vi-VN")} cụm từ ${json.fromShelfCode} sang ${json.toShelfCode}`, {
+      toast.success(`Đã chuyển ${qty.toLocaleString("vi-VN")} cụm từ ${json.fromShelfCode} sang ${toContamination ? COMMON_CONTAMINATION_LABEL : json.toShelfCode}`, {
         description: lotsText,
       });
       resetForm();
@@ -279,6 +285,13 @@ export default function MotherStockReshelfBoard() {
             </div>
           )}
 
+          {toContamination && (
+            <p className="text-sm text-text-secondary">
+              Mẫu mẹ sẽ bị trừ khỏi giàn nguồn và chuyển vào <strong>{COMMON_CONTAMINATION_LABEL}</strong> — số lượng này hiện ở mục
+              {" "}&quot;Kiểm tra kho nhiễm cá nhân&quot; (dòng &quot;{COMMON_CONTAMINATION_LABEL}&quot;) để đề xuất trồng/hủy.
+            </p>
+          )}
+
           {toShelf && (
             <p className="text-sm text-text-secondary">
               Giàn đích {toShelf.code}: {ownerText(toShelf)} —{" "}
@@ -313,7 +326,7 @@ export default function MotherStockReshelfBoard() {
 
           <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
             {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-            Xác nhận chuyển giàn
+            {toContamination ? `Xác nhận chuyển xuống ${COMMON_CONTAMINATION_LABEL}` : "Xác nhận chuyển giàn"}
           </Button>
         </CardContent>
       </Card>

@@ -1,54 +1,28 @@
 import { prisma } from "@/lib/prisma";
 import { generateLotCode } from "@/lib/codes";
-import { sumLotQuantity } from "@/types";
+import { sumLotQuantity, COMMON_CONTAMINATION_STAFF_ID } from "@/types";
+import { addToContaminationRoom } from "@/lib/contamination-room";
 import { ShelfAssignError, matchesAllowedCodes } from "@/lib/shelf-assignment";
 
 export type MovedLotInfo = { lotCode: string; quantity: number };
 
-// Nhân viên Kho mô chuyển mẫu mẹ từ GIÀN NGUỒN sang GIÀN ĐÍCH trong CÙNG Phòng mẫu mẹ của kho mình phụ
-// trách — dùng để dồn/xếp lại kho cho gọn, KHÔNG liên quan tới bàn giao từ Phòng tối (đó là
-// receive-phong-toi.ts). NV chọn giàn + ĐÚNG 1 mã cây muốn chuyển (plantTypeId, bắt buộc — giàn "chung"
-// có thể đang chứa nhiều mã cây khác nhau cùng lúc, không được rút xuyên mã cây), không chọn lô cụ thể —
-// 1 mã cây trên 1 giàn có thể vẫn có NHIỀU lô cùng lúc (khác NV/khác ngày cấy), nên rút theo FIFO trong
-// phạm vi ĐÚNG mã cây đó (lô vào trước rút trước, giống quy ước trừ tồn nhiều lô đang dùng ở nơi khác —
-// xem api/goods-receipt-items/[id]/return/route.ts), tự tách lô nếu 1 lô không đủ hết phần cần rút hoặc
-// rút tràn sang nhiều lô.
-//
-// KHÔNG còn khái niệm "hạn cấy chuyển" gắn theo từng lô ở đây — "đạt hạn" của mẫu mẹ giờ tính THUẦN theo
-// lịch xoay vòng của Nhóm tuần mẫu mẹ mà GIÀN ĐÍCH thuộc về (xem summarizeMotherWeekGroups ở
-// src/lib/mother-week-group.ts), không phụ thuộc ngày lô cụ thể vào giàn. Chuyển vào giàn đã gán Nhóm
-// tuần nào thì tự động theo lịch của Nhóm đó; chuyển về giàn chưa gán Nhóm (Kho mẫu mẹ chung hoặc giàn
-// "đã chia" nhưng chưa gán Nhóm) thì không có/không cần thông tin hạn. Vì vậy hàm này chỉ đổi shelfId,
-// giữ nguyên enteredAt/expectedMoveAt gốc của từng lô (2 field này không còn được dùng để tính hạn của
-// mẫu mẹ nữa, chỉ còn mang tính lịch sử).
-export async function moveMotherStock(params: {
+// Tìm giàn nguồn (Phòng mẫu mẹ của đúng kho) + xác định trước sẽ rút bao nhiêu từ lô nào của ĐÚNG mã cây
+// (FIFO), chặn lô đang "có chủ" — dùng chung cho chuyển giàn (moveMotherStock) lẫn chuyển xuống Kho nhiễm
+// chung (moveMotherStockToContamination).
+async function planMotherStockDraws(params: {
   fromShelfCode: string;
   quantity: number;
-  toShelfCode: string;
   workplaceWarehouseId: string;
   plantTypeId: string;
-}): Promise<{ movedLots: MovedLotInfo[]; fromShelfCode: string; toShelfCode: string; totalQuantity: number }> {
-  const { fromShelfCode, quantity, toShelfCode, workplaceWarehouseId, plantTypeId } = params;
-
-  if (quantity <= 0) throw new ShelfAssignError("Số cụm chuyển phải lớn hơn 0");
-  if (fromShelfCode.trim().toUpperCase() === toShelfCode.trim().toUpperCase()) {
-    throw new ShelfAssignError("Giàn đích trùng với giàn nguồn");
-  }
+}) {
+  const { fromShelfCode, quantity, workplaceWarehouseId, plantTypeId } = params;
 
   const fromShelf = await prisma.shelf.findFirst({
     where: { code: fromShelfCode.trim().toUpperCase(), warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
-    select: { id: true, code: true },
+    select: { id: true, code: true, warehouseId: true, warehouse: { select: { code: true } } },
   });
   if (!fromShelf) {
     throw new ShelfAssignError(`Không tìm thấy giàn Phòng mẫu mẹ đang hoạt động thuộc kho này với mã: ${fromShelfCode}`);
-  }
-
-  const toShelf = await prisma.shelf.findFirst({
-    where: { code: toShelfCode.trim().toUpperCase(), warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
-    include: { lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } } },
-  });
-  if (!toShelf) {
-    throw new ShelfAssignError(`Không tìm thấy giàn Phòng mẫu mẹ đang hoạt động thuộc kho này với mã: ${toShelfCode}`);
   }
 
   const sourceLots = await prisma.lot.findMany({
@@ -98,6 +72,49 @@ export async function moveMotherStock(params: {
     throw new ShelfAssignError(
       `Lô ${lockedDraw.lot.code} trên giàn ${fromShelf.code} đang là nguồn của chỉ định cấy ${instructionCodes.join(", ")} — chỉ định này chưa được Kho mô bàn giao nên chưa thể sắp xếp lại. Cần liên hệ Kỹ thuật hủy chỉ định đó trước khi sắp xếp.`
     );
+  }
+
+  return { fromShelf, draws };
+}
+
+// Nhân viên Kho mô chuyển mẫu mẹ từ GIÀN NGUỒN sang GIÀN ĐÍCH trong CÙNG Phòng mẫu mẹ của kho mình phụ
+// trách — dùng để dồn/xếp lại kho cho gọn, KHÔNG liên quan tới bàn giao từ Phòng tối (đó là
+// receive-phong-toi.ts). NV chọn giàn + ĐÚNG 1 mã cây muốn chuyển (plantTypeId, bắt buộc — giàn "chung"
+// có thể đang chứa nhiều mã cây khác nhau cùng lúc, không được rút xuyên mã cây), không chọn lô cụ thể —
+// 1 mã cây trên 1 giàn có thể vẫn có NHIỀU lô cùng lúc (khác NV/khác ngày cấy), nên rút theo FIFO trong
+// phạm vi ĐÚNG mã cây đó (lô vào trước rút trước, giống quy ước trừ tồn nhiều lô đang dùng ở nơi khác —
+// xem api/goods-receipt-items/[id]/return/route.ts), tự tách lô nếu 1 lô không đủ hết phần cần rút hoặc
+// rút tràn sang nhiều lô.
+//
+// KHÔNG còn khái niệm "hạn cấy chuyển" gắn theo từng lô ở đây — "đạt hạn" của mẫu mẹ giờ tính THUẦN theo
+// lịch xoay vòng của Nhóm tuần mẫu mẹ mà GIÀN ĐÍCH thuộc về (xem summarizeMotherWeekGroups ở
+// src/lib/mother-week-group.ts), không phụ thuộc ngày lô cụ thể vào giàn. Chuyển vào giàn đã gán Nhóm
+// tuần nào thì tự động theo lịch của Nhóm đó; chuyển về giàn chưa gán Nhóm (Kho mẫu mẹ chung hoặc giàn
+// "đã chia" nhưng chưa gán Nhóm) thì không có/không cần thông tin hạn. Vì vậy hàm này chỉ đổi shelfId,
+// giữ nguyên enteredAt/expectedMoveAt gốc của từng lô (2 field này không còn được dùng để tính hạn của
+// mẫu mẹ nữa, chỉ còn mang tính lịch sử).
+export async function moveMotherStock(params: {
+  fromShelfCode: string;
+  quantity: number;
+  toShelfCode: string;
+  workplaceWarehouseId: string;
+  plantTypeId: string;
+}): Promise<{ movedLots: MovedLotInfo[]; fromShelfCode: string; toShelfCode: string; totalQuantity: number }> {
+  const { fromShelfCode, quantity, toShelfCode, workplaceWarehouseId, plantTypeId } = params;
+
+  if (quantity <= 0) throw new ShelfAssignError("Số cụm chuyển phải lớn hơn 0");
+  if (fromShelfCode.trim().toUpperCase() === toShelfCode.trim().toUpperCase()) {
+    throw new ShelfAssignError("Giàn đích trùng với giàn nguồn");
+  }
+
+  const { fromShelf, draws } = await planMotherStockDraws({ fromShelfCode, quantity, workplaceWarehouseId, plantTypeId });
+
+  const toShelf = await prisma.shelf.findFirst({
+    where: { code: toShelfCode.trim().toUpperCase(), warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
+    include: { lots: { where: { status: "ACTIVE" }, select: { quantity: true, stageCode: true } } },
+  });
+  if (!toShelf) {
+    throw new ShelfAssignError(`Không tìm thấy giàn Phòng mẫu mẹ đang hoạt động thuộc kho này với mã: ${toShelfCode}`);
   }
 
   // Đúng cây được gắn với giàn kệ đích — kiểm tra cho TỪNG lô nguồn sẽ rút, vì 1 giàn chung có thể đang
@@ -172,4 +189,47 @@ export async function moveMotherStock(params: {
     toShelfCode: toShelf.code,
     totalQuantity: quantity,
   };
+}
+
+// Kho mô chuyển mẫu mẹ từ 1 giàn Phòng mẫu mẹ (kho sáng) xuống Kho nhiễm chung (= Phòng nhiễm của kho,
+// nằm trong khu kho tối) — cùng cách chọn giàn + đúng 1 mã cây + rút FIFO như moveMotherStock. Trừ thẳng
+// Lot.quantity của lô nguồn (giữ initialQuantity như khi báo nhiễm ở nơi khác, xem lot-inspections), cộng
+// vào lô gộp Phòng nhiễm theo từng lô nguồn (truy vết được qua ContaminationRoomEntry) và ghi số dư "chờ
+// xử lý" vào bucket COMMON_CONTAMINATION_STAFF_ID — Kho mô đề xuất trồng/hủy phần này riêng ở mục "Kiểm
+// tra kho nhiễm cá nhân" (dòng "Kho nhiễm chung").
+export async function moveMotherStockToContamination(params: {
+  fromShelfCode: string;
+  quantity: number;
+  workplaceWarehouseId: string;
+  plantTypeId: string;
+  userId: string;
+}): Promise<{ movedLots: MovedLotInfo[]; fromShelfCode: string; totalQuantity: number }> {
+  const { fromShelfCode, quantity, workplaceWarehouseId, plantTypeId, userId } = params;
+  if (quantity <= 0) throw new ShelfAssignError("Số cụm chuyển phải lớn hơn 0");
+
+  const { fromShelf, draws } = await planMotherStockDraws({ fromShelfCode, quantity, workplaceWarehouseId, plantTypeId });
+
+  const movedLots: MovedLotInfo[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const { lot, take } of draws) {
+      await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: take } } });
+      await addToContaminationRoom(tx, {
+        warehouseId: fromShelf.warehouseId,
+        warehouseCode: fromShelf.warehouse.code,
+        plantTypeId: lot.plantTypeId,
+        plantTypeCode: lot.plantType.code,
+        stage: lot.stage,
+        stageCode: lot.stageCode,
+        quantity: take,
+        reportedById: userId,
+        reason: "MOTHER_STOCK_TO_CONTAMINATION",
+        sourceLotId: lot.id,
+        sourceLotCode: lot.code,
+        staffBalanceOwnerId: COMMON_CONTAMINATION_STAFF_ID,
+      });
+      movedLots.push({ lotCode: lot.code, quantity: take });
+    }
+  });
+
+  return { movedLots, fromShelfCode: fromShelf.code, totalQuantity: quantity };
 }

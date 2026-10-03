@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Layers, User, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import ContaminationDraftSubmit from "@/components/shared/contamination-draft-submit";
+import { COMMON_CONTAMINATION_STAFF_ID, COMMON_CONTAMINATION_LABEL } from "@/types";
 
 type ContaminationCategory = "DANG_THUC_HIEN" | "LO_BAN_GIAO";
 type Balance = {
@@ -16,7 +17,7 @@ type Balance = {
   category: ContaminationCategory; quantity: number;
 };
 type StaffCheck = { staffId: string; staffCode: string; staffName: string; checked: boolean };
-// checked = null cho bucket "" (tồn cũ/không rõ NV) — không có khái niệm "kiểm tra kho nhiễm cá nhân" vì
+// checked = null cho bucket "" (tồn cũ/không rõ NV) và bucket Kho nhiễm chung — không có khái niệm "kiểm tra kho nhiễm cá nhân" vì
 // không phải 1 NV cấy mô thật.
 type StaffGroup = { staffId: string; label: string; totalQuantity: number; rows: Balance[]; checked: boolean | null };
 
@@ -132,6 +133,17 @@ export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: 
       };
     });
 
+    // Kho nhiễm chung — mẫu mẹ Kho mô tự chuyển từ kho sáng xuống (xem /mother-stock-reshelf), luôn hiện
+    // (kể cả khi đang trống) để Kho mô biết có mục này.
+    const commonRows = balancesByStaff.get(COMMON_CONTAMINATION_STAFF_ID) ?? [];
+    groups.push({
+      staffId: COMMON_CONTAMINATION_STAFF_ID,
+      label: COMMON_CONTAMINATION_LABEL,
+      totalQuantity: commonRows.reduce((sum, r) => sum + r.quantity, 0),
+      rows: commonRows,
+      checked: null,
+    });
+
     const unattributedRows = balancesByStaff.get("") ?? [];
     if (unattributedRows.length > 0) {
       groups.push({
@@ -143,7 +155,10 @@ export default function ContaminationPersonalBoard({ onChecked }: { onChecked?: 
       });
     }
 
+    // Kho nhiễm chung đứng đầu, bucket "Chưa rõ NV / tồn cũ" đứng cuối.
     return groups.sort((a, b) => {
+      if (a.staffId === COMMON_CONTAMINATION_STAFF_ID) return -1;
+      if (b.staffId === COMMON_CONTAMINATION_STAFF_ID) return 1;
       if (a.staffId === "") return 1;
       if (b.staffId === "") return -1;
       return a.label.localeCompare(b.label);

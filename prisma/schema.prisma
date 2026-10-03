@@ -2358,6 +2358,9 @@ enum ContaminationEntryReason {
   // Kho mô "Hoàn lại" bàn giao Phòng tối — huỷ đúng số đã cộng lúc NV cấy mô tự kiểm tra nhiễm trước đó
   // (quantity luôn ÂM), để NV cấy mô kiểm tra lại — xem POST /api/transfers/receive-phong-toi/revert.
   DARK_ROOM_SELF_CHECK_UNDONE
+  // Kho mô chuyển mẫu mẹ từ giàn Phòng mẫu mẹ (kho sáng) xuống Kho nhiễm chung — xem
+  // moveMotherStockToContamination (src/lib/mother-stock-reshelf.ts).
+  MOTHER_STOCK_TO_CONTAMINATION
 }
 
 // ============================================================

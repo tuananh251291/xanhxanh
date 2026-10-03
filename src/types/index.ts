@@ -535,7 +535,14 @@ export const CONTAMINATION_ENTRY_REASON_LABELS = {
   EXCEL_IMPORT: "Nhập liệu Excel",
   PROPOSAL_REJECTED_REFUND: "Hoàn lại (đề xuất bị từ chối)",
   DARK_ROOM_SELF_CHECK_UNDONE: "Hoàn lại (Kho mô hoàn tác bàn giao)",
+  MOTHER_STOCK_TO_CONTAMINATION: "Kho mô chuyển mẫu mẹ từ kho sáng xuống",
 } as const;
+
+// staffId "giả" trong ContaminationStaffBalance/ContaminationProposal cho phần nhiễm thuộc "Kho nhiễm
+// chung" (= Phòng nhiễm của kho) do Kho mô tự chuyển mẫu mẹ từ kho sáng xuống — không gắn NV cấy mô nào,
+// tách riêng khỏi bucket "" (tồn cũ/không rõ NV) để Kho mô đề xuất trồng/hủy riêng. Không phải id User thật.
+export const COMMON_CONTAMINATION_STAFF_ID = "KHO_NHIEM_CHUNG";
+export const COMMON_CONTAMINATION_LABEL = "Kho nhiễm chung";
 
 // Nhãn trạng thái đơn đặt hàng môi trường (MediumOrder) — dựa trên confirmedAt/endedAt (null/có giá trị).
 export const MEDIUM_ORDER_STATUS_LABELS = {

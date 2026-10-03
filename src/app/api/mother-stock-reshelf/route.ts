@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { sumLotQuantity } from "@/types";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
-import { moveMotherStock } from "@/lib/mother-stock-reshelf";
+import { moveMotherStock, moveMotherStockToContamination } from "@/lib/mother-stock-reshelf";
 import { z } from "zod";
 
 export async function GET() {
@@ -73,10 +73,13 @@ export async function GET() {
   });
 }
 
+// toContamination = true: chuyển xuống Kho nhiễm chung (Phòng nhiễm của kho) thay vì sang 1 giàn khác —
+// khi đó bỏ qua toShelfCode.
 const moveSchema = z.object({
   fromShelfCode: z.string().trim().min(1),
   quantity: z.number().int().positive(),
-  toShelfCode: z.string().trim().min(1),
+  toShelfCode: z.string().trim().optional(),
+  toContamination: z.boolean().optional(),
   plantTypeId: z.string().min(1),
 });
 
@@ -90,8 +93,14 @@ export async function POST(req: NextRequest) {
   const parsed = moveSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
+  const { fromShelfCode, quantity, toShelfCode, toContamination, plantTypeId } = parsed.data;
   try {
-    const result = await moveMotherStock({ ...parsed.data, workplaceWarehouseId });
+    if (toContamination) {
+      const result = await moveMotherStockToContamination({ fromShelfCode, quantity, plantTypeId, workplaceWarehouseId, userId: session.user.id });
+      return NextResponse.json({ success: true, ...result });
+    }
+    if (!toShelfCode) return NextResponse.json({ message: "Chưa chọn giàn đích" }, { status: 400 });
+    const result = await moveMotherStock({ fromShelfCode, quantity, toShelfCode, plantTypeId, workplaceWarehouseId });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
     if (e instanceof ShelfAssignError) return NextResponse.json({ message: e.message }, { status: 409 });

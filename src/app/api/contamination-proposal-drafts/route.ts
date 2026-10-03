@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { COMMON_CONTAMINATION_STAFF_ID, COMMON_CONTAMINATION_LABEL } from "@/types";
 import { generateContaminationProposalCode } from "@/lib/codes";
 import { z } from "zod";
 import type { ContaminationBalanceCategory } from "@prisma/client";
@@ -21,7 +22,7 @@ export async function GET() {
   });
   if (lines.length === 0) return NextResponse.json([]);
 
-  const staffIds = [...new Set(lines.map((l) => l.staffId).filter((id) => id !== ""))];
+  const staffIds = [...new Set(lines.map((l) => l.staffId).filter((id) => id !== "" && id !== COMMON_CONTAMINATION_STAFF_ID))];
   const staffList = staffIds.length
     ? await prisma.user.findMany({ where: { id: { in: staffIds } }, select: { id: true, name: true } })
     : [];
@@ -31,7 +32,7 @@ export async function GET() {
     lines.map((l) => ({
       id: l.id,
       staffId: l.staffId,
-      staffName: staffById.get(l.staffId)?.name ?? null,
+      staffName: l.staffId === COMMON_CONTAMINATION_STAFF_ID ? COMMON_CONTAMINATION_LABEL : staffById.get(l.staffId)?.name ?? null,
       type: l.type,
       plantTypeCode: l.plantType.code,
       plantTypeName: l.plantType.name,
@@ -50,7 +51,7 @@ const entrySchema = z.object({
   trongQuantity: z.number().int().min(0),
 });
 const postSchema = z.object({
-  staffId: z.string(), // "" = tồn cũ/không rõ NV
+  staffId: z.string(), // "" = tồn cũ/không rõ NV, COMMON_CONTAMINATION_STAFF_ID = Kho nhiễm chung
   entries: z.array(entrySchema).min(1),
 });
 
