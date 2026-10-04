@@ -1,6 +1,7 @@
 import { addWeeks, startOfWeek, endOfWeek, addDays } from "date-fns";
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
 import { getRotationEpoch, getRotationEpochResolver, resolveRotationEpoch, type RotationEpochResolver } from "@/lib/rotation-epoch";
+import { getSystemConfig } from "@/lib/inventory";
 
 // Key lưu trong SystemConfig (giá trị CHUNG) — giá trị là chuỗi tuần ISO 8601 dạng "YYYY-Www" (VD
 // "2026-W27"), đánh dấu tuần thực tế đầu tiên được coi là Nhóm tuần mẫu mẹ 1. Mỗi kho có thể đặt giá trị
@@ -13,9 +14,33 @@ export async function getMotherRotationEpoch(warehouseId?: string | null): Promi
   return getRotationEpoch("MAU_ME", warehouseId);
 }
 
-// Bảng tra theo kho — truyền vào summarizeMotherWeekGroups khi tổng hợp kệ của NHIỀU kho cùng lúc.
-export async function getMotherRotationEpochResolver(): Promise<RotationEpochResolver> {
-  return getRotationEpochResolver("MAU_ME");
+// "Quá hạn tạm thời" — danh sách giàn mẫu mẹ (shelfId) Admin cho hiện vào danh sách đến hạn cấy chuyển
+// NGOÀI lịch xoay vòng, kèm ngày hết hiệu lực (sau ngày đó tự bỏ qua, không cần dọn tay). Dùng khi 1 Nhóm
+// đã lỡ hạn ra chỉ định (VD 04/10/2026: lần đầu nhập liệu Kim Động, lỡ Thứ 5 của MM4 giàn C07/C08) — Nhóm
+// đã qua lượt thì summarizeMotherWeekGroups không hiện nữa (không có khái niệm "quá hạn" chung, áp chung sẽ
+// làm hiện lại hàng trăm lô cũ ở kho khác). Giá trị SystemConfig: JSON {"shelfIds": [...], "until": "YYYY-MM-DD"}.
+export const MOTHER_FORCED_DUE_KEY = "mother_forced_due_shelves";
+
+export async function getForcedDueMotherShelfIds(now: Date = new Date()): Promise<Set<string>> {
+  const raw = await getSystemConfig(MOTHER_FORCED_DUE_KEY, "");
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw) as { shelfIds?: unknown; until?: unknown };
+    if (!Array.isArray(parsed.shelfIds) || typeof parsed.until !== "string") return new Set();
+    const until = new Date(`${parsed.until}T23:59:59+07:00`);
+    if (Number.isNaN(until.getTime()) || now.getTime() > until.getTime()) return new Set();
+    return new Set(parsed.shelfIds.filter((id): id is string => typeof id === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+export type MotherEpochResolver = RotationEpochResolver & { forcedDueShelfIds?: Set<string> };
+
+// Bảng tra theo kho (kèm danh sách "quá hạn tạm thời") — truyền vào summarizeMotherWeekGroups.
+export async function getMotherRotationEpochResolver(): Promise<MotherEpochResolver> {
+  const [resolver, forcedDueShelfIds] = await Promise.all([getRotationEpochResolver("MAU_ME"), getForcedDueMotherShelfIds()]);
+  return { ...resolver, forcedDueShelfIds };
 }
 
 // Hạn cấy chuyển (Lot.expectedMoveAt) cho lô mẫu mẹ NHẬP THẲNG lên giàn bằng Excel (mục 4 Giàn kệ mới, mục
@@ -59,6 +84,8 @@ export type MotherWeekGroupShelf = {
   block: string | null;
   lotCount: number;
   quantity: number;
+  // Giàn nằm trong danh sách "quá hạn tạm thời" (getForcedDueMotherShelfIds) — hiện ngoài lịch xoay vòng.
+  overdue?: boolean;
 };
 
 // Hạn chót thực tế của thông báo báo trước 1 tuần (xem summarizeMotherWeekGroups) — Thứ 5 của tuần đang
@@ -113,8 +140,9 @@ export function summarizeMotherWeekGroups(
   }[],
   now: Date = new Date(),
   // Date = 1 mốc cho mọi kệ (đã tra sẵn cho đúng 1 kho); RotationEpochResolver = tra theo kho của từng kệ.
-  motherEpoch?: Date | RotationEpochResolver
+  motherEpoch?: Date | MotherEpochResolver
 ): MotherWeekGroupStatus[] {
+  const forcedDueShelfIds = motherEpoch && !(motherEpoch instanceof Date) ? motherEpoch.forcedDueShelfIds : undefined;
   // Cửa sổ "đến hạn" của TỪNG LÔ (tuần này hoặc tuần sau — khớp đúng cửa sổ báo trước 1 tuần dùng để
   // tính isDue cấp Nhóm bên dưới). Nhóm "đến hạn" theo đúng lịch xoay vòng KHÔNG có nghĩa MỌI kệ trong
   // Nhóm đó đều thật sự đến hạn — kệ vừa được xếp lô mới (VD Kho mô vừa nhận cây sáng nay, đúng lúc rơi
@@ -130,7 +158,7 @@ export function summarizeMotherWeekGroups(
   // Tách thêm theo kho NẾU kho đó có tuần khởi đầu riêng (khác giá trị chung) — cùng nhãn "MM1" nhưng 2 kho
   // chạy 2 lịch khác nhau thì đến hạn ở 2 tuần khác nhau. Kho dùng giá trị chung giữ nguyên key cũ (không
   // đổi groupId → không làm bắn lại cảnh báo đã gửi, xem mother-ready.ts).
-  const byGroup = new Map<string, MotherWeekGroupStatus & { totalSlots: number | null; epoch: Date | undefined }>();
+  const byGroup = new Map<string, MotherWeekGroupStatus & { totalSlots: number | null; epoch: Date | undefined; forcedLotCount: number }>();
   for (const shelf of shelves) {
     if (!shelf.rotationGroup) continue;
     const totalSlots = shelf.plantType?.transferWaitWeeks ?? null;
@@ -148,12 +176,15 @@ export function summarizeMotherWeekGroups(
       isDue: false,
       totalSlots,
       epoch,
+      forcedLotCount: 0,
     };
     // Chỉ liệt kê kệ THẬT SỰ có lô mẫu mẹ ĐẾN HẠN (đã lọc isLotDue) — 1 Nhóm xoay vòng thường có nhiều
     // kệ trống (chưa từng xếp gì, chờ dự phòng) hoặc kệ vừa mới xếp lô (chưa đến hạn) hơn số kệ thật sự
     // cần tạo chỉ định; nếu vẫn liệt kê, KY_THUAT sẽ thấy kệ đó trong danh sách "đến hạn cấy chuyển"
     // nhưng bấm "Tạo chỉ định" thì không có lô nào thật sự sẵn sàng.
-    const dueLots = shelf.lots.filter(isLotDue);
+    // Giàn "quá hạn tạm thời": lấy MỌI lô còn hàng (không lọc theo hạn của lô) — xem getForcedDueMotherShelfIds.
+    const forced = !!forcedDueShelfIds?.has(shelf.id);
+    const dueLots = forced ? shelf.lots.filter((l) => l.quantity > 0) : shelf.lots.filter(isLotDue);
     if (dueLots.length > 0) {
       const quantity = dueLots.reduce((sum, lot) => sum + lot.quantity, 0);
       entry.shelves.push({
@@ -169,7 +200,9 @@ export function summarizeMotherWeekGroups(
         block: shelf.block,
         lotCount: dueLots.length,
         quantity,
+        ...(forced ? { overdue: true } : {}),
       });
+      if (forced) entry.forcedLotCount += dueLots.length;
       entry.lotCount += dueLots.length;
       entry.totalQuantity += quantity;
     }
@@ -194,11 +227,13 @@ export function summarizeMotherWeekGroups(
       const nextWeekSlot = nextWeekInRange ? getCurrentWeekSlot(entry.totalSlots, nextWeek, motherEpochMonday) : null;
       entry.isDue = entry.rotationOrder === currentSlot || entry.rotationOrder === nextWeekSlot;
     }
+    // Nhóm có giàn "quá hạn tạm thời" còn hàng thì luôn hiện, bất kể lịch xoay vòng.
+    for (const entry of byGroup.values()) if (entry.forcedLotCount > 0) entry.isDue = true;
   }
 
   return Array.from(byGroup.values())
     .sort((a, b) => (a.rotationOrder ?? 0) - (b.rotationOrder ?? 0))
-    .map(({ totalSlots: _totalSlots, epoch: _epoch, ...rest }) => rest);
+    .map(({ totalSlots: _totalSlots, epoch: _epoch, forcedLotCount: _forcedLotCount, ...rest }) => rest);
 }
 
 export type MotherDueWarehouseSummary = {

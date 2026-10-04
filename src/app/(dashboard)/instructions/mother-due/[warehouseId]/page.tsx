@@ -10,7 +10,7 @@ import Link from "next/link";
 import { startOfDay, endOfDay } from "date-fns";
 import { isAdminRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
-import { summarizeMotherWeekGroups, getMotherDueDeadline, getMotherRotationEpoch } from "@/lib/mother-week-group";
+import { summarizeMotherWeekGroups, getMotherDueDeadline, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
 import { format } from "date-fns";
 import CreateInstructionDialog from "../../create-instruction-dialog";
 
@@ -84,7 +84,9 @@ export default async function MotherDueWarehousePage({
         lots: { where: lotWhere, select: { quantity: true, expectedMoveAt: true } },
       },
     }),
-    getMotherRotationEpoch(warehouseId),
+    // Bảng tra theo kho của từng kệ (đúng tuần khởi đầu riêng của kho này nếu có) + danh sách giàn "quá
+    // hạn tạm thời" (xem getForcedDueMotherShelfIds).
+    getMotherRotationEpochResolver(),
   ]);
 
   const dueShelves = summarizeMotherWeekGroups(shelves, new Date(), motherEpochMonday)
@@ -169,6 +171,9 @@ export default async function MotherDueWarehousePage({
                   <span className="text-xs font-mono truncate min-w-0">
                     {s.code.split("-").pop() ?? s.code}
                     {s.plantTypeCode ? ` · ${s.plantTypeCode}` : ""}
+                    {s.overdue && (
+                      <span className="ml-1.5 font-sans font-semibold rounded px-1 py-0.5 bg-danger-light text-destructive">Quá hạn</span>
+                    )}
                   </span>
                   <CreateInstructionDialog
                     initialShelfId={s.id}
