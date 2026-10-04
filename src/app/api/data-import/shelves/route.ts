@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { addWeeks } from "date-fns";
 import { lotCodeBase } from "@/lib/codes";
 import { cellText, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 
-const MAX_CODE_ATTEMPTS = 50;
+// Cấp mã lô trong bộ nhớ (không còn truy vấn mỗi lần thử) — trần cao: kệ "Kho mẫu mẹ chung" không có NV nên
+// mọi kệ cùng mã cây trong tuần chung 1 gốc mã, trần 50 cũ làm file >50 kệ cùng mã cây báo lỗi 500.
+const MAX_CODE_ATTEMPTS = 100000;
 // "Tên kệ" nhập theo định dạng gọn "{Hàng}{Số hàng 2 số}C{Số cột}" (VD "A01C09") — Mã kệ/Hàng-Block/Số
 // hàng/Số cột đều tự suy ra từ đúng 1 giá trị này (xem parseShelfPosition), không cần nhập riêng từng
 // cột nữa. Giống hệt quy ước code/block ở /api/shelves (form "Thêm giàn kệ" dạng lưới).
@@ -238,11 +241,40 @@ export async function POST(req: NextRequest) {
   const validRows: ValidRow[] = [];
   const claimedShelfCodes = new Set<string>();
 
+  // Đọc trước 1 lần mọi kho/phòng/kệ/mã cây/NV mà file nhắc tới — KHÔNG truy vấn theo từng dòng: mỗi truy
+  // vấn tới Supabase mất ~50ms, file vài trăm kệ × 4-5 truy vấn/dòng từng vượt 60s → timeout 504 (04/10/2026).
+  const warehouses = await prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true } });
+  const warehouseByCode = new Map(warehouses.map((w) => [w.code, w]));
+  const allRooms = await prisma.room.findMany({
+    where: { warehouseId: { in: warehouses.map((w) => w.id) }, type: { in: [...new Set(ROOM_TYPE_LABEL_TO_ENUM.values())] } },
+    select: { id: true, code: true, warehouseId: true, type: true },
+  });
+  const roomByWarehouseAndType = new Map<string, { id: string; code: string }>();
+  for (const r of allRooms) {
+    const key = `${r.warehouseId}|${r.type}`;
+    if (!roomByWarehouseAndType.has(key)) roomByWarehouseAndType.set(key, { id: r.id, code: r.code });
+  }
+  const candidateShelfCodes: string[] = [];
   for (const parsed of parsedRows) {
-    const warehouse = await prisma.warehouse.findFirst({
-      where: { code: parsed.warehouseCode, type: "SAN_XUAT", isActive: true },
-      select: { id: true },
-    });
+    const w = warehouseByCode.get(parsed.warehouseCode);
+    const rt = ROOM_TYPE_LABEL_TO_ENUM.get(parsed.roomTypeText.toLowerCase());
+    const r = w && rt ? roomByWarehouseAndType.get(`${w.id}|${rt}`) : undefined;
+    const pos = parseShelfPosition(parsed.position);
+    if (r && pos) candidateShelfCodes.push(`${r.code}-${pos.suffix}`);
+  }
+  const plantCodes = [...new Set(parsedRows.map((p) => p.plantTypeCode).filter((c): c is string => !!c))];
+  const staffCodes = [...new Set(parsedRows.map((p) => p.staffCode).filter((c): c is string => !!c))];
+  const [existingShelves, plantTypeRows, staffRows] = await Promise.all([
+    candidateShelfCodes.length ? prisma.shelf.findMany({ where: { code: { in: candidateShelfCodes } }, select: { id: true, code: true, isActive: true } }) : [],
+    plantCodes.length ? prisma.plantType.findMany({ where: { code: { in: plantCodes } }, select: { id: true, code: true, transferWaitWeeks: true, rootingWeeks: true } }) : [],
+    staffCodes.length ? prisma.user.findMany({ where: { code: { in: staffCodes } }, select: { id: true, role: true, code: true } }) : [],
+  ]);
+  const shelfByCode = new Map(existingShelves.map((s) => [s.code, s]));
+  const plantTypeByCode = new Map(plantTypeRows.map((p) => [p.code, p]));
+  const userByCode = new Map(staffRows.map((u) => [u.code, u]));
+
+  for (const parsed of parsedRows) {
+    const warehouse = warehouseByCode.get(parsed.warehouseCode);
     if (!warehouse) {
       errors.push({ row: parsed.row, label: parsed.position, message: `Không tìm thấy mã kho sản xuất "${parsed.warehouseCode}"` });
       continue;
@@ -254,7 +286,7 @@ export async function POST(req: NextRequest) {
       continue;
     }
     const isMauMe = roomType === "PHONG_MAU_ME";
-    const room = await prisma.room.findFirst({ where: { warehouseId: warehouse.id, type: roomType }, select: { id: true, code: true } });
+    const room = roomByWarehouseAndType.get(`${warehouse.id}|${roomType}`);
     if (!room) {
       errors.push({ row: parsed.row, label: parsed.position, message: `Kho "${parsed.warehouseCode}" không có ${parsed.roomTypeText}` });
       continue;
@@ -273,7 +305,7 @@ export async function POST(req: NextRequest) {
       errors.push({ row: parsed.row, label: parsed.position, message: "Tên kệ trùng với 1 dòng khác trong file" });
       continue;
     }
-    const existing = await prisma.shelf.findUnique({ where: { code }, select: { id: true, isActive: true } });
+    const existing = shelfByCode.get(code);
     if (existing?.isActive) {
       errors.push({
         row: parsed.row,
@@ -295,10 +327,7 @@ export async function POST(req: NextRequest) {
 
     let resolvedPlantType: ResolvedPlantType | undefined;
     if (parsed.plantTypeCode) {
-      const pt = await prisma.plantType.findUnique({
-        where: { code: parsed.plantTypeCode },
-        select: { id: true, code: true, transferWaitWeeks: true, rootingWeeks: true },
-      });
+      const pt = plantTypeByCode.get(parsed.plantTypeCode);
       if (!pt) {
         errors.push({ row: parsed.row, label: parsed.position, message: `Không tìm thấy mã cây "${parsed.plantTypeCode}"` });
         continue;
@@ -309,7 +338,7 @@ export async function POST(req: NextRequest) {
     let resolvedStaffId: string | undefined;
     let resolvedStaffCode: string | null = null;
     if (parsed.staffCode) {
-      const u = await prisma.user.findUnique({ where: { code: parsed.staffCode }, select: { id: true, role: true, code: true } });
+      const u = userByCode.get(parsed.staffCode);
       if (!u || u.role !== "CAY_MO") {
         errors.push({ row: parsed.row, label: parsed.position, message: `Không tìm thấy mã NV cấy mô "${parsed.staffCode}"` });
         continue;
@@ -455,73 +484,76 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Giai đoạn 2: tạo hàng loạt trong 1 transaction — chỉ khi cả file không còn dòng lỗi nào ----
+  // Ghi GỘP: 1 lệnh tạo mọi kệ mới (createManyAndReturn để lấy id), cập nhật riêng kệ hồi sinh (hiếm), 1
+  // lệnh đọc mã lô đã chiếm + 1 lệnh tạo mọi lô — trước đây ghi lần lượt từng kệ/lô trong transaction mặc
+  // định 5 giây nên file lớn luôn vượt hạn (P2028).
   let successCount = 0;
   if (validRows.length > 0 && errors.length === 0) {
-    const claimedLotCodes = new Set<string>();
-    await prisma.$transaction(async (tx) => {
-      for (const vr of validRows) {
-        const shelfData = {
-          name: vr.name,
-          warehouseId: vr.warehouseId,
-          roomId: vr.roomId,
-          rowNumber: vr.rowNumber,
-          colNumber: vr.colNumber,
-          block: vr.block,
-          capacity: vr.capacity,
-          plantTypeId: vr.plantTypeId,
-          assignedStaffId: vr.assignedStaffId,
-          sharedMotherPool: vr.sharedMotherPool,
-          rotationGroupId: vr.rotationGroupId,
-        };
-        // Mã trùng 1 kệ đã bị xóa mềm (isActive: false) — hồi sinh đúng hàng đó (reset lại mọi thuộc
-        // tính theo dữ liệu file, kể cả groupId/allowedCodes vốn không nằm trong form nhập) thay vì tạo
-        // hàng mới, vì code là unique constraint nên không thể có 2 hàng cùng mã dù hàng cũ đã ẩn.
-        const shelf = vr.reactivateShelfId
-          ? await tx.shelf.update({
-              where: { id: vr.reactivateShelfId },
-              data: { ...shelfData, isActive: true, groupId: null, allowedCodes: [] },
-            })
-          : await tx.shelf.create({ data: { code: vr.code, ...shelfData } });
-
-        if (vr.plantType) {
-          for (const entry of vr.stageEntries) {
-            const base = lotCodeBase({ plantTypeCode: vr.plantType.code, staffCode: vr.staffCode ?? "NV000" });
-            let attempt = 0;
-            let code = base;
-            for (;;) {
-              attempt += 1;
-              code = attempt === 1 ? base : `${base}-${attempt}`;
-              const key = `${code}::${entry.stageCode}`;
-              if (attempt > MAX_CODE_ATTEMPTS) throw new Error(`Không sinh được mã lô duy nhất cho kệ ${vr.code}`);
-              if (claimedLotCodes.has(key)) continue;
-              const existingLot = await tx.lot.findFirst({ where: { code, stageCode: entry.stageCode }, select: { id: true } });
-              if (existingLot) continue;
-              claimedLotCodes.add(key);
-              break;
-            }
-            await tx.lot.create({
-              data: {
-                code,
-                plantTypeId: vr.plantType.id,
-                stage: vr.isMauMe ? "MAU_ME" : "THANH_PHAM",
-                stageCode: entry.stageCode,
-                shelfId: shelf.id,
-                quantity: entry.quantity,
-                initialQuantity: entry.quantity,
-                status: "ACTIVE",
-                enteredAt: new Date(),
-                // Mẫu mẹ: không còn tính expectedMoveAt từ ngày vào kệ — hạn cấy chuyển tự tính theo
-                // Nhóm tuần mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups), giàn chưa gán Nhóm
-                // thì không có hạn.
-                expectedMoveAt: vr.isMauMe ? null : addWeeks(new Date(), vr.plantType.rootingWeeks),
-              },
-            });
-          }
-        }
-
-        successCount += 1;
-      }
+    const now = new Date();
+    const shelfDataOf = (vr: ValidRow) => ({
+      name: vr.name,
+      warehouseId: vr.warehouseId,
+      roomId: vr.roomId,
+      rowNumber: vr.rowNumber,
+      colNumber: vr.colNumber,
+      block: vr.block,
+      capacity: vr.capacity,
+      plantTypeId: vr.plantTypeId,
+      assignedStaffId: vr.assignedStaffId,
+      sharedMotherPool: vr.sharedMotherPool,
+      rotationGroupId: vr.rotationGroupId,
     });
+    const baseOf = (vr: ValidRow) => lotCodeBase({ plantTypeCode: vr.plantType!.code, staffCode: vr.staffCode ?? "NV000", date: now });
+    const lotRows = validRows.filter((vr) => vr.plantType && vr.stageEntries.length > 0);
+    const bases = [...new Set(lotRows.map(baseOf))];
+
+    await prisma.$transaction(async (tx) => {
+      const newShelfRows = validRows.filter((vr) => !vr.reactivateShelfId);
+      const created = newShelfRows.length
+        ? await tx.shelf.createManyAndReturn({ data: newShelfRows.map((vr) => ({ code: vr.code, ...shelfDataOf(vr) })), select: { id: true, code: true } })
+        : [];
+      const shelfIdByCode = new Map(created.map((s) => [s.code, s.id]));
+      // Mã trùng 1 kệ đã bị xóa mềm (isActive: false) — hồi sinh đúng hàng đó (reset lại mọi thuộc tính
+      // theo dữ liệu file, kể cả groupId/allowedCodes vốn không nằm trong form nhập) thay vì tạo hàng mới,
+      // vì code là unique constraint nên không thể có 2 hàng cùng mã dù hàng cũ đã ẩn.
+      for (const vr of validRows.filter((v) => v.reactivateShelfId)) {
+        await tx.shelf.update({ where: { id: vr.reactivateShelfId }, data: { ...shelfDataOf(vr), isActive: true, groupId: null, allowedCodes: [] } });
+        shelfIdByCode.set(vr.code, vr.reactivateShelfId!);
+      }
+
+      const takenRows = bases.length
+        ? await tx.lot.findMany({ where: { OR: bases.map((b) => ({ code: { startsWith: b } })) }, select: { code: true, stageCode: true } })
+        : [];
+      const taken = new Set(takenRows.map((t) => `${t.code}::${t.stageCode}`));
+      const lotData: Prisma.LotCreateManyInput[] = [];
+      for (const vr of lotRows) {
+        for (const entry of vr.stageEntries) {
+          const base = baseOf(vr);
+          let code = base;
+          for (let attempt = 2; taken.has(`${code}::${entry.stageCode}`); attempt++) {
+            if (attempt > MAX_CODE_ATTEMPTS) throw new Error(`Không sinh được mã lô duy nhất cho kệ ${vr.code}`);
+            code = `${base}-${attempt}`;
+          }
+          taken.add(`${code}::${entry.stageCode}`);
+          lotData.push({
+            code,
+            plantTypeId: vr.plantType!.id,
+            stage: vr.isMauMe ? "MAU_ME" : "THANH_PHAM",
+            stageCode: entry.stageCode,
+            shelfId: shelfIdByCode.get(vr.code)!,
+            quantity: entry.quantity,
+            initialQuantity: entry.quantity,
+            status: "ACTIVE",
+            enteredAt: now,
+            // Mẫu mẹ: không còn tính expectedMoveAt từ ngày vào kệ — hạn cấy chuyển tự tính theo Nhóm tuần
+            // mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups), giàn chưa gán Nhóm thì không có hạn.
+            expectedMoveAt: vr.isMauMe ? null : addWeeks(now, vr.plantType!.rootingWeeks),
+          });
+        }
+      }
+      if (lotData.length) await tx.lot.createMany({ data: lotData });
+      successCount = validRows.length;
+    }, { timeout: 30000 });
   }
 
   return NextResponse.json({ successCount, errors });

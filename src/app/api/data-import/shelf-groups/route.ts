@@ -112,14 +112,19 @@ export async function POST(req: NextRequest) {
   const validRows: ValidRow[] = [];
   const claimedNames = new Set<string>();
 
+  // Đọc 1 lần mọi tên nhóm đã có trùng tên trong file (không truy vấn theo từng dòng — xem lý do ở
+  // api/data-import/shelves).
+  const existingNames = new Set(
+    (await prisma.shelfGroup.findMany({ where: { name: { in: parsedRows.map((p) => p.name) } }, select: { name: true } })).map((g) => g.name)
+  );
+
   for (const parsed of parsedRows) {
     const nameKey = parsed.name.toLowerCase();
     if (claimedNames.has(nameKey)) {
       errors.push({ row: parsed.row, label: parsed.name, message: "Tên nhóm trùng với 1 dòng khác trong file" });
       continue;
     }
-    const existing = await prisma.shelfGroup.findFirst({ where: { name: parsed.name }, select: { id: true } });
-    if (existing) {
+    if (existingNames.has(parsed.name)) {
       errors.push({ row: parsed.row, label: parsed.name, message: "Tên nhóm đã tồn tại trong hệ thống" });
       continue;
     }
@@ -151,14 +156,10 @@ export async function POST(req: NextRequest) {
   // Chỉ ghi khi cả file không còn dòng lỗi nào — tránh nửa vời khi NV sửa lỗi rồi tải lại.
   let successCount = 0;
   if (validRows.length > 0 && errors.length === 0) {
-    await prisma.$transaction(async (tx) => {
-      for (const vr of validRows) {
-        await tx.shelfGroup.create({
-          data: { name: vr.name, type: vr.type, rotationKind: vr.rotationKind, rotationOrder: vr.rotationOrder },
-        });
-        successCount += 1;
-      }
+    const result = await prisma.shelfGroup.createMany({
+      data: validRows.map((vr) => ({ name: vr.name, type: vr.type, rotationKind: vr.rotationKind, rotationOrder: vr.rotationOrder })),
     });
+    successCount = result.count;
   }
 
   return NextResponse.json({ successCount, errors });
