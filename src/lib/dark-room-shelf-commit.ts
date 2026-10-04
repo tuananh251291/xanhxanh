@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { addWeeks, startOfWeek } from "date-fns";
 import { generateLotCode } from "@/lib/codes";
 import type { ShelfPlacement } from "@/lib/shelf-assignment";
@@ -51,7 +52,13 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
   // Đọc "Tuần khởi đầu Nhóm tuần mẫu mẹ" 1 lần cho cả batch (dùng prisma singleton, không phải tx — chỉ
   // đọc cấu hình gần như không đổi, giống hệt cách POST /api/inventory/stock-in đã làm) — bỏ qua hẳn nếu
   // batch không có lô mẫu mẹ nào để không tốn 1 query thừa.
-  const motherEpochMonday = placements.some((p) => p.lot.stage === "MAU_ME") ? await getMotherRotationEpoch() : undefined;
+  // Mọi điểm đặt của 1 batch thuộc cùng 1 kho (planShelfAssignments/planSurplusPlacement chạy theo 1 kho) —
+  // lấy kho từ kệ đầu tiên để dùng đúng tuần khởi đầu riêng của kho đó (nếu có).
+  const firstMotherPlacement = placements.find((p) => p.lot.stage === "MAU_ME");
+  const motherWarehouseId = firstMotherPlacement
+    ? (await prisma.shelf.findUnique({ where: { id: firstMotherPlacement.shelfId }, select: { warehouseId: true } }))?.warehouseId
+    : undefined;
+  const motherEpochMonday = firstMotherPlacement ? await getMotherRotationEpoch(motherWarehouseId) : undefined;
 
   const byLot = new Map<string, ShelfPlacement[]>();
   for (const p of placements) {

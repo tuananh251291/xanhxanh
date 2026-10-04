@@ -1,8 +1,7 @@
 import { addWeeks } from "date-fns";
 import { prisma } from "@/lib/prisma";
-import { getCurrentWeekSlot, isoWeekStringToMonday, ROOTING_ROTATION_START_WEEK_KEY } from "@/lib/rooting-week-group";
+import { getCurrentWeekSlot, getRootingRotationEpoch } from "@/lib/rooting-week-group";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
-import { getSystemConfig } from "@/lib/inventory";
 import { sumLotQuantity, MOTHER_SPEC_BAG_SIZE } from "@/types";
 
 // Làm tròn xuống bội số của 1 túi (đơn vị vật lý không tách rời) khi phải chia 1 lô mẫu mẹ (M05)
@@ -132,8 +131,8 @@ export async function planShelfAssignments(
     where: { rotationKind: "RA_RE" },
     select: { id: true, rotationOrder: true },
   });
-  const startWeekValue = raReGroups.length > 0 ? await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "") : "";
-  const epochMonday = startWeekValue ? isoWeekStringToMonday(startWeekValue) : null;
+  // Tuần khởi đầu Nhóm tuần ra rễ của ĐÚNG kho đang xếp (giá trị riêng của kho, không có thì giá trị chung).
+  const epochMonday = raReGroups.length > 0 ? ((await getRootingRotationEpoch(warehouseId)) ?? null) : null;
   // Xác định Nhóm tuần ra rễ "đang tới lượt" tại mốc CỐ ĐỊNH = tuần kế tiếp NGAY SAU tuần lô đó vào
   // Phòng tối (lot.enteredAt + 1 tuần) — KHÔNG dùng lúc Transfer được tạo ("Bàn giao") hay lúc Kho mô
   // xác nhận nhận: cả 2 mốc này đều là thời điểm THAO TÁC (có thể trôi dạt nhiều ngày, thậm chí cả tuần
@@ -175,7 +174,7 @@ export async function planShelfAssignments(
   // Chỉ đọc "Tuần khởi đầu Nhóm tuần mẫu mẹ" khi batch thật sự có lô MAU_ME cần xếp kệ đã chia — dùng để
   // xác định Nhóm nào đang tới lượt cấy chuyển ngay lúc xếp (xem lựa chọn primaryOwned bên dưới).
   const motherEpochMonday = transferItems.some((i) => i.lot.stage !== "THANH_PHAM")
-    ? await getMotherRotationEpoch()
+    ? await getMotherRotationEpoch(warehouseId)
     : undefined;
 
   const placements: ShelfPlacement[] = [];

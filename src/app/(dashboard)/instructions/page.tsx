@@ -18,7 +18,7 @@ import AssignBackupStaffCell from "./assign-backup-staff-cell";
 import ConfirmHandoverButton from "./confirm-handover-button";
 import UndoHandoverButton from "./undo-handover-button";
 import ReturnInstructionButton from "./return-instruction-button";
-import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse, getMotherRotationEpoch } from "@/lib/mother-week-group";
+import { summarizeMotherWeekGroups, groupDueMotherShelvesByWarehouse, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
 import MotherDueWarehouseCard from "./mother-due-warehouse-card";
 
 const STATUS_COLORS: Record<InstructionStatus, string> = {
@@ -129,7 +129,7 @@ export default async function InstructionsPage({
           },
         }),
         new Date(),
-        await getMotherRotationEpoch()
+        await getMotherRotationEpochResolver()
       ).filter((g) => g.isDue)
     : [];
   // Chia lại danh sách kệ đến hạn theo khu Sản xuất (từng kho SAN_XUAT) thay vì gộp chung 1 danh sách —

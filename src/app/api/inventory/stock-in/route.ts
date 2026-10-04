@@ -257,7 +257,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const motherEpochMonday = items.some((i) => stageOfCode(i.stageCode) === "MAU_ME") ? await getMotherRotationEpoch() : null;
+    const motherEpochMonday = items.some((i) => stageOfCode(i.stageCode) === "MAU_ME") ? await getMotherRotationEpoch(warehouseId) : null;
 
     const results = await prisma.$transaction(async (tx) => {
       const out = [];

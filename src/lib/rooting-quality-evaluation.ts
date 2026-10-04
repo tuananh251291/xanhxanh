@@ -35,7 +35,7 @@ export async function ensureWeeklyRootingQualityEvaluation(warehouseId: string |
       },
     }),
     prisma.shelfGroup.findMany({ where: { rotationKind: "RA_RE" }, select: { id: true, rotationOrder: true } }),
-    getRootingRotationEpoch(),
+    getRootingRotationEpoch(warehouseId),
   ]);
   if (raReGroups.length === 0) return;
 

@@ -24,7 +24,7 @@ import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { hasPendingDarkRoomHandover } from "@/lib/cay-mo-quest-stats";
 import { toStoredWeekStart } from "@/lib/week-rotation";
-import { summarizeMotherWeekGroups, getMotherRotationEpoch } from "@/lib/mother-week-group";
+import { summarizeMotherWeekGroups, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
@@ -362,7 +362,7 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
         },
       },
     }),
-    getMotherRotationEpoch(),
+    getMotherRotationEpochResolver(),
     myInstructionIds.length === 0
       ? Promise.resolve([])
       : prisma.alert.findMany({

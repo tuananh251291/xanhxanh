@@ -1,17 +1,21 @@
 import { addWeeks, startOfWeek, endOfWeek, addDays } from "date-fns";
-import { getCurrentWeekSlot, isoWeekStringToMonday } from "@/lib/week-rotation";
-import { getSystemConfig } from "@/lib/inventory";
+import { getCurrentWeekSlot } from "@/lib/week-rotation";
+import { getRotationEpoch, getRotationEpochResolver, resolveRotationEpoch, type RotationEpochResolver } from "@/lib/rotation-epoch";
 
-// Key lưu trong SystemConfig — giá trị là chuỗi tuần ISO 8601 dạng "YYYY-Www" (VD "2026-W27"), đánh dấu
-// tuần thực tế đầu tiên được coi là Nhóm tuần mẫu mẹ 1. Xem src/app/api/settings/rotation-start-week/route.ts
-// và src/lib/rooting-week-group.ts (ROOTING_ROTATION_START_WEEK_KEY — cùng cơ chế, khác rotationKind).
-export const MOTHER_ROTATION_START_WEEK_KEY = "mother_rotation_start_week";
+// Key lưu trong SystemConfig (giá trị CHUNG) — giá trị là chuỗi tuần ISO 8601 dạng "YYYY-Www" (VD
+// "2026-W27"), đánh dấu tuần thực tế đầu tiên được coi là Nhóm tuần mẫu mẹ 1. Mỗi kho có thể đặt giá trị
+// riêng (Warehouse.motherRotationStartWeek) — xem src/lib/rotation-epoch.ts.
+export { MOTHER_ROTATION_START_WEEK_KEY } from "@/lib/rotation-epoch";
 
-// Đọc mốc "Tuần khởi đầu của Nhóm tuần mẫu mẹ 1" đã cấu hình (nếu có) — dùng làm motherEpochMonday
-// truyền vào summarizeMotherWeekGroups để tính scheduledDue. undefined nếu SUPER_ADMIN chưa cấu hình gì.
-export async function getMotherRotationEpoch(): Promise<Date | undefined> {
-  const value = await getSystemConfig(MOTHER_ROTATION_START_WEEK_KEY, "");
-  return value ? (isoWeekStringToMonday(value) ?? undefined) : undefined;
+// Đọc mốc "Tuần khởi đầu của Nhóm tuần mẫu mẹ 1" (nếu có) cho 1 kho — giá trị riêng của kho, không có thì
+// giá trị chung. Không truyền warehouseId = giá trị chung. undefined nếu chưa cấu hình gì.
+export async function getMotherRotationEpoch(warehouseId?: string | null): Promise<Date | undefined> {
+  return getRotationEpoch("MAU_ME", warehouseId);
+}
+
+// Bảng tra theo kho — truyền vào summarizeMotherWeekGroups khi tổng hợp kệ của NHIỀU kho cùng lúc.
+export async function getMotherRotationEpochResolver(): Promise<RotationEpochResolver> {
+  return getRotationEpochResolver("MAU_ME");
 }
 
 export type MotherWeekGroupShelf = {
@@ -83,7 +87,8 @@ export function summarizeMotherWeekGroups(
     lots: { quantity: number; expectedMoveAt?: Date | null }[];
   }[],
   now: Date = new Date(),
-  motherEpochMonday?: Date
+  // Date = 1 mốc cho mọi kệ (đã tra sẵn cho đúng 1 kho); RotationEpochResolver = tra theo kho của từng kệ.
+  motherEpoch?: Date | RotationEpochResolver
 ): MotherWeekGroupStatus[] {
   // Cửa sổ "đến hạn" của TỪNG LÔ (tuần này hoặc tuần sau — khớp đúng cửa sổ báo trước 1 tuần dùng để
   // tính isDue cấp Nhóm bên dưới). Nhóm "đến hạn" theo đúng lịch xoay vòng KHÔNG có nghĩa MỌI kệ trong
@@ -97,11 +102,17 @@ export function summarizeMotherWeekGroups(
   const isLotDue = (lot: { expectedMoveAt?: Date | null }) =>
     !!lot.expectedMoveAt && lot.expectedMoveAt >= dueWindowStart && lot.expectedMoveAt <= dueWindowEnd;
 
-  const byGroup = new Map<string, MotherWeekGroupStatus & { totalSlots: number | null }>();
+  // Tách thêm theo kho NẾU kho đó có tuần khởi đầu riêng (khác giá trị chung) — cùng nhãn "MM1" nhưng 2 kho
+  // chạy 2 lịch khác nhau thì đến hạn ở 2 tuần khác nhau. Kho dùng giá trị chung giữ nguyên key cũ (không
+  // đổi groupId → không làm bắn lại cảnh báo đã gửi, xem mother-ready.ts).
+  const byGroup = new Map<string, MotherWeekGroupStatus & { totalSlots: number | null; epoch: Date | undefined }>();
   for (const shelf of shelves) {
     if (!shelf.rotationGroup) continue;
     const totalSlots = shelf.plantType?.transferWaitWeeks ?? null;
-    const key = `${shelf.rotationGroup.id}::${totalSlots ?? "?"}`;
+    const epoch = resolveRotationEpoch(motherEpoch, shelf.warehouse.id);
+    const ownEpoch = motherEpoch && !(motherEpoch instanceof Date) && motherEpoch.byWarehouse.has(shelf.warehouse.id)
+      && motherEpoch.byWarehouse.get(shelf.warehouse.id)!.getTime() !== motherEpoch.global?.getTime();
+    const key = `${shelf.rotationGroup.id}::${totalSlots ?? "?"}${ownEpoch ? `::wh:${shelf.warehouse.id}` : ""}`;
     const entry = byGroup.get(key) ?? {
       groupId: key,
       groupName: shelf.rotationGroup.name,
@@ -111,6 +122,7 @@ export function summarizeMotherWeekGroups(
       totalQuantity: 0,
       isDue: false,
       totalSlots,
+      epoch,
     };
     // Chỉ liệt kê kệ THẬT SỰ có lô mẫu mẹ ĐẾN HẠN (đã lọc isLotDue) — 1 Nhóm xoay vòng thường có nhiều
     // kệ trống (chưa từng xếp gì, chờ dự phòng) hoặc kệ vừa mới xếp lô (chưa đến hạn) hơn số kệ thật sự
@@ -139,7 +151,7 @@ export function summarizeMotherWeekGroups(
     byGroup.set(key, entry);
   }
 
-  if (motherEpochMonday) {
+  {
     const nextWeek = addWeeks(now, 1);
     // getCurrentWeekSlot tính theo mod N nên tự "quay ngược" ra khe hợp lệ cho cả những tuần TRƯỚC
     // motherEpochMonday (VD epoch = tuần 31, N=4 thì tuần 30 bị tính thành khe 4/MM4 dù lịch chưa bắt
@@ -147,9 +159,11 @@ export function summarizeMotherWeekGroups(
     // nextWeekSlot = null), tránh Nhóm cuối chu kỳ (VD MM4/MM6) hiện "đến hạn" nhầm ngay trước khi lịch
     // thật sự khởi động. Riêng nextWeekSlot của đúng tuần epoch vẫn tính bình thường — đây chính là cơ
     // chế báo trước 1 tuần cho Nhóm 1 (VD tuần 30 báo trước MM1 sắp tới hạn ở tuần 31).
-    const nowInRange = now.getTime() >= motherEpochMonday.getTime();
-    const nextWeekInRange = nextWeek.getTime() >= motherEpochMonday.getTime();
     for (const entry of byGroup.values()) {
+      const motherEpochMonday = entry.epoch;
+      if (!motherEpochMonday) continue;
+      const nowInRange = now.getTime() >= motherEpochMonday.getTime();
+      const nextWeekInRange = nextWeek.getTime() >= motherEpochMonday.getTime();
       if (!entry.totalSlots || entry.rotationOrder === null || entry.lotCount === 0) continue;
       const currentSlot = nowInRange ? getCurrentWeekSlot(entry.totalSlots, now, motherEpochMonday) : null;
       const nextWeekSlot = nextWeekInRange ? getCurrentWeekSlot(entry.totalSlots, nextWeek, motherEpochMonday) : null;
@@ -159,7 +173,7 @@ export function summarizeMotherWeekGroups(
 
   return Array.from(byGroup.values())
     .sort((a, b) => (a.rotationOrder ?? 0) - (b.rotationOrder ?? 0))
-    .map(({ totalSlots: _totalSlots, ...rest }) => rest);
+    .map(({ totalSlots: _totalSlots, epoch: _epoch, ...rest }) => rest);
 }
 
 export type MotherDueWarehouseSummary = {

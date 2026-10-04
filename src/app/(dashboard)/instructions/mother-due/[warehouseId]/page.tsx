@@ -84,7 +84,7 @@ export default async function MotherDueWarehousePage({
         lots: { where: lotWhere, select: { quantity: true, expectedMoveAt: true } },
       },
     }),
-    getMotherRotationEpoch(),
+    getMotherRotationEpoch(warehouseId),
   ]);
 
   const dueShelves = summarizeMotherWeekGroups(shelves, new Date(), motherEpochMonday)

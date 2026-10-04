@@ -1099,6 +1099,11 @@ model Warehouse {
   // thay vì so tên chuỗi. Mặc định false cho mọi kho hiện có, không ảnh hưởng gì tới kho sản xuất/thành
   // phẩm thật. Xem getOrCreateRndWarehouse (src/lib/rnd-instruction-warehouse.ts).
   isRnd       Boolean       @default(false)
+  // "Tuần khởi đầu" (ISO "YYYY-Www") của Nhóm tuần mẫu mẹ 1 / Nhóm tuần ra rễ 1 RIÊNG cho kho này — null =
+  // dùng giá trị chung trong SystemConfig (mother_rotation_start_week / rooting_rotation_start_week). Cho phép
+  // từng khu sản xuất chạy lịch xoay vòng riêng mà không đổi lịch khu khác (xem src/lib/rotation-epoch.ts).
+  motherRotationStartWeek  String?
+  rootingRotationStartWeek String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 

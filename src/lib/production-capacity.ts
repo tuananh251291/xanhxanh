@@ -259,7 +259,7 @@ export async function simulateWeeklyForecast(
 ): Promise<WeeklyForecastPoint[]> {
   const [plantType, epoch, { avgRatioMM, avgRatioTP }, groups] = await Promise.all([
     prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { transferWaitWeeks: true } }),
-    getMotherRotationEpoch(),
+    getMotherRotationEpoch(scope.kind === "WAREHOUSE" ? scope.warehouseId : null),
     computeAverageRatios(plantTypeId, now, scope),
     getRotationGroupsWithStock(plantTypeId, scope),
   ]);

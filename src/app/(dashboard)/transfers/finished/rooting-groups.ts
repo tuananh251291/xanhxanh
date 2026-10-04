@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { summarizeRootingWeekGroups, getRootingRotationEpoch } from "@/lib/rooting-week-group";
+import { summarizeRootingWeekGroups, getRootingRotationEpochResolver } from "@/lib/rooting-week-group";
+import { resolveRotationEpoch } from "@/lib/rotation-epoch";
 
 export type GroupLot = {
   id: string;
@@ -54,12 +55,12 @@ export async function getRootingGroupsForHandoff(workplaceWarehouseId: string | 
       },
     }),
     prisma.shelfGroup.count({ where: { rotationKind: "RA_RE" } }),
-    getRootingRotationEpoch(),
+    getRootingRotationEpochResolver(),
   ]);
 
   const now = new Date();
   return rootingRooms.flatMap((room) => {
-    const statuses = summarizeRootingWeekGroups(room.shelves, now, totalSlots, epochMonday);
+    const statuses = summarizeRootingWeekGroups(room.shelves, now, totalSlots, resolveRotationEpoch(epochMonday, room.warehouseId));
     return statuses.map((s) => ({
       groupId: s.groupId,
       groupName: s.groupName,

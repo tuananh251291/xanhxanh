@@ -2,18 +2,23 @@
 // dạng "YYYY-Www" (VD "2026-W27") do input type="week" sinh ra, đánh dấu tuần thực tế đầu tiên được coi
 // là Nhóm tuần ra rễ 1. Xem src/app/api/settings/rotation-start-week/route.ts. Toán học xoay vòng
 // (isoWeekStringToMonday, getCurrentWeekSlot) dùng chung với Nhóm tuần mẫu mẹ — xem src/lib/week-rotation.ts.
-import { getCurrentWeekSlot, isoWeekStringToMonday } from "@/lib/week-rotation";
-import { getSystemConfig } from "@/lib/inventory";
+import { getCurrentWeekSlot } from "@/lib/week-rotation";
+import { getRotationEpoch, getRotationEpochResolver, type RotationEpochResolver } from "@/lib/rotation-epoch";
 
 export { isoWeekStringToMonday, getCurrentWeekSlot } from "@/lib/week-rotation";
 
-export const ROOTING_ROTATION_START_WEEK_KEY = "rooting_rotation_start_week";
+// Giá trị CHUNG ở SystemConfig — mỗi kho có thể đặt riêng (Warehouse.rootingRotationStartWeek), xem
+// src/lib/rotation-epoch.ts.
+export { ROOTING_ROTATION_START_WEEK_KEY } from "@/lib/rotation-epoch";
 
-// Đọc mốc "Tuần khởi đầu của Nhóm tuần ra rễ 1" đã cấu hình (nếu có) — dùng làm epochMonday truyền vào
-// summarizeRootingWeekGroups để tính isDue theo lịch. undefined nếu SUPER_ADMIN chưa cấu hình gì.
-export async function getRootingRotationEpoch(): Promise<Date | undefined> {
-  const value = await getSystemConfig(ROOTING_ROTATION_START_WEEK_KEY, "");
-  return value ? (isoWeekStringToMonday(value) ?? undefined) : undefined;
+// Đọc mốc "Tuần khởi đầu của Nhóm tuần ra rễ 1" (nếu có) cho 1 kho — giá trị riêng của kho, không có thì
+// giá trị chung. Không truyền warehouseId = giá trị chung. undefined nếu chưa cấu hình gì.
+export async function getRootingRotationEpoch(warehouseId?: string | null): Promise<Date | undefined> {
+  return getRotationEpoch("RA_RE", warehouseId);
+}
+
+export async function getRootingRotationEpochResolver(): Promise<RotationEpochResolver> {
+  return getRotationEpochResolver("RA_RE");
 }
 
 export type RootingWeekGroupStatus = {

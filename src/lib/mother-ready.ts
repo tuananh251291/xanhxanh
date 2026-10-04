@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { createAlertForWarehouseStaff } from "@/lib/inventory";
-import { summarizeMotherWeekGroups, getMotherDueDeadline, getMotherRotationEpoch } from "@/lib/mother-week-group";
+import { summarizeMotherWeekGroups, getMotherDueDeadline, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
 
 // Không có tiến trình chạy nền (cron) trong app này — kiểm tra "sắp tới hạn cấy chuyển chưa" được gọi mỗi
 // khi layout dashboard render cho KY_THUAT (xem (dashboard)/layout.tsx), coi như 1 checkpoint gần-thời-gian-thực
@@ -36,7 +36,7 @@ export async function ensureMotherReadyAlerts(): Promise<void> {
         },
       },
     }),
-    getMotherRotationEpoch(),
+    getMotherRotationEpochResolver(),
   ]);
   const dueGroups = summarizeMotherWeekGroups(shelves, new Date(), motherEpochMonday).filter((g) => g.isDue);
   if (dueGroups.length === 0) return;

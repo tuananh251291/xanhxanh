@@ -137,7 +137,11 @@ export default async function ShelfListView({
               )}
             </form>
             {canManageStaffAndPlant && (
-              <RotationStartWeekForm kind={room.type === "PHONG_RA_RE" ? "RA_RE" : "MAU_ME"} />
+              <RotationStartWeekForm
+                kind={room.type === "PHONG_RA_RE" ? "RA_RE" : "MAU_ME"}
+                warehouseId={room.warehouseId}
+                warehouseName={room.warehouse.name}
+              />
             )}
           </div>
         </CardContent>
