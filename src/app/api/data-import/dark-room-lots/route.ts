@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { addWeeks, startOfDay, endOfDay, format } from "date-fns";
 import { cellText, cellDate, cellNumber, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
-import { generateLotCode } from "@/lib/codes";
+import { lotCodeBase } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 
 type RowError = { row: number; label: string; message: string };
@@ -193,113 +194,144 @@ export async function POST(req: NextRequest) {
 
   // Kiểm tra với dữ liệu đang có (sau khi đã sạch lỗi định dạng): lô đang chờ bàn giao thì không được ghi
   // đè (NV đã chốt số lên phiếu), mã lô tự khai không được trùng lô đã có.
+  // GOM TRUY VẤN cho cả file (vài truy vấn chung, không truy vấn theo từng dòng) — mỗi truy vấn tới
+  // Supabase mất ~50ms, file vài trăm dòng × vài truy vấn/dòng từng vượt 60s → timeout 504 (04/10/2026).
+  if (errors.length > 0) return NextResponse.json({ successCount: 0, errors });
+
+  const dayKey = (d: Date) => format(d, "yyyy-MM-dd");
+  const staffIds = [...new Set(validRows.map((v) => v.staff.id))];
+  const rooms = await prisma.room.findMany({
+    where: { type: "PHONG_TOI", assignedStaffId: { in: staffIds } },
+    select: { id: true, warehouseId: true, assignedStaffId: true },
+  });
+  const roomIdByStaff = new Map<string, string>();
+  for (const vr of validRows) {
+    const room = rooms.find((r) => r.assignedStaffId === vr.staff.id && r.warehouseId === vr.staff.workplaceWarehouseId);
+    if (room) roomIdByStaff.set(vr.staff.id, room.id);
+  }
+
+  const roomIds = [...new Set(roomIdByStaff.values())];
+  const minDay = validRows.reduce((m, v) => (v.enteredAt < m ? v.enteredAt : m), validRows[0].enteredAt);
+  const maxDay = validRows.reduce((m, v) => (v.enteredAt > m ? v.enteredAt : m), validRows[0].enteredAt);
+  const existingLots = roomIds.length
+    ? await prisma.lot.findMany({
+        where: {
+          roomId: { in: roomIds },
+          status: "ACTIVE",
+          plantTypeId: { in: [...new Set(validRows.map((v) => v.plant.id))] },
+          enteredAt: { gte: startOfDay(minDay), lte: endOfDay(maxDay) },
+        },
+        orderBy: { enteredAt: "asc" },
+        select: {
+          id: true, code: true, quantity: true, instructionId: true, inspectedAt: true, roomId: true, plantTypeId: true, stageCode: true, enteredAt: true,
+          transferItems: { where: { transfer: { status: "PENDING" } }, select: { id: true } },
+          _count: {
+            select: {
+              transferItems: true, dailyRecordItems: true, contaminations: true, inspectionItems: true, motherPhotos: true, orderItems: true,
+              orderProcessingRequestsAsSource: true, processingInputRows: true, processingOutputTickets: true, repackAsSource: true,
+              repackAsOutput: true, instructionItems: true, childLots: true,
+            },
+          },
+        },
+      })
+    : [];
+  // Cùng (phòng + mã cây + quy cách + ngày) lỡ có nhiều lô → lấy lô vào sớm nhất, giống findFirst cũ.
+  const existingByKey = new Map<string, (typeof existingLots)[number]>();
+  for (const l of existingLots) {
+    const key = `${l.roomId}|${l.plantTypeId}|${l.stageCode}|${dayKey(l.enteredAt)}`;
+    if (!existingByKey.has(key)) existingByKey.set(key, l);
+  }
+
   // existingDeletable: lô chưa từng có lịch sử nào (không chỉ định, chưa kiểm tra nhiễm/bàn giao/...) — nếu
   // file đưa về 0 thì XOÁ hẳn thay vì giữ lô 0 (lô 0 vẫn bị màn Kiểm tra nhiễm/Bàn giao của NV nhóm chung
   // theo mã + ngày, hiện 1 dòng "0" khó hiểu). Lô đã có lịch sử thì giữ, chỉ đưa về 0 như quy ước mục 5.
   type Plan = { row: ValidRow; stageCode: string; stage: "MAU_ME" | "THANH_PHAM"; quantity: number; existingId?: string; existingQuantity?: number; existingDeletable?: boolean };
   const plans: Plan[] = [];
-  const roomIdByStaff = new Map<string, string | null>();
-  if (errors.length === 0) {
-    for (const vr of validRows) {
-      const label = `${vr.staff.code} · ${vr.plant.code}`;
-      if (!roomIdByStaff.has(vr.staff.id)) {
-        const room = await prisma.room.findFirst({
-          where: { warehouseId: vr.staff.workplaceWarehouseId!, type: "PHONG_TOI", assignedStaffId: vr.staff.id },
-          select: { id: true },
-        });
-        roomIdByStaff.set(vr.staff.id, room?.id ?? null);
+  for (const vr of validRows) {
+    const label = `${vr.staff.code} · ${vr.plant.code}`;
+    const roomId = roomIdByStaff.get(vr.staff.id);
+    for (const q of vr.quantities) {
+      const existing = roomId ? existingByKey.get(`${roomId}|${vr.plant.id}|${q.stageCode}|${dayKey(vr.enteredAt)}`) : undefined;
+      if (existing && existing.transferItems.length > 0 && existing.quantity !== q.quantity) {
+        errors.push({ row: vr.row, label, message: `Lô ${existing.code} (${q.stageCode}) đang nằm trong phiếu bàn giao chờ xác nhận — không thể sửa số lượng` });
+        continue;
       }
-      const roomId = roomIdByStaff.get(vr.staff.id);
-      let rowHasError = false;
-      for (const q of vr.quantities) {
-        const existing = roomId
-          ? await prisma.lot.findFirst({
-              where: {
-                roomId,
-                plantTypeId: vr.plant.id,
-                stageCode: q.stageCode,
-                status: "ACTIVE",
-                enteredAt: { gte: startOfDay(vr.enteredAt), lte: endOfDay(vr.enteredAt) },
-              },
-              orderBy: { enteredAt: "asc" },
-              select: {
-                id: true, code: true, quantity: true, instructionId: true, inspectedAt: true,
-                transferItems: { where: { transfer: { status: "PENDING" } }, select: { id: true } },
-                _count: {
-                  select: {
-                    transferItems: true, dailyRecordItems: true, contaminations: true, inspectionItems: true, motherPhotos: true, orderItems: true,
-                    orderProcessingRequestsAsSource: true, processingInputRows: true, processingOutputTickets: true, repackAsSource: true,
-                    repackAsOutput: true, instructionItems: true, childLots: true,
-                  },
-                },
-              },
-            })
-          : null;
-        if (existing && existing.transferItems.length > 0 && existing.quantity !== q.quantity) {
-          errors.push({ row: vr.row, label, message: `Lô ${existing.code} (${q.stageCode}) đang nằm trong phiếu bàn giao chờ xác nhận — không thể sửa số lượng` });
-          rowHasError = true;
-          continue;
-        }
-        if (existing) {
-          const existingDeletable = !existing.instructionId && !existing.inspectedAt && Object.values(existing._count).every((n) => n === 0);
-          plans.push({ row: vr, ...q, existingId: existing.id, existingQuantity: existing.quantity, existingDeletable });
-        }
-        else if (q.quantity > 0) plans.push({ row: vr, ...q });
-      }
-      if (rowHasError) continue;
-      // Mã lô duy nhất theo (code, stageCode) — chỉ cần xét các quy cách sắp TẠO MỚI ở dòng này.
-      const newStageCodes = plans.filter((p) => p.row === vr && !p.existingId).map((p) => p.stageCode);
-      if (vr.lotCode && newStageCodes.length > 0) {
-        const clash = await prisma.lot.findFirst({ where: { code: vr.lotCode, stageCode: { in: newStageCodes } }, select: { stageCode: true } });
-        if (clash) errors.push({ row: vr.row, label, message: `Mã lô "${vr.lotCode}" (${clash.stageCode}) đã tồn tại trong hệ thống` });
-      }
+      if (existing) {
+        const existingDeletable = !existing.instructionId && !existing.inspectedAt && Object.values(existing._count).every((n) => n === 0);
+        plans.push({ row: vr, ...q, existingId: existing.id, existingQuantity: existing.quantity, existingDeletable });
+      } else if (q.quantity > 0) plans.push({ row: vr, ...q });
+    }
+  }
+
+  // Mã lô duy nhất theo (code, stageCode). Đọc 1 lần mọi mã đang có trùng mã tự khai hoặc cùng "gốc" với mã
+  // sẽ tự sinh, rồi cấp mã trong bộ nhớ (thêm hậu tố -2, -3... như generateLotCode).
+  const newPlans = plans.filter((p) => !p.existingId);
+  const baseOf = (p: Plan) => lotCodeBase({ plantTypeCode: p.row.plant.code, staffCode: p.row.staff.code, date: p.row.enteredAt });
+  const userCodes = [...new Set(newPlans.map((p) => p.row.lotCode).filter((c): c is string => !!c))];
+  const bases = [...new Set(newPlans.filter((p) => !p.row.lotCode).map(baseOf))];
+  const takenRows = userCodes.length + bases.length
+    ? await prisma.lot.findMany({
+        where: { OR: [...(userCodes.length ? [{ code: { in: userCodes } }] : []), ...bases.map((b) => ({ code: { startsWith: b } }))] },
+        select: { code: true, stageCode: true },
+      })
+    : [];
+  const taken = new Set(takenRows.map((t) => `${t.code}|${t.stageCode}`));
+  for (const p of newPlans) {
+    if (p.row.lotCode && taken.has(`${p.row.lotCode}|${p.stageCode}`)) {
+      errors.push({ row: p.row.row, label: `${p.row.staff.code} · ${p.row.plant.code}`, message: `Mã lô "${p.row.lotCode}" (${p.stageCode}) đã tồn tại trong hệ thống` });
     }
   }
   if (errors.length > 0) return NextResponse.json({ successCount: 0, errors });
 
   // Tạo trước phòng tối cá nhân cho NV chưa có (ngoài transaction, idempotent — giống Nhập kho thủ công).
   for (const vr of validRows) {
-    if (!roomIdByStaff.get(vr.staff.id) && plans.some((p) => p.row === vr && !p.existingId)) {
+    if (!roomIdByStaff.has(vr.staff.id) && newPlans.some((p) => p.row === vr)) {
       const room = await getOrCreatePersonalDarkRoom(vr.staff.id, vr.staff.workplaceWarehouseId!);
       roomIdByStaff.set(vr.staff.id, room.id);
     }
   }
 
-  let created = 0, updated = 0, unchanged = 0, removed = 0;
-  await prisma.$transaction(async (tx) => {
-    for (const p of plans) {
-      if (p.existingId) {
-        if (p.quantity === 0 && p.existingDeletable) {
-          await tx.lot.delete({ where: { id: p.existingId } });
-          removed += 1;
-          continue;
-        }
-        if (p.existingQuantity === p.quantity) { unchanged += 1; continue; }
-        await tx.lot.update({ where: { id: p.existingId }, data: { quantity: p.quantity } });
-        updated += 1;
-        continue;
-      }
-      const { row: vr } = p;
-      const code = vr.lotCode ?? (await generateLotCode({ plantTypeCode: vr.plant.code, staffCode: vr.staff.code, stageCode: p.stageCode, date: vr.enteredAt, client: tx }));
-      await tx.lot.create({
-        data: {
-          code,
-          plantTypeId: vr.plant.id,
-          stage: p.stage,
-          stageCode: p.stageCode,
-          roomId: roomIdByStaff.get(vr.staff.id)!,
-          quantity: p.quantity,
-          initialQuantity: p.quantity,
-          status: "ACTIVE",
-          enteredAt: vr.enteredAt,
-          darkRoomEnteredAt: vr.enteredAt,
-          expectedMoveAt: addWeeks(vr.enteredAt, p.stage === "MAU_ME" ? vr.plant.transferWaitWeeks : vr.plant.rootingWeeks),
-        },
-      });
-      created += 1;
+  const toCreate: Prisma.LotCreateManyInput[] = [];
+  for (const p of newPlans) {
+    let code = p.row.lotCode;
+    if (!code) {
+      const base = baseOf(p);
+      code = base;
+      for (let n = 2; taken.has(`${code}|${p.stageCode}`); n++) code = `${base}-${n}`;
     }
-  }, { timeout: 60000 });
+    taken.add(`${code}|${p.stageCode}`);
+    toCreate.push({
+      code,
+      plantTypeId: p.row.plant.id,
+      stage: p.stage,
+      stageCode: p.stageCode,
+      roomId: roomIdByStaff.get(p.row.staff.id)!,
+      quantity: p.quantity,
+      initialQuantity: p.quantity,
+      status: "ACTIVE",
+      enteredAt: p.row.enteredAt,
+      darkRoomEnteredAt: p.row.enteredAt,
+      expectedMoveAt: addWeeks(p.row.enteredAt, p.stage === "MAU_ME" ? p.row.plant.transferWaitWeeks : p.row.plant.rootingWeeks),
+    });
+  }
+  const existingPlans = plans.filter((p) => p.existingId);
+  const toDeleteIds = existingPlans.filter((p) => p.quantity === 0 && p.existingDeletable).map((p) => p.existingId!);
+  const toUpdate = existingPlans.filter((p) => !(p.quantity === 0 && p.existingDeletable) && p.existingQuantity !== p.quantity);
+  const unchanged = existingPlans.length - toDeleteIds.length - toUpdate.length;
 
+  // Ghi gộp: 1 lệnh tạo, 1 lệnh xoá, 1 lệnh UPDATE ... FROM (VALUES ...) cho mọi lô đổi số lượng — cùng 1
+  // transaction, lỗi giữa chừng thì không ghi gì.
+  await prisma.$transaction([
+    ...(toCreate.length ? [prisma.lot.createMany({ data: toCreate })] : []),
+    ...(toDeleteIds.length ? [prisma.lot.deleteMany({ where: { id: { in: toDeleteIds } } })] : []),
+    ...(toUpdate.length
+      ? [prisma.$executeRaw`UPDATE lots AS l SET quantity = v.q, "updatedAt" = now()
+          FROM (VALUES ${Prisma.join(toUpdate.map((p) => Prisma.sql`(${p.existingId}, ${p.quantity}::int)`))}) AS v(id, q)
+          WHERE l.id = v.id`]
+      : []),
+  ]);
+
+  const created = toCreate.length, updated = toUpdate.length, removed = toDeleteIds.length;
   const summary = created + updated + removed === 0
     ? "File giống hệt số liệu hiện tại — không có gì thay đổi"
     : `Đã nhập: ${created} lô mới, ${updated} lô cập nhật số lượng${removed ? `, ${removed} lô bị xoá (về 0)` : ""}${unchanged ? `, ${unchanged} lô giữ nguyên` : ""}`;
