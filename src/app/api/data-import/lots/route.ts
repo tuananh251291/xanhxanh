@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { addWeeks } from "date-fns";
 import { lotCodeBase } from "@/lib/codes";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
-import { resolveShelfAttributeUpdate } from "@/lib/shelf-attribute-update";
 
-const MAX_CODE_ATTEMPTS = 50;
+// Cấp mã lô trong bộ nhớ — trần cao (kệ không gán NV dùng chung gốc "NV000", trần 50 cũ gây lỗi 500).
+const MAX_CODE_ATTEMPTS = 100000;
 const FINISHED_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
 
 type RowError = { row: number; label: string; message: string };
@@ -187,22 +188,43 @@ export async function POST(req: NextRequest) {
   };
 
   // ---- Giai đoạn 1: validate từng dòng riêng lẻ, không ghi DB ----
+  // Đọc trước 1 lần mọi kệ/phòng/mã cây/NV/mã lô mà file nhắc tới — KHÔNG truy vấn theo từng dòng: mỗi
+  // truy vấn tới Supabase mất ~50ms, file vài trăm dòng × 4-6 truy vấn/dòng từng vượt 60s → timeout 504
+  // (04/10/2026, cùng lỗi đã sửa ở api/data-import/shelves).
   const errors: RowError[] = [];
   const validRows: ValidRow[] = [];
   const claimedLotCodeOverrides = new Set<string>();
 
-  for (const parsed of parsedRows) {
-    const shelf = await prisma.shelf.findFirst({
-      where: { code: parsed.location, isActive: true, room: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] } } },
-      select: { id: true, plantTypeId: true, assignedStaffId: true, capacity: true, room: { select: { type: true } } },
-    });
+  const locations = [...new Set(parsedRows.map((p) => p.location))];
+  const plantCodes = [...new Set(parsedRows.map((p) => p.plantTypeCode).filter((c): c is string => !!c))];
+  const staffCodesInFile = [...new Set(parsedRows.map((p) => p.staffCode).filter((c): c is string => !!c))];
+  const lotCodesInFile = [...new Set(parsedRows.map((p) => p.lotCode).filter((c): c is string => !!c))];
+  const [shelfRows, roomRows, plantTypeRows, userRows, overrideLotRows] = await Promise.all([
+    prisma.shelf.findMany({
+      where: { code: { in: locations }, isActive: true, room: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] } } },
+      select: { id: true, code: true, warehouseId: true, plantTypeId: true, assignedStaffId: true, capacity: true, room: { select: { type: true } } },
+    }),
+    prisma.room.findMany({ where: { code: { in: locations }, type: { in: [...FINISHED_ROOM_TYPES] } }, select: { id: true, code: true, type: true } }),
+    plantCodes.length
+      ? prisma.plantType.findMany({ where: { code: { in: plantCodes } }, select: { id: true, code: true, transferWaitWeeks: true, rootingWeeks: true } })
+      : [],
+    staffCodesInFile.length
+      ? prisma.user.findMany({ where: { code: { in: staffCodesInFile } }, select: { id: true, role: true, code: true, workplaceWarehouseId: true } })
+      : [],
+    lotCodesInFile.length ? prisma.lot.findMany({ where: { code: { in: lotCodesInFile } }, select: { code: true, stageCode: true } }) : [],
+  ]);
+  const shelfByCode = new Map(shelfRows.map((s) => [s.code, s]));
+  const roomByCode = new Map<string, (typeof roomRows)[number]>();
+  for (const r of roomRows) if (!roomByCode.has(r.code)) roomByCode.set(r.code, r);
+  const plantTypeByCode = new Map(plantTypeRows.map((p) => [p.code, p]));
+  const userByCode = new Map(userRows.map((u) => [u.code, u]));
+  const userById = new Map(userRows.map((u) => [u.id, u]));
+  const shelfById = new Map(shelfRows.map((s) => [s.id, s]));
+  const existingOverrideCodes = new Set(overrideLotRows.map((l) => `${l.code}::${l.stageCode}`));
 
-    const room = shelf
-      ? null
-      : await prisma.room.findFirst({
-          where: { code: parsed.location, type: { in: [...FINISHED_ROOM_TYPES] } },
-          select: { id: true, type: true },
-        });
+  for (const parsed of parsedRows) {
+    const shelf = shelfByCode.get(parsed.location) ?? null;
+    const room = shelf ? null : roomByCode.get(parsed.location) ?? null;
 
     if (!shelf && !room) {
       errors.push({ row: parsed.row, label: parsed.location, message: "Không tìm thấy kệ hoặc phòng kho thành phẩm có mã này" });
@@ -245,10 +267,7 @@ export async function POST(req: NextRequest) {
       });
       continue;
     }
-    const plantType = await prisma.plantType.findUnique({
-      where: { code: parsed.plantTypeCode },
-      select: { id: true, code: true, transferWaitWeeks: true, rootingWeeks: true },
-    });
+    const plantType = plantTypeByCode.get(parsed.plantTypeCode);
     if (!plantType) {
       errors.push({ row: parsed.row, label: parsed.location, message: `Không tìm thấy mã cây "${parsed.plantTypeCode}"` });
       continue;
@@ -287,7 +306,7 @@ export async function POST(req: NextRequest) {
     let staffCode: string | null = null;
     let resolvedStaffId: string | undefined;
     if (shelf && parsed.staffCode) {
-      const u = await prisma.user.findUnique({ where: { code: parsed.staffCode }, select: { id: true, role: true, code: true } });
+      const u = userByCode.get(parsed.staffCode);
       if (!u || u.role !== "CAY_MO") {
         errors.push({ row: parsed.row, label: parsed.location, message: `Không tìm thấy mã NV cấy mô "${parsed.staffCode}"` });
         continue;
@@ -322,8 +341,7 @@ export async function POST(req: NextRequest) {
         errors.push({ row: parsed.row, label: parsed.location, message: `Mã lô "${parsed.lotCode}" (${stageCode}) trùng 1 dòng khác trong file` });
         continue;
       }
-      const existingLot = await prisma.lot.findFirst({ where: { code: parsed.lotCode, stageCode }, select: { id: true } });
-      if (existingLot) {
+      if (existingOverrideCodes.has(key)) {
         errors.push({ row: parsed.row, label: parsed.location, message: `Mã lô "${parsed.lotCode}" (${stageCode}) đã tồn tại` });
         continue;
       }
@@ -409,15 +427,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Lô ACTIVE hiện có ở MỌI vị trí trong file — đọc 1 lần (sắp xếp enteredAt tăng dần để "lô cũ nhất"
+  // đứng đầu mỗi combo), dùng cho kiểm tra sức chứa ở đây và đọc lại 1 lần trong transaction ở Giai đoạn 2.
+  const groupShelfIds = [...groups.values()].map((g) => g.shelfId).filter((id): id is string => !!id);
+  const groupRoomIds = [...groups.values()].map((g) => g.roomId).filter((id): id is string => !!id);
+  const groupShelfIdSet = new Set(groupShelfIds);
+  const groupRoomIdSet = new Set(groupRoomIds);
+  const readActiveLots = (client: Prisma.TransactionClient | typeof prisma) =>
+    groups.size === 0
+      ? Promise.resolve([])
+      : client.lot.findMany({
+          where: { status: "ACTIVE", OR: [{ shelfId: { in: groupShelfIds } }, { roomId: { in: groupRoomIds } }] },
+          orderBy: { enteredAt: "asc" },
+          select: { id: true, shelfId: true, roomId: true, plantTypeId: true, stageCode: true, quantity: true },
+        });
+  const groupLots = <T extends { shelfId: string | null; roomId: string | null }>(lots: T[]) => {
+    const byLoc = new Map<string, T[]>();
+    // Giống truy vấn cũ theo từng vị trí: kệ lọc theo shelfId, phòng kho TP lọc theo roomId — 1 lô có thể
+    // thuộc cả 2 khoá nếu cùng lúc khớp cả kệ lẫn phòng trong file.
+    const push = (key: string, l: T) => { const arr = byLoc.get(key) ?? []; arr.push(l); byLoc.set(key, arr); };
+    for (const l of lots) {
+      if (l.shelfId && groupShelfIdSet.has(l.shelfId)) push(`shelf:${l.shelfId}`, l);
+      if (l.roomId && groupRoomIdSet.has(l.roomId)) push(`room:${l.roomId}`, l);
+    }
+    return byLoc;
+  };
+
   // Sức chứa: tổng số lượng SAU khi ghi đè = số lượng các combo GIỮ NGUYÊN (không có trong targets) +
-  // tổng targets — không được vượt capacity. Cần đọc lô hiện có (chỉ shelf mới có capacity, room luôn
-  // capacity=null nên nhánh này chỉ chạy cho shelf).
-  for (const g of groups.values()) {
+  // tổng targets — không được vượt capacity (chỉ kệ mới có capacity, phòng luôn null).
+  const lotsBeforeByLoc = groupLots(await readActiveLots(prisma));
+  for (const [key, g] of groups) {
     if (g.capacity == null || !g.shelfId) continue;
-    const existingLots = await prisma.lot.findMany({
-      where: { shelfId: g.shelfId, status: "ACTIVE" },
-      select: { plantTypeId: true, stageCode: true, quantity: true },
-    });
+    const existingLots = lotsBeforeByLoc.get(key) ?? [];
     const untouchedQuantity = existingLots
       .filter((l) => !g.targets.has(`${l.plantTypeId}::${l.stageCode}`))
       .reduce((s, l) => s + l.quantity, 0);
@@ -434,17 +475,32 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Giai đoạn 2: áp dụng — chỉ khi cả file không còn dòng lỗi nào ----
+  // Ghi GỘP (đọc lại lô 1 lần, cập nhật số lượng bằng 1 lệnh UPDATE ... FROM VALUES, tạo lô bằng 1 lệnh
+  // createMany, gán kệ gom theo cùng giá trị) — trước đây ghi lần lượt từng kệ/lô trong transaction mặc
+  // định 5 giây nên file lớn luôn vượt hạn (P2028).
   let updatedCount = 0; // số lô được tạo mới hoặc sửa số lượng theo đúng combo khai trong file
   // zeroedCount: chỉ phát sinh trong trường hợp hiếm — 1 combo (vị trí + mã cây + quy cách) lỡ có NHIỀU
   // hơn 1 lô ACTIVE trùng nhau (dữ liệu cũ trước khi có quy tắc này) — lô dư (không phải lô cũ nhất) bị
   // đưa về 0 khi combo đó được ghi đè, KHÔNG liên quan gì tới việc combo có mặt hay không trong file.
   let zeroedCount = 0;
   if (groups.size > 0 && errors.length === 0) {
-    const claimedLotCodes = new Set<string>();
     await prisma.$transaction(async (tx) => {
-      for (const g of groups.values()) {
-        const whereLoc = g.shelfId ? { shelfId: g.shelfId } : { roomId: g.roomId };
-        const existingLots = await tx.lot.findMany({ where: { ...whereLoc, status: "ACTIVE" }, orderBy: { enteredAt: "asc" } });
+      const lotsByLoc = groupLots(await readActiveLots(tx));
+      const singleRowMauMeShelfIds = [...groups.values()].filter((g) => g.isMauMeShelf && g.mauMeRows.length === 1 && g.shelfId).map((g) => g.shelfId!);
+      const shelfCurrentById = new Map(
+        (singleRowMauMeShelfIds.length
+          ? await tx.shelf.findMany({ where: { id: { in: singleRowMauMeShelfIds } }, select: { id: true, plantTypeId: true, assignedStaffId: true } })
+          : []
+        ).map((s) => [s.id, s])
+      );
+
+      const quantityUpdates: { id: string; quantity: number }[] = [];
+      const clearPlantTypeShelfIds: string[] = [];
+      const shelfDataGroups = new Map<string, { data: Prisma.ShelfUncheckedUpdateManyInput; ids: string[] }>();
+      const toCreate: { target: Target; g: LocationGroup }[] = [];
+
+      for (const [key, g] of groups) {
+        const existingLots = lotsByLoc.get(key) ?? [];
         const existingByCombo = new Map<string, typeof existingLots>();
         for (const lot of existingLots) {
           const comboKey = `${lot.plantTypeId}::${lot.stageCode}`;
@@ -459,35 +515,54 @@ export async function POST(req: NextRequest) {
         // assignedStaffId của Shelf, mỗi dòng chỉ là 1 lô riêng trên cùng 1 kệ chung.
         if (g.isMauMeShelf && g.mauMeRows.length === 1 && g.shelfId) {
           const vr = g.mauMeRows[0];
-          const shelfCurrent = await tx.shelf.findUnique({ where: { id: g.shelfId }, select: { plantTypeId: true, assignedStaffId: true } });
+          const shelfCurrent = shelfCurrentById.get(g.shelfId);
 
           if (vr.clearMauMeShelf) {
             // Dòng "dọn trống kệ" (bỏ trống Mã cây) — chỉ xoá gán mã cây dedicate (GIỮ NGUYÊN NV phụ
             // trách, không đụng assignedStaffId), rồi đưa MỌI lô đang ACTIVE trên kệ về 0 — không chỉ
             // theo combo trong targets (targets rỗng vì dòng này không khai mã cây/quy cách nào), vì
             // "trống kệ" nghĩa là trống hết bất kể mã cây cũ trên đó là gì.
-            if (shelfCurrent?.plantTypeId) {
-              await tx.shelf.update({ where: { id: g.shelfId }, data: { plantTypeId: null } });
-            }
+            if (shelfCurrent?.plantTypeId) clearPlantTypeShelfIds.push(g.shelfId);
             for (const lot of existingLots) {
               if (lot.quantity !== 0) {
-                await tx.lot.update({ where: { id: lot.id }, data: { quantity: 0 } });
+                quantityUpdates.push({ id: lot.id, quantity: 0 });
                 updatedCount += 1;
               }
             }
             continue;
           }
 
-          const attrResult = await resolveShelfAttributeUpdate(tx, g.shelfId, {
-            plantTypeId: shelfCurrent && vr.plantType!.id === shelfCurrent.plantTypeId ? undefined : vr.plantType!.id,
-            assignedStaffId: vr.resolvedStaffId && vr.resolvedStaffId !== shelfCurrent?.assignedStaffId ? vr.resolvedStaffId : undefined,
-          });
-          if (attrResult.ok && Object.keys(attrResult.data).length > 0) {
-            await tx.shelf.update({ where: { id: g.shelfId }, data: attrResult.data });
+          // Cùng quy tắc với resolveShelfAttributeUpdate (src/lib/shelf-attribute-update.ts) nhưng tính
+          // trên dữ liệu đã đọc sẵn thay vì 3-4 truy vấn/kệ: NV phải là CAY_MO (đã kiểm ở Giai đoạn 1) và
+          // không được gán kệ ngoài kho làm việc của NV; đổi mã cây bị chặn nếu kệ còn lô mã cây khác
+          // (quantity > 0). Vi phạm thì bỏ qua cập nhật thuộc tính kệ (giữ nguyên hành vi cũ: không
+          // rollback cả batch, số lượng vẫn được ghi).
+          const newPlantTypeId = shelfCurrent && vr.plantType!.id === shelfCurrent.plantTypeId ? undefined : vr.plantType!.id;
+          const newStaffId = vr.resolvedStaffId && vr.resolvedStaffId !== shelfCurrent?.assignedStaffId ? vr.resolvedStaffId : undefined;
+          let attrOk = true;
+          const data: { plantTypeId?: string | null; assignedStaffId?: string | null; sharedMotherPool?: null; allowedCodes?: string[] } = {};
+          if (newStaffId !== undefined) {
+            const staff = userById.get(newStaffId);
+            const shelfWarehouseId = shelfById.get(g.shelfId)?.warehouseId;
+            if (!staff || staff.role !== "CAY_MO") attrOk = false;
+            else if (staff.workplaceWarehouseId && shelfWarehouseId && shelfWarehouseId !== staff.workplaceWarehouseId) attrOk = false;
+            else {
+              data.sharedMotherPool = null;
+              data.allowedCodes = [];
+              data.assignedStaffId = newStaffId;
+            }
           }
-          // Lỗi ở đây (VD kệ còn lô mã cây khác còn ACTIVE) không nên xảy ra vì đã validate ở Giai đoạn 1
-          // — bỏ qua silently nếu có lệch state hiếm gặp (2 lượt nhập trùng thời điểm), không rollback cả
-          // batch vì lỗi chỉ ảnh hưởng đúng 2 field này, không ảnh hưởng số lượng.
+          if (attrOk && newPlantTypeId !== undefined) {
+            const mismatched = existingLots.some((l) => l.quantity > 0 && l.plantTypeId !== newPlantTypeId);
+            if (mismatched) attrOk = false;
+            else data.plantTypeId = newPlantTypeId;
+          }
+          if (attrOk && Object.keys(data).length > 0) {
+            const dataKey = JSON.stringify(data);
+            const entry = shelfDataGroups.get(dataKey) ?? { data, ids: [] as string[] };
+            entry.ids.push(g.shelfId);
+            shelfDataGroups.set(dataKey, entry);
+          }
         }
 
         // Combo hiện có nhưng KHÔNG xuất hiện trong file cho vị trí này → GIỮ NGUYÊN, không đụng tới.
@@ -499,57 +574,75 @@ export async function POST(req: NextRequest) {
           if (existing.length > 0) {
             const [primary, ...rest] = existing;
             if (primary.quantity !== target.quantity) {
-              await tx.lot.update({ where: { id: primary.id }, data: { quantity: target.quantity } });
+              quantityUpdates.push({ id: primary.id, quantity: target.quantity });
               updatedCount += 1;
             }
             for (const dup of rest) {
               if (dup.quantity !== 0) {
-                await tx.lot.update({ where: { id: dup.id }, data: { quantity: 0 } });
+                quantityUpdates.push({ id: dup.id, quantity: 0 });
                 zeroedCount += 1;
               }
             }
             continue;
           }
-
           if (target.quantity <= 0) continue; // chưa từng có lô + số lượng 0 → không có gì để tạo
+          toCreate.push({ target, g });
+        }
+      }
 
+      if (clearPlantTypeShelfIds.length) {
+        await tx.shelf.updateMany({ where: { id: { in: clearPlantTypeShelfIds } }, data: { plantTypeId: null } });
+      }
+      for (const { data, ids } of shelfDataGroups.values()) {
+        await tx.shelf.updateMany({ where: { id: { in: ids } }, data });
+      }
+      if (quantityUpdates.length) {
+        await tx.$executeRaw`UPDATE lots AS l SET quantity = v.q, "updatedAt" = now()
+          FROM (VALUES ${Prisma.join(quantityUpdates.map((u) => Prisma.sql`(${u.id}, ${u.quantity}::int)`))}) AS v(id, q)
+          WHERE l.id = v.id`;
+      }
+
+      // Cấp mã lô trong bộ nhớ: đọc 1 lần mọi mã đã chiếm cùng "gốc" (mã cây + NV + tuần), thêm hậu tố
+      // -2, -3... như trước. Trần cao — kệ không gán NV dùng chung gốc "NV000" nên trần 50 cũ làm file
+      // >50 vị trí cùng mã cây/tuần báo lỗi 500.
+      if (toCreate.length) {
+        const baseOf = (vr: ValidRow) => lotCodeBase({ plantTypeCode: vr.plantType!.code, staffCode: vr.staffCode ?? "NV000", date: vr.enteredAt });
+        const bases = [...new Set(toCreate.filter((c) => !c.target.lotCodeOverride).map((c) => baseOf(c.target.source)))];
+        const takenRows = bases.length
+          ? await tx.lot.findMany({ where: { OR: bases.map((b) => ({ code: { startsWith: b } })) }, select: { code: true, stageCode: true } })
+          : [];
+        const taken = new Set(takenRows.map((t) => `${t.code}::${t.stageCode}`));
+        for (const c of toCreate) if (c.target.lotCodeOverride) taken.add(`${c.target.lotCodeOverride}::${c.target.stageCode}`);
+        const data: Prisma.LotCreateManyInput[] = toCreate.map(({ target, g }) => {
           const vr = target.source;
           let code = target.lotCodeOverride;
           if (!code) {
-            const base = lotCodeBase({ plantTypeCode: vr.plantType!.code, staffCode: vr.staffCode ?? "NV000", date: vr.enteredAt });
-            let attempt = 0;
-            for (;;) {
-              attempt += 1;
-              code = attempt === 1 ? base : `${base}-${attempt}`;
-              const key = `${code}::${target.stageCode}`;
+            const base = baseOf(vr);
+            code = base;
+            for (let attempt = 2; taken.has(`${code}::${target.stageCode}`); attempt++) {
               if (attempt > MAX_CODE_ATTEMPTS) throw new Error(`Không sinh được mã lô duy nhất cho ${vr.label}`);
-              if (claimedLotCodes.has(key)) continue;
-              const existingCode = await tx.lot.findFirst({ where: { code, stageCode: target.stageCode }, select: { id: true } });
-              if (existingCode) continue;
-              claimedLotCodes.add(key);
-              break;
+              code = `${base}-${attempt}`;
             }
+            taken.add(`${code}::${target.stageCode}`);
           }
-
-          await tx.lot.create({
-            data: {
-              code: code!,
-              plantTypeId: target.plantTypeId,
-              stage: vr.lotStage,
-              stageCode: target.stageCode,
-              shelfId: g.shelfId,
-              roomId: g.roomId,
-              quantity: target.quantity,
-              initialQuantity: target.quantity,
-              status: "ACTIVE",
-              enteredAt: vr.enteredAt,
-              expectedMoveAt: vr.expectedMoveAt,
-            },
-          });
-          updatedCount += 1;
-        }
+          return {
+            code,
+            plantTypeId: target.plantTypeId,
+            stage: vr.lotStage,
+            stageCode: target.stageCode,
+            shelfId: g.shelfId,
+            roomId: g.roomId,
+            quantity: target.quantity,
+            initialQuantity: target.quantity,
+            status: "ACTIVE",
+            enteredAt: vr.enteredAt,
+            expectedMoveAt: vr.expectedMoveAt,
+          };
+        });
+        await tx.lot.createMany({ data });
+        updatedCount += data.length;
       }
-    });
+    }, { timeout: 60000 });
   }
 
   return NextResponse.json({ successCount: updatedCount, zeroedCount, errors });
