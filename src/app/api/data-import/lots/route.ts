@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { addWeeks } from "date-fns";
 import { lotCodeBase } from "@/lib/codes";
+import { computeImportedMotherExpectedMoveAt, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
+import { resolveRotationEpoch } from "@/lib/rotation-epoch";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 
 // Cấp mã lô trong bộ nhớ — trần cao (kệ không gán NV dùng chung gốc "NV000", trần 50 cũ gây lỗi 500).
@@ -202,7 +204,7 @@ export async function POST(req: NextRequest) {
   const [shelfRows, roomRows, plantTypeRows, userRows, overrideLotRows] = await Promise.all([
     prisma.shelf.findMany({
       where: { code: { in: locations }, isActive: true, room: { type: { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] } } },
-      select: { id: true, code: true, warehouseId: true, plantTypeId: true, assignedStaffId: true, capacity: true, room: { select: { type: true } } },
+      select: { id: true, code: true, warehouseId: true, plantTypeId: true, assignedStaffId: true, capacity: true, room: { select: { type: true } }, rotationGroup: { select: { rotationOrder: true } } },
     }),
     prisma.room.findMany({ where: { code: { in: locations }, type: { in: [...FINISHED_ROOM_TYPES] } }, select: { id: true, code: true, type: true } }),
     plantCodes.length
@@ -349,8 +351,8 @@ export async function POST(req: NextRequest) {
       nonZero[0].lotCodeOverride = parsed.lotCode;
     }
 
-    // Mẫu mẹ (MAU_ME): KHÔNG tính expectedMoveAt từ Ngày nhập lô — "đạt hạn cấy chuyển" tính thuần theo
-    // Nhóm tuần mẫu mẹ của giàn kệ đích. Ngày nhập lô vẫn bắt buộc điền vì còn dùng để sắp thứ tự rút
+    // Mẫu mẹ (MAU_ME): expectedMoveAt tính lúc TẠO lô ở Giai đoạn 2 theo Nhóm tuần của giàn + tuần khởi đầu
+    // của kho (computeImportedMotherExpectedMoveAt) — ở đây để null. Ngày nhập lô còn dùng để sắp thứ tự rút
     // FIFO khi dồn/xếp lại giàn (xem moveMotherStock).
     const expectedMoveAt = isRaReShelf ? addWeeks(enteredAt, plantType.rootingWeeks) : null;
 
@@ -606,6 +608,20 @@ export async function POST(req: NextRequest) {
       // -2, -3... như trước. Trần cao — kệ không gán NV dùng chung gốc "NV000" nên trần 50 cũ làm file
       // >50 vị trí cùng mã cây/tuần báo lỗi 500.
       if (toCreate.length) {
+        // Lô mẫu mẹ mới trên giàn: tính hạn cấy chuyển theo Nhóm tuần của giàn + tuần khởi đầu của ĐÚNG kho
+        // (xem computeImportedMotherExpectedMoveAt) — trước đây bỏ trống nên lô nhập Excel không bao giờ
+        // hiện "đến hạn cấy chuyển".
+        const motherEpochResolver = toCreate.some((c) => c.target.source.lotStage === "MAU_ME") ? await getMotherRotationEpochResolver() : undefined;
+        const motherExpectedMoveAt = (vr: ValidRow, shelfId: string | undefined) => {
+          const shelf = shelfId ? shelfById.get(shelfId) : undefined;
+          if (!shelf) return vr.expectedMoveAt;
+          return computeImportedMotherExpectedMoveAt(
+            vr.plantType!.transferWaitWeeks,
+            vr.enteredAt,
+            shelf.rotationGroup?.rotationOrder ?? null,
+            resolveRotationEpoch(motherEpochResolver, shelf.warehouseId)
+          );
+        };
         const baseOf = (vr: ValidRow) => lotCodeBase({ plantTypeCode: vr.plantType!.code, staffCode: vr.staffCode ?? "NV000", date: vr.enteredAt });
         const bases = [...new Set(toCreate.filter((c) => !c.target.lotCodeOverride).map((c) => baseOf(c.target.source)))];
         const takenRows = bases.length
@@ -636,7 +652,7 @@ export async function POST(req: NextRequest) {
             initialQuantity: target.quantity,
             status: "ACTIVE",
             enteredAt: vr.enteredAt,
-            expectedMoveAt: vr.expectedMoveAt,
+            expectedMoveAt: vr.lotStage === "MAU_ME" ? motherExpectedMoveAt(vr, g.shelfId) : vr.expectedMoveAt,
           };
         });
         await tx.lot.createMany({ data });

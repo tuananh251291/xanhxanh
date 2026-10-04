@@ -18,6 +18,31 @@ export async function getMotherRotationEpochResolver(): Promise<RotationEpochRes
   return getRotationEpochResolver("MAU_ME");
 }
 
+// Hạn cấy chuyển (Lot.expectedMoveAt) cho lô mẫu mẹ NHẬP THẲNG lên giàn bằng Excel (mục 4 Giàn kệ mới, mục
+// 5 Lô tồn kho hiện có) — cùng công thức computeExpectedMoveAt (dark-room-shelf-commit.ts, Kho mô xếp kệ
+// khi nhận bàn giao): lần tới lượt kế tiếp của Nhóm tuần chứa kệ, tính từ ngày lô vào kệ. Khác 1 điểm:
+// tồn CŨ đã nằm trên kệ từ lâu thì hạn tính ra có thể đã qua — cộng thêm đủ chu kỳ (N tuần) cho tới lần
+// tới lượt GẦN NHẤT kể từ tuần này, để lô hiện đúng "đến hạn" khi Nhóm của nó tới lượt (summarizeMotherWeekGroups
+// chỉ coi lô có expectedMoveAt trong tuần này/tuần sau là đến hạn). Trước đây 2 mục nhập Excel bỏ trống
+// expectedMoveAt nên lô nhập Excel KHÔNG BAO GIỜ hiện đến hạn (04/10/2026: 412/412 lô mẫu mẹ Kim Động).
+// Kệ chưa thuộc Nhóm hoặc chưa cấu hình Tuần khởi đầu → giống computeExpectedMoveAt: vào kệ + N tuần.
+export function computeImportedMotherExpectedMoveAt(
+  transferWaitWeeks: number,
+  enteredAt: Date,
+  rotationOrder: number | null,
+  motherEpochMonday: Date | undefined,
+  now: Date = new Date()
+): Date {
+  const totalSlots = transferWaitWeeks;
+  if (rotationOrder == null || !motherEpochMonday || totalSlots <= 0) return addWeeks(enteredAt, totalSlots);
+  const enteredSlot = getCurrentWeekSlot(totalSlots, enteredAt, motherEpochMonday);
+  const weeksUntilDue = ((rotationOrder - enteredSlot + totalSlots) % totalSlots) || totalSlots;
+  let due = startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 });
+  const thisWeek = startOfWeek(now, { weekStartsOn: 1 });
+  while (due.getTime() < thisWeek.getTime()) due = addWeeks(due, totalSlots);
+  return due;
+}
+
 export type MotherWeekGroupShelf = {
   id: string;
   code: string;

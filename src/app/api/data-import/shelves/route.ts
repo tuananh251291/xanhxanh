@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { addWeeks } from "date-fns";
 import { lotCodeBase } from "@/lib/codes";
+import { computeImportedMotherExpectedMoveAt, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
+import { resolveRotationEpoch } from "@/lib/rotation-epoch";
 import { cellText, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 
 // Cấp mã lô trong bộ nhớ (không còn truy vấn mỗi lần thử) — trần cao: kệ "Kho mẫu mẹ chung" không có NV nên
@@ -227,6 +229,7 @@ export async function POST(req: NextRequest) {
     assignedStaffId?: string;
     sharedMotherPool?: "QUA_HAN" | "DUNG_HAN";
     rotationGroupId?: string;
+    rotationOrder: number | null;
     stageEntries: { stageCode: string; quantity: number }[];
     plantType?: ResolvedPlantType;
     staffCode?: string | null;
@@ -378,6 +381,7 @@ export async function POST(req: NextRequest) {
     }
 
     let rotationGroupId: string | undefined;
+    let rotationOrder: number | null = null;
     if (parsed.rotationGroupName) {
       const rotationKind = isMauMe ? "MAU_ME" : "RA_RE";
       const matches = rotationGroupsByKindAndName.get(`${rotationKind}::${parsed.rotationGroupName}`);
@@ -409,6 +413,7 @@ export async function POST(req: NextRequest) {
         }
       }
       rotationGroupId = group.id;
+      rotationOrder = group.rotationOrder;
     }
 
     // Mỗi quy cách có 1 cột số lượng riêng — 1 dòng có thể điền nhiều cột để tạo đồng thời nhiều lô cho
@@ -476,6 +481,7 @@ export async function POST(req: NextRequest) {
       assignedStaffId,
       sharedMotherPool,
       rotationGroupId,
+      rotationOrder,
       stageEntries,
       plantType: resolvedPlantType,
       staffCode: resolvedStaffCode,
@@ -505,6 +511,9 @@ export async function POST(req: NextRequest) {
     });
     const baseOf = (vr: ValidRow) => lotCodeBase({ plantTypeCode: vr.plantType!.code, staffCode: vr.staffCode ?? "NV000", date: now });
     const lotRows = validRows.filter((vr) => vr.plantType && vr.stageEntries.length > 0);
+    // Hạn cấy chuyển lô mẫu mẹ ban đầu: theo Nhóm tuần khai trong file + tuần khởi đầu của đúng kho (xem
+    // computeImportedMotherExpectedMoveAt) — trước đây bỏ trống nên không bao giờ hiện "đến hạn cấy chuyển".
+    const motherEpochResolver = lotRows.some((vr) => vr.isMauMe) ? await getMotherRotationEpochResolver() : undefined;
     const bases = [...new Set(lotRows.map(baseOf))];
 
     await prisma.$transaction(async (tx) => {
@@ -545,9 +554,11 @@ export async function POST(req: NextRequest) {
             initialQuantity: entry.quantity,
             status: "ACTIVE",
             enteredAt: now,
-            // Mẫu mẹ: không còn tính expectedMoveAt từ ngày vào kệ — hạn cấy chuyển tự tính theo Nhóm tuần
-            // mẫu mẹ của giàn kệ đích (xem summarizeMotherWeekGroups), giàn chưa gán Nhóm thì không có hạn.
-            expectedMoveAt: vr.isMauMe ? null : addWeeks(now, vr.plantType!.rootingWeeks),
+            // Mẫu mẹ: hạn cấy chuyển = lần tới lượt kế tiếp của Nhóm tuần khai trong file (xem
+            // computeImportedMotherExpectedMoveAt); giàn chưa gán Nhóm thì vào kệ + thời gian đợi cấy chuyển.
+            expectedMoveAt: vr.isMauMe
+              ? computeImportedMotherExpectedMoveAt(vr.plantType!.transferWaitWeeks, now, vr.rotationOrder, resolveRotationEpoch(motherEpochResolver, vr.warehouseId))
+              : addWeeks(now, vr.plantType!.rootingWeeks),
           });
         }
       }
