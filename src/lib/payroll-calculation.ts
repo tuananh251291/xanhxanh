@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { eachDayOfInterval, addDays, format } from "date-fns";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
+import { computeAnnualWorkDays, computeKpiDailyRate, type AnnualWorkDays } from "@/lib/kpi-daily-rate";
 
 export type PayrollBreakdown = {
   staffId: string;
@@ -28,6 +29,7 @@ export type PayrollBreakdown = {
   // complianceBonus bị ép về 0 — xem ViolationType.disqualifiesComplianceKpi.
   complianceKpiDisqualified: boolean;
 
+  // KPI/ngày TỰ TÍNH (xem src/lib/kpi-daily-rate.ts) — null khi NV chưa cài Lương công việc/Mức KPI nào.
   kpiDailyRate: number | null;
   kpiTargetAmount: number; // Sản lượng chỉ tiêu (VNĐ)
   eligibleProductionAmount: number; // Sản lượng đủ điều kiện (VNĐ)
@@ -37,6 +39,15 @@ export type PayrollBreakdown = {
   // ép về 0 — TÁCH BIỆT với lý do tỉ lệ nhiễm >5% (contaminationRatePct đã hiển thị riêng, tự zero-out
   // không cần ghi ViolationRecord nào), dù có thể trùng nếu HR cũng ghi tay dòng "Tỷ lệ nhiễm > 5%".
   productionKpiDisqualified: boolean;
+
+  // KPI công việc = Mức KPI công việc tối đa × tỉ lệ đạt (tối đa 100%). Tỉ lệ đạt: NV học việc = tổng điểm
+  // NV Kỹ thuật chấm ÷ tổng điểm tối đa của các phiếu Đánh giá thử việc ĐÃ HOÀN THÀNH có tuần bắt đầu trong
+  // kỳ; NV chính thức = Sản lượng đủ điều kiện ÷ Sản lượng chỉ tiêu. null = chưa xác định được (chưa có
+  // phiếu đánh giá hoàn thành / chưa có sản lượng chỉ tiêu) → KPI công việc = 0.
+  workKpiMaxAmount: number | null;
+  workKpiBasis: "DANH_GIA_HOC_VIEC" | "SAN_LUONG";
+  workKpiRatioPct: number | null;
+  workKpiAmount: number;
 
   otherBonusAmount: number; // Các khoản khác
 
@@ -59,6 +70,7 @@ export type PayrollPeriodResult = {
   periodMonth: string;
   rangeStart: Date;
   rangeEnd: Date;
+  annualWorkDays?: AnnualWorkDays; // mẫu số KPI/ngày của năm chứa kỳ lương
   rows: PayrollBreakdown[];
 };
 
@@ -80,8 +92,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     select: {
       id: true, code: true, name: true, employmentType: true, isTrainee: true,
       workplaceWarehouse: { select: { name: true } },
-      staffBaseSalary: { select: { monthlyAmount: true, kpiBonusAmount: true } },
-      staffKpiDailyRate: { select: { vndPerDay: true } },
+      staffBaseSalary: { select: { monthlyAmount: true, kpiBonusAmount: true, workKpiMaxAmount: true } },
     },
     orderBy: { name: "asc" },
   });
@@ -90,7 +101,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
 
   const [
     dailyRecords, transfers, violationSums, disqualifyingViolations, recoverySums, otherBonusSums,
-    kpiBonusRate, holidays, instructions, plantRates,
+    kpiBonusRate, holidays, instructions, plantRates, annualWorkDays, probationEvaluations,
   ] = await Promise.all([
     prisma.dailyRecord.findMany({
       where: { staffId: { in: staffIds }, recordDate: { gte: rangeStart, lt: rangeEnd } },
@@ -145,6 +156,13 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       select: { assignedToId: true, inputMotherQuantity: true, dailyRecords: { select: { motherContaminatedM05: true } } },
     }),
     prisma.plantTypeKpiRate.findMany({ select: { plantTypeId: true, stageCode: true, vndPerUnit: true } }),
+    computeAnnualWorkDays(Number(periodMonth.slice(0, 4))),
+    // Phiếu Đánh giá thử việc ĐÃ HOÀN THÀNH (NV Kỹ thuật đã chấm) có tuần bắt đầu trong kỳ — căn cứ KPI công
+    // việc của NV học việc. Mỗi tiêu chí tối đa 10 điểm (xem PATCH /api/probation-evaluations/[id]).
+    prisma.probationEvaluation.findMany({
+      where: { staffId: { in: staffIds }, status: "COMPLETED", weekStart: { gte: rangeStart, lt: rangeEnd } },
+      select: { staffId: true, items: { select: { managerScore: true } } },
+    }),
   ]);
 
   // Ngày công tiêu chuẩn/số ngày nghỉ lễ hưởng lương — GIỐNG NHAU cho mọi NV trong cùng kỳ, tính 1 lần.
@@ -237,6 +255,13 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   );
   const recoveryByStaff = new Map(recoverySums.map((v) => [v.staffId, v._sum.points ?? 0]));
   const otherBonusByStaff = new Map(otherBonusSums.map((v) => [v.staffId, v._sum.amount ?? 0]));
+  const evalScoreByStaff = new Map<string, { score: number; max: number }>();
+  for (const ev of probationEvaluations) {
+    const e = evalScoreByStaff.get(ev.staffId) ?? { score: 0, max: 0 };
+    e.score += ev.items.reduce((sum, it) => sum + (it.managerScore ?? 0), 0);
+    e.max += ev.items.length * 10;
+    evalScoreByStaff.set(ev.staffId, e);
+  }
 
   const rows: PayrollBreakdown[] = staffList.map((s) => {
     const activeDays = activeDaysByStaff.get(s.id)?.size ?? 0;
@@ -261,7 +286,8 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       ? Math.round(kpiBonusMaxAmount * (paidWorkDays / standardWorkDays) * (compliancePoints / 100))
       : 0;
 
-    const kpiDailyRate = s.staffKpiDailyRate?.vndPerDay ?? null;
+    const workKpiMaxAmount = s.staffBaseSalary?.workKpiMaxAmount ?? null;
+    const kpiDailyRate = computeKpiDailyRate(baseSalaryMonthly, kpiBonusMaxAmount, workKpiMaxAmount, annualWorkDays.workDays);
     const kpiTargetAmount = kpiDailyRate != null ? kpiDailyRate * kpiWorkDays : 0;
 
     const recordedMap = recordedByStaffAndPlant.get(s.id);
@@ -275,13 +301,20 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     const productionKpiDisqualified = productionKpiDisqualifiedStaffIds.has(s.id);
     const productionOverBonus = productionKpiDisqualified
       ? 0
-      : eligibleProductionAmount > kpiTargetAmount && contaminationRatePct <= CONTAMINATION_THRESHOLD_PCT && !s.isTrainee
+      : kpiDailyRate != null && eligibleProductionAmount > kpiTargetAmount && contaminationRatePct <= CONTAMINATION_THRESHOLD_PCT && !s.isTrainee
       ? Math.round((eligibleProductionAmount - kpiTargetAmount) * (compliancePoints / 100))
       : 0;
 
+    const workKpiBasis: PayrollBreakdown["workKpiBasis"] = s.isTrainee ? "DANH_GIA_HOC_VIEC" : "SAN_LUONG";
+    const evalScore = evalScoreByStaff.get(s.id);
+    const workKpiRatio = s.isTrainee
+      ? evalScore && evalScore.max > 0 ? Math.min(1, evalScore.score / evalScore.max) : null
+      : kpiTargetAmount > 0 ? Math.min(1, eligibleProductionAmount / kpiTargetAmount) : null;
+    const workKpiAmount = workKpiMaxAmount != null && workKpiRatio != null ? Math.round(workKpiMaxAmount * workKpiRatio) : 0;
+
     const otherBonusAmount = otherBonusByStaff.get(s.id) ?? 0;
 
-    const totalIncome = workSalary + complianceBonus + productionOverBonus + otherBonusAmount;
+    const totalIncome = workSalary + complianceBonus + workKpiAmount + productionOverBonus + otherBonusAmount;
 
     const staffDayMap = dailyDetailMap.get(s.id);
     const dailyDetail: PayrollDailyDetailEntry[] = daysInPeriod.map((d) => {
@@ -322,11 +355,15 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       contaminationRatePct: Math.round(contaminationRatePct * 10) / 10,
       productionOverBonus,
       productionKpiDisqualified,
+      workKpiMaxAmount,
+      workKpiBasis,
+      workKpiRatioPct: workKpiRatio != null ? Math.round(workKpiRatio * 1000) / 10 : null,
+      workKpiAmount,
       otherBonusAmount,
       totalIncome,
       dailyDetail,
     };
   });
 
-  return { periodMonth, rangeStart, rangeEnd, rows };
+  return { periodMonth, rangeStart, rangeEnd, annualWorkDays, rows };
 }

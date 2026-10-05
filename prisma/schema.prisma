@@ -3448,6 +3448,10 @@ model StaffBaseSalary {
   // xem staff-kpi-max-section.tsx). Dùng thay mức chung theo kỳ (KpiBonusRate) khi tính complianceBonus
   // (src/lib/payroll-calculation.ts). Null = chưa cài riêng → dùng mức chung.
   kpiBonusAmount Int?
+  // Mức KPI công việc TỐI ĐA (VNĐ/tháng) của NV — cài ở tab "KPI của nhân viên" (nhập tay/Excel). Dùng 2 nơi
+  // (src/lib/payroll-calculation.ts): (1) cộng vào tử số KPI/ngày tự tính (xem src/lib/kpi-daily-rate.ts),
+  // (2) khoản "KPI công việc" = mức này × tỉ lệ đạt (≤100%). Null = chưa cài (tính như 0).
+  workKpiMaxAmount Int?
   updatedAt     DateTime @updatedAt
 
   @@map("staff_base_salaries")

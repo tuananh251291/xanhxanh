@@ -25,6 +25,7 @@ type Row = {
   kpiBonusMaxAmount: number | null; complianceBonus: number; complianceKpiDisqualified: boolean;
   kpiDailyRate: number | null; kpiTargetAmount: number; eligibleProductionAmount: number;
   contaminationRatePct: number; productionOverBonus: number; productionKpiDisqualified: boolean;
+  workKpiMaxAmount: number | null; workKpiBasis: "DANH_GIA_HOC_VIEC" | "SAN_LUONG"; workKpiRatioPct: number | null; workKpiAmount: number;
   otherBonusAmount: number; totalIncome: number;
   dailyDetail: DailyDetailEntry[];
 };
@@ -131,6 +132,7 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                     <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tên NV</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Lương công việc</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Thưởng KPI tuân thủ</th>
+                    <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">KPI công việc</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Thưởng vượt KPI SL</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Khoản khác</th>
                     <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tổng thu nhập</th>
@@ -165,6 +167,7 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                               <Badge className="bg-warning-light text-warning-foreground ml-1.5 align-middle">Không tính KPI</Badge>
                             )}
                           </td>
+                          <td className="px-4 py-3 text-right tabular-nums">{money(r.workKpiAmount)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">
                             {money(r.productionOverBonus)}
                             {r.productionKpiDisqualified && (
@@ -176,7 +179,7 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                         </tr>
                         {isOpen && (
                           <tr className="bg-background border-b">
-                            <td colSpan={8} className="px-6 py-4">
+                            <td colSpan={9} className="px-6 py-4">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-sm">
                                 <div>
                                   <p className="text-text-muted text-xs">Ngày công tiêu chuẩn</p>
@@ -211,8 +214,22 @@ export default function PayrollReportBoard({ warehouses }: { warehouses: Warehou
                                   <p className="font-medium tabular-nums">{r.kpiBonusMaxAmount != null ? money(r.kpiBonusMaxAmount) : "Chưa cài đặt"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-text-muted text-xs">KPI/ngày cài đặt</p>
-                                  <p className="font-medium tabular-nums">{r.kpiDailyRate != null ? money(r.kpiDailyRate) : "Chưa cài đặt"}</p>
+                                  <p className="text-text-muted text-xs">KPI/ngày (tự tính)</p>
+                                  <p className="font-medium tabular-nums">{r.kpiDailyRate != null ? money(r.kpiDailyRate) : "Chưa cài lương/mức KPI"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-text-muted text-xs">Mức KPI công việc tối đa</p>
+                                  <p className="font-medium tabular-nums">{r.workKpiMaxAmount != null ? money(r.workKpiMaxAmount) : "Chưa cài đặt"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-text-muted text-xs">
+                                    Tỉ lệ đạt KPI công việc ({r.workKpiBasis === "DANH_GIA_HOC_VIEC" ? "theo đánh giá học việc" : "sản lượng / chỉ tiêu"})
+                                  </p>
+                                  <p className="font-medium tabular-nums">
+                                    {r.workKpiRatioPct != null
+                                      ? `${r.workKpiRatioPct}%`
+                                      : r.workKpiBasis === "DANH_GIA_HOC_VIEC" ? "Chưa có phiếu đánh giá hoàn thành" : "Chưa có sản lượng chỉ tiêu"}
+                                  </p>
                                 </div>
                                 <div>
                                   <p className="text-text-muted text-xs">Sản lượng chỉ tiêu</p>
