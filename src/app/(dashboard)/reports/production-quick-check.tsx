@@ -161,13 +161,7 @@ export default function ProductionQuickCheck() {
               </div>
             )}
             {result.byPlantType && Object.keys(result.byPlantType).length > 0 && (
-              <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
-                {Object.entries(result.byPlantType).map(([label, qty]) => (
-                  <span key={label}>
-                    {label}: <strong className="text-foreground">{qty.toLocaleString("vi-VN")}</strong>
-                  </span>
-                ))}
-              </div>
+              <PlantTypeQuantityColumns byPlantType={result.byPlantType} />
             )}
             {result.waitingToPlant !== undefined && (
               <p className="text-sm text-text-secondary">
@@ -179,5 +173,49 @@ export default function ProductionQuickCheck() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Số lượng theo mã cây — sắp số lượng GIẢM DẦN, chia 2 cột cạnh nhau (nửa đầu cột trái, nửa sau cột phải,
+// đọc từ trên xuống), mỗi cột là 1 bảng "Mã cây | Số lượng" để mã cây/số lượng thẳng hàng thẳng cột thay
+// vì nối liền tự xuống dòng như trước. Màn hình hẹp tự xếp chồng thành 1 cột.
+function PlantTypeQuantityColumns({ byPlantType }: { byPlantType: Record<string, number> }) {
+  const rows = Object.entries(byPlantType)
+    .map(([label, qty]) => {
+      const [code, ...rest] = label.split(" — ");
+      return { label, code, name: rest.join(" — "), qty };
+    })
+    .sort((a, b) => b.qty - a.qty || a.code.localeCompare(b.code));
+  const half = Math.ceil(rows.length / 2);
+  const columns = rows.length > 1 ? [rows.slice(0, half), rows.slice(half)] : [rows];
+
+  return (
+    <div className={`grid gap-3 ${columns.length > 1 ? "md:grid-cols-2" : ""}`}>
+      {columns.map((col, i) => (
+        <div key={i} className="border border-divider rounded-lg overflow-hidden self-start">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-primary-light">
+                <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Mã cây</th>
+                <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Số lượng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {col.map((r) => (
+                <tr key={r.label} className="border-t border-divider">
+                  <td className="px-3 py-1.5">
+                    <span className="font-mono font-medium text-foreground">{r.code}</span>
+                    {r.name && <span className="text-text-secondary"> — {r.name}</span>}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-foreground whitespace-nowrap">
+                    {r.qty.toLocaleString("vi-VN")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
   );
 }
