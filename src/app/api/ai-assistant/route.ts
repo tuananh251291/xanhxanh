@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 import { AI_ASSISTANT_TOOLS, AI_ASSISTANT_GUIDE, runAiAssistantTool } from "@/lib/ai-assistant-tools";
 
 // "Trợ lý AI" — Giai đoạn 1 CHỈ mở cho SUPER_ADMIN/ADMIN_KY_THUAT (cố tình hẹp hơn isAdminRole, KHÔNG bao
@@ -49,6 +51,9 @@ export async function POST(req: NextRequest) {
             text: `Bạn là trợ lý AI nội bộ của Xanh Xanh — hệ thống ERP quản lý nuôi cấy mô cây giống. Trả lời NGẮN GỌN, đúng trọng tâm, bằng tiếng Việt. Khi được hỏi về số liệu (tồn kho, đơn hàng, cảnh báo), LUÔN dùng công cụ tra cứu thay vì đoán số liệu. Khi được hỏi cách thao tác, dùng kiến thức nghiệp vụ dưới đây để hướng dẫn. Nếu không có công cụ phù hợp hoặc không tìm thấy dữ liệu, nói rõ là không có dữ liệu thay vì bịa số liệu.\n\n${AI_ASSISTANT_GUIDE}`,
             cache_control: { type: "ephemeral" },
           },
+          // Để NGOÀI khối có cache_control ở trên — đổi theo ngày, không làm mất cache phần cố định. Thiếu
+          // dòng này trợ lý không biết "hôm nay/hôm qua" là ngày nào khi tra cứu theo ngày.
+          { type: "text", text: `Hôm nay là ${format(new Date(), "EEEE dd/MM/yyyy", { locale: vi })} (yyyy-MM-dd: ${format(new Date(), "yyyy-MM-dd")}).` },
         ],
         tools: AI_ASSISTANT_TOOLS,
         messages,

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type Anthropic from "@anthropic-ai/sdk";
-import { startOfWeek, subWeeks, subMonths, startOfMonth } from "date-fns";
+import { startOfWeek, endOfWeek, subWeeks, subMonths, startOfMonth, endOfMonth, startOfDay, endOfDay, format } from "date-fns";
 import { computeInspectionDefectReport } from "@/lib/inspection-defect-report";
 import { computeProductionRecordForPeriod } from "@/lib/production-record-report";
 import { computeMotherStockGrowth } from "@/lib/mother-stock-growth-report";
@@ -121,11 +121,12 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "tra_cuu_nhat_ky_cay",
     description:
-      "Tra cứu tổng hợp nhật ký cấy (mẫu mẹ sử dụng, cấy ra mẫu mẹ, cấy ra thành phẩm) theo NV cấy mô, trong 1 tuần hoặc 1 tháng cụ thể.",
+      "Tra cứu tổng hợp nhật ký cấy (mẫu mẹ sử dụng, cấy ra mẫu mẹ, cấy ra thành phẩm) theo NV cấy mô, trong 1 NGÀY, 1 tuần hoặc 1 tháng cụ thể — kèm dòng TỔNG cộng. Dùng mode 'day' khi được hỏi số liệu hôm nay/hôm qua/1 ngày cụ thể.",
     input_schema: {
       type: "object",
       properties: {
-        mode: { type: "string", enum: ["week", "month"], description: "Xem theo tuần (Thứ 2 - Chủ nhật) hay theo tháng lịch. Mặc định 'week'." },
+        mode: { type: "string", enum: ["day", "week", "month"], description: "Xem theo ngày, theo tuần (Thứ 2 - Chủ nhật chứa ngày 'date') hay theo tháng lịch (chứa ngày 'date'). Mặc định 'week'." },
+        date: { type: "string", description: "Ngày tham chiếu yyyy-MM-dd (VD hôm qua). Bỏ trống = hôm nay." },
         warehouseCode: { type: "string", description: "Mã khu sản xuất HOẶC tên khu sản xuất (tìm theo cả 2, không phân biệt hoa thường). Bỏ trống = mọi khu sản xuất." },
         staffCode: { type: "string", description: "Mã NV cấy mô HOẶC tên NV (tìm theo cả 2). Bỏ trống = mọi NV." },
       },
@@ -581,15 +582,23 @@ async function runTraCuuKeHoachVsThucTeRaRe(input: { warehouseCode?: string; mon
   };
 }
 
-async function runTraCuuNhatKyCay(input: { mode?: "week" | "month"; warehouseCode?: string; staffCode?: string }): Promise<ToolResult> {
+async function runTraCuuNhatKyCay(input: { mode?: "day" | "week" | "month"; date?: string; warehouseCode?: string; staffCode?: string }): Promise<ToolResult> {
   const mode = input.mode ?? "week";
-  const now = new Date();
-  const rangeStart = mode === "week" ? startOfWeek(now, { weekStartsOn: 1 }) : startOfMonth(now);
-  const rangeEnd = new Date();
+  // recordDate lưu theo ngày giờ địa phương (xem POST /api/daily-records, startOfDay/endOfDay) — "yyyy-MM-dd"
+  // parse thành 00:00 giờ địa phương để khớp đúng ngày đó.
+  const ref = input.date ? new Date(`${input.date}T00:00:00`) : new Date();
+  if (Number.isNaN(ref.getTime())) return { content: `Ngày "${input.date}" không hợp lệ — dùng dạng yyyy-MM-dd.`, is_error: true };
+  const rangeStart = mode === "day" ? startOfDay(ref) : mode === "week" ? startOfWeek(ref, { weekStartsOn: 1 }) : startOfMonth(ref);
+  const rangeEnd = mode === "day" ? endOfDay(ref) : mode === "week" ? endOfWeek(ref, { weekStartsOn: 1 }) : endOfMonth(ref);
+  const periodLabel = mode === "day"
+    ? `ngày ${format(rangeStart, "dd/MM/yyyy")}`
+    : `${mode === "week" ? "tuần" : "tháng"} ${format(rangeStart, "dd/MM/yyyy")} – ${format(rangeEnd, "dd/MM/yyyy")}`;
 
   const warehouse = input.warehouseCode
-    ? await prisma.warehouse.findFirst({ where: nameOrCodeFilter(input.warehouseCode!), select: { id: true } })
+    ? await prisma.warehouse.findFirst({ where: nameOrCodeFilter(input.warehouseCode!), select: { id: true, code: true, name: true } })
     : null;
+  if (input.warehouseCode && !warehouse) return { content: `Không tìm thấy khu sản xuất nào khớp "${input.warehouseCode}".` };
+  const scopeLabel = warehouse ? ` tại khu ${warehouse.code} (${warehouse.name})` : "";
 
   const records = await prisma.dailyRecord.findMany({
     where: {
@@ -608,7 +617,7 @@ async function runTraCuuNhatKyCay(input: { mode?: "week" | "month"; warehouseCod
     },
   });
 
-  if (records.length === 0) return { content: `Không có nhật ký cấy nào khớp bộ lọc trong ${mode === "week" ? "tuần" : "tháng"} này.` };
+  if (records.length === 0) return { content: `Không có nhật ký cấy nào khớp bộ lọc trong ${periodLabel}${scopeLabel}.` };
 
   type Agg = { code: string; name: string; motherUsed: number; motherOut: number; finishedOut: number };
   const byStaff = new Map<string, Agg>();
@@ -623,7 +632,13 @@ async function runTraCuuNhatKyCay(input: { mode?: "week" | "month"; warehouseCod
   }
   const rows = Array.from(byStaff.values()).sort((a, b) => b.motherUsed - a.motherUsed);
   const lines = rows.map((r) => `${r.name} (${r.code}): dùng ${fmtQty(r.motherUsed)} MM, cấy ra MM ${fmtQty(r.motherOut)}, cấy ra TP ${fmtQty(r.finishedOut)}`);
-  return { content: lines.join("\n") };
+  const total = rows.reduce(
+    (t, r) => ({ motherUsed: t.motherUsed + r.motherUsed, motherOut: t.motherOut + r.motherOut, finishedOut: t.finishedOut + r.finishedOut }),
+    { motherUsed: 0, motherOut: 0, finishedOut: 0 }
+  );
+  return {
+    content: `Nhật ký cấy ${periodLabel}${scopeLabel} — TỔNG ${rows.length} NV: dùng ${fmtQty(total.motherUsed)} MM, cấy ra MM ${fmtQty(total.motherOut)}, cấy ra TP ${fmtQty(total.finishedOut)}\n\nTheo NV:\n${lines.join("\n")}`,
+  };
 }
 
 async function runTraCuuSanLuongGhiNhan(input: { warehouseCode?: string; dateFrom?: string; dateTo?: string }): Promise<ToolResult> {
