@@ -7,7 +7,8 @@ import { z } from "zod";
 const patchSchema = z.object({
   staffId: z.string().min(1),
   monthlyAmount: z.number().int().min(0).optional(),
-  kpiBonusAmount: z.number().int().min(0).optional(),
+  // Mức thưởng KPI tối đa riêng của NV — null = bỏ mức riêng, dùng mức chung (KpiBonusRate).
+  kpiBonusAmount: z.number().int().min(0).nullable().optional(),
 }).refine((d) => d.monthlyAmount !== undefined || d.kpiBonusAmount !== undefined, { message: "Cần nhập ít nhất 1 giá trị" });
 
 // "Lương công việc theo NV" — mức lương thoả thuận/tháng (VNĐ) của từng NV cấy mô, dùng tính lương (xem

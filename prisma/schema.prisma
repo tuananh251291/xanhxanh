@@ -3444,10 +3444,9 @@ model StaffBaseSalary {
   staffId       String   @unique
   staff         User     @relation(fields: [staffId], references: [id])
   monthlyAmount Int
-  // Thưởng KPI (VNĐ) — NV Hành chính nhân sự/Admin cấp cao nhập tay ngay cạnh Lương công việc/tháng (xem
-  // staff-base-salary-board.tsx). CHỈ lưu để hiển thị/tra cứu, CHƯA cộng vào "Tổng thu nhập" ở Bảng lương
-  // (src/lib/payroll-calculation.ts) — khác complianceBonus/productionOverBonus (tự tính theo công thức)
-  // và otherBonusAmount (khoản thưởng khác theo từng kỳ, xem PayrollOtherBonus). Null = chưa cài đặt.
+  // Mức thưởng KPI tuân thủ TỐI ĐA riêng của NV (VNĐ) — cài ở tab "Mức thưởng KPI" (bảng theo NV/nhập Excel,
+  // xem staff-kpi-max-section.tsx). Dùng thay mức chung theo kỳ (KpiBonusRate) khi tính complianceBonus
+  // (src/lib/payroll-calculation.ts). Null = chưa cài riêng → dùng mức chung.
   kpiBonusAmount Int?
   updatedAt     DateTime @updatedAt
 

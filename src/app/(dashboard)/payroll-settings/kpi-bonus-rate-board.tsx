@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Plus, Trash2, Gauge } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import StaffKpiMaxSection from "./staff-kpi-max-section";
 
 type Row = { id: string; periodMonth: string; maxAmount: number; createdBy: { name: string }; createdAt: string };
 
@@ -57,13 +58,18 @@ export default function KpiBonusRateBoard() {
     load();
   };
 
+  // Mức chung đang áp cho tháng hiện tại = kỳ gần nhất <= tháng này (giống cách Bảng lương chọn KpiBonusRate).
+  const thisMonth = format(new Date(), "yyyy-MM");
+  const currentGlobalAmount = rows.filter((r) => r.periodMonth <= thisMonth).sort((a, b) => b.periodMonth.localeCompare(a.periodMonth))[0]?.maxAmount ?? null;
+
   return (
     <div className="space-y-4">
       <Card>
         <CardContent className="p-4 space-y-3">
           <p className="text-sm text-text-secondary">
-            Mức thưởng KPI tuân thủ TỐI ĐA, áp dụng từ đúng kỳ chọn trở đi (tới khi có kỳ mới hơn) — không
-            cần nhập lại mỗi kỳ nếu không đổi.
+            Mức thưởng KPI tuân thủ TỐI ĐA — <strong className="text-foreground">mức chung</strong>, áp cho NV CHƯA cài mức riêng
+            (bảng theo từng NV bên dưới). Áp dụng từ đúng kỳ chọn trở đi (tới khi có kỳ mới hơn) — không cần
+            nhập lại mỗi kỳ nếu không đổi.
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
@@ -71,7 +77,7 @@ export default function KpiBonusRateBoard() {
               <Input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} className="w-40" />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-text-secondary">Mức thưởng tối đa (VNĐ)</label>
+              <label className="text-xs text-text-secondary">Mức thưởng tối đa chung (VNĐ)</label>
               <Input type="number" min={0} value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} className="w-48" />
             </div>
             <Button onClick={addRate} disabled={saving} className="bg-primary hover:bg-primary-hover">
@@ -105,6 +111,8 @@ export default function KpiBonusRateBoard() {
           </CardContent>
         </Card>
       )}
+
+      <StaffKpiMaxSection globalAmount={currentGlobalAmount} />
     </div>
   );
 }

@@ -80,7 +80,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     select: {
       id: true, code: true, name: true, employmentType: true, isTrainee: true,
       workplaceWarehouse: { select: { name: true } },
-      staffBaseSalary: { select: { monthlyAmount: true } },
+      staffBaseSalary: { select: { monthlyAmount: true, kpiBonusAmount: true } },
       staffKpiDailyRate: { select: { vndPerDay: true } },
     },
     orderBy: { name: "asc" },
@@ -252,7 +252,9 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     const compliancePoints = Math.min(100, Math.max(0, 100 - violationPoints + recoveryPoints));
 
     const complianceKpiDisqualified = complianceKpiDisqualifiedStaffIds.has(s.id);
-    const kpiBonusMaxAmount = kpiBonusRate?.maxAmount ?? null;
+    // Mức thưởng KPI tối đa RIÊNG của NV (StaffBaseSalary.kpiBonusAmount, tab "Mức thưởng KPI" → theo NV)
+    // nếu đã cài; chưa cài thì dùng mức CHUNG theo kỳ (KpiBonusRate).
+    const kpiBonusMaxAmount = s.staffBaseSalary?.kpiBonusAmount ?? kpiBonusRate?.maxAmount ?? null;
     const complianceBonus = complianceKpiDisqualified
       ? 0
       : kpiBonusMaxAmount != null && standardWorkDays > 0
