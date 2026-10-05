@@ -140,6 +140,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.status !== "ACTIVE" && instruction.status !== "DRAFT") {
       return NextResponse.json({ message: "Chỉ định đã kết thúc hoặc đã hủy — không thể xác nhận nhận mẫu mẹ" }, { status: 400 });
     }
+    // Bắt buộc Kho mô đã bàn giao — UI chỉ hiện nút khi handedOverAt có giá trị, nhưng trang NV đang mở có
+    // thể đã cũ (Kho mô vừa "Hoàn tác" bàn giao sau khi trang render) — 05/10/2026 đã có 3 chỉ định ở Kim
+    // Động bị xác nhận đúng kiểu này, lô nguồn kẹt ACTIVE trên kệ (không qua markSourceLotsPlanted).
+    if (!instruction.handedOverAt) {
+      return NextResponse.json({ message: "Kho mô chưa bàn giao mẫu mẹ cho chỉ định này (hoặc vừa hoàn tác bàn giao) — tải lại trang và đợi Kho mô bàn giao" }, { status: 400 });
+    }
     // Chỉ định cho tuần nào thì chỉ được xác nhận nhận mẫu mẹ TỪ ĐÚNG THỨ 2 của tuần đó trở đi — KHO_MO
     // có thể bàn giao trước (VD chỉ định dự phòng tạo/bàn giao giữa tuần cho tuần sau), nhưng NV không
     // được xác nhận sớm hơn ngày bắt đầu thực hiện thật. weekStart lưu UTC-midnight của đúng Thứ 2 đó
@@ -228,10 +234,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
     }
-    const updated = await prisma.plantingInstruction.update({
-      where: { id },
+    // Ghi có điều kiện handedOverAt vẫn khác null NGAY lúc ghi — chặn trường hợp Kho mô "Hoàn tác" chen giữa
+    // lần đọc ở trên và lần ghi này.
+    const { count } = await prisma.plantingInstruction.updateMany({
+      where: { id, handedOverAt: { not: null } },
       data: { motherReceivedAt: instruction.motherReceivedAt ?? new Date() },
     });
+    if (count === 0) {
+      return NextResponse.json({ message: "Kho mô vừa hoàn tác bàn giao chỉ định này — tải lại trang và đợi Kho mô bàn giao" }, { status: 400 });
+    }
+    const updated = await prisma.plantingInstruction.findUnique({ where: { id } });
     return NextResponse.json(updated);
   }
 
@@ -641,6 +653,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       instruction.items.length > 0 &&
       instruction.items.every((i) => i.shelf?.assignedStaffId === instruction.assignedToId);
     const updated = await prisma.$transaction(async (tx) => {
+      // Khoá điều kiện "NV chưa xác nhận" ngay lúc ghi — nếu NV vừa xác nhận chen giữa lần kiểm tra ở trên
+      // và đây thì huỷ cả transaction, không trả lô nguồn về ACTIVE.
+      const { count } = await tx.plantingInstruction.updateMany({
+        where: { id, motherReceivedAt: null, handedOverAt: { not: null } },
+        data: { handedOverAt: null, handedOverById: null },
+      });
+      if (count === 0) return null;
       await revertSourceLotsToActive(tx, instruction.items);
       if (instruction.isBackup) {
         await tx.extraWorkRequest.updateMany({
@@ -651,13 +670,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return tx.plantingInstruction.update({
         where: { id },
         data: {
-          handedOverAt: null,
-          handedOverById: null,
           assignedToId: isFromDedicatedShelf ? undefined : null,
         },
         include: { assignedTo: { select: { name: true } } },
       });
     });
+    if (!updated) {
+      return NextResponse.json({ message: "NV cấy mô vừa xác nhận nhận mẫu mẹ — không thể hoàn tác bàn giao nữa" }, { status: 400 });
+    }
     return NextResponse.json(updated);
   }
 
