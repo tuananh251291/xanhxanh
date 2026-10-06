@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
 import { computeViolationPointsApplied } from "@/lib/violation-points";
-import { addDays, endOfDay, format, isAfter, isBefore, startOfDay, startOfWeek, subDays } from "date-fns";
+import { addDays, endOfDay, format, isAfter, isBefore, isSameDay, startOfDay, startOfWeek, subDays } from "date-fns";
 
 // Tự động ghi lỗi vi phạm cho NV cấy mô KHÔNG nhập dữ liệu cấy trong 1 ngày phải nhập — gắn đúng loại lỗi
 // dưới đây (tìm theo label, Admin tắt loại lỗi này = tắt luôn tính năng). Không có cron trong app — gọi từ
@@ -9,11 +9,12 @@ import { addDays, endOfDay, format, isAfter, isBefore, startOfDay, startOfWeek, 
 export const MISSED_DAILY_RECORD_VIOLATION_LABEL = "Không báo cáo/gửi số liệu tự kiểm theo thời gian hoặc hình thức đã quy định";
 const CHECKED_THROUGH_KEY = "missed_daily_record_checked_through"; // yyyy-MM-dd ngày cuối đã quét xong
 const MAX_CATCH_UP_DAYS = 7;
+const HANDOVER_DAY_CUTOFF_HOUR = 12;
 
 export type MissedDailyRecordDay = { staffId: string; staffCode: string; staffName: string; date: Date; instructionCode: string };
 
 // 1 ngày D là "ngày phải nhập dữ liệu cấy" của NV S khi: D không phải Chủ nhật/ngày lễ, S có chỉ định cấy
-// (không bị hủy) của ĐÚNG tuần chứa D và Kho mô đã bàn giao trước hết ngày D, và chỉ định chưa kết thúc sớm
+// (không bị hủy) của ĐÚNG tuần chứa D và Kho mô đã bàn giao trước 12:00 ngày D (hoặc từ ngày trước), và chỉ định chưa kết thúc sớm
 // trước D (MOTHER_USED_UP/EARLY_END_BY_STAFF — không còn gì để cấy, lấy ngày nhật ký cuối của chỉ định làm
 // mốc kết thúc vì không lưu thời điểm kết thúc). Bỏ qua ngày đã có nhật ký (bất kỳ chỉ định nào) hoặc đã
 // được miễn trừ (TaskCompletionExemption). Chỉ xét NV CAY_MO đang hoạt động, đã vào làm từ trước ngày D.
@@ -70,7 +71,10 @@ export async function findMissedDailyRecordDays(from: Date, to: Date): Promise<M
       if (recordKeys.has(key) || exemptionKeys.has(key)) continue;
       const inst = instructions.find((i) => {
         if (i.assignedToId !== s.id || !i.weekStart || weekKeyOfInstruction(i.weekStart) !== weekKey) return false;
+        // Ngày bàn giao chỉ tính nếu Kho mô bàn giao trước 12:00 — bàn giao chiều/tối thì NV không còn đủ
+        // thời gian cấy trong ngày, bắt đầu tính từ hôm sau.
         if (isAfter(i.handedOverAt!, endOfDay(d))) return false;
+        if (isSameDay(i.handedOverAt!, d) && i.handedOverAt!.getHours() >= HANDOVER_DAY_CUTOFF_HOUR) return false;
         if (i.status === "ENDED" && (i.endReason === "MOTHER_USED_UP" || i.endReason === "EARLY_END_BY_STAFF")) {
           const lastRecord = i.dailyRecords[0]?.recordDate;
           if (!lastRecord || isAfter(startOfDay(d), startOfDay(lastRecord))) return false;
