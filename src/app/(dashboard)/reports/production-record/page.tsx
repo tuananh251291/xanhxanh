@@ -30,7 +30,8 @@ export default async function ProductionRecordPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           Sản lượng ĐÃ ĐƯỢC GHI NHẬN của từng NV cấy mô trong khoảng ngày đã chọn (luồng Xanh tự trừ hàng
-          không đạt, luồng Đỏ/Vàng theo số Kho mô đã kiểm tra và ghi nhận) — xem chi tiết theo từng ngày.
+          không đạt, luồng Đỏ/Vàng theo số Kho mô đã kiểm tra và ghi nhận). Số lượng tính theo NGÀY CẤY của lô
+          (khớp Bảng lương), kể cả khi bàn giao/Kho mô nhận sang tháng sau — xem chi tiết theo từng ngày.
         </p>
       </div>
       <ProductionRecordBoard warehouses={warehouses} />
