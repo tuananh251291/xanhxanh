@@ -21,6 +21,7 @@ import { ensureWeeklyRootingQualityEvaluation, ensureRootingQualityEvaluationRem
 import { ensureWeeklyProbationEvaluations } from "@/lib/probation-evaluation";
 import { ensureMonthlyInspectionLaneUpdate, ensureInspectionLaneOverridesApplied } from "@/lib/inspection-lane";
 import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
+import { ensureMissedDailyRecordViolations } from "@/lib/missed-daily-record";
 import AiAssistantWidget from "@/components/shared/ai-assistant-widget";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   await ensureCustomerAutoExpire();
   await ensureMonthlyInspectionLaneUpdate();
   await ensureInspectionLaneOverridesApplied();
+  // Sau ensureInstructionsEnded (cần trạng thái chỉ định mới nhất). Lỗi ở đây không được chặn render trang.
+  try {
+    await ensureMissedDailyRecordViolations();
+  } catch (err) {
+    console.error("[layout] ensureMissedDailyRecordViolations lỗi:", err);
+  }
   if (role === "KY_THUAT") {
     await ensureMotherReadyAlerts();
     await ensureRootingForecastReminder(session.user.workplaceWarehouseId);
