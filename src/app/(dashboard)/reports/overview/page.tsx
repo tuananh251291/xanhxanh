@@ -152,7 +152,7 @@ export default async function ReportsOverviewPage() {
         <RatioTrendSection warehouseId={warehouseId} />
       </CollapsibleSection>
       <CollapsibleSection title="Xếp hạng NV cấy mô theo tỉ lệ" icon={<Trophy className="w-4 h-4 shrink-0" />}>
-        <StaffRankingSection warehouseId={warehouseId} />
+        <StaffRankingSection warehouseId={warehouseId} showPlantTypes={role === "ADMIN_KY_THUAT"} />
       </CollapsibleSection>
       <CollapsibleSection title="Tỉ lệ nhiễm mẫu mẹ bàn giao" icon={<Leaf className="w-4 h-4 shrink-0" />}>
         <MotherContaminationReport />
