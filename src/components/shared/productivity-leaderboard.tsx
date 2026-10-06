@@ -7,7 +7,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trophy, Sprout, Leaf, Loader2, type LucideIcon } from "lucide-react";
 
-type RankingEntry = { staffId: string; name: string; total: number };
+// plantTypes chỉ có khi người xem là Admin kỹ thuật (API /api/leaderboard/weekly tự lọc) — vai trò khác
+// không nhận được field này nên không hiện loại cây.
+type RankingEntry = { staffId: string; name: string; total: number; plantTypes?: { code: string; name: string; total: number }[] };
 type LeaderboardData = { finished: RankingEntry[]; mother: RankingEntry[] };
 
 const RANK_BADGE_STYLES = [
@@ -46,9 +48,20 @@ function RankingTable({
         <ScrollArea className="h-72 pr-2">
           <div className="space-y-1">
             {entries.map((entry, idx) => (
-              <div key={entry.staffId} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted">
+              <div key={entry.staffId} className="flex items-start gap-2 py-1.5 px-2 rounded-lg hover:bg-muted">
                 <RankBadge rank={idx + 1} />
-                <span className="flex-1 text-sm text-foreground truncate">{entry.name}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-foreground truncate">{entry.name}</p>
+                  {entry.plantTypes && entry.plantTypes.length > 0 && (
+                    <p className="text-xs text-text-secondary">
+                      {entry.plantTypes.map((pt) => (
+                        <span key={pt.code} title={pt.name} className="whitespace-nowrap">
+                          <span className="font-mono">{pt.code}</span> {pt.total.toLocaleString("vi-VN")}
+                        </span>
+                      )).reduce<React.ReactNode[]>((acc, el, i) => (i === 0 ? [el] : [...acc, " · ", el]), [])}
+                    </p>
+                  )}
+                </div>
                 <span className="text-sm font-medium text-foreground whitespace-nowrap">
                   {entry.total.toLocaleString("vi-VN")} {unit}
                 </span>

@@ -706,7 +706,7 @@ export default async function DashboardPage() {
 
   if (isAdminRole(role)) {
     const stats = await getAdminStats(role as "SUPER_ADMIN" | "ADMIN" | "ADMIN_KY_THUAT");
-    return <AdminDashboard stats={stats} />;
+    return <AdminDashboard stats={stats} role={role} />;
   }
 
   if (role === "SALE") {
@@ -762,7 +762,7 @@ function GreetingBanner() {
   );
 }
 
-function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminStats>> }) {
+function AdminDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getAdminStats>>; role: UserRole }) {
   return (
     <div className="space-y-6">
       <div>
@@ -770,6 +770,8 @@ function AdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getAdminSt
         <p className="text-text-secondary text-sm mt-1">Quản trị hệ thống</p>
       </div>
       <GreetingBanner />
+      {/* Admin kỹ thuật xem được bảng thi đua kèm loại cây chi tiết từng NV (API chỉ trả loại cây cho role này). */}
+      {role === "ADMIN_KY_THUAT" && <ProductivityLeaderboard />}
       {stats.dueTrialRounds.length > 0 && <TrialRoundTaskCard rounds={stats.dueTrialRounds} />}
       {stats.rootingSummary.warehouseSummaries.length > 0 && (
         <RootingSummaryWidget
