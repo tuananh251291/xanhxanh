@@ -229,6 +229,11 @@ enum AlertType {
   // không khớp inputQuantity của chỉ định. Báo cho đúng Kho mô đã gán chỉ định đó (userId) biết để kiểm
   // tra lại kệ trước khi gán lại — xem RepackInstruction.quantityIssueReportedAt.
   REPACK_QUANTITY_MISMATCH
+  // Đơn chấm công (AttendanceRequest) cần duyệt — báo đúng người duyệt cấp 1 (userId) hoặc HCNS
+  // (targetRole HANH_CHINH_NHAN_SU).
+  ATTENDANCE_REQUEST
+  // Đơn chấm công đã được duyệt xong / bị từ chối — báo đúng NV gửi đơn (userId).
+  ATTENDANCE_REQUEST_DECIDED
   // NV kho thành phẩm vừa hoàn thành 1 việc được Quản lý kho thành phẩm gán đích danh (Nhận bàn giao
   // thành phẩm/Nhập hàng/Sắp xếp đơn hàng) — báo cho đúng người đã gán (userId), không phải mọi Quản lý.
   ASSIGNED_TASK_COMPLETED
@@ -556,6 +561,12 @@ model User {
   complianceRecoveryPointsCreated      ComplianceRecoveryPoint[]    @relation("ComplianceRecoveryPointCreatedBy")
   recoveryBehaviorTypesCreated         RecoveryBehaviorType[]
   marketExportsCreated                 MarketExport[]
+  attendanceSitesApproving             AttendanceSite[]             @relation("AttendanceSiteApprover")
+  attendanceRecords                    AttendanceRecord[]
+  attendanceRequests                   AttendanceRequest[]          @relation("AttendanceRequestStaff")
+  attendanceRequestsManaged            AttendanceRequest[]          @relation("AttendanceRequestManager")
+  attendanceRequestsHrDecided          AttendanceRequest[]          @relation("AttendanceRequestHr")
+  annualLeaveBalances                  AnnualLeaveBalance[]
 
   @@map("users")
 }
@@ -1131,6 +1142,8 @@ model Warehouse {
   retailWarehouseAccess       RetailWarehouseAccess[]
   rejectedGoodsClassifications RejectedGoodsClassification[]
   operationErrorTickets       OperationErrorTicket[]
+  attendanceSite              AttendanceSite?
+  attendanceRecords           AttendanceRecord[]
 
   @@map("warehouses")
 }
@@ -3599,4 +3612,140 @@ model MarketExportItem {
 
   @@index([orderCode, productCode])
   @@map("market_export_items")
+}
+
+// ============================================================
+// CHẤM CÔNG (kiểu Fastwork) — chỉ NV Kho mô / Cấy mô / Kỹ thuật / Kho thành phẩm tự chấm công trên phần
+// mềm (xem ATTENDANCE_ROLES, src/lib/attendance.ts). NV Hành chính nhân sự cài ca + vị trí từng khu, xem
+// bảng công, duyệt đơn cấp 2. CHƯA nối vào tính lương (payroll-calculation.ts vẫn tính như cũ).
+// ============================================================
+
+// Cài đặt chấm công của 1 khu (Warehouse) — HCNS nhập. Giờ dạng "HH:mm" theo giờ Việt Nam. Chủ nhật luôn
+// nghỉ, ngày lễ lấy từ PublicHoliday (giống bảng lương).
+model AttendanceSite {
+  id               String    @id @default(cuid())
+  warehouseId      String    @unique
+  warehouse        Warehouse @relation(fields: [warehouseId], references: [id])
+  // Tâm vị trí khu — NV chỉ chấm được khi đứng trong bán kính radiusMeters (GPS trình duyệt). null = chưa
+  // cài, NV khu này chưa chấm công được.
+  latitude         Float?
+  longitude        Float?
+  radiusMeters     Int       @default(150)
+  shiftStart       String    @default("07:30")
+  shiftEnd         String    @default("17:00")
+  breakStart       String?
+  breakEnd         String?
+  // Số phút cho phép muộn/sớm mà không tính là đi muộn/về sớm.
+  graceMinutes     Int       @default(5)
+  // Người duyệt đơn cấp 1 ("quản lý kho") của khu — null hoặc chính người gửi đơn thì đơn lên thẳng HCNS.
+  approverId       String?
+  approver         User?     @relation("AttendanceSiteApprover", fields: [approverId], references: [id])
+  updatedAt        DateTime  @updatedAt
+
+  @@map("attendance_sites")
+}
+
+// 1 dòng = 1 NV / 1 ngày làm việc (giờ Việt Nam). workDate = UTC-midnight của ngày VN đó (xem
+// toAttendanceWorkDate). Ảnh selfie lưu ở bucket PRIVATE "attendance-selfies" (xem
+// src/lib/attendance-storage.ts), tự xoá sau 30 ngày (path về null, giữ nguyên giờ chấm).
+model AttendanceRecord {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id])
+  warehouseId       String
+  warehouse         Warehouse @relation(fields: [warehouseId], references: [id])
+  workDate          DateTime
+  // Ảnh chụp ca làm tại thời điểm chấm vào — đổi cài đặt ca sau đó không làm sai số phút muộn/sớm cũ.
+  shiftStart        String
+  shiftEnd          String
+  checkInAt         DateTime?
+  checkInLat        Float?
+  checkInLng        Float?
+  checkInDistance   Int?
+  checkInPhotoPath  String?
+  checkOutAt        DateTime?
+  checkOutLat       Float?
+  checkOutLng       Float?
+  checkOutDistance  Int?
+  checkOutPhotoPath String?
+  lateMinutes       Int       @default(0)
+  earlyMinutes      Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId, workDate])
+  @@index([warehouseId, workDate])
+  @@map("attendance_records")
+}
+
+enum AttendanceRequestType {
+  ANNUAL_LEAVE // Nghỉ phép năm — có lương, trừ quỹ phép
+  SICK_LEAVE // Nghỉ ốm
+  UNPAID_LEAVE // Nghỉ không lương
+  LATE_EARLY // Xin đi muộn / về sớm
+  MISSED_CHECK // Giải trình quên chấm công
+}
+
+enum AttendanceRequestStatus {
+  PENDING_MANAGER // Chờ quản lý khu duyệt (cấp 1)
+  PENDING_HR // Chờ HCNS duyệt (cấp 2)
+  APPROVED
+  REJECTED
+  CANCELLED // NV tự huỷ khi chưa được duyệt xong
+}
+
+enum AttendanceDayPortion {
+  FULL
+  MORNING
+  AFTERNOON
+}
+
+// Đơn từ chấm công — duyệt 2 cấp: quản lý khu (AttendanceSite.approverId) rồi HCNS.
+model AttendanceRequest {
+  id              String                  @id @default(cuid())
+  userId          String
+  user            User                    @relation("AttendanceRequestStaff", fields: [userId], references: [id])
+  warehouseId     String?
+  type            AttendanceRequestType
+  status          AttendanceRequestStatus
+  // Ngày (UTC-midnight của ngày VN). Đơn nghỉ: startDate..endDate; các loại khác: startDate = endDate.
+  startDate       DateTime
+  endDate         DateTime
+  // Chỉ áp dụng đơn nghỉ 1 ngày — nghỉ nửa ngày sáng/chiều.
+  dayPortion      AttendanceDayPortion    @default(FULL)
+  // Số ngày công nghỉ (đã trừ Chủ nhật/ngày lễ, 0.5 nếu nửa ngày) — tính lúc tạo đơn.
+  leaveDays       Float                   @default(0)
+  // LATE_EARLY: số phút xin đi muộn / về sớm.
+  lateMinutes     Int?
+  earlyMinutes    Int?
+  // MISSED_CHECK: giờ vào/ra thực tế NV khai ("HH:mm"), null = không khai phần đó.
+  missedCheckIn   String?
+  missedCheckOut  String?
+  reason          String
+  managerId       String?
+  manager         User?                   @relation("AttendanceRequestManager", fields: [managerId], references: [id])
+  managerNote     String?
+  managerAt       DateTime?
+  hrId            String?
+  hr              User?                   @relation("AttendanceRequestHr", fields: [hrId], references: [id])
+  hrNote          String?
+  hrAt            DateTime?
+  createdAt       DateTime                @default(now())
+
+  @@index([userId, startDate])
+  @@index([status])
+  @@map("attendance_requests")
+}
+
+// Quỹ phép năm của 1 NV — HCNS chỉnh. Không có dòng = mặc định ANNUAL_LEAVE_DAYS (12 ngày).
+model AnnualLeaveBalance {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  year      Int
+  totalDays Float
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, year])
+  @@map("annual_leave_balances")
 }

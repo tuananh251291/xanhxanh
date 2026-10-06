@@ -121,6 +121,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ];
   }
 
+  // Người duyệt đơn chấm công cấp 1 ("quản lý khu", HCNS chọn ở Bảng chấm công → Cài đặt khu) không cố
+  // định theo vai trò — chèn động mục duyệt cho đúng người đang được gán ở ít nhất 1 khu.
+  if (!navItems.some((item) => item.href === "/attendance/approvals")) {
+    const approvingSite = await prisma.attendanceSite.findFirst({ where: { approverId: session.user.id }, select: { id: true } });
+    if (approvingSite) {
+      const accountIdx = navItems.findIndex((item) => item.href === "/account");
+      const item = { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" };
+      navItems = accountIdx === -1 ? [...navItems, item] : [...navItems.slice(0, accountIdx), item, ...navItems.slice(accountIdx)];
+    }
+  }
+
   return (
     <AuthSessionProvider session={session}>
       <div className="flex min-h-screen flex-col bg-background md:flex-row">

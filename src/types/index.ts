@@ -442,6 +442,8 @@ export const ALERT_TYPE_LABELS = {
   REJECTED_GOODS_CLASSIFICATION_PENDING: "Cần phân loại hàng không đạt",
   REJECTED_GOODS_PROPOSAL_SUBMITTED: "Đề xuất phân loại hàng không đạt mới",
   REJECTED_GOODS_PROPOSAL_APPROVED: "Đề xuất phân loại hàng không đạt đã duyệt",
+  ATTENDANCE_REQUEST: "Đơn chấm công cần duyệt",
+  ATTENDANCE_REQUEST_DECIDED: "Kết quả đơn chấm công",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -454,6 +456,8 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   REJECTED_GOODS_PROPOSAL_SUBMITTED: "/reject-classification",
   REJECTED_GOODS_PROPOSAL_APPROVED: "/market-receive/reject-classification",
   MOTHER_WAREHOUSE_TRANSFER_INCOMING: "/handover-in?tab=mother-stock",
+  ATTENDANCE_REQUEST: "/attendance/approvals",
+  ATTENDANCE_REQUEST_DECIDED: "/attendance?tab=requests",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -625,6 +629,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
+    { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
+    { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   ADMIN: [
@@ -691,6 +697,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
     { href: "/probation-evaluations", label: "Đánh giá thử việc", icon: "ClipboardCheck" },
     { href: "/planting-error-types", label: "Phân loại lỗi cấy", icon: "Tags" },
+    { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Lộ trình đào tạo" chỉ HIỆN THẬT SỰ khi employmentType = THU_VIEC (lọc động ở DashboardLayout, xem
@@ -708,6 +715,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/my-reports", label: "Báo cáo cá nhân", icon: "BarChart3" },
     { href: "/training-roadmap", label: "Lộ trình đào tạo", icon: "GraduationCap" },
     { href: "/probation-evaluations", label: "Đánh giá thử việc", icon: "ClipboardCheck" },
+    { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   KHO_MO: [
@@ -745,6 +753,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/extra-work-requests", label: "Đăng kí làm thêm", icon: "CalendarPlus" },
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
+    { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Nhận hàng" (/goods-receipts) gộp cả "Nhận hàng từ NCC" lẫn "Nhận bàn giao thành phẩm" (route
@@ -761,6 +770,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Khác KHO_THANH_PHAM: 3 mục xem tồn (Xem tồn của Khu sản xuất/Xem tồn đạt tiêu chuẩn/Xem tồn thực tế)
@@ -784,6 +794,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
     { href: "/reports/inventory-flow-summary", label: "Báo cáo Nhập - Xuất", icon: "BarChart3" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   SALE: [
@@ -817,6 +828,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/payroll-settings", label: "Cài đặt lương", icon: "Settings" },
     { href: "/reports/payroll", label: "Bảng lương", icon: "DollarSign" },
     { href: "/reports/probation-evaluations", label: "Báo cáo đánh giá thử việc", icon: "ClipboardCheck" },
+    { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
+    { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   NHAN_VIEN_SAN_XUAT: [
