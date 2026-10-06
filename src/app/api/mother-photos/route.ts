@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { uploadMotherPhoto } from "@/lib/mother-photo-storage";
+import { getTechWarehouseId } from "@/lib/mother-photo-grouping";
 import { startOfWeek, addWeeks, addDays, startOfDay } from "date-fns";
 import { toStoredWeekStart, getCalendarWeekNumber } from "@/lib/week-rotation";
 import { z } from "zod";
@@ -103,6 +104,16 @@ export async function POST(req: NextRequest) {
 
   const lot = await prisma.lot.findUnique({ where: { id: parsed.data.lotId }, select: { id: true, plantTypeId: true, enteredAt: true } });
   if (!lot) return NextResponse.json({ message: "Không tìm thấy lô" }, { status: 404 });
+
+  // NV Kỹ thuật kho nào chỉ chụp cho giàn của kho đó — chặn ảnh bị ghi nhận sang giàn kho khác.
+  const [techWarehouseId, shelf] = await Promise.all([
+    getTechWarehouseId(session.user.id),
+    prisma.shelf.findUnique({ where: { id: parsed.data.shelfId }, select: { warehouseId: true } }),
+  ]);
+  if (!shelf) return NextResponse.json({ message: "Không tìm thấy giàn kệ" }, { status: 404 });
+  if (techWarehouseId && shelf.warehouseId !== techWarehouseId) {
+    return NextResponse.json({ message: "Giàn kệ này không thuộc kho bạn phụ trách" }, { status: 403 });
+  }
 
   // Khoá tuần đã trôi qua ở phía server (không chỉ ẩn nút phía client) — chặn cả trường hợp gọi thẳng
   // API, dùng đúng công thức weekDateRange ở mother-photo-update-board.tsx: Chủ nhật của tuần

@@ -411,17 +411,24 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
 
   // Việc "4. Cập nhật hình ảnh định kì" — hạn chót mềm Thứ 3 (khác Thứ 5 của việc 1/3), tính live từ
   // MotherPhoto (không có bảng "nhiệm vụ" riêng — xem prisma/schema.prisma). % = số loại cây NV này đã
-  // chụp tuần này / tổng số loại cây đang có lô mẫu mẹ ACTIVE hệ thống.
+  // chụp tuần này / tổng số loại cây đang có lô mẫu mẹ ACTIVE — chỉ trong kho NV được gắn (workplaceWarehouseId),
+  // NV kho nào làm cho kho đó; chưa gắn kho thì tính mọi kho.
   const tuesdayDeadline = endOfDay(addDays(weekStart, 1));
   const [activeMotherPlantTypes, motherPhotosThisWeek] = await Promise.all([
     prisma.lot.findMany({
       // Chỉ tính giàn ĐÃ GẮN cho nhân sự — không cần cập nhật ảnh cho lô ở "kệ chung".
-      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
+      where: {
+        stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 },
+        shelf: { assignedStaffId: { not: null }, ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+      },
       distinct: ["plantTypeId"],
       select: { plantTypeId: true },
     }),
     prisma.motherPhoto.findMany({
-      where: { takenById: userId, weekStart: toStoredWeekStart(weekStart) },
+      where: {
+        takenById: userId, weekStart: toStoredWeekStart(weekStart),
+        ...(workplaceWarehouseId ? { shelf: { warehouseId: workplaceWarehouseId } } : {}),
+      },
       select: { plantTypeId: true, createdAt: true },
     }),
   ]);

@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { startOfWeek } from "date-fns";
 import { toStoredWeekStart } from "@/lib/week-rotation";
-import { computeMotherPhotoGroups } from "@/lib/mother-photo-grouping";
+import { computeMotherPhotoGroups, getTechWarehouseId } from "@/lib/mother-photo-grouping";
 import type { MotherPhotoMediumRole } from "@prisma/client";
 
 // Danh sách giàn kệ "cần chụp ảnh" tuần này — CHỈ tính giàn ĐÃ GẮN cho nhân sự (assignedStaffId khác
-// null), bỏ qua hẳn "kệ chung" (không thuộc nghĩa vụ chụp ảnh định kì). Dùng CHUNG cho mọi NV Kỹ thuật
-// (giống "Mẫu mẹ đạt chưa chỉ định") — ai chụp trước thì biến mất khỏi danh sách của TẤT CẢ mọi người,
+// null), bỏ qua hẳn "kệ chung" (không thuộc nghĩa vụ chụp ảnh định kì), và CHỈ trong kho NV được gắn
+// (User.workplaceWarehouseId). Dùng CHUNG cho các NV Kỹ thuật CÙNG KHO — ai chụp trước thì biến mất khỏi danh sách của mọi người cùng kho,
 // không lọc theo takenById (khác bảng "Lịch sử hoàn thành" ở /api/mother-photo-update/weekly-status vẫn
 // tính riêng từng NV).
 //
@@ -22,7 +22,9 @@ export async function GET() {
   }
 
   const weekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  const groups = await computeMotherPhotoGroups();
+  // Chỉ giàn thuộc kho NV được gắn — NV kho nào làm cho kho đó, ảnh kho này không xoá nhiệm vụ kho kia.
+  const warehouseId = await getTechWarehouseId(session.user.id);
+  const groups = await computeMotherPhotoGroups(warehouseId);
 
   // Tất cả ảnh (mọi thời điểm, không chỉ tuần này) của các giàn liên quan — dùng để: (1) loại bỏ nhóm đã
   // chụp ĐỦ TUẦN NÀY (bất kể ai chụp, chụp ở đúng giàn nào trong nhóm — nếu chỉ định có 2 môi trường thì

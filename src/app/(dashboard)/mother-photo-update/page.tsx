@@ -12,15 +12,23 @@ export default async function MotherPhotoUpdatePage() {
 
   const weekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
+  // NV Kỹ thuật kho nào làm cho kho đó (User.workplaceWarehouseId) — chưa gắn kho thì tính mọi kho như cũ.
+  const user = await prisma.user.findUnique({
+    where: { id: session!.user.id },
+    select: { workplaceWarehouse: { select: { id: true, name: true } } },
+  });
+  const warehouse = user?.workplaceWarehouse ?? null;
+  const shelfWhere = { assignedStaffId: { not: null }, ...(warehouse ? { warehouseId: warehouse.id } : {}) };
+
   const [activePlantTypes, photographedThisWeek] = await Promise.all([
     prisma.lot.findMany({
       // Chỉ tính giàn ĐÃ GẮN cho nhân sự — không cần cập nhật ảnh cho lô ở "kệ chung".
-      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
+      where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: shelfWhere },
       distinct: ["plantTypeId"],
       select: { plantTypeId: true },
     }),
     prisma.motherPhoto.findMany({
-      where: { takenById: session!.user.id, weekStart },
+      where: { takenById: session!.user.id, weekStart, ...(warehouse ? { shelf: { warehouseId: warehouse.id } } : {}) },
       distinct: ["plantTypeId"],
       select: { plantTypeId: true },
     }),
@@ -30,6 +38,7 @@ export default async function MotherPhotoUpdatePage() {
     <MotherPhotoUpdateBoard
       totalPlantTypes={activePlantTypes.length}
       initialPhotographedPlantTypeIds={photographedThisWeek.map((p) => p.plantTypeId)}
+      warehouseName={warehouse?.name ?? null}
     />
   );
 }

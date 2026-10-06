@@ -3,6 +3,7 @@ import { getCalendarWeekNumber } from "@/lib/week-rotation";
 
 export type MotherPhotoGroup = {
   key: string;
+  warehouseId: string;
   plantTypeId: string;
   plantTypeCode: string;
   plantTypeName: string;
@@ -26,19 +27,23 @@ export type MotherPhotoGroup = {
 // (/api/mother-photo-update/shelves), để 2 đường LUÔN nhất quán: chụp ở 1 giàn trong nhóm thì mọi giàn
 // khác cùng nhóm cũng phải coi là đã chụp tuần đó, dù NV vào qua danh sách "cần chụp" hay tự gõ tìm giàn
 // khác trong cùng nhóm.
-export async function computeMotherPhotoGroups(): Promise<Map<string, MotherPhotoGroup>> {
+//
+// CHỈ gộp trong CÙNG 1 KHO (Shelf.warehouseId) — mỗi kho sản xuất có NV Kỹ thuật riêng
+// (User.workplaceWarehouseId); trước đây gộp xuyên kho khiến ảnh chụp ở kho này "đè" mất nhiệm vụ cùng mã
+// cây/cùng tuần nhập ở kho kia. warehouseId: chỉ lấy giàn của 1 kho; bỏ trống = mọi kho.
+export async function computeMotherPhotoGroups(warehouseId?: string | null): Promise<Map<string, MotherPhotoGroup>> {
   const lots = await prisma.lot.findMany({
     where: {
       stage: "MAU_ME",
       status: "ACTIVE",
       quantity: { gt: 0 },
-      shelf: { assignedStaffId: { not: null } },
+      shelf: { assignedStaffId: { not: null }, ...(warehouseId ? { warehouseId } : {}) },
     },
     select: {
       id: true,
       quantity: true,
       enteredAt: true,
-      shelf: { select: { id: true, code: true, name: true, rotationGroupId: true } },
+      shelf: { select: { id: true, code: true, name: true, rotationGroupId: true, warehouseId: true } },
       plantType: { select: { id: true, code: true, name: true, transferWaitWeeks: true } },
       instruction: {
         select: {
@@ -60,13 +65,14 @@ export async function computeMotherPhotoGroups(): Promise<Map<string, MotherPhot
     .filter((l) => l.shelf !== null)
     .map((l) => ({ ...l, shelf: l.shelf!, enteredWeek: getCalendarWeekNumber(l.enteredAt) }));
 
-  // Union-Find trong phạm vi từng mã cây — gộp 2 lô khi cùng rotationGroupId (khác null) HOẶC cùng
+  // Union-Find trong phạm vi từng (kho + mã cây) — gộp 2 lô khi cùng rotationGroupId (khác null) HOẶC cùng
   // enteredWeek.
   const byPlantType = new Map<string, LotInfo[]>();
   for (const lot of lotsWithShelf) {
-    const arr = byPlantType.get(lot.plantType.id) ?? [];
+    const k = `${lot.shelf.warehouseId}:${lot.plantType.id}`;
+    const arr = byPlantType.get(k) ?? [];
     arr.push(lot);
-    byPlantType.set(lot.plantType.id, arr);
+    byPlantType.set(k, arr);
   }
 
   const parent = new Map<string, string>();
@@ -107,6 +113,7 @@ export async function computeMotherPhotoGroups(): Promise<Map<string, MotherPhot
     if (!existing) {
       groups.set(groupKey, {
         key: groupKey,
+        warehouseId: lot.shelf.warehouseId,
         plantTypeId: lot.plantType.id,
         plantTypeCode: lot.plantType.code,
         plantTypeName: lot.plantType.name,
@@ -153,4 +160,11 @@ export function findMotherPhotoGroup(
     if (g.plantTypeId === plantTypeId && g.shelfIds.has(shelfId)) return g;
   }
   return undefined;
+}
+
+// Kho sản xuất NV Kỹ thuật được gắn (User.workplaceWarehouseId) — NV kho nào chỉ cập nhật hình ảnh định kì
+// cho giàn của kho đó. null = chưa gắn kho (giữ hành vi cũ: thấy mọi kho).
+export async function getTechWarehouseId(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { workplaceWarehouseId: true } });
+  return user?.workplaceWarehouseId ?? null;
 }

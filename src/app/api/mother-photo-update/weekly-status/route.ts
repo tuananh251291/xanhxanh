@@ -23,17 +23,20 @@ export async function GET() {
   const [staff, activePlantTypes] = await Promise.all([
     prisma.user.findMany({
       where: { role: "KY_THUAT", isActive: true },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, workplaceWarehouseId: true },
       orderBy: { name: "asc" },
     }),
     prisma.lot.findMany({
       // Chỉ tính giàn ĐÃ GẮN cho nhân sự — không cần cập nhật ảnh cho lô ở "kệ chung".
       where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
-      distinct: ["plantTypeId"],
-      select: { plantTypeId: true },
+      distinct: ["plantTypeId", "shelfId"],
+      select: { plantTypeId: true, shelf: { select: { warehouseId: true } } },
     }),
   ]);
-  const totalPlantTypes = activePlantTypes.length;
+  // NV Kỹ thuật kho nào chỉ tính loại cây của kho đó (User.workplaceWarehouseId); chưa gắn kho = mọi kho.
+  const plantTypesIn = (warehouseId: string | null) =>
+    new Set(activePlantTypes.filter((l) => !warehouseId || l.shelf?.warehouseId === warehouseId).map((l) => l.plantTypeId));
+  const totalPlantTypes = plantTypesIn(null).size;
 
   const thisWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const weekStarts = Array.from({ length: WEEKS_SHOWN }, (_, i) => addWeeks(thisWeekStart, -i));
@@ -43,18 +46,22 @@ export async function GET() {
       takenById: { in: staff.map((s) => s.id) },
       weekStart: { in: weekStarts },
     },
-    select: { takenById: true, weekStart: true, plantTypeId: true, createdAt: true },
+    select: { takenById: true, weekStart: true, plantTypeId: true, createdAt: true, shelf: { select: { warehouseId: true } } },
   });
 
   const rows = staff.map((s) => {
+    const staffTotal = plantTypesIn(s.workplaceWarehouseId).size;
     const weeks = weekStarts.map((weekStart) => {
       const tuesdayEnd = endOfDay(addDays(weekStart, 1));
       const weekPhotos = photos.filter(
-        (p) => p.takenById === s.id && p.weekStart.getTime() === weekStart.getTime()
+        (p) =>
+          p.takenById === s.id &&
+          p.weekStart.getTime() === weekStart.getTime() &&
+          (!s.workplaceWarehouseId || p.shelf.warehouseId === s.workplaceWarehouseId)
       );
       const distinctPlantTypes = new Set(weekPhotos.map((p) => p.plantTypeId));
-      const percent = totalPlantTypes === 0 ? 100 : Math.round((distinctPlantTypes.size / totalPlantTypes) * 100);
-      const isFullyDone = totalPlantTypes === 0 ? weekPhotos.length > 0 : distinctPlantTypes.size >= totalPlantTypes;
+      const percent = staffTotal === 0 ? 100 : Math.round((distinctPlantTypes.size / staffTotal) * 100);
+      const isFullyDone = staffTotal === 0 ? weekPhotos.length > 0 : distinctPlantTypes.size >= staffTotal;
       const doneByTuesday = isFullyDone && weekPhotos.every((p) => p.createdAt <= tuesdayEnd);
 
       let status: "HOAN_THANH" | "DA_THUC_HIEN" | "CHUA_LAM";
@@ -64,7 +71,7 @@ export async function GET() {
 
       return { weekStart, percent, status };
     });
-    return { userId: s.id, name: s.name, code: s.code, weeks };
+    return { userId: s.id, name: s.name, code: s.code, totalPlantTypes: staffTotal, weeks };
   });
 
   return NextResponse.json({ weekStarts, totalPlantTypes, rows });

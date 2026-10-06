@@ -59,9 +59,11 @@ function weekCaptureKey(lotId: string, weekIndex: number, mediumRole: MediumRole
 export default function MotherPhotoUpdateBoard({
   totalPlantTypes,
   initialPhotographedPlantTypeIds,
+  warehouseName,
 }: {
   totalPlantTypes: number;
   initialPhotographedPlantTypeIds: string[];
+  warehouseName: string | null;
 }) {
   const [due, setDue] = useState<DueItem[]>([]);
   const [dueLoading, setDueLoading] = useState(true);
@@ -273,7 +275,10 @@ export default function MotherPhotoUpdateBoard({
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Cập nhật hình ảnh định kì</h1>
-        <p className="text-text-secondary text-sm mt-1">Nhiệm vụ tuần — hoàn thành đúng hạn vào Thứ 2 hoặc Thứ 3</p>
+        <p className="text-text-secondary text-sm mt-1">
+          Nhiệm vụ tuần — hoàn thành đúng hạn vào Thứ 2 hoặc Thứ 3
+          {warehouseName ? ` · Kho phụ trách: ${warehouseName}` : " · Chưa gắn kho phụ trách (đang hiện mọi kho)"}
+        </p>
       </div>
 
       <Card>
@@ -307,7 +312,7 @@ export default function MotherPhotoUpdateBoard({
             <ListChecks className="w-4.5 h-4.5 text-primary-strong" /> Giàn cần chụp tuần này
           </CardTitle>
           <p className="text-xs text-text-secondary">
-            Chỉ tính giàn đã gắn cho nhân sự — chụp xong 1 giàn sẽ tự biến mất khỏi danh sách (kể cả với NV khác)
+            Chỉ tính giàn đã gắn cho nhân sự — chụp xong 1 giàn sẽ tự biến mất khỏi danh sách (kể cả với NV khác cùng kho)
           </p>
         </CardHeader>
         <CardContent className="space-y-3">

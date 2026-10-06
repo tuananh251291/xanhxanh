@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { getCalendarWeekNumber } from "@/lib/week-rotation";
-import { computeMotherPhotoGroups, findMotherPhotoGroup } from "@/lib/mother-photo-grouping";
+import { computeMotherPhotoGroups, findMotherPhotoGroup, getTechWarehouseId } from "@/lib/mother-photo-grouping";
 
 // Tìm giàn kệ Phòng mẫu mẹ theo mã/tên cho trang "Cập nhật hình ảnh định kì" (ô tìm bổ sung cạnh danh
-// sách "Cần chụp tuần này", xem /api/mother-photo-update/due) — KHÔNG giới hạn theo 1 kho (khác
-// /api/mother-stock-reshelf vốn khoá theo workplaceWarehouseId của KHO_MO), vì NV Kỹ thuật làm việc ở
-// mọi kho sản xuất. CHỈ trả về giàn ĐÃ GẮN cho nhân sự (assignedStaffId khác null) — nghĩa vụ chụp ảnh
+// sách "Cần chụp tuần này", xem /api/mother-photo-update/due) — NV Kỹ thuật đã gắn kho
+// (workplaceWarehouseId) chỉ thấy giàn kho mình; chưa gắn kho / Admin thì thấy mọi kho sản xuất.
+// CHỈ trả về giàn ĐÃ GẮN cho nhân sự (assignedStaffId khác null) — nghĩa vụ chụp ảnh
 // định kì không áp dụng cho "kệ chung".
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -21,9 +21,13 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")?.trim() ?? "";
   if (q.length < 1) return NextResponse.json({ shelves: [] });
 
+  // NV Kỹ thuật đã gắn kho chỉ tìm được giàn của kho mình (Admin vẫn tìm mọi kho).
+  const warehouseId = role === "KY_THUAT" ? await getTechWarehouseId(session!.user.id) : null;
+
   const shelves = await prisma.shelf.findMany({
     where: {
       isActive: true,
+      ...(warehouseId ? { warehouseId } : {}),
       room: { type: "PHONG_MAU_ME" },
       assignedStaffId: { not: null },
       OR: [
@@ -66,7 +70,7 @@ export async function GET(req: NextRequest) {
   // Gộp giống hệt /api/mother-photo-update/due (xem src/lib/mother-photo-grouping.ts) — "kiểu ảnh đã
   // chụp" tra theo CẢ NHÓM (không chỉ riêng lô/giàn đang xem), để chụp ở 1 giàn trong nhóm thì giàn khác
   // cùng nhóm tìm thủ công ở đây cũng tự khoá đúng nút tương ứng, không cho chụp trùng.
-  const groups = await computeMotherPhotoGroups();
+  const groups = await computeMotherPhotoGroups(warehouseId);
   const allGroupShelfIds = Array.from(new Set(Array.from(groups.values()).flatMap((g) => Array.from(g.shelfIds))));
   const allPhotos = await prisma.motherPhoto.findMany({
     where: { shelfId: { in: allGroupShelfIds } },

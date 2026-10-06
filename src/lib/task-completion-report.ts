@@ -135,11 +135,11 @@ async function buildCayMoRows(
 // KY_THUAT — nhịp tuần, quy đổi về "ngày hạn chót" (Thứ 3 / Thứ 5 / Chủ nhật)
 // ============================================================
 async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): Promise<TaskCompletionStaffRow[]> {
-  // NV kỹ thuật không gán workplaceWarehouseId (luôn làm việc ở mọi kho) — hiện đủ cho mọi người xem
-  // báo cáo (Admin lẫn Kho mô), không lọc theo kho.
+  // Hiện đủ mọi NV kỹ thuật cho mọi người xem báo cáo (Admin lẫn Kho mô), không lọc theo kho — riêng việc
+  // "Cập nhật hình ảnh định kì" tính theo kho NV được gắn (workplaceWarehouseId; chưa gắn = mọi kho).
   const staffList = await prisma.user.findMany({
     where: { role: "KY_THUAT", isActive: true },
-    select: { id: true, code: true, name: true, createdAt: true },
+    select: { id: true, code: true, name: true, createdAt: true, workplaceWarehouseId: true },
     orderBy: { name: "asc" },
   });
   if (staffList.length === 0) return [];
@@ -163,14 +163,14 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
     }),
     prisma.motherPhoto.findMany({
       where: { takenById: { in: staffIds }, weekStart: toStoredWeekStart(weekStart) },
-      select: { takenById: true, plantTypeId: true },
+      select: { takenById: true, plantTypeId: true, shelf: { select: { warehouseId: true } } },
     }),
     // Xấp xỉ: dùng danh sách loại cây có kệ mẫu mẹ ĐANG gán NV hiện tại làm mẫu số — không tái tạo được
     // chính xác danh sách này tại thời điểm tuần đã qua (không lưu lịch sử gán kệ theo tuần).
     prisma.lot.findMany({
       where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
-      distinct: ["plantTypeId"],
-      select: { plantTypeId: true },
+      distinct: ["plantTypeId", "shelfId"],
+      select: { plantTypeId: true, shelf: { select: { warehouseId: true } } },
     }),
   ]);
 
@@ -192,9 +192,13 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
   const backupCountByStaff = new Map<string, number>();
   for (const b of backupInstructions) backupCountByStaff.set(b.createdById, (backupCountByStaff.get(b.createdById) ?? 0) + 1);
 
-  const motherPhotoTotal = activeMotherPlantTypes.length;
+  const staffWarehouseById = new Map(staffList.map((s) => [s.id, s.workplaceWarehouseId]));
+  const motherPhotoTotalFor = (warehouseId: string | null) =>
+    new Set(activeMotherPlantTypes.filter((l) => !warehouseId || l.shelf?.warehouseId === warehouseId).map((l) => l.plantTypeId)).size;
   const photoPlantTypesByStaff = new Map<string, Set<string>>();
   for (const p of motherPhotosThisWeek) {
+    const wh = staffWarehouseById.get(p.takenById);
+    if (wh && p.shelf.warehouseId !== wh) continue;
     if (!photoPlantTypesByStaff.has(p.takenById)) photoPlantTypesByStaff.set(p.takenById, new Set());
     photoPlantTypesByStaff.get(p.takenById)!.add(p.plantTypeId);
   }
@@ -234,6 +238,7 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
 
       if (!isAfter(tuesdayDeadline, evalEnd) && !isBefore(tuesdayDeadline, startOfDay(staff.createdAt))) {
         const photoSet = photoPlantTypesByStaff.get(staff.id) ?? new Set<string>();
+        const motherPhotoTotal = motherPhotoTotalFor(staff.workplaceWarehouseId);
         const motherPhotoOk = motherPhotoTotal === 0 || photoSet.size >= motherPhotoTotal;
         days.push(buildDay(tuesdayDeadline, [{ title: "Cập nhật hình ảnh định kì", done: motherPhotoOk }], exemptions, staff.id));
       }
