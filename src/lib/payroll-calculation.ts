@@ -61,7 +61,7 @@ export type PayrollDailyDetailEntry = {
   isSunday: boolean;
   isHoliday: boolean;
   active: boolean; // có nhật ký cấy hoặc bàn giao phòng tối trong ngày
-  recordedQuantity: number; // Số lượng ghi nhận (đã trừ không đạt/theo lô đã kiểm tra)
+  recordedQuantity: number; // Số lượng ghi nhận của các lô CẤY trong ngày này (đã trừ không đạt/theo lô đã kiểm tra)
   unqualifiedQuantity: number; // Số lượng không đạt (chỉ có ở luồng Xanh, luồng Đỏ/Vàng đã tách sẵn)
   recordedAmount: number; // Giá trị quy đổi VNĐ trong ngày (theo đơn giá KPI của từng mã cây)
 };
@@ -116,16 +116,26 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     // Dùng OR + notes:null thay vì NOT:{notes:{startsWith}} — phiếu bàn giao thường KHÔNG có notes (null),
     // và SQL "NOT (notes LIKE ...)" trả về NULL (bị loại luôn) khi notes null, làm rỗng sạch cả bàn giao
     // bình thường (bug phát hiện 10/09/2026 — số bàn giao/ghi nhận về 0 hết sau khi thêm điều kiện loại MM dư).
+    // Lấy phiếu bàn giao trong kỳ (tính ngày công) HOẶC phiếu có lô CẤY trong kỳ (tính sản lượng) — lô cấy
+    // cuối tháng thường 7 ngày sau mới bàn giao, Kho mô có thể nhận muộn hơn nữa, vẫn phải về đúng kỳ cấy.
     prisma.transfer.findMany({
       where: {
-        fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: { not: "REJECTED" },
-        OR: [{ notes: null }, { notes: { not: { startsWith: SURPLUS_TRANSFER_TAG } } }],
+        fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, status: { not: "REJECTED" },
+        AND: [
+          { OR: [{ notes: null }, { notes: { not: { startsWith: SURPLUS_TRANSFER_TAG } } }] },
+          {
+            OR: [
+              { createdAt: { gte: rangeStart, lt: rangeEnd } },
+              { items: { some: { lot: { darkRoomEnteredAt: { gte: rangeStart, lt: rangeEnd } } } } },
+            ],
+          },
+        ],
       },
       select: {
         fromUserId: true,
         createdAt: true,
         status: true,
-        items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, stageCode: true } } } },
+        items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, stageCode: true, darkRoomEnteredAt: true } } } },
         inspection: { select: { items: { select: { plantTypeId: true, stageCode: true, creditedQuantity: true } } } },
       },
     }),
@@ -180,8 +190,9 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     set.add(dayKey(d));
     activeDaysByStaff.set(staffId, set);
   };
+  const inPeriod = (d: Date) => d >= rangeStart && d < rangeEnd;
   for (const r of dailyRecords) addActiveDay(r.staffId, r.recordDate);
-  for (const t of transfers) addActiveDay(t.fromUserId, t.createdAt);
+  for (const t of transfers) if (inPeriod(t.createdAt)) addActiveDay(t.fromUserId, t.createdAt);
 
   // Chi tiết theo ngày (dùng cho "xem chi tiết theo ngày" + xuất Excel) — gộp theo (staffId, ngày).
   const dailyDetailMap = new Map<string, Map<string, { active: boolean; quantity: number; unqualified: number; amount: number }>>();
@@ -206,15 +217,40 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   };
   const plantRateMap = new Map(plantRates.map((r) => [rateKey(r.plantTypeId, r.stageCode), r.vndPerUnit]));
 
+  // Sản lượng tính theo NGÀY CẤY của từng lô (Lot.darkRoomEnteredAt = recordDate nhật ký cấy, bất biến) —
+  // KHÔNG theo ngày bàn giao/ngày Kho mô nhận. VD lô cấy 31/10, bàn giao 07/11, Kho mô 10/11 mới kiểm tra →
+  // vẫn tính vào kỳ tháng 10 (bảng lương tính SỐNG nên mở lại kỳ tháng 10 sau 10/11 là thấy đủ). Lô cũ không
+  // có darkRoomEnteredAt thì lùi về ngày bàn giao.
+  const creditItem = (staffId: string, plantedAt: Date, key: string, credited: number, unqualified: number) => {
+    if (!inPeriod(plantedAt)) return;
+    addRecorded(staffId, key, credited);
+    const dayEntry = ensureDayEntry(staffId, dayKey(plantedAt));
+    dayEntry.quantity += credited;
+    dayEntry.unqualified += unqualified;
+    dayEntry.amount += credited * (plantRateMap.get(key) ?? 0);
+  };
+
   for (const t of transfers) {
-    const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
-    dayEntry.active = true;
+    if (inPeriod(t.createdAt)) ensureDayEntry(t.fromUserId, dayKey(t.createdAt)).active = true;
     if (t.inspection) {
+      // Kết quả kiểm tra lưu theo (mã cây + quy cách) cho cả phiếu — chia lại cho từng lô cùng key theo tỉ lệ
+      // số bàn giao (làm tròn luỹ kế để tổng khớp đúng creditedQuantity), vì 1 phiếu có thể gộp lô cấy ở 2 kỳ.
       for (const insItem of t.inspection.items) {
         const key = rateKey(insItem.plantTypeId, insItem.stageCode);
-        addRecorded(t.fromUserId, key, insItem.creditedQuantity);
-        dayEntry.quantity += insItem.creditedQuantity;
-        dayEntry.amount += insItem.creditedQuantity * (plantRateMap.get(key) ?? 0);
+        const lotItems = t.items.filter((i) => rateKey(i.lot.plantTypeId, i.lot.stageCode) === key);
+        const total = lotItems.reduce((s, i) => s + i.quantity, 0);
+        if (total <= 0) {
+          creditItem(t.fromUserId, t.createdAt, key, insItem.creditedQuantity, 0);
+          continue;
+        }
+        let cumQty = 0;
+        let cumCredited = 0;
+        for (const item of lotItems) {
+          cumQty += item.quantity;
+          const next = Math.round((cumQty * insItem.creditedQuantity) / total);
+          creditItem(t.fromUserId, item.lot.darkRoomEnteredAt ?? t.createdAt, key, next - cumCredited, 0);
+          cumCredited = next;
+        }
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
@@ -224,12 +260,8 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       // tháng đó NV đang ở luồng Xanh, không cần kiểm tra (bug phát hiện 09/09/2026 qua báo cáo tương tự
       // production-record-report.ts — xem giải thích đầy đủ ở đó).
       for (const item of t.items) {
-        const credited = item.quantity - item.unqualifiedQuantity;
         const key = rateKey(item.lot.plantTypeId, item.lot.stageCode);
-        addRecorded(t.fromUserId, key, credited);
-        dayEntry.quantity += credited;
-        dayEntry.unqualified += item.unqualifiedQuantity;
-        dayEntry.amount += credited * (plantRateMap.get(key) ?? 0);
+        creditItem(t.fromUserId, item.lot.darkRoomEnteredAt ?? t.createdAt, key, item.quantity - item.unqualifiedQuantity, item.unqualifiedQuantity);
       }
     }
     // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa ghi nhận được, bỏ qua.

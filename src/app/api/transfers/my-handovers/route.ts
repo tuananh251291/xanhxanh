@@ -15,22 +15,16 @@ import { addMonths, parse, isValid } from "date-fns";
 //   schema) — hiển thị ở đây vẫn gộp theo stageCode (cộng dồn các dòng cùng stageCode) vì UI này chỉ cần
 //   tổng theo quy cách, không cần tách mã cây (khác payroll-calculation.ts, tách hẳn theo mã cây).
 //
-// Query param "month" (YYYY-MM, tùy chọn) — lọc theo 1 KỲ (không phải tháng lịch), tính theo
-// Transfer.createdAt (thời điểm NV bấm bàn giao): từ ngày 7 của tháng chọn tới TRƯỚC ngày 7 tháng sau
-// (khớp kỳ tính lương của công ty). VD chọn "2026-08" → kỳ 07/08 - 06/09. Không truyền = kỳ hiện tại
-// (mặc định), tránh tải toàn bộ lịch sử mỗi lần mở.
+// Query param "month" (YYYY-MM, tùy chọn) — lọc theo THÁNG LỊCH (mùng 1 → cuối tháng), tính theo
+// Transfer.createdAt (thời điểm NV bấm bàn giao). Không truyền = tháng hiện tại, tránh tải toàn bộ lịch sử.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (session?.user?.role !== "CAY_MO") return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
-  const PERIOD_START_DAY = 7;
   const monthParam = req.nextUrl.searchParams.get("month");
   const parsedMonth = monthParam ? parse(monthParam, "yyyy-MM", new Date()) : new Date();
   const monthDate = isValid(parsedMonth) ? parsedMonth : new Date();
-  // Nếu hôm nay/ngày tham chiếu chưa tới mùng 7, kỳ hiện tại thật ra bắt đầu từ mùng 7 THÁNG TRƯỚC —
-  // chỉ áp dụng khi không truyền "month" tường minh (mặc định theo ngày hôm nay).
-  const anchorMonth = !monthParam && monthDate.getDate() < PERIOD_START_DAY ? addMonths(monthDate, -1) : monthDate;
-  const rangeStart = new Date(anchorMonth.getFullYear(), anchorMonth.getMonth(), PERIOD_START_DAY, 0, 0, 0, 0);
+  const rangeStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0);
   const rangeEnd = addMonths(rangeStart, 1);
 
   const me = await prisma.user.findUnique({

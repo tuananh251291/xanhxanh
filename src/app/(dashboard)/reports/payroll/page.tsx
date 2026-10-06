@@ -25,7 +25,8 @@ export default async function PayrollReportPage() {
           <DollarSign className="w-6 h-6 text-primary-strong" /> Bảng lương
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Lương NV cấy mô tính theo kỳ lương (mùng 7 — trước mùng 7 tháng sau), dùng SỐNG giá trị đang cài
+          Lương NV cấy mô tính theo tháng (mùng 1 — cuối tháng); sản lượng tính theo NGÀY CẤY của lô, kể cả
+          khi Kho mô nhận bàn giao sang tháng sau. Dùng SỐNG giá trị đang cài
           đặt ở &quot;Cài đặt lương&quot; — không lưu lại số cũ khi tham số thay đổi.
         </p>
       </div>
