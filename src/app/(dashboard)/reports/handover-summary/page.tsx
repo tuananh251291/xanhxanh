@@ -25,7 +25,8 @@ export default async function HandoverSummaryPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           Số lượng bàn giao và số lượng được ghi nhận của từng NV cấy mô trong khoảng ngày đã chọn (khớp
-          số với báo cáo &quot;Số lượng ghi nhận&quot; của Admin), lọc được theo cơ sở sản xuất.
+          số với báo cáo &quot;Số lượng ghi nhận&quot; và Bảng lương), lọc được theo cơ sở sản xuất. Số lượng tính
+          theo NGÀY CẤY của lô, kể cả khi bàn giao/Kho mô nhận sang tháng sau.
         </p>
       </div>
       <HandoverSummaryBoard warehouses={warehouses} />

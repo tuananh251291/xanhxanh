@@ -19,7 +19,8 @@ import { SURPLUS_TRANSFER_TAG } from "@/types";
 // ở production-record-report.ts (cùng bug đã sửa, phát hiện 09/09/2026).
 export type HandoverSummaryDailyEntry = {
   date: string; // yyyy-MM-dd
-  active: boolean;
+  active: boolean; // có bàn giao phòng tối trong ngày
+  // Các số lượng dưới đây là của các lô CẤY trong ngày này (không phải bàn giao trong ngày này).
   handedOverQuantity: number;
   recordedQuantity: number;
   unqualifiedQuantity: number;
@@ -114,20 +115,35 @@ export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, 
     // Dùng OR + notes:null thay vì NOT:{notes:{startsWith}} — phiếu bàn giao thường KHÔNG có notes (null),
     // và SQL "NOT (notes LIKE ...)" trả về NULL (bị loại luôn) khi notes null, làm rỗng sạch cả bàn giao
     // bình thường (bug phát hiện 10/09/2026 — SL bàn giao/ghi nhận về 0 hết).
+    // Phiếu bàn giao trong khoảng (tính ngày hoạt động) HOẶC có lô CẤY trong khoảng (tính số lượng) — xem
+    // giải thích "theo ngày cấy" ở vòng lặp bên dưới.
     where: {
-      fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, createdAt: { gte: rangeStart, lt: rangeEndExclusive }, status: { not: "REJECTED" },
-      OR: [{ notes: null }, { notes: { not: { startsWith: SURPLUS_TRANSFER_TAG } } }],
+      fromUserId: { in: staffIds }, fromRoom: { type: "PHONG_TOI" }, status: { not: "REJECTED" },
+      AND: [
+        { OR: [{ notes: null }, { notes: { not: { startsWith: SURPLUS_TRANSFER_TAG } } }] },
+        {
+          OR: [
+            { createdAt: { gte: rangeStart, lt: rangeEndExclusive } },
+            { items: { some: { lot: { darkRoomEnteredAt: { gte: rangeStart, lt: rangeEndExclusive } } } } },
+          ],
+        },
+      ],
     },
     select: {
       fromUserId: true,
       createdAt: true,
       status: true,
-      items: { select: { quantity: true, unqualifiedQuantity: true, lot: { select: { plantTypeId: true, plantType: { select: { code: true, name: true } } } } } },
+      items: {
+        select: {
+          quantity: true, unqualifiedQuantity: true,
+          lot: { select: { plantTypeId: true, stageCode: true, darkRoomEnteredAt: true, plantType: { select: { code: true, name: true } } } },
+        },
+      },
       inspection: {
         select: {
           items: {
             select: {
-              plantTypeId: true, creditedQuantity: true, handedOverQuantity: true, contaminatedQuantity: true, unqualifiedQuantity: true,
+              plantTypeId: true, stageCode: true, creditedQuantity: true, handedOverQuantity: true, contaminatedQuantity: true, unqualifiedQuantity: true,
               plantType: { select: { code: true, name: true } },
             },
           },
@@ -171,9 +187,26 @@ export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, 
 
   const hasPendingByStaff = new Set<string>();
 
+  // Số lượng xếp theo NGÀY CẤY của từng lô (Lot.darkRoomEnteredAt = recordDate nhật ký cấy, bất biến) —
+  // KHÔNG theo ngày bàn giao/ngày Kho mô nhận, khớp Bảng lương + báo cáo "Số lượng ghi nhận". VD lô cấy
+  // 31/10, bàn giao 07/11, Kho mô kiểm tra 10/11 → nằm ở ngày 31/10. Lô cũ không có darkRoomEnteredAt thì
+  // lùi về ngày bàn giao. "active" vẫn theo ngày bàn giao thật.
+  const inRange = (d: Date) => d >= rangeStart && d < rangeEndExclusive;
+  type Delta = Omit<DayAgg, "active">;
+  const addDelta = (staffId: string, plantedAt: Date, plantType: { id: string; code: string; name: string }, d: Delta) => {
+    if (!inRange(plantedAt)) return;
+    addPlant(staffId, plantType.id, plantType.code, plantType.name, d.handedOver, d.recorded, d.contaminated);
+    const dayEntry = ensureDayEntry(staffId, dayKey(plantedAt));
+    dayEntry.handedOver += d.handedOver;
+    dayEntry.recorded += d.recorded;
+    dayEntry.unqualified += d.unqualified;
+    dayEntry.contaminated += d.contaminated;
+    dayEntry.inspectedUnqualified += d.inspectedUnqualified;
+    dayEntry.randomCheckLoss += d.randomCheckLoss;
+  };
+
   for (const t of transfers) {
-    const dayEntry = ensureDayEntry(t.fromUserId, dayKey(t.createdAt));
-    dayEntry.active = true;
+    if (inRange(t.createdAt)) ensureDayEntry(t.fromUserId, dayKey(t.createdAt)).active = true;
 
     if (t.inspection) {
       for (const insItem of t.inspection.items) {
@@ -182,15 +215,31 @@ export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, 
         // (đã lưu sẵn, tính đúng theo từng lô lúc kiểm tra) chính là hao hụt do tỉ lệ nhiễm ngẫu nhiên,
         // xem giải thích ở totalRandomCheckLossQuantity.
         const randomCheckLoss = Math.max(0, passed - insItem.unqualifiedQuantity - insItem.creditedQuantity);
-        addPlant(
-          t.fromUserId, insItem.plantTypeId, insItem.plantType.code, insItem.plantType.name,
-          passed, insItem.creditedQuantity, insItem.contaminatedQuantity
-        );
-        dayEntry.handedOver += passed;
-        dayEntry.recorded += insItem.creditedQuantity;
-        dayEntry.contaminated += insItem.contaminatedQuantity;
-        dayEntry.inspectedUnqualified += insItem.unqualifiedQuantity;
-        dayEntry.randomCheckLoss += randomCheckLoss;
+        const totals: Delta = {
+          handedOver: passed, recorded: insItem.creditedQuantity, unqualified: 0, contaminated: insItem.contaminatedQuantity,
+          inspectedUnqualified: insItem.unqualifiedQuantity, randomCheckLoss,
+        };
+        const plantType = { id: insItem.plantTypeId, ...insItem.plantType };
+        // Kết quả kiểm tra lưu theo (mã cây + quy cách) cho cả phiếu — chia lại cho từng lô cùng key theo tỉ
+        // lệ số bàn giao (làm tròn luỹ kế để tổng mỗi cột khớp đúng), vì 1 phiếu có thể gộp lô cấy 2 kỳ.
+        const lotItems = t.items.filter((i) => i.lot.plantTypeId === insItem.plantTypeId && i.lot.stageCode === insItem.stageCode);
+        const totalQty = lotItems.reduce((s, i) => s + i.quantity, 0);
+        if (totalQty <= 0) {
+          addDelta(t.fromUserId, t.createdAt, plantType, totals);
+          continue;
+        }
+        let cumQty = 0;
+        const prev: Delta = { handedOver: 0, recorded: 0, unqualified: 0, contaminated: 0, inspectedUnqualified: 0, randomCheckLoss: 0 };
+        for (const item of lotItems) {
+          cumQty += item.quantity;
+          const share = {} as Delta;
+          for (const k of Object.keys(totals) as (keyof Delta)[]) {
+            const next = Math.round((cumQty * totals[k]) / totalQty);
+            share[k] = next - prev[k];
+            prev[k] = next;
+          }
+          addDelta(t.fromUserId, item.lot.darkRoomEnteredAt ?? t.createdAt, plantType, share);
+        }
       }
     } else if (t.status === "CONFIRMED") {
       // Đã xếp kệ xong mà KHÔNG qua kiểm tra => tại thời điểm bàn giao phiếu này đi theo đường Xanh/MM dư
@@ -198,13 +247,14 @@ export async function computeHandoverSummaryForPeriod(dateFrom?: string | null, 
       // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống). Không có "SL nhiễm" (luồng này không
       // qua Kho mô kiểm tra nhiễm).
       for (const item of t.items) {
-        const credited = item.quantity - item.unqualifiedQuantity;
-        addPlant(t.fromUserId, item.lot.plantTypeId, item.lot.plantType.code, item.lot.plantType.name, item.quantity, credited, 0);
-        dayEntry.handedOver += item.quantity;
-        dayEntry.recorded += credited;
-        dayEntry.unqualified += item.unqualifiedQuantity;
+        addDelta(t.fromUserId, item.lot.darkRoomEnteredAt ?? t.createdAt, { id: item.lot.plantTypeId, ...item.lot.plantType }, {
+          handedOver: item.quantity, recorded: item.quantity - item.unqualifiedQuantity, unqualified: item.unqualifiedQuantity,
+          contaminated: 0, inspectedUnqualified: 0, randomCheckLoss: 0,
+        });
       }
-    } else {
+    } else if (t.items.some((i) => inRange(i.lot.darkRoomEnteredAt ?? t.createdAt))) {
+      // Còn chờ Kho mô kiểm tra/xếp kệ — chỉ báo "còn chờ" khi phiếu có lô cấy trong khoảng đang xem
+      // (số lượng của chính khoảng này còn thiếu).
       hasPendingByStaff.add(t.fromUserId);
     }
   }
