@@ -32,9 +32,10 @@ const nextConfig: NextConfig = {
           // Không gửi URL đầy đủ (có thể chứa token/id nhạy cảm trong query) sang site khác khi bấm link
           // ra ngoài — chỉ gửi origin. Vẫn gửi đủ referrer khi ở lại cùng origin (không phá analytics nội bộ).
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          // Tắt hẳn các quyền trình duyệt không dùng tới (camera/mic/định vị) — ứng dụng quản lý kho không
-          // cần, giảm bề mặt tấn công nếu có script lạ lọt vào.
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // Camera + định vị CHỈ cho chính trang này (self) — Chấm công cần GPS + selfie, chụp ảnh/quét QR cần
+          // camera; để "()" thì Chrome Android chặn tuyệt đối (báo từ chối quyền dù NV đã cho phép), iPhone
+          // Safari không áp dụng header nên chỉ iPhone chấm được. Micro không dùng → vẫn tắt hẳn.
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self)" },
         ],
       },
     ];
