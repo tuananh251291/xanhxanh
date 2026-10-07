@@ -45,6 +45,8 @@ export async function GET(req: NextRequest) {
     site: site
       ? {
           configured: site.latitude != null && site.longitude != null,
+          // Toạ độ khu của chính NV — để trang tính khoảng cách ngay trên máy trước khi chụp ảnh.
+          latitude: site.latitude, longitude: site.longitude,
           shiftStart: site.shiftStart, shiftEnd: site.shiftEnd, breakStart: site.breakStart, breakEnd: site.breakEnd,
           graceMinutes: site.graceMinutes, radiusMeters: site.radiusMeters,
         }

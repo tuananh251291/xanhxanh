@@ -1,18 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Clock, Fingerprint, Loader2, LogIn, LogOut, MapPin, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Fingerprint, Loader2, LogIn, LogOut, MapPin, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { compressImageToDataUrl } from "@/lib/image-compress";
-import {
-  ATTENDANCE_SELFIE_COMPRESS_OPTIONS,
-  type AttendanceDayCell,
-  type AttendanceSummary,
-} from "@/lib/attendance";
+import type { AttendanceDayCell, AttendanceSummary } from "@/lib/attendance";
 import type { AttendanceRequestStatus, AttendanceRequestType } from "@prisma/client";
 import {
   ATTENDANCE_REQUEST_TYPE_LABELS,
@@ -26,6 +21,7 @@ import {
   type RequestLike,
 } from "./attendance-shared";
 import RequestFormDialog from "./request-form-dialog";
+import CheckInFlowDialog from "./check-in-flow-dialog";
 
 type MyRequest = RequestLike & {
   id: string;
@@ -44,6 +40,7 @@ type MeData = {
   warehouse: { id: string; name: string } | null;
   site: {
     configured: boolean;
+    latitude: number | null; longitude: number | null;
     shiftStart: string; shiftEnd: string; breakStart: string | null; breakEnd: string | null;
     graceMinutes: number; radiusMeters: number;
   } | null;
@@ -62,31 +59,22 @@ function shiftMonth(month: string, delta: number): string {
   return d.toISOString().slice(0, 7);
 }
 
-function getPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) { reject(new Error("Thiết bị không hỗ trợ định vị GPS")); return; }
-    navigator.geolocation.getCurrentPosition(resolve, (err) => {
-      reject(new Error(
-        err.code === err.PERMISSION_DENIED
-          ? "Bạn chưa cho phép truy cập vị trí — bật quyền Vị trí cho trình duyệt rồi thử lại"
-          : "Không lấy được vị trí GPS — thử ra chỗ thoáng rồi chấm lại"
-      ));
-    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
-  });
+// Trình duyệt nhúng trong app (Zalo, Facebook...) hay chặn GPS/camera — nhắc NV mở bằng Safari/Chrome.
+function isInAppBrowser(): boolean {
+  return typeof navigator !== "undefined" && /Zalo|FBAN|FBAV|Instagram|Line\/|Messenger/i.test(navigator.userAgent);
 }
 
 export default function AttendanceBoard({ userId, userName, initialTab }: { userId: string; userName: string; initialTab: "calendar" | "requests" }) {
   const [month, setMonth] = useState<string | null>(null);
   const [data, setData] = useState<MeData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [checking, setChecking] = useState<"IN" | "OUT" | null>(null);
+  const [checkAction, setCheckAction] = useState<"IN" | "OUT" | null>(null);
+  const [inApp] = useState(isInAppBrowser);
   const [now, setNow] = useState(() => new Date());
   const [formOpen, setFormOpen] = useState(false);
   const [formPreset, setFormPreset] = useState<{ type?: AttendanceRequestType; date?: string }>({});
   const [detail, setDetail] = useState<{ userId: string; userName: string; date: string } | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const pendingRef = useRef<{ action: "IN" | "OUT"; position: Promise<GeolocationPosition> } | null>(null);
 
   // Không tự bật loading ở đây (gọi từ effect) — nút đổi tháng tự bật trước khi gọi.
   const load = useCallback(async (m: string | null) => {
@@ -106,51 +94,6 @@ export default function AttendanceBoard({ userId, userName, initialTab }: { user
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
-
-  // Bấm nút → mở camera trước (phải gọi trong đúng thao tác bấm, iOS mới cho mở) và lấy GPS song song.
-  const startCheck = (action: "IN" | "OUT") => {
-    const position = getPosition();
-    position.catch(() => null); // tránh unhandled rejection nếu NV huỷ chụp
-    pendingRef.current = { action, position };
-    if (cameraRef.current) {
-      cameraRef.current.value = "";
-      cameraRef.current.click();
-    }
-  };
-
-  const handleSelfie = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const pending = pendingRef.current;
-    if (!file || !pending) return;
-    setChecking(pending.action);
-    try {
-      const [pos, image] = await Promise.all([pending.position, compressImageToDataUrl(file, ATTENDANCE_SELFIE_COMPRESS_OPTIONS)]);
-      const res = await fetch("/api/attendance/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: pending.action,
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          image,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Chấm công thất bại"); return; }
-      if (pending.action === "IN") {
-        toast.success(json.lateMinutes > 0 ? `Đã chấm vào lúc ${json.time} — muộn ${json.lateMinutes} phút` : `Đã chấm vào lúc ${json.time}`);
-      } else {
-        toast.success(json.earlyMinutes > 0 ? `Đã chấm ra lúc ${json.time} — sớm ${json.earlyMinutes} phút` : `Đã chấm ra lúc ${json.time}`);
-      }
-      load(month);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Chấm công thất bại");
-    } finally {
-      setChecking(null);
-      pendingRef.current = null;
-    }
-  };
 
   const cancelRequest = async (id: string) => {
     setCancellingId(id);
@@ -201,7 +144,15 @@ export default function AttendanceBoard({ userId, userName, initialTab }: { user
         </p>
       </div>
 
-      <input ref={cameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handleSelfie} />
+      {inApp && (
+        <div className="rounded-lg bg-warning-light text-warning-foreground p-3 text-sm flex gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            Bạn đang mở trong ứng dụng Zalo/Facebook — trình duyệt này thường chặn định vị và camera nên dễ chấm công không được.
+            Bấm dấu <b>⋯</b> ở góc trên → <b>Mở bằng trình duyệt</b> (Safari/Chrome) rồi chấm công.
+          </span>
+        </div>
+      )}
 
       <Card>
         <CardContent className="pt-6 space-y-4">
@@ -232,18 +183,17 @@ export default function AttendanceBoard({ userId, userName, initialTab }: { user
           ) : (
             <div className="flex justify-center gap-3">
               {!today?.checkIn ? (
-                <Button size="lg" className="min-w-40 h-12 text-base" disabled={!!checking} onClick={() => startCheck("IN")}>
-                  {checking === "IN" ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />} Chấm vào
+                <Button size="lg" className="min-w-40 h-12 text-base" onClick={() => setCheckAction("IN")}>
+                  <LogIn className="w-5 h-5" /> Chấm vào
                 </Button>
               ) : (
                 <Button
                   size="lg"
                   variant={today.checkOut ? "outline" : "default"}
                   className="min-w-40 h-12 text-base"
-                  disabled={!!checking}
-                  onClick={() => startCheck("OUT")}
+                  onClick={() => setCheckAction("OUT")}
                 >
-                  {checking === "OUT" ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />}
+                  <LogOut className="w-5 h-5" />
                   {today.checkOut ? "Chấm ra lại" : "Chấm ra"}
                 </Button>
               )}
@@ -407,6 +357,14 @@ export default function AttendanceBoard({ userId, userName, initialTab }: { user
         initialDate={formPreset.date}
       />
       <DayDetailDialog target={detail} onClose={() => setDetail(null)} />
+      <CheckInFlowDialog
+        action={checkAction}
+        site={site?.configured && site.latitude != null && site.longitude != null && data.warehouse
+          ? { latitude: site.latitude, longitude: site.longitude, radiusMeters: site.radiusMeters, name: data.warehouse.name }
+          : null}
+        onClose={() => setCheckAction(null)}
+        onSuccess={(msg) => { toast.success(msg); load(month); }}
+      />
     </div>
   );
 }
