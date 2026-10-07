@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { startOfWeek, endOfWeek } from "date-fns";
 
-// plantTypes: chi tiết theo loại cây NV đã cấy ra trong tuần — CHỈ trả về khi người xem là Admin kỹ thuật
-// (ADMIN_KY_THUAT), lọc ngay ở server để NV cấy mô/vai trò khác không đọc được qua API dù UI có ẩn.
+// plantTypes: chi tiết theo loại cây NV đã cấy ra trong tuần — CHỈ trả về khi người xem là Admin kỹ thuật/NV kỹ thuật
+// (ADMIN_KY_THUAT/KY_THUAT), lọc ngay ở server để NV cấy mô/vai trò khác không đọc được qua API dù UI có ẩn.
 type PlantTypeBreakdown = { code: string; name: string; total: number };
 type RankingEntry = { staffId: string; name: string; total: number; plantTypes?: PlantTypeBreakdown[] };
 
@@ -13,7 +13,7 @@ export async function GET() {
   if (!session?.user) {
     return NextResponse.json({ message: "Chưa đăng nhập" }, { status: 401 });
   }
-  const showPlantTypes = session.user.role === "ADMIN_KY_THUAT";
+  const showPlantTypes = session.user.role === "ADMIN_KY_THUAT" || session.user.role === "KY_THUAT";
 
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });

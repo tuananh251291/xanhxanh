@@ -7,7 +7,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trophy, Sprout, Leaf, Loader2, type LucideIcon } from "lucide-react";
 
-// plantTypes chỉ có khi người xem là Admin kỹ thuật (API /api/leaderboard/weekly tự lọc) — vai trò khác
+// plantTypes chỉ có khi người xem là Admin kỹ thuật/NV kỹ thuật (API /api/leaderboard/weekly tự lọc) — vai trò khác
 // không nhận được field này nên không hiện loại cây.
 type RankingEntry = { staffId: string; name: string; total: number; plantTypes?: { code: string; name: string; total: number }[] };
 type LeaderboardData = { finished: RankingEntry[]; mother: RankingEntry[] };

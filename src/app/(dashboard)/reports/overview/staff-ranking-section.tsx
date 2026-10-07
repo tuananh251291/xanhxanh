@@ -11,7 +11,7 @@ const fmtRatio = (v: number) => v.toLocaleString("vi-VN", { minimumFractionDigit
 
 // Xếp hạng NV cấy mô theo tỉ lệ (không theo tổng sản lượng thô như leaderboard tuần hiện tại ở
 // /api/leaderboard/weekly — tỉ lệ mới phản ánh đúng hiệu suất, không ưu ái NV được cấp nhiều mẫu mẹ hơn).
-// showPlantTypes: thêm bảng chi tiết tỉ lệ theo từng loại cây của mỗi NV — CHỈ truyền true cho Admin kỹ
+// showPlantTypes: thêm bảng chi tiết tỉ lệ theo từng loại cây của mỗi NV — CHỈ truyền true cho Admin kỹ thuật/NV kỹ
 // thuật (xem reports/overview/page.tsx), vai trò khác chỉ thấy biểu đồ tổng.
 export default async function StaffRankingSection({ warehouseId, showPlantTypes = false }: { warehouseId: string | null; showPlantTypes?: boolean }) {
   const buckets = getWeekBuckets(HISTORY_WEEKS);

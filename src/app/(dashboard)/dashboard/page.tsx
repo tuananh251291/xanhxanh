@@ -1089,6 +1089,8 @@ function KyThuatDashboard({
         <p className="text-text-secondary text-sm mt-1">Nhân viên kỹ thuật · Tuần {weekLabel}</p>
       </div>
       <GreetingBanner />
+      {/* Giống Admin kỹ thuật — bảng thi đua kèm loại cây chi tiết từng NV (API trả loại cây cho KY_THUAT). */}
+      <ProductivityLeaderboard />
 
       {stats.rootingSummary.warehouseSummaries.length > 0 && (
         <RootingSummaryWidget
