@@ -17,15 +17,42 @@ const HARD_LIMIT_BYTES = 2 * 1024 * 1024;
 // khi trả bitmap — bắt buộc phải truyền rõ, vì canvas.toDataURL/toBlob KHÔNG ghi lại EXIF, nếu không
 // "bake" hướng đúng vào pixel ngay từ bước decode này thì ảnh xuất ra sẽ bị xoay sai (ảnh chụp dọc từ
 // điện thoại là ví dụ hay gặp nhất).
-async function loadBitmap(file: File): Promise<ImageBitmap> {
+//
+// Safari cũ (iOS 16, iOS 17.0–17.3, app Google trên iPhone) KHÔNG hỗ trợ tham số imageOrientation → lỗi
+// "Không đọc được ảnh" (log chấm công 08/10/2026). Khi đó lùi về decode bằng thẻ <img>: mọi trình duyệt
+// hiện đại đều tự xoay <img> theo EXIF (CSS image-orientation: from-image mặc định), vẽ lên canvas vẫn đúng chiều.
+type DecodedImage = { source: CanvasImageSource; width: number; height: number; close: () => void };
+
+async function loadImageElement(file: File): Promise<DecodedImage> {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.src = url;
   try {
-    return await createImageBitmap(file, { imageOrientation: "from-image" });
+    await (img.decode ? img.decode() : new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error("decode")); }));
+  } catch (e) {
+    URL.revokeObjectURL(url);
+    throw e;
+  }
+  return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => URL.revokeObjectURL(url) };
+}
+
+async function loadBitmap(file: File): Promise<DecodedImage> {
+  const fromBitmap = (b: ImageBitmap): DecodedImage => ({ source: b, width: b.width, height: b.height, close: () => b.close() });
+  if (typeof createImageBitmap === "function") {
+    try {
+      return fromBitmap(await createImageBitmap(file, { imageOrientation: "from-image" }));
+    } catch {
+      // rơi xuống đường dự phòng bên dưới
+    }
+  }
+  try {
+    return await loadImageElement(file);
   } catch {
     throw new Error("Không đọc được ảnh — thử chụp lại hoặc chọn ảnh khác");
   }
 }
 
-function drawToCanvas(bitmap: ImageBitmap, maxDimension: number): HTMLCanvasElement {
+function drawToCanvas(bitmap: DecodedImage, maxDimension: number): HTMLCanvasElement {
   // scale chặn ở 1 — không upscale ảnh gốc đã nhỏ hơn maxDimension.
   const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
@@ -36,7 +63,7 @@ function drawToCanvas(bitmap: ImageBitmap, maxDimension: number): HTMLCanvasElem
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Không thể xử lý ảnh trên trình duyệt này");
-  ctx.drawImage(bitmap, 0, 0, width, height);
+  ctx.drawImage(bitmap.source, 0, 0, width, height);
   return canvas;
 }
 

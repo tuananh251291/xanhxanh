@@ -13,7 +13,11 @@ type Step = "locating" | "camera" | "submitting" | "done" | "error";
 
 // Gửi lý do lỗi phía điện thoại về server (ghi vào log PM2) — lỗi GPS/camera không bao giờ tới API chấm
 // công nên không có cách nào khác để biết NV bị kẹt ở bước nào.
+// Mỗi loại lỗi chỉ gửi 1 lần/lượt mở trang — watchPosition có thể gọi lại hàm lỗi liên tục (1 máy từng gửi >130 dòng).
+const reportedStages = new Set<string>();
 function reportClientError(stage: string, message: string) {
+  if (reportedStages.has(stage)) return;
+  reportedStages.add(stage);
   fetch("/api/attendance/client-log", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -24,7 +28,14 @@ function reportClientError(stage: string, message: string) {
 
 function geoErrorMessage(err: GeolocationPositionError): string {
   if (err.code === err.PERMISSION_DENIED) {
-    return "Bạn chưa cho phép truy cập Vị trí. Vào Cài đặt → trình duyệt (Safari/Chrome) → Vị trí → Cho phép, rồi thử lại.";
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+      const app = /GSA\//.test(ua) ? "Google" : /CriOS/.test(ua) ? "Chrome" : /Zalo/i.test(ua) ? "Zalo" : "Safari";
+      return app === "Safari"
+        ? "iPhone đang chặn Vị trí cho Safari. Vào Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị: BẬT, kéo xuống \"Trang web Safari\" → chọn \"Khi dùng ứng dụng\". Sau đó mở lại Safari, bấm \"aA\" trên thanh địa chỉ → Cài đặt trang web → Vị trí → Cho phép, rồi Thử lại."
+        : `iPhone đang chặn Vị trí cho ứng dụng ${app}. Vào Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → ${app} → chọn "Khi dùng ứng dụng" và bật "Vị trí chính xác". Hoặc mở trang này bằng Safari.`;
+    }
+    return "Trình duyệt đang chặn Vị trí. Bấm biểu tượng bên trái thanh địa chỉ → Quyền → Vị trí → Cho phép (hoặc \"Đặt lại quyền\"), bật Vị trí (GPS) trên điện thoại, rồi Thử lại.";
   }
   if (err.code === err.TIMEOUT) return "Lấy vị trí GPS quá lâu — ra chỗ thoáng hơn rồi bấm Thử lại.";
   return "Không lấy được vị trí GPS — kiểm tra đã bật Định vị trên điện thoại chưa.";
@@ -83,7 +94,7 @@ export default function CheckInFlowDialog({
       reportClientError("geo-unsupported", navigator.userAgent);
       return;
     }
-    const id = navigator.geolocation.watchPosition(
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const next: Fix = {
           latitude: pos.coords.latitude,
@@ -98,13 +109,14 @@ export default function CheckInFlowDialog({
         setGeoError(null);
       },
       (err) => {
-        const msg = geoErrorMessage(err);
-        setGeoError(msg);
+        setGeoError(geoErrorMessage(err));
         reportClientError(`geo-${err.code}`, `${err.message} | ${navigator.userAgent}`);
+        // Bị từ chối quyền thì dừng dò (dò tiếp chỉ lặp lại cùng lỗi) — NV bấm "Thử lại" sau khi sửa cài đặt.
+        if (err.code === err.PERMISSION_DENIED) navigator.geolocation.clearWatch(watchId);
       },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
     );
-    return () => navigator.geolocation.clearWatch(id);
+    return () => navigator.geolocation.clearWatch(watchId);
   }, [open, step, site, watchKey]);
 
   // Bước 2: bật camera trước trong trang.
