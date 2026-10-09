@@ -9,6 +9,7 @@ import RecordViolationRecoveryBoard from "./record-violation-recovery-board";
 import DataCorrectionsBoard from "../data-corrections/data-corrections-board";
 import ViolationTypesBoard from "../violation-types/violation-types-board";
 import TaskCompletionReportBoard from "../task-completion-report/task-completion-report-board";
+import ComplianceKpiBoard from "./compliance-kpi-board";
 
 // Gộp menu Kho mô — "Theo dõi nhập sai dữ liệu cấy", "Danh sách lỗi vi phạm", "Số ngày không hoàn thành
 // nhiệm vụ" gộp làm tab tại đây cho menu dọc gọn hơn (xem ROLE_NAV.KHO_MO, src/types/index.ts). 3 URL cũ
@@ -28,6 +29,8 @@ export default async function ViolationReportPage() {
   const role = session?.user?.role ?? null;
   const isHr = role === "HANH_CHINH_NHAN_SU";
   const isKhoMo = role === "KHO_MO";
+  // Tab "KPI tuân thủ" có số tiền thưởng (dữ liệu lương) — chỉ HCNS + Admin cấp cao, giống Bảng lương.
+  const canSeeComplianceKpi = canManagePayroll(role);
   if (!(await isPageAllowed(role, "/violation-report")) || !(isAdminRole(role) || isKhoMo || isHr)) {
     redirect("/dashboard");
   }
@@ -50,6 +53,7 @@ export default async function ViolationReportPage() {
           {!isHr && <TabsTrigger value="data-corrections">Theo dõi nhập sai dữ liệu cấy</TabsTrigger>}
           <TabsTrigger value="violation-types">Danh sách lỗi vi phạm</TabsTrigger>
           <TabsTrigger value="task-completion">Số ngày không hoàn thành nhiệm vụ</TabsTrigger>
+          {canSeeComplianceKpi && <TabsTrigger value="compliance-kpi">KPI tuân thủ</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="violation-report" className="mt-4">
@@ -69,6 +73,11 @@ export default async function ViolationReportPage() {
         <TabsContent value="task-completion" className="mt-4">
           <TaskCompletionReportBoard isAdmin={isAdminRole(role)} canFilterByWarehouse={isAdminRole(role) || isHr} />
         </TabsContent>
+        {canSeeComplianceKpi && (
+          <TabsContent value="compliance-kpi" className="mt-4">
+            <ComplianceKpiBoard />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
