@@ -827,6 +827,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/handover-summary", label: "Bàn giao & ghi nhận theo tháng", icon: "PackageCheck" },
     { href: "/payroll-settings", label: "Cài đặt lương", icon: "Settings" },
     { href: "/reports/payroll", label: "Bảng lương", icon: "DollarSign" },
+    { href: "/reports/production-output", label: "Sản lượng ghi nhận", icon: "Boxes" },
     { href: "/reports/probation-evaluations", label: "Báo cáo đánh giá thử việc", icon: "ClipboardCheck" },
     { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },

@@ -34,6 +34,7 @@ export default async function ReportCenterPage() {
     // Dữ liệu lương nhạy cảm — chỉ hiện thẻ này nếu role hiện tại thật sự xem được (xem canManagePayroll,
     // hiện chỉ SUPER_ADMIN trong số các role admin, KHÔNG gồm ADMIN thường/ADMIN_KY_THUAT).
     ...(canManagePayroll(role) ? [{ href: "/reports/payroll", icon: DollarSign, title: "Bảng lương", description: "Lương NV cấy mô theo kỳ, xuất Excel tổng hợp." }] : []),
+    ...(canManagePayroll(role) ? [{ href: "/reports/production-output", icon: Boxes, title: "Sản lượng ghi nhận (quy đổi tiền)", description: "Sản lượng NV cấy mô theo mã cây, quy cách, đơn giá và thành tiền theo kỳ lương." }] : []),
   ];
 
   return (

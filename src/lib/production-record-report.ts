@@ -49,6 +49,10 @@ export type ProductionRecordPlantTypeBreakdown = {
   contaminatedQuantity: number;
 };
 
+// Như ProductionRecordPlantTypeBreakdown nhưng tách thêm theo quy cách (M05/T01/T05) — dùng cho báo cáo
+// "Sản lượng ghi nhận" của HCNS (quy đổi VNĐ theo đơn giá mã cây + quy cách, xem production-output-report.ts).
+export type ProductionRecordPlantStageBreakdown = ProductionRecordPlantTypeBreakdown & { stageCode: string };
+
 export type ProductionRecordRow = {
   staffId: string;
   staffCode: string;
@@ -79,6 +83,7 @@ export type ProductionRecordRow = {
   // thay vì SL không đạt (KT) — chấp nhận vì TransferInspectionItem không lưu B riêng để tách chính xác.
   totalRandomCheckLossQuantity: number;
   byPlantType: ProductionRecordPlantTypeBreakdown[];
+  byPlantStage: ProductionRecordPlantStageBreakdown[];
   dailyDetail: ProductionRecordDailyEntry[];
 };
 
@@ -184,18 +189,24 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
   const plantTypeMetaById = new Map<string, { code: string; name: string }>();
   type PlantAgg = { handedOver: number; recorded: number; contaminated: number };
   const byStaffAndPlant = new Map<string, Map<string, PlantAgg>>();
+  // Cùng số liệu, key "plantTypeId|stageCode" — byPlantType bên dưới vẫn gộp theo mã cây như cũ.
+  const byStaffAndPlantStage = new Map<string, Map<string, PlantAgg>>();
+  const bump = (outer: Map<string, Map<string, PlantAgg>>, staffId: string, key: string, h: number, r: number, c: number) => {
+    const m = outer.get(staffId) ?? new Map<string, PlantAgg>();
+    const cur = m.get(key) ?? { handedOver: 0, recorded: 0, contaminated: 0 };
+    cur.handedOver += h;
+    cur.recorded += r;
+    cur.contaminated += c;
+    m.set(key, cur);
+    outer.set(staffId, m);
+  };
   const addPlant = (
-    staffId: string, plantTypeId: string, code: string, name: string,
+    staffId: string, plantTypeId: string, stageCode: string, code: string, name: string,
     handedOverDelta: number, recordedDelta: number, contaminatedDelta: number
   ) => {
     plantTypeMetaById.set(plantTypeId, { code, name });
-    const m = byStaffAndPlant.get(staffId) ?? new Map<string, PlantAgg>();
-    const cur = m.get(plantTypeId) ?? { handedOver: 0, recorded: 0, contaminated: 0 };
-    cur.handedOver += handedOverDelta;
-    cur.recorded += recordedDelta;
-    cur.contaminated += contaminatedDelta;
-    m.set(plantTypeId, cur);
-    byStaffAndPlant.set(staffId, m);
+    bump(byStaffAndPlant, staffId, plantTypeId, handedOverDelta, recordedDelta, contaminatedDelta);
+    bump(byStaffAndPlantStage, staffId, `${plantTypeId}|${stageCode}`, handedOverDelta, recordedDelta, contaminatedDelta);
   };
 
   // Số lượng xếp theo NGÀY CẤY của từng lô (Lot.darkRoomEnteredAt = recordDate nhật ký cấy, bất biến) —
@@ -204,9 +215,9 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
   // lùi về ngày bàn giao. "active" (ngày có hoạt động) vẫn theo ngày nhật ký cấy/ngày bàn giao thật.
   const inRange = (d: Date) => d >= rangeStart && d < rangeEndExclusive;
   type Delta = Omit<DayAgg, "active">;
-  const addDelta = (staffId: string, plantedAt: Date, plantType: { id: string; code: string; name: string }, d: Delta) => {
+  const addDelta = (staffId: string, plantedAt: Date, plantType: { id: string; code: string; name: string; stageCode: string | null }, d: Delta) => {
     if (!inRange(plantedAt)) return;
-    addPlant(staffId, plantType.id, plantType.code, plantType.name, d.handedOver, d.recorded, d.contaminated);
+    addPlant(staffId, plantType.id, plantType.stageCode ?? "", plantType.code, plantType.name, d.handedOver, d.recorded, d.contaminated);
     const dayEntry = ensureDayEntry(staffId, dayKey(plantedAt));
     dayEntry.handedOver += d.handedOver;
     dayEntry.recorded += d.recorded;
@@ -230,7 +241,7 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
           handedOver: passed, recorded: insItem.creditedQuantity, unqualified: 0, contaminated: insItem.contaminatedQuantity,
           inspectedUnqualified: insItem.unqualifiedQuantity, randomCheckLoss,
         };
-        const plantType = { id: insItem.plantTypeId, ...insItem.plantType };
+        const plantType = { id: insItem.plantTypeId, stageCode: insItem.stageCode, ...insItem.plantType };
         // Kết quả kiểm tra lưu theo (mã cây + quy cách) cho cả phiếu — chia lại cho từng lô cùng key theo tỉ
         // lệ số bàn giao (làm tròn luỹ kế để tổng mỗi cột khớp đúng), vì 1 phiếu có thể gộp lô cấy 2 kỳ.
         const lotItems = t.items.filter((i) => i.lot.plantTypeId === insItem.plantTypeId && i.lot.stageCode === insItem.stageCode);
@@ -258,7 +269,7 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
       // không đạt (xem giải thích ở đầu file, KHÔNG dùng lane sống). Không có "SL nhiễm" (luồng này không
       // qua Kho mô kiểm tra nhiễm).
       for (const item of t.items) {
-        addDelta(t.fromUserId, item.lot.darkRoomEnteredAt ?? t.createdAt, { id: item.lot.plantTypeId, ...item.lot.plantType }, {
+        addDelta(t.fromUserId, item.lot.darkRoomEnteredAt ?? t.createdAt, { id: item.lot.plantTypeId, stageCode: item.lot.stageCode, ...item.lot.plantType }, {
           handedOver: item.quantity, recorded: item.quantity - item.unqualifiedQuantity, unqualified: item.unqualifiedQuantity,
           contaminated: 0, inspectedUnqualified: 0, randomCheckLoss: 0,
         });
@@ -283,6 +294,19 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
           .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode))
       : [];
     const totalRecordedQuantity = byPlantType.reduce((sum, p) => sum + p.quantity, 0);
+    const stageMap = byStaffAndPlantStage.get(s.id);
+    const byPlantStage: ProductionRecordPlantStageBreakdown[] = stageMap
+      ? Array.from(stageMap.entries())
+          .map(([key, agg]) => {
+            const [plantTypeId, stageCode] = key.split("|");
+            const meta = plantTypeMetaById.get(plantTypeId)!;
+            return {
+              plantTypeId, stageCode, plantTypeCode: meta.code, plantTypeName: meta.name,
+              handedOverQuantity: agg.handedOver, quantity: agg.recorded, contaminatedQuantity: agg.contaminated,
+            };
+          })
+          .sort((a, b) => a.plantTypeCode.localeCompare(b.plantTypeCode) || a.stageCode.localeCompare(b.stageCode))
+      : [];
 
     const staffDayMap = dailyMap.get(s.id);
     let totalHandedOverQuantity = 0;
@@ -322,6 +346,7 @@ export async function computeProductionRecordForPeriod(dateFrom?: string | null,
       totalUnqualifiedQuantity,
       totalContaminatedQuantity,
       byPlantType,
+      byPlantStage,
       dailyDetail,
     };
   }).sort((a, b) => b.totalRecordedQuantity - a.totalRecordedQuantity || a.staffName.localeCompare(b.staffName));
