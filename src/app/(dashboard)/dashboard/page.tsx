@@ -30,6 +30,7 @@ import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-tas
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-roadmap";
 import { isEvaluationOverdue } from "@/lib/probation-evaluation";
+import { getRootingHandoffTaskGroups } from "@/lib/rooting-handoff-task";
 
 // Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
 // Admin kỹ thuật (R&D là mục riêng của role này, xem ROLE_NAV.ADMIN_KY_THUAT) — cùng nguồn dữ liệu với
@@ -477,7 +478,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const thursdayDeadline = addDays(weekStart, 3);
 
-  const [dueInstructions, finishedTransfers, contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount, rootingSummary] = await Promise.all([
+  const [dueInstructions, finishedGroups, contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount, rootingSummary] = await Promise.all([
     prisma.plantingInstruction.findMany({
       where: {
         createdAt: { lte: thursdayDeadline },
@@ -496,15 +497,9 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
       },
       select: { handedOverAt: true },
     }),
-    // Bàn giao thành phẩm: phiếu Transfer từ Phòng ra rễ tạo trong tuần này — Kho thành phẩm xác nhận
-    // (CONFIRMED) coi là xong.
-    prisma.transfer.findMany({
-      where: {
-        fromRoom: { type: "PHONG_RA_RE", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
-        createdAt: { gte: weekStart, lte: weekEnd },
-      },
-      select: { status: true },
-    }),
+    // Bàn giao thành phẩm: mỗi Nhóm tuần ra rễ đến hạn tuần này là 1 việc, xong khi Kho mô đã tạo phiếu bàn
+    // giao cho giàn của Nhóm — xem getRootingHandoffTaskGroups.
+    getRootingHandoffTaskGroups(workplaceWarehouseId, weekStart, weekEnd),
     // Gửi đề xuất Trồng/Hủy: coi là xong nếu đã "Gửi đề xuất trồng/hủy" (tạo đề xuất PENDING thật, không
     // tính dòng DRAFT còn đang gộp dở) ít nhất 1 lần trong tuần này — xem contaminationTaskVisible bên
     // dưới cho quy tắc chỉ hiện việc này từ Thứ 5.
@@ -548,8 +543,8 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const handoverDone = dueInstructions.filter((i) => i.handedOverAt !== null).length;
   const handoverPercent = handoverTotal === 0 ? 100 : Math.round((handoverDone / handoverTotal) * 100);
 
-  const finishedTotal = finishedTransfers.length;
-  const finishedDone = finishedTransfers.filter((t) => t.status === "CONFIRMED").length;
+  const finishedTotal = finishedGroups.length;
+  const finishedDone = finishedGroups.filter((g) => g.done).length;
   const finishedPercent = finishedTotal === 0 ? 100 : Math.round((finishedDone / finishedTotal) * 100);
 
   // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 5 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
@@ -1317,9 +1312,9 @@ function KhoMoTaskDashboard({
             href="/transfers/finished"
             icon={Package}
             title="2. Bàn giao thành phẩm"
-            deadline="Xác nhận Kho thành phẩm đã nhận các phiếu bàn giao từ Phòng ra rễ trong tuần"
+            deadline="Bàn giao các Nhóm tuần ra rễ đến hạn xuất trong tuần sang Kho thành phẩm"
             percent={weeklyStats.finishedPercent}
-            countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} phiếu`}
+            countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} Nhóm`}
           />
           {weeklyStats.mediumSurplusOrderId && (
             <WeeklyTaskRow

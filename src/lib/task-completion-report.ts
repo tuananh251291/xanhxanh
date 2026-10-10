@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
+import { getRootingHandoffTaskGroups } from "@/lib/rooting-handoff-task";
 import { MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import {
   startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, format, isBefore, isAfter,
@@ -272,7 +273,7 @@ async function buildKhoMoSharedEvaluatedByDay(
   };
 
   const [
-    receiveTransfers, mondayHandoverInstructions, finishedTransfers, mediumDays, contaminationLots,
+    receiveTransfers, mondayHandoverInstructions, finishedGroups, mediumDays, contaminationLots,
     contaminationSubmission, confirmedReplantHandover, pendingReplantHandover, unbundledReplantCount,
   ] = await Promise.all([
     prisma.transfer.findMany({
@@ -296,10 +297,7 @@ async function buildKhoMoSharedEvaluatedByDay(
       },
       select: { handedOverAt: true },
     }),
-    prisma.transfer.findMany({
-      where: { fromRoom: { type: "PHONG_RA_RE", warehouseId }, createdAt: { gte: weekStart, lte: weekEnd } },
-      select: { confirmedAt: true },
-    }),
+    getRootingHandoffTaskGroups(warehouseId, weekStart, weekEnd),
     prisma.mediumOrderDay.findMany({
       where: {
         date: { gte: weekStart, lte: weekEnd }, handedOverAt: { not: null },
@@ -346,8 +344,10 @@ async function buildKhoMoSharedEvaluatedByDay(
   // 2 việc còn lại (hạn cố định trong tuần): hạn Chủ nhật cuối tuần đang xem.
   if (!isAfter(weekEnd, evalEnd)) {
     const sundayEnd = endOfDay(weekEnd);
-    if (finishedTransfers.length > 0) {
-      addEvaluated(weekEnd, "Bàn giao thành phẩm", finishedTransfers.every((t) => t.confirmedAt !== null && !isAfter(t.confirmedAt, sundayEnd)));
+    // Mỗi Nhóm tuần ra rễ đến hạn tuần này phải được Kho mô tạo phiếu bàn giao trong tuần (xem
+    // getRootingHandoffTaskGroups) — trước đây chỉ đánh giá khi ĐÃ có phiếu, không bàn giao gì thì bỏ qua.
+    if (finishedGroups.length > 0) {
+      addEvaluated(weekEnd, "Bàn giao thành phẩm", finishedGroups.every((g) => g.done));
     }
     if (mediumDays.length > 0) {
       addEvaluated(weekEnd, "Nhận môi trường", mediumDays.every((d) => d.confirmedAt !== null && !isAfter(d.confirmedAt, sundayEnd)));
