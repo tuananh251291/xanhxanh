@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
+import { describeRootingEvaluationGroup, countRootingRotationSlots } from "@/lib/rooting-quality-evaluation";
 
 // Danh sách đánh giá — dùng cho cả màn "Đánh giá chất lượng cây ra rễ" (KY_THUAT, lọc status=PENDING,
 // chỉ thấy việc của chính mình) lẫn trang báo cáo lịch sử (KHO_MO/KY_THUAT/Admin, thường lọc
@@ -41,5 +42,8 @@ export async function GET(req: NextRequest) {
     take: 200,
   });
 
-  return NextResponse.json(evaluations);
+  const totalSlots = await countRootingRotationSlots();
+  return NextResponse.json(
+    evaluations.map((e) => ({ ...e, ...describeRootingEvaluationGroup(e.rotationGroup.name, e.weekStart, totalSlots) }))
+  );
 }

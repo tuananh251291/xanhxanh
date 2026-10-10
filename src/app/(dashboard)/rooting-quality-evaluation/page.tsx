@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/types";
 import { ClipboardCheck } from "lucide-react";
 import RootingQualityEvaluationBoard from "./rooting-quality-evaluation-board";
+import { describeRootingEvaluationGroup, countRootingRotationSlots } from "@/lib/rooting-quality-evaluation";
 
 // Danh sách đánh giá chất lượng cây ra rễ ĐANG CHỜ của đúng NV Kỹ thuật đang đăng nhập — tự sinh hàng
 // tuần (xem ensureWeeklyRootingQualityEvaluation, src/lib/rooting-quality-evaluation.ts), tự động giao
@@ -14,6 +15,7 @@ export default async function RootingQualityEvaluationPage() {
   const role = session?.user?.role ?? null;
   if (role !== "KY_THUAT" && !isAdminRole(role)) redirect("/dashboard");
 
+  const totalSlots = await countRootingRotationSlots();
   const evaluations = await prisma.rootingQualityEvaluation.findMany({
     where: role === "KY_THUAT" ? { assignedToId: session!.user.id, status: "PENDING" } : { status: "PENDING" },
     select: {
@@ -37,7 +39,13 @@ export default async function RootingQualityEvaluationPage() {
         </p>
       </div>
 
-      <RootingQualityEvaluationBoard evaluations={evaluations.map((e) => ({ ...e, weekStart: e.weekStart.toISOString() }))} />
+      <RootingQualityEvaluationBoard
+        evaluations={evaluations.map((e) => ({
+          ...e,
+          weekStart: e.weekStart.toISOString(),
+          ...describeRootingEvaluationGroup(e.rotationGroup.name, e.weekStart, totalSlots),
+        }))}
+      />
     </div>
   );
 }

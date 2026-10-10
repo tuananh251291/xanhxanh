@@ -3,7 +3,24 @@ import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { generateRootingQualityEvaluationCode } from "@/lib/codes";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { summarizeRootingWeekGroups, getRootingRotationEpoch } from "@/lib/rooting-week-group";
-import { startOfWeek, addDays } from "date-fns";
+import { startOfWeek, addDays, subWeeks, format } from "date-fns";
+
+// Nhãn hiển thị của 1 đánh giá: "Nhóm tuần ra rễ {tên}" + tuần cây VÀO Phòng ra rễ của đúng lứa đang được
+// đánh giá. Lô được xếp vào Nhóm của tuần nó vào Phòng ra rễ (xem resolveRaReGroupAt ở shelf-assignment.ts)
+// và Nhóm đó tới hạn lại sau đúng 1 vòng N tuần (N = tổng số Nhóm RA_RE, cùng N dùng ở
+// ensureWeeklyRootingQualityEvaluation) — nên lứa được đánh giá ở tuần weekStart là lứa vào phòng tuần
+// weekStart − N. Không phụ thuộc mốc "Tuần khởi đầu Nhóm 1" của từng kho (chỉ dùng độ dài chu kỳ).
+export function describeRootingEvaluationGroup(groupName: string, weekStart: Date, totalSlots: number) {
+  const name = groupName.trim();
+  const label = /^nhóm/i.test(name) ? name : `Nhóm tuần ra rễ ${name}`;
+  if (totalSlots <= 0) return { label, entryWeek: null };
+  const entryMonday = subWeeks(weekStart, totalSlots);
+  return { label, entryWeek: `${format(entryMonday, "dd/MM")} – ${format(addDays(entryMonday, 6), "dd/MM/yyyy")}` };
+}
+
+export function countRootingRotationSlots() {
+  return prisma.shelfGroup.count({ where: { rotationKind: "RA_RE" } });
+}
 
 // "Đánh giá chất lượng cây ra rễ" — NV Kỹ thuật đánh giá đạt/không đạt cho MỖI Nhóm tuần ra rễ ĐANG ĐẾN
 // HẠN của 1 kho sản xuất, trước khi Kho mô được bàn giao sang Kho thành phẩm (hạn Thứ 7 — xem

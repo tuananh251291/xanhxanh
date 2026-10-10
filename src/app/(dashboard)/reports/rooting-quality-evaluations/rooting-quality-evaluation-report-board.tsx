@@ -25,6 +25,8 @@ type Evaluation = {
   rotationGroup: { name: string };
   assignedTo: { name: string; code: string };
   items: Item[];
+  label: string;
+  entryWeek: string | null;
 };
 
 const num = (n: number) => n.toLocaleString("vi-VN");
@@ -86,7 +88,8 @@ export default function RootingQualityEvaluationReportBoard() {
                     >
                       <td className="px-2 py-3 text-text-muted">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{e.rotationGroup.name}</p>
+                        <p className="font-medium text-foreground">{e.label}</p>
+                        {e.entryWeek && <p className="text-xs text-text-secondary">Vào phòng ra rễ {e.entryWeek}</p>}
                         <p className="text-xs text-text-secondary">{e.room.name} · <span className="font-mono">{e.code}</span></p>
                       </td>
                       <td className="px-4 py-3 text-text-secondary">{e.warehouse.name}</td>

@@ -15,6 +15,8 @@ type Evaluation = {
   room: { name: string };
   rotationGroup: { name: string };
   assignedTo: { name: string; code: string };
+  label: string;
+  entryWeek: string | null;
 };
 
 export default function RootingQualityEvaluationBoard({ evaluations }: { evaluations: Evaluation[] }) {
@@ -36,10 +38,12 @@ export default function RootingQualityEvaluationBoard({ evaluations }: { evaluat
           <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
             <div>
               <p className="font-medium text-foreground">
-                {e.rotationGroup.name} <span className="text-text-muted font-normal">— {e.room.name} ({e.warehouse.name})</span>
+                {e.label}
+                {e.entryWeek && <span className="text-text-secondary font-normal"> · Vào phòng ra rễ {e.entryWeek}</span>}
               </p>
               <p className="text-xs text-text-secondary mt-0.5">
-                <span className="font-mono">{e.code}</span> · Tuần {format(new Date(e.weekStart), "dd/MM/yyyy", { locale: vi })} · Phụ trách: {e.assignedTo.name}
+                {e.room.name} ({e.warehouse.name}) · <span className="font-mono">{e.code}</span> · Tuần đánh giá{" "}
+                {format(new Date(e.weekStart), "dd/MM/yyyy", { locale: vi })} · Phụ trách: {e.assignedTo.name}
               </p>
             </div>
             <Link href={`/rooting-quality-evaluation/${e.id}`}>
