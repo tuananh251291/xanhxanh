@@ -6,18 +6,17 @@ import { summarizeRootingWeekGroups, getRootingRotationEpoch } from "@/lib/rooti
 import { startOfWeek, addDays, addWeeks, subWeeks, endOfDay, format } from "date-fns";
 
 // Lịch của nhiệm vụ "Đánh giá chất lượng cây ra rễ" (tính theo TUẦN XUẤT của Nhóm — weekStart của đánh giá):
-// mở việc + nhắc hằng ngày từ Thứ 5 của tuần TRƯỚC tuần xuất, hạn chót hết Thứ 3 của chính tuần xuất (để
-// Kho mô còn cả nửa sau tuần bàn giao phần đã đạt).
-export const ROOTING_EVAL_DEADLINE_LABEL = "Thứ 3";
-export const rootingEvalDeadline = (exportWeekMonday: Date) => endOfDay(addDays(exportWeekMonday, 1));
-const rootingEvalOpensAt = (exportWeekMonday: Date) => addDays(exportWeekMonday, -4);
+// mở việc + nhắc hằng ngày từ Thứ 2 của tuần TRƯỚC tuần xuất, hạn chót hết Thứ 5 của tuần trước đó (Kho mô
+// có trọn tuần xuất để bàn giao phần đã đạt).
+export const ROOTING_EVAL_DEADLINE_LABEL = "Thứ 5 tuần trước tuần bàn giao";
+export const rootingEvalDeadline = (exportWeekMonday: Date) => endOfDay(addDays(exportWeekMonday, -4));
 
-// Các tuần xuất đang "mở" nhiệm vụ tại thời điểm now: luôn có tuần này; từ Thứ 5 trở đi có thêm tuần sau.
+// Các tuần xuất đang "mở" nhiệm vụ tại thời điểm now: tuần sau (mở từ Thứ 2 tuần này) + tuần này (đã quá
+// hạn từ Thứ 5 tuần trước, vẫn giữ để còn sinh/nhắc nếu chưa xong — Kho mô bị chặn bàn giao tới khi xong).
 // Trả về Thứ 2 theo giờ local (server chạy Asia/Ho_Chi_Minh) — lưu DB thì qua toStoredWeekStart.
 export function openRootingEvalWeeks(now: Date = new Date()): Date[] {
   const thisWeek = startOfWeek(now, { weekStartsOn: 1 });
-  const nextWeek = addWeeks(thisWeek, 1);
-  return now >= rootingEvalOpensAt(nextWeek) ? [thisWeek, nextWeek] : [thisWeek];
+  return [thisWeek, addWeeks(thisWeek, 1)];
 }
 
 // Nhãn hiển thị của 1 đánh giá: "Nhóm tuần ra rễ {tên}" + tuần cây VÀO Phòng ra rễ của đúng lứa đang được
@@ -89,8 +88,8 @@ export async function loadRootingGroupShelfRanges(pairs: { roomId: string; rotat
 // PATCH /api/rooting-quality-evaluations/[id]). Tự sinh lazy mỗi lần tải trang giống mọi hàm ensureXxx
 // khác (xem src/app/(dashboard)/layout.tsx), tự động giao thẳng cho đúng NV Kỹ thuật DUY NHẤT của kho đó
 // (không qua bước phân công thủ công — mỗi kho chỉ có 1 người, khác hẳn Kho thành phẩm nhiều NV).
-// Từ Thứ 5 sinh luôn đánh giá cho Nhóm sẽ xuất TUẦN SAU (weekStart = tuần sau) để NV Kỹ thuật làm trước,
-// hạn Thứ 3 tuần xuất — xem openRootingEvalWeeks. Số lượng chốt lúc bấm hoàn thành (PATCH đọc lô ACTIVE
+// Từ Thứ 2 sinh luôn đánh giá cho Nhóm sẽ xuất TUẦN SAU (weekStart = tuần sau) để NV Kỹ thuật làm trước,
+// hạn Thứ 5 tuần này — xem openRootingEvalWeeks. Số lượng chốt lúc bấm hoàn thành (PATCH đọc lô ACTIVE
 // lúc đó), không phải lúc sinh đánh giá.
 export async function ensureWeeklyRootingQualityEvaluation(warehouseId: string | null) {
   if (!warehouseId) return;
@@ -153,8 +152,8 @@ export async function ensureWeeklyRootingQualityEvaluation(warehouseId: string |
   }
 }
 
-// Nhắc MỖI NGÀY (1 thông báo/ngày/đánh giá, dedup qua relatedId có kèm ngày) từ Thứ 5 tuần trước tuần xuất
-// cho tới khi hoàn thành — quá hạn Thứ 3 tuần xuất vẫn nhắc tiếp (ghi rõ đã quá hạn) tới hết tuần xuất. Đánh
+// Nhắc MỖI NGÀY (1 thông báo/ngày/đánh giá, dedup qua relatedId có kèm ngày) từ Thứ 2 tuần trước tuần xuất
+// cho tới khi hoàn thành — quá hạn Thứ 5 vẫn nhắc tiếp (ghi rõ đã quá hạn) tới hết tuần xuất. Đánh
 // dấu đã đọc các nhắc của những ngày trước cho cùng đánh giá để không dồn đống thông báo cũ.
 export async function ensureRootingQualityEvaluationReminder(warehouseId: string | null) {
   if (!warehouseId) return;
@@ -175,7 +174,7 @@ export async function ensureRootingQualityEvaluationReminder(warehouseId: string
     const exportWeek = weeks.find((w) => toStoredWeekStart(w).getTime() === evaluation.weekStart.getTime()) ?? weeks[0];
     const deadline = rootingEvalDeadline(exportWeek);
     const { label } = describeRootingEvaluationGroup(evaluation.rotationGroup.name, evaluation.weekStart, 0);
-    const deadlineText = `${ROOTING_EVAL_DEADLINE_LABEL} ${format(deadline, "dd/MM")}`;
+    const deadlineText = `Thứ 5 ${format(deadline, "dd/MM")}`;
     const overdue = now > deadline;
 
     await prisma.alert.updateMany({
@@ -187,7 +186,7 @@ export async function ensureRootingQualityEvaluationReminder(warehouseId: string
       title: overdue ? "Quá hạn đánh giá chất lượng cây ra rễ" : "Nhiệm vụ đánh giá chất lượng cây ra rễ",
       message: overdue
         ? `Đánh giá "${evaluation.code}" (${label}) đã quá hạn ${deadlineText} — cần hoàn thành ngay, Kho mô chưa thể bàn giao Nhóm này.`
-        : `Cần hoàn thành đánh giá "${evaluation.code}" (${label}) trong ngày ${deadlineText} — tuần xuất của Nhóm này.`,
+        : `Cần hoàn thành đánh giá "${evaluation.code}" (${label}) trong ngày ${deadlineText} — Nhóm này bàn giao tuần ${format(exportWeek, "dd/MM")}.`,
       userId: evaluation.assignedToId,
       relatedId,
       relatedType: "RootingQualityEvaluation",
@@ -196,7 +195,7 @@ export async function ensureRootingQualityEvaluationReminder(warehouseId: string
 }
 
 // Số liệu cho dòng "Đánh giá chất lượng cây ra rễ" ở Công việc trong tuần (dashboard NV Kỹ thuật): đánh giá
-// của tuần xuất đang mở gần nhất (từ Thứ 5 là tuần sau) + đánh giá còn treo của tuần này (quá hạn).
+// của Nhóm xuất tuần sau (hạn Thứ 5 tuần này) + đánh giá còn treo của Nhóm xuất tuần này (đã quá hạn).
 export async function getRootingEvalWeeklyTask(userId: string, now: Date = new Date()) {
   const weeks = openRootingEvalWeeks(now);
   const targetWeek = weeks[weeks.length - 1];
