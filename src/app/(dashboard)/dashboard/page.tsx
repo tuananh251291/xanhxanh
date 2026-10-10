@@ -31,6 +31,7 @@ import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-roadmap";
 import { isEvaluationOverdue } from "@/lib/probation-evaluation";
 import { getRootingHandoffTaskGroups } from "@/lib/rooting-handoff-task";
+import { getRootingEvalWeeklyTask, ROOTING_EVAL_DEADLINE_LABEL } from "@/lib/rooting-quality-evaluation";
 
 // Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
 // Admin kỹ thuật (R&D là mục riêng của role này, xem ROLE_NAV.ADMIN_KY_THUAT) — cùng nguồn dữ liệu với
@@ -450,6 +451,10 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
   const probationEvalCount = pendingManagerEvaluations.length;
   const probationEvalOverdue = pendingManagerEvaluations.some((e) => isEvaluationOverdue(e.weekEnd));
 
+  // Việc "6. Đánh giá chất lượng cây ra rễ" — Nhóm tuần ra rễ sắp xuất, mở từ Thứ 5 tuần trước, hạn Thứ 3
+  // tuần xuất (xem openRootingEvalWeeks ở src/lib/rooting-quality-evaluation.ts).
+  const rootingEval = await getRootingEvalWeeklyTask(userId, now);
+
   return {
     weekStart, weekEnd, thursdayDeadline, instructionPercent, checkPercent,
     instructionDone,
@@ -459,6 +464,7 @@ async function getKyThuatStats(userId: string, workplaceWarehouseId: string | nu
     motherPhotoDoneCount: motherPhotoDistinctPlantTypes.size, motherPhotoTotal,
     rootingSummary,
     probationEvalCount, probationEvalOverdue,
+    rootingEval,
   };
 }
 
@@ -1080,6 +1086,12 @@ function KyThuatDashboard({
   // "Việc 5: Chấm đánh giá thử việc" — ẩn hẳn khi không còn phiếu nào chờ (giống việc 4), quá hạn mềm 3
   // ngày (xem PROBATION_EVALUATION_GRACE_DAYS) thì chuyển "urgent" thay vì chỉ "not_done".
   const probationEvalBadgeState: TaskBadgeState = stats.probationEvalOverdue ? "urgent" : "not_done";
+  // "Việc 6: Đánh giá chất lượng cây ra rễ" — ẩn khi không có Nhóm nào sắp xuất; qua hạn Thứ 3 tuần xuất
+  // mà còn đánh giá chưa xong thì "urgent".
+  const rootingEvalPercent = stats.rootingEval.total === 0 ? 100 : Math.round((stats.rootingEval.done / stats.rootingEval.total) * 100);
+  const rootingEvalBadgeState: TaskBadgeState = stats.rootingEval.done >= stats.rootingEval.total
+    ? "done"
+    : (stats.rootingEval.overdue ? "urgent" : "not_done");
 
   return (
     <div className="space-y-6">
@@ -1149,6 +1161,17 @@ function KyThuatDashboard({
               percent={0}
               countLabel={`${stats.probationEvalCount} phiếu`}
               badgeState={probationEvalBadgeState}
+            />
+          )}
+          {stats.rootingEval.total > 0 && (
+            <WeeklyTaskRow
+              href="/rooting-quality-evaluation"
+              icon={Sprout}
+              title="6. Đánh giá chất lượng cây ra rễ"
+              deadline={`Nhóm tuần ra rễ đến tuần xuất — cần hoàn thiện trong ngày ${ROOTING_EVAL_DEADLINE_LABEL} của tuần xuất (${format(stats.rootingEval.deadline, "dd/MM", { locale: vi })})`}
+              percent={rootingEvalPercent}
+              countLabel={`${stats.rootingEval.done}/${stats.rootingEval.total} nhóm`}
+              badgeState={rootingEvalBadgeState}
             />
           )}
         </CardContent>

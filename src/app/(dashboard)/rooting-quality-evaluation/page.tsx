@@ -36,7 +36,7 @@ export default async function RootingQualityEvaluationPage() {
           <ClipboardCheck className="w-6 h-6 text-primary-strong" /> Đánh giá chất lượng cây ra rễ
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Đánh giá đạt/không đạt cho từng Nhóm tuần ra rễ đến hạn trước Thứ Sáu — Kho mô chỉ được bàn giao đúng phần đã đạt sang Kho thành phẩm.
+          Đánh giá đạt/không đạt cho từng Nhóm tuần ra rễ đến tuần xuất — mở từ Thứ 5 tuần trước, hạn trong ngày Thứ 3 của tuần xuất. Kho mô chỉ được bàn giao đúng phần đã đạt sang Kho thành phẩm.
         </p>
       </div>
 
