@@ -141,13 +141,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
     group.unqualifiedQuantity += item.unqualifiedQuantity;
     group.rateSum += item.randomCheckPassRate;
     group.rateCount += 1;
-    // SL NV cấy mô được ghi nhận = (SL bàn giao - max(A, B)) x (100% - tỉ lệ nhiễm), tính riêng theo từng
-    // lô (A = Kho mô tự kiểm tra, B = NV cấy mô tự khai lúc bàn giao — TransferItem.unqualifiedQuantity).
+    // SL NV cấy mô được ghi nhận = (SL bàn giao - SL nhiễm - max(A, B)) x (100% - tỉ lệ nhiễm), tính riêng
+    // theo từng lô (A = Kho mô tự kiểm tra, B = NV cấy mô tự khai lúc bàn giao — TransferItem.unqualifiedQuantity).
+    // SL nhiễm (số cây nhiễm Kho mô ĐẾM ĐƯỢC, chuyển sang Phòng nhiễm) cũng phải trừ — trước 10/10/2026
+    // công thức quên trừ, NV vẫn được ghi nhận đủ dù Kho mô báo nhiễm cả lô (phiếu BG-202610-0368).
     // randomCheckPassRate lưu đúng giá trị NHẬP ở ô "Tỉ lệ nhiễm (%)" (tên field giữ nguyên vì lịch sử,
     // không phải tỉ lệ ĐẠT — phải lấy phần bù 100% mới ra tỉ lệ đạt để nhân vào).
     group.creditedQuantity += Math.max(
       0,
-      Math.round((lot.quantity - Math.max(item.unqualifiedQuantity, transferItem.unqualifiedQuantity)) * ((100 - item.randomCheckPassRate) / 100))
+      Math.round(
+        (lot.quantity - item.contaminatedQuantity - Math.max(item.unqualifiedQuantity, transferItem.unqualifiedQuantity)) *
+          ((100 - item.randomCheckPassRate) / 100)
+      )
     );
     groups.set(key, group);
   }
