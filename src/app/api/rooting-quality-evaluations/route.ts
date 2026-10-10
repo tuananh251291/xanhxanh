@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
-import { describeRootingEvaluationGroup, countRootingRotationSlots } from "@/lib/rooting-quality-evaluation";
+import { describeRootingEvaluationGroup, countRootingRotationSlots, loadRootingGroupShelfRanges } from "@/lib/rooting-quality-evaluation";
 
 // Danh sách đánh giá — dùng cho cả màn "Đánh giá chất lượng cây ra rễ" (KY_THUAT, lọc status=PENDING,
 // chỉ thấy việc của chính mình) lẫn trang báo cáo lịch sử (KHO_MO/KY_THUAT/Admin, thường lọc
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const evaluations = await prisma.rootingQualityEvaluation.findMany({
     where,
     select: {
-      id: true, code: true, status: true, weekStart: true, reason: true, completedAt: true, createdAt: true,
+      id: true, code: true, status: true, weekStart: true, reason: true, completedAt: true, createdAt: true, roomId: true, rotationGroupId: true,
       warehouse: { select: { code: true, name: true } },
       room: { select: { name: true } },
       rotationGroup: { select: { name: true } },
@@ -42,8 +42,12 @@ export async function GET(req: NextRequest) {
     take: 200,
   });
 
-  const totalSlots = await countRootingRotationSlots();
+  const [totalSlots, shelfRanges] = await Promise.all([countRootingRotationSlots(), loadRootingGroupShelfRanges(evaluations)]);
   return NextResponse.json(
-    evaluations.map((e) => ({ ...e, ...describeRootingEvaluationGroup(e.rotationGroup.name, e.weekStart, totalSlots) }))
+    evaluations.map(({ roomId, rotationGroupId, ...e }) => ({
+      ...e,
+      ...describeRootingEvaluationGroup(e.rotationGroup.name, e.weekStart, totalSlots),
+      shelfRange: shelfRanges.get(`${roomId}|${rotationGroupId}`) ?? null,
+    }))
   );
 }

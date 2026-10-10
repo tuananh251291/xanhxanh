@@ -22,6 +22,53 @@ export function countRootingRotationSlots() {
   return prisma.shelfGroup.count({ where: { rotationKind: "RA_RE" } });
 }
 
+// Rút gọn danh sách mã kệ thành các dải liên tiếp để ghi cạnh tên Nhóm — bỏ tiền tố kho/phòng (lấy đoạn
+// sau dấu "-" cuối, VD "SX-F-PRR-I01C01" → "I01C01"), gom theo phần đứng trước số cuối (VD "I01C") rồi nối
+// các số liền nhau: ["I01C01".."I01C12", "I02C01".."I02C12"] → "I01C01 -> I01C12 và I02C01 -> I02C12".
+export function compactShelfCodes(codes: string[]): string {
+  const byPrefix = new Map<string, { num: number; width: number }[]>();
+  const loose: string[] = [];
+  for (const code of codes) {
+    const short = code.slice(code.lastIndexOf("-") + 1);
+    const m = short.match(/^(.*?)(\d+)$/);
+    if (!m) { loose.push(short); continue; }
+    byPrefix.set(m[1], [...(byPrefix.get(m[1]) ?? []), { num: Number(m[2]), width: m[2].length }]);
+  }
+  const parts: string[] = [];
+  for (const [prefix, nums] of [...byPrefix].sort(([a], [b]) => a.localeCompare(b))) {
+    nums.sort((a, b) => a.num - b.num);
+    const label = (n: { num: number; width: number }) => `${prefix}${String(n.num).padStart(n.width, "0")}`;
+    let start = nums[0];
+    let prev = nums[0];
+    for (const n of [...nums.slice(1), null]) {
+      if (n && n.num === prev.num + 1) { prev = n; continue; }
+      parts.push(start === prev ? label(start) : `${label(start)} -> ${label(prev)}`);
+      if (n) { start = n; prev = n; }
+    }
+  }
+  parts.push(...loose.sort());
+  return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} và ${parts[parts.length - 1]}`;
+}
+
+// Dải kệ (đang hoạt động) của từng cặp (phòng, Nhóm tuần ra rễ) — key `${roomId}|${rotationGroupId}`.
+export async function loadRootingGroupShelfRanges(pairs: { roomId: string; rotationGroupId: string }[]): Promise<Map<string, string>> {
+  if (pairs.length === 0) return new Map();
+  const shelves = await prisma.shelf.findMany({
+    where: {
+      isActive: true,
+      roomId: { in: [...new Set(pairs.map((p) => p.roomId))] },
+      rotationGroupId: { in: [...new Set(pairs.map((p) => p.rotationGroupId))] },
+    },
+    select: { code: true, roomId: true, rotationGroupId: true },
+  });
+  const codesByKey = new Map<string, string[]>();
+  for (const s of shelves) {
+    const key = `${s.roomId}|${s.rotationGroupId}`;
+    codesByKey.set(key, [...(codesByKey.get(key) ?? []), s.code]);
+  }
+  return new Map([...codesByKey].map(([key, codes]) => [key, compactShelfCodes(codes)]));
+}
+
 // "Đánh giá chất lượng cây ra rễ" — NV Kỹ thuật đánh giá đạt/không đạt cho MỖI Nhóm tuần ra rễ ĐANG ĐẾN
 // HẠN của 1 kho sản xuất, trước khi Kho mô được bàn giao sang Kho thành phẩm (hạn Thứ 7 — xem
 // PATCH /api/rooting-quality-evaluations/[id]). Tự sinh lazy mỗi lần tải trang giống mọi hàm ensureXxx

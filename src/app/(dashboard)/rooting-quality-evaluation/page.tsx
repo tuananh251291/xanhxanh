@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/types";
 import { ClipboardCheck } from "lucide-react";
 import RootingQualityEvaluationBoard from "./rooting-quality-evaluation-board";
-import { describeRootingEvaluationGroup, countRootingRotationSlots } from "@/lib/rooting-quality-evaluation";
+import { describeRootingEvaluationGroup, countRootingRotationSlots, loadRootingGroupShelfRanges } from "@/lib/rooting-quality-evaluation";
 
 // Danh sách đánh giá chất lượng cây ra rễ ĐANG CHỜ của đúng NV Kỹ thuật đang đăng nhập — tự sinh hàng
 // tuần (xem ensureWeeklyRootingQualityEvaluation, src/lib/rooting-quality-evaluation.ts), tự động giao
@@ -19,7 +19,7 @@ export default async function RootingQualityEvaluationPage() {
   const evaluations = await prisma.rootingQualityEvaluation.findMany({
     where: role === "KY_THUAT" ? { assignedToId: session!.user.id, status: "PENDING" } : { status: "PENDING" },
     select: {
-      id: true, code: true, weekStart: true,
+      id: true, code: true, weekStart: true, roomId: true, rotationGroupId: true,
       warehouse: { select: { name: true } },
       room: { select: { name: true } },
       rotationGroup: { select: { name: true } },
@@ -27,6 +27,7 @@ export default async function RootingQualityEvaluationPage() {
     },
     orderBy: { createdAt: "asc" },
   });
+  const shelfRanges = await loadRootingGroupShelfRanges(evaluations);
 
   return (
     <div className="space-y-6">
@@ -44,6 +45,7 @@ export default async function RootingQualityEvaluationPage() {
           ...e,
           weekStart: e.weekStart.toISOString(),
           ...describeRootingEvaluationGroup(e.rotationGroup.name, e.weekStart, totalSlots),
+          shelfRange: shelfRanges.get(`${e.roomId}|${e.rotationGroupId}`) ?? null,
         }))}
       />
     </div>

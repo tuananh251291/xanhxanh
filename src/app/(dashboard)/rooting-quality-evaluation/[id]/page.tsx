@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/types";
 import RootingQualityEvaluationForm from "./rooting-quality-evaluation-form";
-import { describeRootingEvaluationGroup, countRootingRotationSlots } from "@/lib/rooting-quality-evaluation";
+import { describeRootingEvaluationGroup, countRootingRotationSlots, loadRootingGroupShelfRanges } from "@/lib/rooting-quality-evaluation";
 
 export default async function RootingQualityEvaluationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -38,12 +38,13 @@ export default async function RootingQualityEvaluationDetailPage({ params }: { p
   }
   const rows = Array.from(rowMap.values()).sort((a, b) => a.code.localeCompare(b.code) || a.stageCode.localeCompare(b.stageCode));
   const { label, entryWeek } = describeRootingEvaluationGroup(evaluation.rotationGroup.name, evaluation.weekStart, await countRootingRotationSlots());
+  const shelfRange = (await loadRootingGroupShelfRanges([evaluation])).get(`${evaluation.roomId}|${evaluation.rotationGroupId}`);
 
   return (
     <RootingQualityEvaluationForm
       evaluationId={evaluation.id}
       code={evaluation.code}
-      title={`${label}${entryWeek ? ` (vào phòng ra rễ ${entryWeek})` : ""} — ${evaluation.room.name} (${evaluation.warehouse.name})`}
+      title={`${label}${shelfRange ? ` (${shelfRange})` : ""}${entryWeek ? ` (vào phòng ra rễ ${entryWeek})` : ""} — ${evaluation.room.name} (${evaluation.warehouse.name})`}
       rows={rows}
     />
   );

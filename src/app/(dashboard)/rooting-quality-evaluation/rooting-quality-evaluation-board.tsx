@@ -17,6 +17,7 @@ type Evaluation = {
   assignedTo: { name: string; code: string };
   label: string;
   entryWeek: string | null;
+  shelfRange: string | null;
 };
 
 export default function RootingQualityEvaluationBoard({ evaluations }: { evaluations: Evaluation[] }) {
@@ -39,6 +40,7 @@ export default function RootingQualityEvaluationBoard({ evaluations }: { evaluat
             <div>
               <p className="font-medium text-foreground">
                 {e.label}
+                {e.shelfRange && <span className="font-normal"> ({e.shelfRange})</span>}
                 {e.entryWeek && <span className="text-text-secondary font-normal"> · Vào phòng ra rễ {e.entryWeek}</span>}
               </p>
               <p className="text-xs text-text-secondary mt-0.5">
