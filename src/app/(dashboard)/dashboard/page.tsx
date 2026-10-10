@@ -546,6 +546,10 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   const finishedTotal = finishedGroups.length;
   const finishedDone = finishedGroups.filter((g) => g.done).length;
   const finishedPercent = finishedTotal === 0 ? 100 : Math.round((finishedDone / finishedTotal) * 100);
+  // Nhóm đến hạn tuần này chưa bàn giao — hạn chót là Chủ nhật cuối tuần (cùng mốc với báo cáo Số ngày không
+  // hoàn thành nhiệm vụ), hiện thẻ nhắc ở đầu dashboard Kho mô.
+  const finishedPendingGroupNames = [...new Set(finishedGroups.filter((g) => !g.done).map((g) => g.groupName))];
+  const finishedDaysLeft = Math.max(0, differenceInCalendarDays(weekEnd, now));
 
   // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 5 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
   // đúng Thứ 5 hay trễ hơn — trễ vẫn tính "tuần không hoàn thành" ở báo cáo Số ngày không hoàn thành
@@ -585,7 +589,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   return {
     weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
-    finishedDone, finishedTotal, finishedPercent,
+    finishedDone, finishedTotal, finishedPercent, finishedPendingGroupNames, finishedDaysLeft,
     contaminationTaskVisible, contaminationOverdueDays,
     replantTaskVisible, replantOverdueDays, replantAwaitingConfirmation: pendingReplantHandover !== null,
     mediumSurplusOrderId,
@@ -1247,6 +1251,27 @@ function KhoMoTaskDashboard({
         />
       )}
 
+      {weeklyStats.finishedPendingGroupNames.length > 0 && (
+        <Link href="/transfers/finished" className="block">
+          <Card className={weeklyStats.finishedDaysLeft === 0 ? "border border-destructive bg-danger-light" : "border border-warning bg-warning-light"}>
+            <CardContent className="py-4 flex items-center gap-3">
+              <Bell className={`w-5 h-5 shrink-0 ${weeklyStats.finishedDaysLeft === 0 ? "text-destructive" : "text-warning-foreground"}`} />
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold ${weeklyStats.finishedDaysLeft === 0 ? "text-destructive" : "text-warning-foreground"}`}>
+                  Cần bàn giao thành phẩm Nhóm tuần ra rễ {weeklyStats.finishedPendingGroupNames.join(", ")} trước Chủ nhật{" "}
+                  {format(weeklyStats.weekEnd, "dd/MM/yyyy")}
+                </p>
+                <p className={`text-xs ${weeklyStats.finishedDaysLeft === 0 ? "text-destructive" : "text-warning-foreground/80"}`}>
+                  {weeklyStats.finishedDaysLeft === 0
+                    ? "Hôm nay là hạn cuối — bấm để bàn giao ngay"
+                    : `Còn ${weeklyStats.finishedDaysLeft} ngày — bấm để bàn giao`}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
       {dailyStats.editCountToday > 0 && (
         <Card className="border border-info-light bg-info-light">
           <CardContent className="py-4 flex items-center gap-3">
@@ -1312,7 +1337,7 @@ function KhoMoTaskDashboard({
             href="/transfers/finished"
             icon={Package}
             title="2. Bàn giao thành phẩm"
-            deadline="Bàn giao các Nhóm tuần ra rễ đến hạn xuất trong tuần sang Kho thành phẩm"
+            deadline={`Bàn giao các Nhóm tuần ra rễ đến hạn xuất trong tuần sang Kho thành phẩm — hạn Chủ nhật ${format(weeklyStats.weekEnd, "dd/MM", { locale: vi })}`}
             percent={weeklyStats.finishedPercent}
             countLabel={`${weeklyStats.finishedDone}/${weeklyStats.finishedTotal} Nhóm`}
           />
