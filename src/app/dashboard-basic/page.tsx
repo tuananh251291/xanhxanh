@@ -68,7 +68,7 @@ export default async function DashboardBasicPage() {
             stats={await getCayMoQuestStats(session.user.id)}
             userName={userName}
             userId={session.user.id}
-            quote={randomGreetingQuote()}
+            quote={randomGreetingQuote(role)}
             today={today}
             training={training}
           />

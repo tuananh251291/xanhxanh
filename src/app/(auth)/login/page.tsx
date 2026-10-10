@@ -139,7 +139,7 @@ export default function LoginPage() {
         const freshSession = await getSession();
         const userRole = freshSession?.user?.role;
         setGreetingBg(randomGreetingBackground());
-        setGreetingQuote(randomGreetingQuote());
+        setGreetingQuote(randomGreetingQuote(userRole));
         setTimeout(() => {
           if (userRole === "CAY_MO") {
             setShowInterfaceChoice(true);

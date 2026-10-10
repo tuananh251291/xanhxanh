@@ -1,4 +1,7 @@
-// Danh sách câu chúc hiển thị ngẫu nhiên trên màn hình chào sau khi đăng nhập (xem src/app/(auth)/login/page.tsx).
+// Câu chúc hiển thị ngẫu nhiên trên màn hình chào sau khi đăng nhập (xem src/app/(auth)/login/page.tsx)
+// và banner đầu Dashboard — mỗi nhóm vai trò 1 bộ câu riêng, xem randomGreetingQuote().
+
+// NV cấy mô (CAY_MO) — bộ câu gốc.
 export const GREETING_QUOTES = [
   "Chúc bạn một ngày làm việc hiệu quả và nhiều năng lượng.",
   "Mỗi ngày là một cơ hội để tiến bộ hơn hôm qua.",
@@ -90,8 +93,108 @@ export const GREETING_QUOTES = [
   "Chúc bạn một ngày làm việc vui vẻ, hiệu quả và đầy năng lượng!",
 ] as const;
 
-export function randomGreetingQuote(): string {
-  return GREETING_QUOTES[Math.floor(Math.random() * GREETING_QUOTES.length)];
+// NV bán hàng (SALE) — động lực bán hàng, sự cố gắng khi chăm sóc/chốt đơn khách.
+export const SALE_GREETING_QUOTES = [
+  "Mỗi cuộc gọi hôm nay là một cơ hội chốt đơn mới.",
+  "Khách hàng hài lòng là thành tích đáng tự hào nhất.",
+  "Một lời từ chối hôm nay là bước đệm cho cái gật đầu ngày mai.",
+  "Kiên trì chăm sóc khách hàng, đơn hàng sẽ tự tìm đến.",
+  "Hiểu khách hàng hơn một chút, chốt đơn dễ hơn rất nhiều.",
+  "Hôm nay hãy mở thêm một khách hàng mới!",
+  "Doanh số lớn được xây từ từng đơn hàng nhỏ.",
+  "Sự nhiệt tình của bạn là lợi thế mà đối thủ không có.",
+  "Mỗi cây giống bạn bán ra là một khu vườn được bắt đầu.",
+  "Đừng bỏ lỡ khách hàng chỉ vì ngại gọi thêm một lần.",
+  "Uy tín hôm nay là khách hàng quay lại ngày mai.",
+  "Chốt đơn không phải may mắn, đó là kết quả của sự chuẩn bị.",
+  "Nụ cười và sự tận tâm là kỹ năng bán hàng tốt nhất.",
+  "Mục tiêu tháng này đang chờ bạn chinh phục.",
+  "Hãy lắng nghe nhiều hơn, khách hàng sẽ tin bạn hơn.",
+  "Mỗi khách hàng cũ là cầu nối tới khách hàng mới.",
+  "Người bán hàng giỏi không bỏ cuộc sau lần từ chối đầu tiên.",
+  "Hôm nay hãy vượt qua kết quả của chính mình hôm qua.",
+  "Tư vấn đúng nhu cầu, đơn hàng sẽ bền lâu.",
+  "Cố gắng thêm một chút, đơn hàng lớn có thể đang ở rất gần.",
+  "Theo sát từng đơn, giữ trọn từng khách.",
+  "Thành công trong bán hàng đến từ sự bền bỉ mỗi ngày.",
+  "Hãy tự tin — sản phẩm của chúng ta xứng đáng với khách hàng.",
+  "Mỗi lời hứa với khách hàng là một cam kết cần giữ.",
+  "Một ngày bán hàng hiệu quả bắt đầu từ danh sách khách cần chăm sóc.",
+  "Đơn hàng của bạn hôm nay là công việc của cả tập thể ngày mai.",
+  "Năng lượng tích cực của bạn sẽ lan tỏa tới khách hàng.",
+  "Chủ động liên hệ — đừng chờ khách hàng tìm đến.",
+  "Bạn là cầu nối giữa khu vườn của chúng ta và khách hàng.",
+  "Chúc bạn một ngày bán hàng thật nhiều đơn và nhiều niềm vui!",
+] as const;
+
+// Các NV còn lại (Admin, Kỹ thuật, Kho, Môi trường, HCNS, Sản xuất...) — động lực và tinh thần trách nhiệm.
+export const STAFF_GREETING_QUOTES = [
+  "Chúc bạn một ngày làm việc hiệu quả và nhiều năng lượng.",
+  "Làm đúng việc, làm đến nơi đến chốn — đó là trách nhiệm.",
+  "Mỗi công việc bạn hoàn thành đều góp phần vào thành công chung.",
+  "Trách nhiệm hôm nay là chất lượng của ngày mai.",
+  "Cẩn thận từng chi tiết, chủ động từng nhiệm vụ.",
+  "Mỗi số liệu chính xác là nền tảng cho một quyết định đúng.",
+  "Hãy làm việc như thể chính mình là người nhận kết quả.",
+  "Hoàn thành đúng hạn là cách tôn trọng đồng nghiệp.",
+  "Tinh thần trách nhiệm tạo nên một tập thể vững mạnh.",
+  "Việc hôm nay chớ để ngày mai.",
+  "Mỗi mắt xích làm tốt, cả dây chuyền sẽ vận hành trơn tru.",
+  "Chủ động phát hiện vấn đề sớm sẽ tránh được sai sót lớn.",
+  "Sự tận tâm của bạn luôn được ghi nhận.",
+  "Kiên trì và trách nhiệm sẽ đưa bạn đến thành công.",
+  "Một ngày làm việc trọn vẹn bắt đầu từ sự chuẩn bị chu đáo.",
+  "Làm tốt phần việc của mình là cách giúp đỡ cả tập thể.",
+  "Chất lượng không phải tình cờ, đó là kết quả của trách nhiệm.",
+  "Hôm nay hãy cố gắng hơn hôm qua một chút.",
+  "Mỗi nhiệm vụ hoàn thành là một thành quả đáng tự hào.",
+  "Giữ lời hứa trong công việc là xây dựng niềm tin.",
+  "Đúng quy trình, đúng thời gian, đúng chất lượng.",
+  "Một người có trách nhiệm là chỗ dựa cho cả đội.",
+  "Thành công của tập thể bắt đầu từ từng cá nhân.",
+  "Hãy làm việc với niềm tự hào và sự chính xác.",
+  "Khó khăn là cơ hội để thể hiện bản lĩnh.",
+  "Nỗ lực hôm nay sẽ được đền đáp.",
+  "Mỗi ngày đều có cơ hội để làm tốt hơn.",
+  "Cùng nhau sẽ đi xa hơn.",
+  "Cảm ơn vì sự tận tâm và trách nhiệm của bạn.",
+  "Chúc bạn một ngày làm việc vui vẻ, hiệu quả và đầy năng lượng!",
+] as const;
+
+// Đối tác vận hành (DOI_TAC_VAN_HANH) — tinh thần trách nhiệm và sự hợp tác.
+export const PARTNER_GREETING_QUOTES = [
+  "Cảm ơn bạn đã đồng hành cùng chúng tôi.",
+  "Hợp tác bền vững bắt đầu từ sự tin tưởng và trách nhiệm.",
+  "Cùng nhau, chúng ta sẽ đi xa hơn.",
+  "Mỗi cam kết được giữ là một bước xây dựng niềm tin.",
+  "Thành công của bạn cũng là thành công của chúng ta.",
+  "Minh bạch trong công việc là nền tảng của hợp tác lâu dài.",
+  "Chung tay vận hành tốt, cùng nhau phát triển.",
+  "Trách nhiệm của mỗi bên tạo nên sức mạnh chung.",
+  "Một đối tác tận tâm là tài sản quý giá nhất.",
+  "Cùng chia sẻ, cùng giải quyết, cùng thành công.",
+  "Hợp tác hôm nay là thành quả của ngày mai.",
+  "Mỗi cây giống đến tay khách hàng là công sức của cả hai bên.",
+  "Giữ chữ tín với khách hàng là giữ uy tín cho cả hai bên.",
+  "Phản hồi kịp thời giúp hợp tác thêm hiệu quả.",
+  "Đồng lòng vận hành, vững bước phát triển.",
+  "Sự chủ động của bạn giúp mọi việc trơn tru hơn.",
+  "Tin tưởng lẫn nhau là chìa khóa của hợp tác.",
+  "Cùng nhau mang những khu vườn xanh tới mọi nhà.",
+  "Hợp tác chân thành, phát triển bền lâu.",
+  "Chúc bạn một ngày vận hành thuận lợi và hiệu quả!",
+] as const;
+
+export function randomGreetingQuote(role?: string | null): string {
+  const quotes: readonly string[] =
+    role === "CAY_MO"
+      ? GREETING_QUOTES
+      : role === "SALE"
+      ? SALE_GREETING_QUOTES
+      : role === "DOI_TAC_VAN_HANH"
+      ? PARTNER_GREETING_QUOTES
+      : STAFF_GREETING_QUOTES;
+  return quotes[Math.floor(Math.random() * quotes.length)];
 }
 
 // 30 nền gradient ngẫu nhiên cho màn hình chào sau khi đăng nhập — chỉ dùng token màu có sẵn trong

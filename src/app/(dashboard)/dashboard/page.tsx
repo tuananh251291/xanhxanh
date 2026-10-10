@@ -753,10 +753,10 @@ export default async function DashboardPage() {
   return <DefaultDashboard role={role} userName={session?.user?.name ?? ""} />;
 }
 
-function GreetingBanner() {
+function GreetingBanner({ role }: { role: UserRole }) {
   return (
     <p className="text-sm font-bold text-primary-strong bg-primary-light border border-primary-light rounded-lg px-3 py-2">
-      {randomGreetingQuote()}
+      {randomGreetingQuote(role)}
     </p>
   );
 }
@@ -768,7 +768,7 @@ function AdminDashboard({ stats, role }: { stats: Awaited<ReturnType<typeof getA
         <h1 className="text-2xl font-bold text-foreground">Dashboard tổng quan</h1>
         <p className="text-text-secondary text-sm mt-1">Quản trị hệ thống</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role={role} />
       {/* Admin kỹ thuật xem được bảng thi đua kèm loại cây chi tiết từng NV (API chỉ trả loại cây cho role này). */}
       {role === "ADMIN_KY_THUAT" && <ProductivityLeaderboard />}
       {stats.dueTrialRounds.length > 0 && <TrialRoundTaskCard rounds={stats.dueTrialRounds} />}
@@ -821,7 +821,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
         <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS.SALE}</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role="SALE" />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard title="Tồn đạt tiêu chuẩn (TP)" value={stats.availableLots} icon={Package} color="green" subtitle="lô thành phẩm" />
         <StatCard title="Đơn đang hoạt động" value={stats.myOrders.length} icon={ShoppingCart} color="blue" />
@@ -886,7 +886,7 @@ function CayMoDashboard({
           )}
         </div>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role="CAY_MO" />
 
       {stats.isOnProbation && (
         <Link href="/training-roadmap" className="block">
@@ -1087,7 +1087,7 @@ function KyThuatDashboard({
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
         <p className="text-text-secondary text-sm mt-1">Nhân viên kỹ thuật · Tuần {weekLabel}</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role="KY_THUAT" />
       {/* Giống Admin kỹ thuật — bảng thi đua kèm loại cây chi tiết từng NV (API trả loại cây cho KY_THUAT). */}
       <ProductivityLeaderboard />
 
@@ -1241,7 +1241,7 @@ function KhoMoTaskDashboard({
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
         <p className="text-text-secondary text-sm mt-1">Nhân viên kho mô</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role="KHO_MO" />
 
       {weeklyStats.rootingSummary.warehouseSummaries.length > 0 && (
         <RootingSummaryWidget
@@ -1401,7 +1401,7 @@ function MoiTruongDashboard({
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
         <p className="text-text-secondary text-sm mt-1">Nhân viên môi trường</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role="MOI_TRUONG" />
 
       <Card>
         <CardHeader className="pb-2">
@@ -1458,7 +1458,7 @@ function KhoDashboard({
         <h1 className="text-2xl font-bold text-foreground">Tổng quan kho</h1>
         <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role={role} />
       {role === "QUAN_LY_KHO_THANH_PHAM" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard title="Bàn giao chờ xác nhận" value={stats.pendingTransfers} icon={AlertTriangle} color="yellow" />
@@ -1521,7 +1521,7 @@ function DoiTacVanHanhDashboard({ myTasks, userName }: { myTasks: MyTask[]; user
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
         <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS.DOI_TAC_VAN_HANH}</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role="DOI_TAC_VAN_HANH" />
 
       <Card>
         <CardHeader className="pb-2">
@@ -1565,7 +1565,7 @@ function DefaultDashboard({ role, userName }: { role: UserRole; userName: string
         <h1 className="text-2xl font-bold text-foreground">Xin chào, {userName}!</h1>
         <p className="text-text-secondary text-sm mt-1">{ROLE_LABELS[role]}</p>
       </div>
-      <GreetingBanner />
+      <GreetingBanner role={role} />
       <Card>
         <CardContent className="pt-6">
           <div className="text-center py-8 text-text-secondary">
