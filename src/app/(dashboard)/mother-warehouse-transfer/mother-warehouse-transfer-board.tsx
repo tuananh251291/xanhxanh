@@ -16,7 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Truck, PackageCheck, Loader2, Send, Check } from "lucide-react";
+import { Truck, PackageCheck, Loader2, Send, Check, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -63,14 +63,130 @@ function destShelfLabel(s: DestShelf): string {
   return `${s.code} — ${s.name} — ${destShelfOwnerText(s)} — ${capText}`;
 }
 
+type SendLine = { id: number; shelfOption: ComboOption | null; breakdownOption: ComboOption | null; quantity: string };
+
+let sendLineSeq = 0;
+const newSendLine = (): SendLine => ({ id: ++sendLineSeq, shelfOption: null, breakdownOption: null, quantity: "" });
+
+function lineKey(line: SendLine): string | null {
+  return line.shelfOption && line.breakdownOption ? `${line.shelfOption.value}|${line.breakdownOption.value}` : null;
+}
+
+function SendLineRow({
+  index,
+  line,
+  shelves,
+  shelfOptions,
+  usedByOthers,
+  canRemove,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  line: SendLine;
+  shelves: Map<string, SendShelf>;
+  shelfOptions: ComboOption[];
+  usedByOthers: number;
+  canRemove: boolean;
+  onChange: (patch: Partial<SendLine>) => void;
+  onRemove: () => void;
+}) {
+  const selectedShelf = line.shelfOption ? shelves.get(line.shelfOption.value) ?? null : null;
+  const breakdownByKey = useMemo(
+    () => new Map((selectedShelf?.breakdown ?? []).map((b) => [`${b.plantTypeId}|${b.stageCode}`, b])),
+    [selectedShelf]
+  );
+  const breakdownOptions = useMemo(
+    () =>
+      (selectedShelf?.breakdown ?? []).map((b) => ({
+        value: `${b.plantTypeId}|${b.stageCode}`,
+        label: `${b.plantTypeCode} — ${b.plantTypeName} (${b.stageCode}) — còn ${b.available.toLocaleString("vi-VN")} cụm`,
+      })),
+    [selectedShelf]
+  );
+  const selectedBreakdown = line.breakdownOption ? breakdownByKey.get(line.breakdownOption.value) ?? null : null;
+  const maxQty = selectedBreakdown ? Math.max(0, selectedBreakdown.available - usedByOthers) : 0;
+
+  return (
+    <div className="rounded-lg border border-divider bg-background p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-primary-strong">Dòng {index + 1}</span>
+        {canRemove && (
+          <Button variant="ghost" size="sm" className="h-7 text-destructive" onClick={onRemove}>
+            <Trash2 className="w-3.5 h-3.5 mr-1" /> Xoá dòng
+          </Button>
+        )}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_10rem]">
+        <div className="space-y-1">
+          <Label className="text-sm">Giàn nguồn</Label>
+          <Combobox
+            items={shelfOptions}
+            value={line.shelfOption}
+            isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+            onValueChange={(v) => onChange({ shelfOption: v, breakdownOption: null, quantity: "" })}
+          >
+            <ComboboxInputGroup className="w-full h-9">
+              <ComboboxInput placeholder="Gõ mã hoặc tên giàn…" />
+              <ComboboxTrigger />
+            </ComboboxInputGroup>
+            <ComboboxContent>
+              <ComboboxEmpty>Không tìm thấy giàn đang có mẫu mẹ</ComboboxEmpty>
+              <ComboboxList>
+                {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-sm">Loại cây / quy cách</Label>
+          <Combobox
+            items={breakdownOptions}
+            value={line.breakdownOption}
+            isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+            onValueChange={(v) => onChange({ breakdownOption: v, quantity: "" })}
+          >
+            <ComboboxInputGroup className="w-full h-9">
+              <ComboboxInput placeholder={selectedShelf ? "Chọn loại cây…" : "Chọn giàn nguồn trước"} />
+              <ComboboxTrigger />
+            </ComboboxInputGroup>
+            <ComboboxContent>
+              <ComboboxEmpty>Không có loại cây nào khả dụng</ComboboxEmpty>
+              <ComboboxList>
+                {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-sm">Số lượng (cụm)</Label>
+          <Input
+            type="number"
+            min={1}
+            max={maxQty}
+            value={line.quantity}
+            onChange={(e) => onChange({ quantity: e.target.value })}
+            placeholder={selectedBreakdown ? `Tối đa ${maxQty.toLocaleString("vi-VN")}` : "Chọn loại cây"}
+            disabled={!selectedBreakdown}
+          />
+        </div>
+      </div>
+      {selectedBreakdown && usedByOthers > 0 && (
+        <p className="text-xs text-text-muted">
+          Dòng khác đã lấy {usedByOthers.toLocaleString("vi-VN")} cụm cùng giàn + loại cây/quy cách này — còn{" "}
+          {maxQty.toLocaleString("vi-VN")} cụm cho dòng này.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function SendTab() {
   const [shelves, setShelves] = useState<SendShelf[]>([]);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
-  const [shelfOption, setShelfOption] = useState<ComboOption | null>(null);
-  const [breakdownOption, setBreakdownOption] = useState<ComboOption | null>(null);
+  const [lines, setLines] = useState<SendLine[]>(() => [newSendLine()]);
   const [destOption, setDestOption] = useState<ComboOption | null>(null);
-  const [quantity, setQuantity] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,45 +205,55 @@ export function SendTab() {
   useEffect(() => { load(); }, [load]);
 
   const shelfByCode = useMemo(() => new Map(shelves.map((s) => [s.code, s])), [shelves]);
-  const selectedShelf = shelfOption ? shelfByCode.get(shelfOption.value) ?? null : null;
 
   const shelfOptions = useMemo(
     () => shelves.map((s) => ({ value: s.code, label: `${s.code} — ${s.name} — ${s.used.toLocaleString("vi-VN")} cụm` })),
     [shelves]
   );
 
-  const breakdownByKey = useMemo(
-    () => new Map((selectedShelf?.breakdown ?? []).map((b) => [`${b.plantTypeId}|${b.stageCode}`, b])),
-    [selectedShelf]
-  );
-  const breakdownOptions = useMemo(
-    () =>
-      (selectedShelf?.breakdown ?? []).map((b) => ({
-        value: `${b.plantTypeId}|${b.stageCode}`,
-        label: `${b.plantTypeCode} — ${b.plantTypeName} (${b.stageCode}) — còn ${b.available.toLocaleString("vi-VN")} cụm`,
-      })),
-    [selectedShelf]
-  );
-  const selectedBreakdown = breakdownOption ? breakdownByKey.get(breakdownOption.value) ?? null : null;
-
   const destOptions = useMemo(() => destinations.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` })), [destinations]);
 
+  // Tổng SL các dòng theo giàn + loại cây/quy cách — để mỗi dòng biết phần tồn còn lại sau khi trừ các dòng khác
+  const qtyByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lines) {
+      const key = lineKey(l);
+      if (key) m.set(key, (m.get(key) ?? 0) + (Number(l.quantity) || 0));
+    }
+    return m;
+  }, [lines]);
+
+  const totalQty = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+
+  const updateLine = (id: number, patch: Partial<SendLine>) =>
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const removeLine = (id: number) => setLines((prev) => prev.filter((l) => l.id !== id));
+  const addLine = () => setLines((prev) => [...prev, newSendLine()]);
+
   const resetForm = () => {
-    setShelfOption(null);
-    setBreakdownOption(null);
+    setLines([newSendLine()]);
     setDestOption(null);
-    setQuantity("");
     setNotes("");
   };
 
   const submit = async () => {
-    if (!shelfOption) { toast.error("Chưa chọn giàn nguồn"); return; }
-    if (!selectedBreakdown) { toast.error("Chưa chọn loại cây/quy cách"); return; }
     if (!destOption) { toast.error("Chưa chọn kho sản xuất đích"); return; }
-    const qty = Number(quantity) || 0;
-    if (qty <= 0 || qty > selectedBreakdown.available) {
-      toast.error(`Số cụm bàn giao phải từ 1 đến ${selectedBreakdown.available.toLocaleString("vi-VN")}`);
-      return;
+    for (const [i, l] of lines.entries()) {
+      const label = `Dòng ${i + 1}`;
+      if (!l.shelfOption) { toast.error(`${label}: chưa chọn giàn nguồn`); return; }
+      if (!l.breakdownOption) { toast.error(`${label}: chưa chọn loại cây/quy cách`); return; }
+      const qty = Number(l.quantity) || 0;
+      if (qty <= 0 || !Number.isInteger(qty)) { toast.error(`${label}: số cụm bàn giao phải là số nguyên lớn hơn 0`); return; }
+    }
+    for (const [key, qty] of qtyByKey) {
+      const [shelfCode, plantTypeId, stageCode] = key.split("|");
+      const b = shelfByCode.get(shelfCode)?.breakdown.find((x) => x.plantTypeId === plantTypeId && x.stageCode === stageCode);
+      if (!b || qty > b.available) {
+        toast.error(
+          `Giàn ${shelfCode} — ${b?.plantTypeCode ?? "?"} (${stageCode}): tổng ${qty.toLocaleString("vi-VN")} cụm vượt tồn còn ${(b?.available ?? 0).toLocaleString("vi-VN")} cụm`
+        );
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -135,19 +261,21 @@ export function SendTab() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fromShelfCode: shelfOption.value,
-          plantTypeId: selectedBreakdown.plantTypeId,
-          stageCode: selectedBreakdown.stageCode,
-          quantity: qty,
+          lines: lines.map((l) => {
+            const [plantTypeId, stageCode] = l.breakdownOption!.value.split("|");
+            return { fromShelfCode: l.shelfOption!.value, plantTypeId, stageCode, quantity: Number(l.quantity) };
+          }),
           toWarehouseId: destOption.value,
           notes: notes.trim() || undefined,
         }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(`Đã gửi phiếu ${json.transferCode} — ${qty.toLocaleString("vi-VN")} cụm tới ${json.toWarehouseName}`, {
-        description: "Chờ kho đích xác nhận số lượng thực tế nhận được.",
-      });
+      const transfers: { transferCode: string }[] = json.transfers ?? [];
+      toast.success(
+        `Đã gửi ${transfers.length} phiếu (${transfers.map((t) => t.transferCode).join(", ")}) — ${totalQty.toLocaleString("vi-VN")} cụm tới ${json.toWarehouseName}`,
+        { description: "Chờ kho đích xác nhận số lượng thực tế nhận được." }
+      );
       resetForm();
       load();
     } finally {
@@ -172,81 +300,52 @@ export function SendTab() {
             Chưa có kho sản xuất nào khác để bàn giao — cần Admin tạo thêm kho sản xuất trước.
           </p>
         )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label className="text-sm">Giàn nguồn</Label>
-            <Combobox
-              items={shelfOptions}
-              value={shelfOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => { setShelfOption(v); setBreakdownOption(null); setQuantity(""); }}
-            >
-              <ComboboxInputGroup className="w-full h-9">
-                <ComboboxInput placeholder="Gõ mã hoặc tên giàn…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không tìm thấy giàn đang có mẫu mẹ</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-sm">Loại cây / quy cách</Label>
-            <Combobox
-              items={breakdownOptions}
-              value={breakdownOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={(v) => { setBreakdownOption(v); setQuantity(""); }}
-            >
-              <ComboboxInputGroup className="w-full h-9">
-                <ComboboxInput placeholder={selectedShelf ? "Chọn loại cây…" : "Chọn giàn nguồn trước"} />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không có loại cây nào khả dụng</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-          </div>
+        <div className="space-y-1">
+          <Label className="text-sm">Kho sản xuất đích</Label>
+          <Combobox
+            items={destOptions}
+            value={destOption}
+            isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+            onValueChange={setDestOption}
+          >
+            <ComboboxInputGroup className="w-full h-9">
+              <ComboboxInput placeholder="Gõ mã hoặc tên kho…" />
+              <ComboboxTrigger />
+            </ComboboxInputGroup>
+            <ComboboxContent>
+              <ComboboxEmpty>Không có kho sản xuất khác</ComboboxEmpty>
+              <ComboboxList>
+                {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label className="text-sm">Kho sản xuất đích</Label>
-            <Combobox
-              items={destOptions}
-              value={destOption}
-              isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-              onValueChange={setDestOption}
-            >
-              <ComboboxInputGroup className="w-full h-9">
-                <ComboboxInput placeholder="Gõ mã hoặc tên kho…" />
-                <ComboboxTrigger />
-              </ComboboxInputGroup>
-              <ComboboxContent>
-                <ComboboxEmpty>Không có kho sản xuất khác</ComboboxEmpty>
-                <ComboboxList>
-                  {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-                </ComboboxList>
-              </ComboboxContent>
-            </Combobox>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-sm">Số lượng bàn giao (cụm)</Label>
-            <Input
-              type="number"
-              min={1}
-              max={selectedBreakdown?.available}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder={selectedBreakdown ? `Tối đa ${selectedBreakdown.available.toLocaleString("vi-VN")}` : "Chọn loại cây trước"}
-              disabled={!selectedBreakdown}
-            />
+        <div className="space-y-3">
+          {lines.map((l, i) => {
+            const key = lineKey(l);
+            const usedByOthers = key ? (qtyByKey.get(key) ?? 0) - (Number(l.quantity) || 0) : 0;
+            return (
+              <SendLineRow
+                key={l.id}
+                index={i}
+                line={l}
+                shelves={shelfByCode}
+                shelfOptions={shelfOptions}
+                usedByOthers={usedByOthers}
+                canRemove={lines.length > 1}
+                onChange={(patch) => updateLine(l.id, patch)}
+                onRemove={() => removeLine(l.id)}
+              />
+            );
+          })}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button variant="outline" size="sm" onClick={addLine}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm dòng
+            </Button>
+            <span className="text-sm text-text-secondary">
+              {lines.length} dòng — tổng <strong>{totalQty.toLocaleString("vi-VN")} cụm</strong>
+            </span>
           </div>
         </div>
 
@@ -256,8 +355,8 @@ export function SendTab() {
         </div>
 
         <p className="text-xs text-text-muted">
-          Tồn giàn nguồn sẽ bị trừ ngay khi bấm &quot;Bàn giao&quot; — kho đích xác nhận số lượng thực tế
-          nhận được mới cộng vào tồn kho của họ.
+          Mỗi dòng tạo 1 phiếu bàn giao riêng. Tồn giàn nguồn sẽ bị trừ ngay khi bấm &quot;Bàn giao&quot; — kho
+          đích xác nhận số lượng thực tế nhận được mới cộng vào tồn kho của họ.
         </p>
 
         <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>

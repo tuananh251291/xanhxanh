@@ -66,10 +66,17 @@ export async function GET() {
 }
 
 const sendSchema = z.object({
-  fromShelfCode: z.string().trim().min(1),
-  plantTypeId: z.string().min(1),
-  stageCode: z.string().min(1),
-  quantity: z.number().int().positive(),
+  lines: z
+    .array(
+      z.object({
+        fromShelfCode: z.string().trim().min(1),
+        plantTypeId: z.string().min(1),
+        stageCode: z.string().min(1),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .min(1)
+    .max(100),
   toWarehouseId: z.string().min(1),
   notes: z.string().trim().max(500).optional(),
 });

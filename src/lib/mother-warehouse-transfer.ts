@@ -11,27 +11,35 @@ import { ShelfAssignError, matchesAllowedCodes } from "@/lib/shelf-assignment";
 // THỰC TẾ NHẬN (có thể thấp hơn số gửi do hao hụt vận chuyển) — CHỈ lúc đó mới tạo lô mới thật sự cộng
 // vào tồn kho đích; không có "Từ chối" — mọi phiếu chỉ đóng qua xác nhận (kể cả xác nhận 0 cụm).
 
+export type MotherSendLine = { fromShelfCode: string; plantTypeId: string; stageCode: string; quantity: number };
+
+// Nhiều dòng (giàn + loại cây/quy cách + số lượng) gửi cùng 1 kho đích trong 1 lần bấm — mỗi dòng vẫn thành
+// 1 Transfer riêng (bên nhận xác nhận theo từng phiếu, mỗi phiếu đúng 1 loại cây/quy cách — xem
+// confirmMotherStockReceipt). Kiểm tra hết mọi dòng trước rồi mới trừ tồn + tạo phiếu trong CÙNG 1
+// transaction — 1 dòng lỗi thì không dòng nào được gửi. Dòng trùng giàn + loại cây + quy cách được gộp SL.
 export async function sendMotherStockToWarehouse(params: {
-  fromShelfCode: string;
-  plantTypeId: string;
-  stageCode: string;
-  quantity: number;
+  lines: MotherSendLine[];
   toWarehouseId: string;
   fromUserId: string;
   workplaceWarehouseId: string;
   notes?: string;
-}): Promise<{ transferCode: string; fromShelfCode: string; toWarehouseName: string; quantity: number }> {
-  const { fromShelfCode, plantTypeId, stageCode, quantity, toWarehouseId, fromUserId, workplaceWarehouseId, notes } = params;
+}): Promise<{
+  toWarehouseName: string;
+  transfers: { transferCode: string; fromShelfCode: string; plantTypeCode: string; stageCode: string; quantity: number }[];
+}> {
+  const { toWarehouseId, fromUserId, workplaceWarehouseId, notes } = params;
 
-  if (quantity <= 0) throw new ShelfAssignError("Số cụm bàn giao phải lớn hơn 0");
+  if (params.lines.length === 0) throw new ShelfAssignError("Chưa có dòng bàn giao nào");
   if (toWarehouseId === workplaceWarehouseId) throw new ShelfAssignError("Kho đích phải khác kho đang làm việc");
 
-  const fromShelf = await prisma.shelf.findFirst({
-    where: { code: fromShelfCode.trim().toUpperCase(), warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
-    select: { id: true, code: true, roomId: true },
-  });
-  if (!fromShelf) {
-    throw new ShelfAssignError(`Không tìm thấy giàn Phòng mẫu mẹ đang hoạt động thuộc kho này với mã: ${fromShelfCode}`);
+  const merged = new Map<string, MotherSendLine>();
+  for (const line of params.lines) {
+    if (line.quantity <= 0) throw new ShelfAssignError("Số cụm bàn giao phải lớn hơn 0");
+    const fromShelfCode = line.fromShelfCode.trim().toUpperCase();
+    const key = `${fromShelfCode}|${line.plantTypeId}|${line.stageCode}`;
+    const existing = merged.get(key);
+    if (existing) existing.quantity += line.quantity;
+    else merged.set(key, { ...line, fromShelfCode });
   }
 
   const [toWarehouse, fromWarehouse] = await Promise.all([
@@ -40,65 +48,82 @@ export async function sendMotherStockToWarehouse(params: {
   ]);
   if (!toWarehouse) throw new ShelfAssignError("Không tìm thấy kho sản xuất đích đang hoạt động");
 
-  const sourceLots = await prisma.lot.findMany({
-    where: { shelfId: fromShelf.id, status: "ACTIVE", stage: "MAU_ME", plantTypeId, stageCode },
-    include: {
-      plantType: { select: { code: true, name: true } },
-      instructionItems: {
-        where: { instruction: { status: { in: ["ACTIVE", "DRAFT"] }, handedOverAt: null } },
-        select: { instruction: { select: { code: true } } },
-      },
-    },
-    orderBy: { enteredAt: "asc" },
-  });
-  const totalAvailable = sourceLots.reduce((s, l) => s + l.quantity, 0);
-  if (sourceLots.length === 0 || totalAvailable === 0) {
-    throw new ShelfAssignError(`Giàn ${fromShelf.code} hiện không có mẫu mẹ loại cây/quy cách này`);
-  }
-  if (quantity > totalAvailable) {
-    throw new ShelfAssignError(
-      `Số cụm bàn giao (${quantity.toLocaleString("vi-VN")}) vượt quá tồn hiện có của giàn ${fromShelf.code} (${totalAvailable.toLocaleString("vi-VN")})`
-    );
-  }
-
-  const draws: { lot: (typeof sourceLots)[number]; take: number }[] = [];
-  let remaining = quantity;
-  for (const lot of sourceLots) {
-    if (remaining <= 0) break;
-    const take = Math.min(remaining, lot.quantity);
-    draws.push({ lot, take });
-    remaining -= take;
-  }
-
-  const lockedDraw = draws.find((d) => d.lot.instructionItems.length > 0);
-  if (lockedDraw) {
-    const instructionCodes = Array.from(new Set(lockedDraw.lot.instructionItems.map((i) => i.instruction.code)));
-    throw new ShelfAssignError(
-      `Lô ${lockedDraw.lot.code} trên giàn ${fromShelf.code} đang là nguồn của chỉ định cấy ${instructionCodes.join(", ")} — chưa thể bàn giao đi kho khác cho tới khi chỉ định đó được bàn giao/hủy.`
-    );
-  }
-
-  const plantTypeCode = sourceLots[0].plantType.code;
-
-  const transfer = await prisma.$transaction(async (tx) => {
-    for (const { lot, take } of draws) {
-      await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: take }, initialQuantity: { decrement: take } } });
+  const prepareLine = async ({ fromShelfCode, plantTypeId, stageCode, quantity }: MotherSendLine) => {
+    const fromShelf = await prisma.shelf.findFirst({
+      where: { code: fromShelfCode, warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
+      select: { id: true, code: true, roomId: true },
+    });
+    if (!fromShelf) {
+      throw new ShelfAssignError(`Không tìm thấy giàn Phòng mẫu mẹ đang hoạt động thuộc kho này với mã: ${fromShelfCode}`);
     }
 
-    return tx.transfer.create({
-      data: {
-        code: await generateTransferCode(tx),
-        fromWarehouseId: workplaceWarehouseId,
-        fromRoomId: fromShelf.roomId,
-        toWarehouseId,
-        toRoomId: null,
-        fromUserId,
-        toUserId: null,
-        status: "PENDING",
-        notes: notes ? `${MOTHER_WAREHOUSE_TRANSFER_TAG}|${notes}` : MOTHER_WAREHOUSE_TRANSFER_TAG,
-        items: { create: draws.map((d) => ({ lotId: d.lot.id, quantity: d.take })) },
+    const sourceLots = await prisma.lot.findMany({
+      where: { shelfId: fromShelf.id, status: "ACTIVE", stage: "MAU_ME", plantTypeId, stageCode },
+      include: {
+        plantType: { select: { code: true, name: true } },
+        instructionItems: {
+          where: { instruction: { status: { in: ["ACTIVE", "DRAFT"] }, handedOverAt: null } },
+          select: { instruction: { select: { code: true } } },
+        },
       },
+      orderBy: { enteredAt: "asc" },
     });
+    const totalAvailable = sourceLots.reduce((s, l) => s + l.quantity, 0);
+    if (sourceLots.length === 0 || totalAvailable === 0) {
+      throw new ShelfAssignError(`Giàn ${fromShelf.code} hiện không có mẫu mẹ loại cây/quy cách này`);
+    }
+    const plantTypeCode = sourceLots[0].plantType.code;
+    if (quantity > totalAvailable) {
+      throw new ShelfAssignError(
+        `Số cụm bàn giao ${plantTypeCode} (${stageCode}) (${quantity.toLocaleString("vi-VN")}) vượt quá tồn hiện có của giàn ${fromShelf.code} (${totalAvailable.toLocaleString("vi-VN")})`
+      );
+    }
+
+    const draws: { lot: (typeof sourceLots)[number]; take: number }[] = [];
+    let remaining = quantity;
+    for (const lot of sourceLots) {
+      if (remaining <= 0) break;
+      const take = Math.min(remaining, lot.quantity);
+      draws.push({ lot, take });
+      remaining -= take;
+    }
+
+    const lockedDraw = draws.find((d) => d.lot.instructionItems.length > 0);
+    if (lockedDraw) {
+      const instructionCodes = Array.from(new Set(lockedDraw.lot.instructionItems.map((i) => i.instruction.code)));
+      throw new ShelfAssignError(
+        `Lô ${lockedDraw.lot.code} trên giàn ${fromShelf.code} đang là nguồn của chỉ định cấy ${instructionCodes.join(", ")} — chưa thể bàn giao đi kho khác cho tới khi chỉ định đó được bàn giao/hủy.`
+      );
+    }
+
+    return { fromShelf, plantTypeCode, stageCode, quantity, draws };
+  };
+  const prepared: Awaited<ReturnType<typeof prepareLine>>[] = [];
+  for (const line of merged.values()) prepared.push(await prepareLine(line));
+
+  const created = await prisma.$transaction(async (tx) => {
+    const out = [];
+    for (const p of prepared) {
+      for (const { lot, take } of p.draws) {
+        await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: take }, initialQuantity: { decrement: take } } });
+      }
+      const transfer = await tx.transfer.create({
+        data: {
+          code: await generateTransferCode(tx),
+          fromWarehouseId: workplaceWarehouseId,
+          fromRoomId: p.fromShelf.roomId,
+          toWarehouseId,
+          toRoomId: null,
+          fromUserId,
+          toUserId: null,
+          status: "PENDING",
+          notes: notes ? `${MOTHER_WAREHOUSE_TRANSFER_TAG}|${notes}` : MOTHER_WAREHOUSE_TRANSFER_TAG,
+          items: { create: p.draws.map((d) => ({ lotId: d.lot.id, quantity: d.take })) },
+        },
+      });
+      out.push({ transfer, p });
+    }
+    return out;
   });
 
   const destStaff = await prisma.user.findMany({
@@ -106,19 +131,30 @@ export async function sendMotherStockToWarehouse(params: {
     select: { id: true },
   });
   await Promise.all(
-    destStaff.map((u) =>
-      createAlert({
-        type: "MOTHER_WAREHOUSE_TRANSFER_INCOMING",
-        title: "Có phiếu bàn giao mẫu mẹ liên kho chờ nhận",
-        message: `${fromWarehouse?.name ?? "Kho khác"} đã gửi phiếu ${transfer.code} — ${quantity.toLocaleString("vi-VN")} cụm ${plantTypeCode} (${stageCode}), chờ xác nhận số lượng thực nhận`,
-        userId: u.id,
-        relatedId: transfer.id,
-        relatedType: "Transfer",
-      })
+    created.flatMap(({ transfer, p }) =>
+      destStaff.map((u) =>
+        createAlert({
+          type: "MOTHER_WAREHOUSE_TRANSFER_INCOMING",
+          title: "Có phiếu bàn giao mẫu mẹ liên kho chờ nhận",
+          message: `${fromWarehouse?.name ?? "Kho khác"} đã gửi phiếu ${transfer.code} — ${p.quantity.toLocaleString("vi-VN")} cụm ${p.plantTypeCode} (${p.stageCode}), chờ xác nhận số lượng thực nhận`,
+          userId: u.id,
+          relatedId: transfer.id,
+          relatedType: "Transfer",
+        })
+      )
     )
   );
 
-  return { transferCode: transfer.code, fromShelfCode: fromShelf.code, toWarehouseName: toWarehouse.name, quantity };
+  return {
+    toWarehouseName: toWarehouse.name,
+    transfers: created.map(({ transfer, p }) => ({
+      transferCode: transfer.code,
+      fromShelfCode: p.fromShelf.code,
+      plantTypeCode: p.plantTypeCode,
+      stageCode: p.stageCode,
+      quantity: p.quantity,
+    })),
+  };
 }
 
 export async function confirmMotherStockReceipt(params: {
