@@ -173,3 +173,38 @@ export async function notifyRootingQualityEvaluationReady(params: {
     relatedType: "RootingQualityEvaluation",
   });
 }
+
+export type PendingRootingEvaluation = { code: string; roomId: string; rotationGroupId: string; groupName: string; assignedToName: string };
+
+// Đánh giá chất lượng TUẦN NÀY còn PENDING của các Nhóm tuần ra rễ chứa những kệ đã cho — Kho mô CHƯA được
+// bàn giao Nhóm đó cho tới khi NV Kỹ thuật hoàn thành (lúc hoàn thành mới tách phần không đạt sang Nhóm kế
+// tiếp, xem PATCH /api/rooting-quality-evaluations/[id]) — trước đây không chặn gì, Kho mô bàn giao cả Nhóm
+// kể cả cây chưa đạt (Bát Tràng 28/09/2026 Nhóm 4). Chỉ xét đánh giá của tuần hiện tại: đánh giá tuần cũ
+// bỏ dở không chặn mãi Nhóm đó ở các vòng sau; kho không có NV Kỹ thuật thì không sinh đánh giá nên không chặn.
+export async function findPendingRootingEvaluationsForShelves(shelfIds: string[]): Promise<PendingRootingEvaluation[]> {
+  if (shelfIds.length === 0) return [];
+  const shelves = await prisma.shelf.findMany({
+    where: { id: { in: shelfIds }, rotationGroupId: { not: null }, roomId: { not: null } },
+    select: { roomId: true, rotationGroupId: true },
+  });
+  const pairs = [...new Map(shelves.map((s) => [`${s.roomId}:${s.rotationGroupId}`, { roomId: s.roomId!, rotationGroupId: s.rotationGroupId! }])).values()];
+  if (pairs.length === 0) return [];
+  const evaluations = await prisma.rootingQualityEvaluation.findMany({
+    where: {
+      status: "PENDING",
+      weekStart: toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 })),
+      OR: pairs,
+    },
+    select: { code: true, roomId: true, rotationGroupId: true, rotationGroup: { select: { name: true } }, assignedTo: { select: { name: true } } },
+  });
+  return evaluations.map((e) => ({
+    code: e.code, roomId: e.roomId, rotationGroupId: e.rotationGroupId,
+    groupName: e.rotationGroup.name, assignedToName: e.assignedTo.name,
+  }));
+}
+
+export function pendingRootingEvaluationMessage(pending: PendingRootingEvaluation[]): string {
+  const groups = [...new Set(pending.map((p) => p.groupName))].join(", ");
+  const assignees = [...new Set(pending.map((p) => p.assignedToName))].join(", ");
+  return `Nhóm tuần ra rễ ${groups} chưa được NV Kỹ thuật (${assignees}) đánh giá chất lượng — chưa thể bàn giao cho tới khi đánh giá xong`;
+}

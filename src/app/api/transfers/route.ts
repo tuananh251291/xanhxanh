@@ -6,6 +6,7 @@ import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { SURPLUS_TRANSFER_TAG, isKhoThanhPhamRole, isAdminRole } from "@/types";
 import { isVnSunday } from "@/lib/medium-orders";
+import { findPendingRootingEvaluationsForShelves, pendingRootingEvaluationMessage } from "@/lib/rooting-quality-evaluation";
 import { format } from "date-fns";
 import { z } from "zod";
 
@@ -197,6 +198,19 @@ export async function POST(req: NextRequest) {
         { message: `Bạn cần bàn giao lô ngày ${format(olderLot.enteredAt, "dd/MM/yyyy")} trước — các lô nhập kho tối lâu hơn phải bàn giao trước` },
         { status: 400 }
       );
+    }
+  }
+
+  // Bàn giao thành phẩm từ Phòng ra rễ — Nhóm tuần ra rễ còn đánh giá chất lượng tuần này PENDING thì chưa
+  // được bàn giao (xem findPendingRootingEvaluationsForShelves).
+  if (isFromRootingRoom) {
+    const itemLots = await prisma.lot.findMany({
+      where: { id: { in: items.map((i) => i.lotId) }, shelfId: { not: null } },
+      select: { shelfId: true },
+    });
+    const pending = await findPendingRootingEvaluationsForShelves([...new Set(itemLots.map((l) => l.shelfId!))]);
+    if (pending.length > 0) {
+      return NextResponse.json({ message: pendingRootingEvaluationMessage(pending) }, { status: 400 });
     }
   }
 

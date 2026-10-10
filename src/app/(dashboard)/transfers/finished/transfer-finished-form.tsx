@@ -54,9 +54,17 @@ export default function TransferFinishedForm({
                           <> · lô cũ nhất từ {format(new Date(group.oldestEnteredAt), "dd/MM/yyyy", { locale: vi })}</>
                         )}
                       </p>
+                      {group.pendingEvaluationMessage && (
+                        <p className="text-sm font-semibold text-destructive mt-1">{group.pendingEvaluationMessage}</p>
+                      )}
                     </div>
                   </div>
-                  <Button size="sm" className="bg-primary hover:bg-primary-hover shrink-0" onClick={() => selectDueGroup(group)}>
+                  <Button
+                    size="sm"
+                    className="bg-primary hover:bg-primary-hover shrink-0"
+                    onClick={() => selectDueGroup(group)}
+                    disabled={!!group.pendingEvaluationMessage}
+                  >
                     <CheckCheck className="w-4 h-4 mr-1.5" /> Xem trước & bàn giao cả nhóm
                   </Button>
                 </CardContent>

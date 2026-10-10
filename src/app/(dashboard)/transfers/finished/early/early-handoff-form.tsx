@@ -233,6 +233,9 @@ export default function EarlyHandoffForm({
               {previewGroup.roomName} ({previewGroup.warehouseName}) · {previewGroup.shelves.length} kệ
               {!previewGroup.isDue && " · Chưa đến hạn bàn giao theo lịch"}
             </p>
+            {previewGroup.pendingEvaluationMessage && (
+              <p className="text-sm font-semibold text-destructive mt-1">{previewGroup.pendingEvaluationMessage}</p>
+            )}
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {previewGroup.shelves.map((shelf) => (
@@ -308,7 +311,7 @@ export default function EarlyHandoffForm({
           <Button variant="outline" className="flex-1" onClick={() => router.push("/transfers/finished")} disabled={submitting}>
             Hủy, quay lại
           </Button>
-          <Button className="flex-1 bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting}>
+          <Button className="flex-1 bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting || !!previewGroup.pendingEvaluationMessage}>
             {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
             Xác nhận bàn giao
           </Button>

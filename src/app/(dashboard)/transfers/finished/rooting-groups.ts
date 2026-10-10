@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { summarizeRootingWeekGroups, getRootingRotationEpochResolver } from "@/lib/rooting-week-group";
 import { resolveRotationEpoch } from "@/lib/rotation-epoch";
+import { findPendingRootingEvaluationsForShelves, pendingRootingEvaluationMessage } from "@/lib/rooting-quality-evaluation";
 
 export type GroupLot = {
   id: string;
@@ -18,6 +19,8 @@ export type RootingGroup = {
   roomName: string;
   oldestEnteredAt: string | null;
   isDue: boolean;
+  // Đánh giá chất lượng tuần này còn PENDING — Kho mô chưa được bàn giao Nhóm này (POST /api/transfers chặn).
+  pendingEvaluationMessage: string | null;
   shelves: GroupShelf[];
 };
 
@@ -59,32 +62,38 @@ export async function getRootingGroupsForHandoff(workplaceWarehouseId: string | 
     getRootingRotationEpochResolver(),
   ]);
 
+  const pendingEvaluations = await findPendingRootingEvaluationsForShelves(rootingRooms.flatMap((r) => r.shelves.map((s) => s.id)));
+
   const now = new Date();
   return rootingRooms.flatMap((room) => {
     const statuses = summarizeRootingWeekGroups(room.shelves, now, totalSlots, resolveRotationEpoch(epochMonday, room.warehouseId));
-    return statuses.map((s) => ({
-      groupId: s.groupId,
-      groupName: s.groupName,
-      warehouseName: room.warehouse.name,
-      roomName: room.name,
-      oldestEnteredAt: s.oldestEnteredAt ? s.oldestEnteredAt.toISOString() : null,
-      isDue: s.isDue,
-      shelves: room.shelves
-        .filter((sh) => sh.rotationGroupId === s.groupId)
-        .map((sh) => ({
-          id: sh.id,
-          code: sh.code,
-          name: sh.name,
-          roomId: room.id,
-          lots: sh.lots.map((l) => ({
-            id: l.id,
-            code: l.code,
-            quantity: l.quantity,
-            stageCode: l.stageCode,
-            enteredAt: l.enteredAt.toISOString(),
-            plantType: l.plantType,
+    return statuses.map((s) => {
+      const pending = pendingEvaluations.filter((p) => p.roomId === room.id && p.rotationGroupId === s.groupId);
+      return {
+        groupId: s.groupId,
+        groupName: s.groupName,
+        warehouseName: room.warehouse.name,
+        roomName: room.name,
+        oldestEnteredAt: s.oldestEnteredAt ? s.oldestEnteredAt.toISOString() : null,
+        isDue: s.isDue,
+        pendingEvaluationMessage: pending.length > 0 ? pendingRootingEvaluationMessage(pending) : null,
+        shelves: room.shelves
+          .filter((sh) => sh.rotationGroupId === s.groupId)
+          .map((sh) => ({
+            id: sh.id,
+            code: sh.code,
+            name: sh.name,
+            roomId: room.id,
+            lots: sh.lots.map((l) => ({
+              id: l.id,
+              code: l.code,
+              quantity: l.quantity,
+              stageCode: l.stageCode,
+              enteredAt: l.enteredAt.toISOString(),
+              plantType: l.plantType,
+            })),
           })),
-        })),
-    }));
+      };
+    });
   });
 }

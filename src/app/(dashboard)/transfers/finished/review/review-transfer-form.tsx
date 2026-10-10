@@ -5,17 +5,18 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Layers, Loader2, Send } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Layers, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { aggregateLotsByPlantType } from "@/lib/transfer-aggregate";
 import TransferReceipt from "../transfer-receipt";
 import type { ScannedShelf, CreatedTransfer } from "../types";
 
 export default function ReviewTransferForm({
-  khaDungRoomId, staffName, shelves,
+  khaDungRoomId, staffName, shelves, pendingEvaluationMessage,
 }: {
   khaDungRoomId: string;
   staffName: string;
+  pendingEvaluationMessage: string | null;
   shelves: ScannedShelf[];
 }) {
   const router = useRouter();
@@ -73,6 +74,15 @@ export default function ReviewTransferForm({
         </div>
       </div>
 
+      {pendingEvaluationMessage && (
+        <Card className="border border-destructive bg-danger-light">
+          <CardContent className="py-4 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+            <p className="text-sm font-semibold text-destructive">{pendingEvaluationMessage}</p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Giàn kệ đã chọn</CardTitle>
@@ -122,7 +132,7 @@ export default function ReviewTransferForm({
         <Button variant="outline" className="flex-1" onClick={() => router.push("/transfers/finished")} disabled={submitting}>
           Hủy, quay lại
         </Button>
-        <Button className="flex-1 bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting || aggregated.length === 0}>
+        <Button className="flex-1 bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting || aggregated.length === 0 || !!pendingEvaluationMessage}>
           {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
           Xác nhận bàn giao
         </Button>

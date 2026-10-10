@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { isPageAllowed } from "@/lib/permissions";
 import ReviewTransferForm from "./review-transfer-form";
+import { findPendingRootingEvaluationsForShelves, pendingRootingEvaluationMessage } from "@/lib/rooting-quality-evaluation";
 
 // Màn hình xem trước & bàn giao — đích đến của 2 nút "Xem trước & bàn giao cả nhóm" (Nhóm đã đến hạn) và
 // "Xem trước & bàn giao ... kệ đã chọn" (xem trước theo Nhóm tuần ra rễ bất kỳ) ở TransferFinishedForm,
@@ -57,10 +58,13 @@ export default async function TransferFinishedReviewPage({
   });
   if (shelves.length === 0) redirect("/transfers/finished");
 
+  const pendingEvaluations = await findPendingRootingEvaluationsForShelves(shelves.map((s) => s.id));
+
   return (
     <ReviewTransferForm
       khaDungRoomId={khaDungRoom.id}
       staffName={session!.user.name ?? ""}
+      pendingEvaluationMessage={pendingEvaluations.length > 0 ? pendingRootingEvaluationMessage(pendingEvaluations) : null}
       // where đã lọc room.type = PHONG_RA_RE nên roomId chắc chắn có giá trị — Prisma vẫn suy ra kiểu
       // nullable vì đó là quan hệ tùy chọn ở model Shelf nói chung.
       shelves={shelves.map((s) => ({ ...s, roomId: s.roomId! }))}
