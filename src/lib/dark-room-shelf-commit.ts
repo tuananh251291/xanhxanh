@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { addWeeks, startOfWeek } from "date-fns";
+import { addDays, addWeeks, startOfWeek } from "date-fns";
 import { generateLotCode } from "@/lib/codes";
 import type { ShelfPlacement } from "@/lib/shelf-assignment";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
@@ -36,7 +36,8 @@ function computeExpectedMoveAt(
       // đó. % totalSlots cho kết quả 0 ở trường hợp này — quy về totalSlots thay vì 0 (dùng "|| totalSlots"
       // vì 0 falsy trong JS, mọi giá trị khác giữ nguyên).
       const weeksUntilDue = ((rotationOrder - currentSlot + totalSlots) % totalSlots) || totalSlots;
-      return startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 });
+      // Chủ nhật của tuần tới lượt — cùng quy ước với computeImportedMotherExpectedMoveAt (mother-week-group.ts).
+      return addDays(startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 }), 6);
     }
     return addWeeks(enteredAt, plantType.transferWaitWeeks);
   }

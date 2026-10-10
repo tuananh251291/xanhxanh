@@ -65,7 +65,9 @@ export function computeImportedMotherExpectedMoveAt(
   let due = startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 });
   const thisWeek = startOfWeek(now, { weekStartsOn: 1 });
   while (due.getTime() < thisWeek.getTime()) due = addWeeks(due, totalSlots);
-  return due;
+  // Hạn = CHỦ NHẬT của tuần Nhóm tới lượt (không phải Thứ 2) — chỉ báo "quá hạn" khi hết cả tuần tới lượt mà
+  // chưa cấy chuyển (10/10/2026: Thứ 2 làm lô đang đúng tuần tới lượt hiện "quá hạn" ngay từ Thứ 3).
+  return addDays(due, 6);
 }
 
 export type MotherWeekGroupShelf = {

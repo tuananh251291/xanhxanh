@@ -155,7 +155,7 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
   const [myInstructionsAll, dueMotherLots, backupInstructions, motherPhotosThisWeek, activeMotherPlantTypes] = await Promise.all([
     prisma.plantingInstruction.findMany({ where: { createdById: { in: staffIds } }, select: { id: true, createdById: true } }),
     prisma.lot.findMany({
-      where: { stage: "MAU_ME", status: "ACTIVE", expectedMoveAt: { lte: thursdayDeadline }, instruction: { createdById: { in: staffIds } } },
+      where: { stage: "MAU_ME", status: "ACTIVE", expectedMoveAt: { lte: sundayDeadline }, instruction: { createdById: { in: staffIds } } },
       select: { id: true, instruction: { select: { createdById: true } } },
     }),
     prisma.plantingInstruction.findMany({
