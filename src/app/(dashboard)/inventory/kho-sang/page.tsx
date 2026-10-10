@@ -4,11 +4,12 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sun } from "lucide-react";
-import { format, differenceInCalendarDays, addWeeks } from "date-fns";
+import { format, addWeeks } from "date-fns";
 import { vi } from "date-fns/locale";
 import { STAGE_LABELS, sumLotQuantity, isKhoThanhPhamRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import { isoWeekStringToMonday } from "@/lib/week-rotation";
+import { lotDueStatus } from "@/lib/report-utils";
 import type { RoomType } from "@prisma/client";
 import CollapsibleRoom from "./collapsible-room";
 import SummaryByType from "./summary-by-type";
@@ -19,9 +20,9 @@ import ShelfTable from "../../warehouses/shelf-table";
 
 function expiryClass(expectedMoveAt: Date | null): string {
   if (!expectedMoveAt) return "text-text-muted";
-  const daysLeft = differenceInCalendarDays(expectedMoveAt, new Date());
-  if (daysLeft < 0) return "text-destructive font-semibold";
-  if (daysLeft <= 3) return "text-warning-foreground font-semibold";
+  const { state, daysLeft } = lotDueStatus(expectedMoveAt);
+  if (state === "overdue") return "text-destructive font-semibold";
+  if (state === "due" || daysLeft <= 3) return "text-warning-foreground font-semibold";
   return "text-text-muted";
 }
 
@@ -418,21 +419,21 @@ export default async function KhoSangPage({
                           </div>
                           <div className="space-y-0.5 mt-1">
                             {shelf.lots.slice(0, 5).map((lot) => {
-                              const daysLeft = lot.expectedMoveAt
-                                ? differenceInCalendarDays(lot.expectedMoveAt, new Date())
-                                : null;
+                              const status = lot.expectedMoveAt ? lotDueStatus(lot.expectedMoveAt) : null;
                               return (
                                 <div key={lot.id} className="flex items-center justify-between text-xs text-text-secondary">
                                   <span className="font-mono">{lot.code}</span>
                                   <span>{lot.quantity.toLocaleString("vi-VN")}</span>
                                   <span className={expiryClass(lot.expectedMoveAt)}>
-                                    {daysLeft === null
+                                    {status === null
                                       ? format(lot.enteredAt, "dd/MM", { locale: vi })
-                                      : daysLeft < 0
-                                        ? `Quá hạn ${Math.abs(daysLeft)}d`
-                                        : daysLeft <= 3
-                                          ? `Còn ${daysLeft}d`
-                                          : format(lot.enteredAt, "dd/MM", { locale: vi })}
+                                      : status.state === "overdue"
+                                        ? `Quá hạn ${Math.abs(status.daysLeft)}d`
+                                        : status.state === "due"
+                                          ? "Đến hạn"
+                                          : status.daysLeft <= 3
+                                            ? `Còn ${status.daysLeft}d`
+                                            : format(lot.enteredAt, "dd/MM", { locale: vi })}
                                   </span>
                                 </div>
                               );

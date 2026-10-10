@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { differenceInCalendarDays } from "date-fns";
+import { lotDueStatus } from "@/lib/report-utils";
 
 const PAGE_SIZE = 15;
 
@@ -44,8 +44,7 @@ export default function StageLotTable({ lots }: { lots: StageLotRow[] }) {
         </thead>
         <tbody>
           {pageLots.map((lot) => {
-            const daysLeft = lot.expectedMoveAt ? differenceInCalendarDays(lot.expectedMoveAt, new Date()) : null;
-            const overdue = daysLeft !== null && daysLeft < 0;
+            const status = lot.expectedMoveAt ? lotDueStatus(lot.expectedMoveAt) : null;
             return (
               <tr key={lot.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                 <td className="px-3 py-2 font-mono">{lot.code}</td>
@@ -53,9 +52,11 @@ export default function StageLotTable({ lots }: { lots: StageLotRow[] }) {
                 <td className="px-3 py-2 text-text-secondary">{lot.location}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{lot.quantity.toLocaleString("vi-VN")}</td>
                 <td className="px-3 py-2 text-right">
-                  <Badge className={overdue ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
-                    {overdue ? `Quá hạn ${Math.abs(daysLeft!)} ngày` : `Còn ${daysLeft} ngày`}
-                  </Badge>
+                  {status && (
+                    <Badge className={status.state === "overdue" ? "bg-danger-light text-destructive" : "bg-warning-light text-warning-foreground"}>
+                      {status.state === "overdue" ? `Quá hạn ${Math.abs(status.daysLeft)} ngày` : status.state === "due" ? "Đến hạn" : `Còn ${status.daysLeft} ngày`}
+                    </Badge>
+                  )}
                 </td>
               </tr>
             );

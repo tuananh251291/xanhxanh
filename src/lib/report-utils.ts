@@ -65,6 +65,17 @@ export function getMonthBucketsInRange(from: Date, to: Date): WeekBucket[] {
   });
 }
 
+// Trạng thái hạn chuyển giai đoạn của 1 lô: "overdue" = đã qua ngày hạn; "due" = hạn rơi vào CHÍNH tuần này
+// (Thứ 2–Chủ nhật) và chưa qua — lô mẫu mẹ theo Nhóm MM có hạn = Chủ nhật tuần tới lượt (xem
+// computeImportedMotherExpectedMoveAt) nên cả tuần tới lượt hiện "Đến hạn", hết Chủ nhật mới "Quá hạn";
+// "upcoming" = còn từ tuần sau trở đi.
+export function lotDueStatus(expectedMoveAt: Date, now: Date = new Date()): { state: "overdue" | "due" | "upcoming"; daysLeft: number } {
+  const daysLeft = differenceInCalendarDays(expectedMoveAt, now);
+  if (daysLeft < 0) return { state: "overdue", daysLeft };
+  if (expectedMoveAt <= endOfWeek(now, { weekStartsOn: 1 })) return { state: "due", daysLeft };
+  return { state: "upcoming", daysLeft };
+}
+
 export function isNearExpiry(expectedMoveAt: Date | null): boolean {
   if (!expectedMoveAt) return false;
   return differenceInCalendarDays(expectedMoveAt, new Date()) <= 3;
