@@ -83,7 +83,7 @@ export async function computeHandoverHistory(params: {
       },
       inspection: {
         select: {
-          items: { select: { plantTypeId: true, stageCode: true, handedOverQuantity: true, contaminatedQuantity: true, creditedQuantity: true } },
+          items: { select: { plantTypeId: true, stageCode: true, contaminatedQuantity: true, randomCheckPassRate: true, creditedQuantity: true } },
         },
       },
     },
@@ -138,11 +138,11 @@ export async function computeHandoverHistory(params: {
           quantity: i.quantity,
           unqualifiedQuantity: i.unqualifiedQuantity,
           contaminatedQuantity: group ? group.contaminatedQuantity : null,
-          contaminationRatePct: group
-            ? group.handedOverQuantity > 0
-              ? Math.round((group.contaminatedQuantity / group.handedOverQuantity) * 1000) / 10
-              : 0
-            : null,
+          // Đúng giá trị Kho mô NHẬP ở ô "Tỉ lệ nhiễm (%)" (randomCheckPassRate — trung bình nếu gộp nhiều lô)
+          // — chính là tỉ lệ dùng trong công thức SL ghi nhận. KHÔNG tự tính SL nhiễm / SL bàn giao: SL nhiễm
+          // đếm được không trừ vào SL ghi nhận, hiện tỉ lệ đó cạnh cột ghi nhận dễ hiểu nhầm (VD báo nhiễm cả
+          // lô hiện 100% mà vẫn ghi nhận đủ — phiếu BG-202610-0368).
+          contaminationRatePct: group ? Math.round(group.randomCheckPassRate * 10) / 10 : null,
           recordedQuantity,
         };
       }),
