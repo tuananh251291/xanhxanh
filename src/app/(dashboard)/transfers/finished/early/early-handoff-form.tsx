@@ -6,7 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { ArrowLeft, Sprout, Loader2, Send, CheckCheck, Eraser } from "lucide-react";
 import { toast } from "sonner";
 import TransferReceipt from "../transfer-receipt";
@@ -14,18 +23,25 @@ import type { ScannedShelf, ShelfLot, CreatedTransfer } from "../types";
 import type { RootingGroup } from "../rooting-groups";
 
 type PickableShelf = { id: string; code: string; name: string; warehouseName: string; roomName: string };
+type ComboOption = { value: string; label: string };
 
 // 1 dòng = 1 tổ hợp (loại cây, quy cách) gộp trên TOÀN Nhóm (không phân biệt kệ nào) — max = tổng tồn của
-// tổ hợp đó trên mọi kệ trong Nhóm.
-type AggregatedRow = { key: string; code: string; name: string; stageCode: string; max: number };
+// tổ hợp đó trên mọi kệ trong Nhóm, lotCount = số lô góp vào tổng đó.
+type AggregatedRow = { key: string; code: string; name: string; stageCode: string; max: number; lotCount: number };
+
+// 1 Nhóm xoay vòng có thể trải nhiều kho (getRootingGroupsForHandoff tách thành từng mục theo Phòng ra rễ)
+// nên groupId không đủ phân biệt — ghép thêm roomId.
+const GROUP_PREFIX = "group:";
+const groupKey = (g: RootingGroup) => `${GROUP_PREFIX}${g.groupId}::${g.shelves[0]?.roomId ?? ""}`;
 
 function computeAggregatedRows(group: RootingGroup): AggregatedRow[] {
   const map = new Map<string, AggregatedRow>();
   for (const shelf of group.shelves) {
     for (const lot of shelf.lots) {
       const key = `${lot.plantType.id}::${lot.stageCode}`;
-      const existing = map.get(key) ?? { key, code: lot.plantType.code, name: lot.plantType.name, stageCode: lot.stageCode, max: 0 };
+      const existing = map.get(key) ?? { key, code: lot.plantType.code, name: lot.plantType.name, stageCode: lot.stageCode, max: 0, lotCount: 0 };
       existing.max += lot.quantity;
+      existing.lotCount += 1;
       map.set(key, existing);
     }
   }
@@ -41,15 +57,31 @@ export default function EarlyHandoffForm({
   rootingGroups: RootingGroup[];
 }) {
   const router = useRouter();
-  const [previewShelfId, setPreviewShelfId] = useState("");
+  const [previewGroupKey, setPreviewGroupKey] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [createdTransfer, setCreatedTransfer] = useState<CreatedTransfer | null>(null);
 
   const previewGroup = useMemo(
-    () => rootingGroups.find((g) => g.shelves.some((s) => s.id === previewShelfId)) ?? null,
-    [previewShelfId, rootingGroups]
+    () => rootingGroups.find((g) => groupKey(g) === previewGroupKey) ?? null,
+    [previewGroupKey, rootingGroups]
   );
+
+  // Danh sách chọn gồm cả Nhóm tuần ra rễ lẫn từng kệ — gõ mã kệ quen thuộc (VD A03C09) vẫn tìm được, nhưng
+  // chọn vào sẽ tự quy về Nhóm chứa kệ đó (giống "Tạo chỉ định cấy xử lý").
+  const pickOptions: ComboOption[] = useMemo(() => {
+    const groupOf = new Map<string, RootingGroup>();
+    for (const g of rootingGroups) for (const s of g.shelves) groupOf.set(s.id, g);
+    const groupOptions = rootingGroups.map((g) => ({
+      value: groupKey(g),
+      label: `${g.groupName} — ${g.warehouseName} · ${g.shelves.map((s) => s.code).sort().join(", ")}`,
+    }));
+    const shelfOptions = pickableShelves.map((s) => {
+      const g = groupOf.get(s.id);
+      return { value: s.id, label: `${s.code} — ${s.warehouseName} · ${s.roomName}${g ? ` (thuộc ${g.groupName})` : ""}` };
+    });
+    return [...groupOptions, ...shelfOptions];
+  }, [rootingGroups, pickableShelves]);
 
   const aggregatedRows = useMemo(() => (previewGroup ? computeAggregatedRows(previewGroup) : []), [previewGroup]);
 
@@ -59,14 +91,22 @@ export default function EarlyHandoffForm({
     setQuantities(next);
   };
 
-  const pickShelf = (shelfId: string) => {
-    setPreviewShelfId(shelfId);
-    const group = rootingGroups.find((g) => g.shelves.some((s) => s.id === shelfId));
-    if (!group) {
-      toast.error("Kệ này chưa thuộc Nhóm tuần ra rễ nào");
+  const pick = (value: string) => {
+    if (!value) {
+      setPreviewGroupKey("");
       setQuantities({});
       return;
     }
+    const group = value.startsWith(GROUP_PREFIX)
+      ? rootingGroups.find((g) => groupKey(g) === value)
+      : rootingGroups.find((g) => g.shelves.some((s) => s.id === value));
+    if (!group) {
+      toast.error("Kệ này chưa thuộc Nhóm tuần ra rễ nào");
+      setPreviewGroupKey("");
+      setQuantities({});
+      return;
+    }
+    setPreviewGroupKey(groupKey(group));
     // Mặc định điền sẵn = tồn tối đa (giống mặc định "chọn tất cả" trước đây) — NV sửa xuống số ít hơn
     // cho loại cây/quy cách nào muốn giữ lại (chưa đạt xuất), không bắt buộc nhập lại từ đầu.
     fillQuantities(computeAggregatedRows(group), true);
@@ -165,18 +205,23 @@ export default function EarlyHandoffForm({
 
       <Card>
         <CardContent className="pt-4">
-          <Select
-            items={pickableShelves.map((s) => ({ value: s.id, label: `${s.code} — ${s.warehouseName} · ${s.roomName}` }))}
-            value={previewShelfId}
-            onValueChange={(v) => pickShelf(v as string)}
+          <Combobox
+            items={pickOptions}
+            value={pickOptions.find((o) => o.value === previewGroupKey) ?? null}
+            isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+            onValueChange={(v) => pick(v ? (v as ComboOption).value : "")}
           >
-            <SelectTrigger className="w-full sm:w-96"><SelectValue placeholder="Chọn 1 kệ để xem Nhóm tuần ra rễ..." /></SelectTrigger>
-            <SelectContent>
-              {pickableShelves.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.code} — {s.warehouseName} · {s.roomName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <ComboboxInputGroup className="w-full sm:w-[28rem] h-9">
+              <ComboboxInput placeholder="Gõ mã kệ hoặc tên Nhóm tuần ra rễ..." />
+              <ComboboxTrigger />
+            </ComboboxInputGroup>
+            <ComboboxContent>
+              <ComboboxEmpty>Không tìm thấy kệ</ComboboxEmpty>
+              <ComboboxList>
+                {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
         </CardContent>
       </Card>
 
@@ -234,7 +279,10 @@ export default function EarlyHandoffForm({
                           {row.name}
                         </td>
                         <td className="px-4 py-2.5">{row.stageCode}</td>
-                        <td className="px-4 py-2.5 text-text-secondary">{row.max.toLocaleString("vi-VN")}</td>
+                        <td className="px-4 py-2.5 text-text-secondary">
+                          {row.max.toLocaleString("vi-VN")}
+                          {row.lotCount > 1 && <span className="text-xs text-text-muted ml-1">({row.lotCount} lô)</span>}
+                        </td>
                         <td className="px-4 py-2.5">
                           <Input
                             type="number"

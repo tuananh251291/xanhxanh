@@ -47,7 +47,8 @@ export async function getRootingGroupsForHandoff(workplaceWarehouseId: string | 
             rotationGroupId: true,
             rotationGroup: { select: { id: true, name: true, rotationOrder: true } },
             lots: {
-              where: { status: "ACTIVE" },
+              // Lô về 0 vẫn giữ status ACTIVE (không bị xoá) — bỏ qua để không hiện dòng/đếm lô rỗng.
+              where: { status: "ACTIVE", quantity: { gt: 0 } },
               select: { id: true, code: true, quantity: true, stageCode: true, enteredAt: true, plantType: { select: { id: true, code: true, name: true } } },
             },
           },

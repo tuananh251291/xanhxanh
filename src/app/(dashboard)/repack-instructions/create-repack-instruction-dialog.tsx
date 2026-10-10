@@ -70,7 +70,7 @@ export default function CreateRepackInstructionDialog() {
     setLoading(true);
     fetch("/api/lots?roomType=PHONG_RA_RE&stage=THANH_PHAM&status=ACTIVE")
       .then((r) => r.json())
-      .then((data: FinishedLot[]) => setLots(Array.isArray(data) ? data.filter((l) => l.shelf) : []))
+      .then((data: FinishedLot[]) => setLots(Array.isArray(data) ? data.filter((l) => l.shelf && l.quantity > 0) : []))
       .finally(() => setLoading(false));
   }, [open]);
 
