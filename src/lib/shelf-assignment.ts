@@ -1,4 +1,4 @@
-import { addWeeks } from "date-fns";
+import { addWeeks, startOfWeek, endOfWeek } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getCurrentWeekSlot, getRootingRotationEpoch } from "@/lib/rooting-week-group";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
@@ -129,7 +129,7 @@ export async function planShelfAssignments(
   // còn hard-code 4 — xem getCurrentWeekSlot.
   const raReGroups = await prisma.shelfGroup.findMany({
     where: { rotationKind: "RA_RE" },
-    select: { id: true, rotationOrder: true },
+    select: { id: true, name: true, rotationOrder: true },
   });
   // Tuần khởi đầu Nhóm tuần ra rễ của ĐÚNG kho đang xếp (giá trị riêng của kho, không có thì giá trị chung).
   const epochMonday = raReGroups.length > 0 ? ((await getRootingRotationEpoch(warehouseId)) ?? null) : null;
@@ -140,7 +140,7 @@ export async function planShelfAssignments(
   // đổi theo tốc độ xử lý hành chính thay vì cố định theo ngày nhập, gây khó đoán trước. Từng lô trong 1
   // đợt xác nhận (đặc biệt luồng Xanh gộp nhiều phiếu) có thể có enteredAt khác nhau nên tính riêng
   // từng lô, không dùng chung 1 "hôm nay" cho cả batch.
-  function resolveRaReGroupAt(atDate: Date): { id: string; rotationOrder: number | null } | "BEFORE_EPOCH" | undefined {
+  function resolveRaReGroupAt(atDate: Date): { id: string; name: string; rotationOrder: number | null } | "BEFORE_EPOCH" | undefined {
     if (raReGroups.length === 0) return undefined;
     // Tuần của atDate còn TRƯỚC mốc "Tuần khởi đầu Nhóm tuần ra rễ 1" đã cấu hình — lịch xoay vòng thật
     // sự CHƯA bắt đầu tại thời điểm đó. getCurrentWeekSlot tính theo mod N nên tự "quay ngược" ra 1 khe
@@ -202,6 +202,39 @@ export async function planShelfAssignments(
     return result;
   }
 
+  // Giàn của Nhóm tuần ra rễ nhận lô mới phải TRỐNG lứa trước — Nhóm nhận cây mới đúng tuần nó tới lượt
+  // xuất, nên lứa cũ phải được bàn giao (hoặc xử lý) hết trước, không để lô mới chưa đủ tuổi lẫn chung giàn
+  // với lô cũ rồi bị bàn giao cả Nhóm. "Lứa trước" = lô còn tồn đã tới hạn xuất (expectedMoveAt ≤ Chủ nhật
+  // tuần này — lô vừa xếp trong vòng hiện tại có hạn ở vòng sau, xem computeRootingExpectedMoveAt, nên
+  // nhiều đợt xếp trong cùng tuần không tự chặn nhau); lô cũ chưa có hạn thì xét lô lên giàn trước tuần này.
+  // Cache theo Nhóm như hasPendingHandover.
+  const unclearedByGroup = new Map<string, { shelfCodes: string; quantity: number } | null>();
+  async function findUnclearedRootingShelves(rotationGroupId: string, shelfIds: string[]) {
+    if (unclearedByGroup.has(rotationGroupId)) return unclearedByGroup.get(rotationGroupId)!;
+    const now = new Date();
+    const oldLots = await prisma.lot.findMany({
+      where: {
+        shelfId: { in: shelfIds },
+        status: "ACTIVE",
+        quantity: { gt: 0 },
+        OR: [
+          { expectedMoveAt: { lte: endOfWeek(now, { weekStartsOn: 1 }) } },
+          { expectedMoveAt: null, enteredAt: { lt: startOfWeek(now, { weekStartsOn: 1 }) } },
+        ],
+      },
+      select: { quantity: true, shelf: { select: { code: true } } },
+    });
+    const codes = [...new Set(oldLots.map((l) => l.shelf!.code))].sort();
+    const result = codes.length === 0
+      ? null
+      : {
+          shelfCodes: codes.length > 6 ? `${codes.slice(0, 6).join(", ")} … (${codes.length} giàn)` : codes.join(", "),
+          quantity: oldLots.reduce((s, l) => s + l.quantity, 0),
+        };
+    unclearedByGroup.set(rotationGroupId, result);
+    return result;
+  }
+
   for (const { lotId, lot } of transferItems) {
     if (lot.stage === "THANH_PHAM") {
       let pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
@@ -231,6 +264,12 @@ export async function planShelfAssignments(
         if (weekPool.length === 0) {
           throw new ShelfAssignError(
             `Chưa có kệ Phòng ra rễ nào được gán Nhóm tuần ra rễ (thứ tự ${resolvedGroup.rotationOrder}) — SUPER_ADMIN cần cấu hình ở /settings/shelf-groups`
+          );
+        }
+        const notCleared = await findUnclearedRootingShelves(resolvedGroup.id, weekPool.map((c) => c.id));
+        if (notCleared) {
+          throw new ShelfAssignError(
+            `Giàn kệ ${notCleared.shelfCodes} (Nhóm tuần ra rễ ${resolvedGroup.name}) còn ${notCleared.quantity.toLocaleString("vi-VN")} cây lứa trước chưa bàn giao — cần bàn giao sang Kho thành phẩm hoặc xử lý trống giàn kệ trước khi xếp cây mới`
           );
         }
         pool = weekPool;
