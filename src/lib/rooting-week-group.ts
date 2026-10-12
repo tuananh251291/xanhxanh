@@ -4,6 +4,30 @@
 // (isoWeekStringToMonday, getCurrentWeekSlot) dùng chung với Nhóm tuần mẫu mẹ — xem src/lib/week-rotation.ts.
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
 import { getRotationEpoch, getRotationEpochResolver, type RotationEpochResolver } from "@/lib/rotation-epoch";
+import { addDays, addWeeks, startOfWeek } from "date-fns";
+
+// Hạn chuyển Kho thành phẩm (Lot.expectedMoveAt) của lô cây ra rễ trên giàn Phòng ra rễ — theo lịch Nhóm
+// tuần ra rễ thay vì "lên kệ + số tuần ra rễ": Kho mô bàn giao CẢ Nhóm đúng tuần Nhóm tới lượt (xem
+// summarizeRootingWeekGroups), nên hạn của lô = CHỦ NHẬT của lượt đầu tiên SAU tuần lô lên kệ (lô lên kệ
+// đúng tuần Nhóm đang tới lượt thì chờ trọn 1 vòng N tuần). Cả tuần tới lượt hiện "Đến hạn", hết Chủ nhật
+// mà lô còn trên giàn mới "Quá hạn" (lotDueStatus). Không bắt buộc đủ PlantType.rootingWeeks — phần không đạt
+// sau đánh giá chất lượng lùi sang Nhóm kế tiếp để xuất ngay tuần sau (xem PATCH
+// /api/rooting-quality-evaluations/[id]). Giàn chưa thuộc Nhóm hoặc kho chưa cấu hình Tuần khởi đầu: giữ
+// công thức cũ (Thứ 2 tuần lên kệ + số tuần ra rễ).
+export function computeRootingExpectedMoveAt(
+  rootingWeeks: number,
+  enteredAt: Date,
+  rotationOrder: number | null,
+  totalSlots: number,
+  epochMonday: Date | undefined
+): Date {
+  if (rotationOrder == null || !epochMonday || totalSlots <= 0) {
+    return addWeeks(startOfWeek(enteredAt, { weekStartsOn: 1 }), rootingWeeks);
+  }
+  const enteredSlot = getCurrentWeekSlot(totalSlots, enteredAt, epochMonday);
+  const weeksUntilDue = ((rotationOrder - enteredSlot + totalSlots) % totalSlots) || totalSlots;
+  return addDays(startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 }), 6);
+}
 
 export { isoWeekStringToMonday, getCurrentWeekSlot } from "@/lib/week-rotation";
 

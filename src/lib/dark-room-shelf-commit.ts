@@ -5,15 +5,14 @@ import { generateLotCode } from "@/lib/codes";
 import type { ShelfPlacement } from "@/lib/shelf-assignment";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
 import { getCurrentWeekSlot } from "@/lib/week-rotation";
+import { computeRootingExpectedMoveAt, getRootingRotationEpoch } from "@/lib/rooting-week-group";
 
 // Hạn "đến lịch cấy chuyển/chuyển kho thành phẩm" tính từ đúng lúc lô LÊN KỆ (Kho sáng), không phải lúc
 // nhập dữ liệu cấy ở Phòng tối — vì Phòng tối còn giữ lô vài ngày trước khi Kho mô xác nhận nhận lên kệ,
 // nếu tính từ lúc nhập dữ liệu thì hạn sẽ đến sớm hơn thực tế NV cần theo dõi trên kệ.
-// Cây ra rễ (THANH_PHAM): tính từ ĐẦU TUẦN lúc lên kệ (Thứ 2), không phải đúng giờ phút bàn giao — vì
-// lô lên kệ nằm trong đúng Nhóm tuần ra rễ của tuần đó (xem planShelfAssignments), nên mọi lô cùng vào 1
-// Nhóm trong cùng 1 tuần phải dùng CHUNG đúng 1 hạn xuất (VD Nhóm bắt đầu nhận ở tuần 27, ra rễ 3 tuần
-// thì mọi lô trong nhóm đó đều hạn tuần 30), không lệch nhau vài ngày dù bàn giao khác thời điểm trong
-// tuần.
+// Cây ra rễ (THANH_PHAM): theo lịch Nhóm tuần ra rễ của giàn nhận lô — Chủ nhật lượt tới lượt đầu tiên
+// sau tuần lên kệ (computeRootingExpectedMoveAt, cùng công thức job syncRootingLotDueDates). Giàn chưa
+// thuộc Nhóm/chưa cấu hình Tuần khởi đầu thì Thứ 2 tuần lên kệ + số tuần ra rễ như cũ.
 // Mẫu mẹ (MAU_ME): nếu kệ THẬT SỰ nhận lô (rotationOrder) đã thuộc 1 Nhóm tuần mẫu mẹ và đã cấu hình
 // "Tuần khởi đầu" (motherEpochMonday) thì tính THEO ĐÚNG LỊCH XOAY VÒNG của Nhóm đó (giống hệt cách
 // POST /api/inventory/stock-in tính lúc tạo lô mới trực tiếp lên kệ) — để khớp với trang "Kệ sắp đến
@@ -25,7 +24,8 @@ function computeExpectedMoveAt(
   plantType: { rootingWeeks: number; transferWaitWeeks: number },
   enteredAt: Date,
   rotationOrder: number | null,
-  motherEpochMonday: Date | undefined
+  motherEpochMonday: Date | undefined,
+  rooting: { rotationOrder: number | null; totalSlots: number; epochMonday: Date | undefined }
 ): Date {
   if (stage === "MAU_ME") {
     if (rotationOrder != null && motherEpochMonday) {
@@ -41,7 +41,7 @@ function computeExpectedMoveAt(
     }
     return addWeeks(enteredAt, plantType.transferWaitWeeks);
   }
-  return addWeeks(startOfWeek(enteredAt, { weekStartsOn: 1 }), plantType.rootingWeeks);
+  return computeRootingExpectedMoveAt(plantType.rootingWeeks, enteredAt, rooting.rotationOrder, rooting.totalSlots, rooting.epochMonday);
 }
 
 // Áp dụng kết quả planShelfAssignments/planSurplusPlacement vào DB: gán shelfId + enteredAt mới cho lô
@@ -60,6 +60,30 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
     ? (await prisma.shelf.findUnique({ where: { id: firstMotherPlacement.shelfId }, select: { warehouseId: true } }))?.warehouseId
     : undefined;
   const motherEpochMonday = firstMotherPlacement ? await getMotherRotationEpoch(motherWarehouseId) : undefined;
+
+  // Cây ra rễ: planShelfAssignments không gắn rotationOrder cho điểm đặt RA_RE — tra Nhóm tuần ra rễ của
+  // từng giàn nhận lô + Tuần khởi đầu của kho + tổng số Nhóm (N), chỉ khi batch có lô thành phẩm.
+  const rootingPlacements = placements.filter((p) => p.lot.stage === "THANH_PHAM");
+  const rootingShelves = rootingPlacements.length > 0
+    ? await prisma.shelf.findMany({
+        where: { id: { in: [...new Set(rootingPlacements.map((p) => p.shelfId))] } },
+        select: { id: true, warehouseId: true, rotationGroup: { select: { rotationKind: true, rotationOrder: true } } },
+      })
+    : [];
+  const rootingOrderByShelf = new Map(
+    rootingShelves.map((s) => [s.id, s.rotationGroup?.rotationKind === "RA_RE" ? s.rotationGroup.rotationOrder : null])
+  );
+  const [rootingTotalSlots, rootingEpochMonday] = rootingShelves.length > 0
+    ? await Promise.all([
+        prisma.shelfGroup.count({ where: { rotationKind: "RA_RE" } }),
+        getRootingRotationEpoch(rootingShelves[0].warehouseId),
+      ])
+    : [0, undefined];
+  const rootingFor = (shelfId: string) => ({
+    rotationOrder: rootingOrderByShelf.get(shelfId) ?? null,
+    totalSlots: rootingTotalSlots,
+    epochMonday: rootingEpochMonday,
+  });
 
   const byLot = new Map<string, ShelfPlacement[]>();
   for (const p of placements) {
@@ -83,7 +107,7 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
         enteredAt,
         // KHÔNG đụng vào darkRoomEnteredAt ở đây — giữ nguyên giá trị gốc đã set lúc tạo lô (ngày nhập
         // kho tối thật), tách biệt hẳn khỏi enteredAt vừa bị ghi đè thành ngày lên kệ ở trên.
-        expectedMoveAt: computeExpectedMoveAt(first.lot.stage, first.lot.plantType, enteredAt, first.rotationOrder, motherEpochMonday),
+        expectedMoveAt: computeExpectedMoveAt(first.lot.stage, first.lot.plantType, enteredAt, first.rotationOrder, motherEpochMonday, rootingFor(first.shelfId)),
         ...(isSplit ? { quantity: first.quantity, initialQuantity: first.quantity } : {}),
       },
     });
@@ -111,7 +135,7 @@ export async function commitShelfPlacements(tx: Prisma.TransactionClient, placem
           // Lô con kế thừa ĐÚNG ngày nhập kho tối gốc của lô cha (part.lot), không phải "enteredAt" vừa
           // tính lại ở trên (đó là ngày lên kệ, dùng riêng cho expectedMoveAt).
           darkRoomEnteredAt: part.lot.darkRoomEnteredAt,
-          expectedMoveAt: computeExpectedMoveAt(part.lot.stage, part.lot.plantType, enteredAt, part.rotationOrder, motherEpochMonday),
+          expectedMoveAt: computeExpectedMoveAt(part.lot.stage, part.lot.plantType, enteredAt, part.rotationOrder, motherEpochMonday, rootingFor(part.shelfId)),
           instructionId: part.lot.instructionId,
           parentLotId: lotId,
         },

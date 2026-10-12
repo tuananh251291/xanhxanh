@@ -3,6 +3,7 @@ import { cleanupExpiredRejectClassificationPhotos } from "@/lib/reject-classific
 import { cleanupExpiredContaminationProposalPhotos } from "@/lib/contamination-proposal-storage";
 import { cleanupExpiredAttendanceSelfies } from "@/lib/attendance-storage";
 import { syncMotherLotDueDates } from "@/lib/mother-due-sync";
+import { syncRootingLotDueDates } from "@/lib/rooting-due-sync";
 
 // Chạy 3h sáng mỗi ngày (giờ server) — khung giờ ít NV thao tác nhất, tránh cạnh tranh tài nguyên với
 // lúc NV nhập liệu ban ngày. Lỗi (VD Supabase tạm gián đoạn) chỉ log, không crash tiến trình Next.js —
@@ -54,3 +55,16 @@ async function runMotherDueSync() {
 }
 void runMotherDueSync();
 cron.schedule("5 * * * *", runMotherDueSync);
+
+// Đồng bộ hạn chuyển Kho thành phẩm của lô cây ra rễ theo lịch Nhóm tuần ra rễ (xem src/lib/rooting-due-sync.ts)
+// — cùng nhịp với mẫu mẹ, để lô vừa lên giàn/lùi Nhóm sau đánh giá chất lượng sớm đúng hạn.
+async function runRootingDueSync() {
+  try {
+    const { updated } = await syncRootingLotDueDates();
+    if (updated > 0) console.log(`[cron] Đã đồng bộ hạn ra rễ theo Nhóm tuần ra rễ cho ${updated} lô`);
+  } catch (err) {
+    console.error("[cron] Lỗi đồng bộ hạn ra rễ:", err);
+  }
+}
+void runRootingDueSync();
+cron.schedule("10 * * * *", runRootingDueSync);

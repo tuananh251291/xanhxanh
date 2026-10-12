@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createAlertForWarehouseStaff } from "@/lib/inventory";
+import { endOfWeek } from "date-fns";
 
 // Không có tiến trình chạy nền (cron) trong app này — kiểm tra "đã đủ thời gian ra rễ chưa" được gọi mỗi
 // khi layout dashboard render cho KHO_MO (xem (dashboard)/layout.tsx), coi như 1 checkpoint gần-thời-gian-thực
@@ -12,7 +13,9 @@ export async function ensureRootingReadyAlerts(): Promise<void> {
       stage: "THANH_PHAM",
       status: "ACTIVE",
       shelfId: { not: null },
-      expectedMoveAt: { lte: new Date() },
+      // Hạn theo Nhóm tuần ra rễ là Chủ nhật của tuần tới lượt (xem computeRootingExpectedMoveAt) — báo ngay
+      // từ đầu tuần tới lượt thay vì đợi tới Chủ nhật.
+      expectedMoveAt: { lte: endOfWeek(new Date(), { weekStartsOn: 1 }) },
     },
     select: { id: true, code: true, plantType: { select: { name: true } }, shelf: { select: { warehouseId: true } } },
   });
