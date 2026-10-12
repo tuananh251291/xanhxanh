@@ -555,6 +555,8 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   // Nhóm đến hạn tuần này chưa bàn giao — hạn chót là Chủ nhật cuối tuần (cùng mốc với báo cáo Số ngày không
   // hoàn thành nhiệm vụ), hiện thẻ nhắc ở đầu dashboard Kho mô.
   const finishedPendingGroupNames = [...new Set(finishedGroups.filter((g) => !g.done).map((g) => g.groupName))];
+  // Trong số đó, Nhóm chưa bàn giao được vì NV Kỹ thuật chưa đánh giá chất lượng (bị chặn ở POST /api/transfers).
+  const finishedWaitingEvalGroupNames = [...new Set(finishedGroups.filter((g) => !g.done && g.waitingEvaluation).map((g) => g.groupName))];
   const finishedDaysLeft = Math.max(0, differenceInCalendarDays(weekEnd, now));
 
   // Chỉ hiện việc "Gửi đề xuất Trồng/Hủy" từ Thứ 5 tuần này trở đi — biến mất ngay khi đã gửi (dù gửi
@@ -595,7 +597,7 @@ async function getKhoMoWeeklyStats(workplaceWarehouseId: string | null) {
   return {
     weekStart, weekEnd,
     handoverDone, handoverTotal, handoverPercent,
-    finishedDone, finishedTotal, finishedPercent, finishedPendingGroupNames, finishedDaysLeft,
+    finishedDone, finishedTotal, finishedPercent, finishedPendingGroupNames, finishedWaitingEvalGroupNames, finishedDaysLeft,
     contaminationTaskVisible, contaminationOverdueDays,
     replantTaskVisible, replantOverdueDays, replantAwaitingConfirmation: pendingReplantHandover !== null,
     mediumSurplusOrderId,
@@ -1289,6 +1291,11 @@ function KhoMoTaskDashboard({
                     ? "Hôm nay là hạn cuối — bấm để bàn giao ngay"
                     : `Còn ${weeklyStats.finishedDaysLeft} ngày — bấm để bàn giao`}
                 </p>
+                {weeklyStats.finishedWaitingEvalGroupNames.length > 0 && (
+                  <p className="text-xs font-semibold text-foreground mt-1">
+                    Nhóm {weeklyStats.finishedWaitingEvalGroupNames.join(", ")} đang chờ NV Kỹ thuật đánh giá chất lượng — chỉ bàn giao được sau khi đánh giá xong
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

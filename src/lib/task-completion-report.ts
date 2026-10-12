@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getInspectionDueAt } from "@/lib/inspection";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { getRootingHandoffTaskGroups } from "@/lib/rooting-handoff-task";
+import { rootingEvalDeadline } from "@/lib/rooting-quality-evaluation";
 import { MIN_BACKUP_INSTRUCTION_COUNT } from "@/types";
 import {
   startOfDay, endOfDay, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, format, isBefore, isAfter,
@@ -65,6 +66,25 @@ function buildDay(date: Date, evaluated: EvaluatedTask[], exemptions: ExemptionM
     exempted: reason !== null,
     exemptionReason: reason,
   };
+}
+
+// Gộp thêm 1 đầu việc vào ngày đã có trong danh sách (VD Thứ 5 đã có "Tạo chỉ định cấy") thay vì tạo thêm
+// 1 dòng trùng ngày — countNotCompleted đếm theo dòng nên trùng ngày sẽ bị tính 2 lần.
+function addTaskToDay(days: TaskCompletionDay[], date: Date, task: EvaluatedTask, exemptions: ExemptionMap, staffId: string) {
+  const key = format(date, "yyyy-MM-dd");
+  const existing = days.find((d) => d.date === key);
+  if (!existing) {
+    days.push(buildDay(date, [task], exemptions, staffId));
+    return;
+  }
+  (task.done ? existing.completedTasks : existing.missedTasks).push(task.title);
+}
+
+// weekStart lưu DB là UTC-midnight của chuỗi "yyyy-MM-dd" (xem toStoredWeekStart) — đổi lại về 0h giờ local
+// của đúng ngày đó để cộng/trừ ngày theo lịch.
+function storedWeekStartToLocal(stored: Date): Date {
+  const [y, m, d] = stored.toISOString().slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function countNotCompleted(days: TaskCompletionDay[]): number {
@@ -152,7 +172,7 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
 
   const exemptions = await loadExemptions(staffIds, weekStart, evalEnd);
 
-  const [myInstructionsAll, dueMotherLots, backupInstructions, motherPhotosThisWeek, activeMotherPlantTypes] = await Promise.all([
+  const [myInstructionsAll, dueMotherLots, backupInstructions, motherPhotosThisWeek, activeMotherPlantTypes, rootingEvaluations] = await Promise.all([
     prisma.plantingInstruction.findMany({ where: { createdById: { in: staffIds } }, select: { id: true, createdById: true } }),
     prisma.lot.findMany({
       where: { stage: "MAU_ME", status: "ACTIVE", expectedMoveAt: { lte: sundayDeadline }, instruction: { createdById: { in: staffIds } } },
@@ -172,6 +192,15 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
       where: { stage: "MAU_ME", status: "ACTIVE", quantity: { gt: 0 }, shelf: { assignedStaffId: { not: null } } },
       distinct: ["plantTypeId", "shelfId"],
       select: { plantTypeId: true, shelf: { select: { warehouseId: true } } },
+    }),
+    // Đánh giá có hạn/khung tính lỗi (Thứ 5 tuần trước tuần xuất → hết tuần xuất) giao nhau với tuần đang
+    // xem: tuần xuất là tuần này hoặc tuần sau.
+    prisma.rootingQualityEvaluation.findMany({
+      where: {
+        assignedToId: { in: staffIds },
+        weekStart: { in: [toStoredWeekStart(weekStart), toStoredWeekStart(addWeeks(weekStart, 1))] },
+      },
+      select: { assignedToId: true, weekStart: true, completedAt: true },
     }),
   ]);
 
@@ -249,6 +278,24 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
         const checkOk = alerts.length === 0 || alerts.every((a) => a.cause !== null);
         days.push(buildDay(sundayDeadline, [{ title: "Kiểm tra tình trạng cấy", done: checkOk }], exemptions, staff.id));
       }
+
+      // "Đánh giá chất lượng cây ra rễ" — hạn hết Thứ 5 tuần trước tuần xuất (rootingEvalDeadline). Thứ 2–4
+      // chưa xong không tính; từ ngày Thứ 5 trở đi, MỖI ngày hết ngày mà vẫn chưa hoàn thành tính 1 ngày
+      // không hoàn thành, cho tới khi xong hoặc hết tuần xuất (sau đó Nhóm đã qua lượt, đánh giá không còn
+      // tác dụng). Hoàn thành đúng hạn thì ghi nhận "đã xong" ở ngày Thứ 5.
+      for (const evaluation of rootingEvaluations.filter((e) => e.assignedToId === staff.id)) {
+        const exportWeek = storedWeekStartToLocal(evaluation.weekStart);
+        const deadline = startOfDay(rootingEvalDeadline(exportWeek));
+        const lastDay = endOfWeek(exportWeek, { weekStartsOn: 1 });
+        for (let d = deadline; !isAfter(d, lastDay) && !isAfter(d, evalEnd); d = addDays(d, 1)) {
+          if (isBefore(d, weekStart) || isBefore(d, startOfDay(staff.createdAt))) continue;
+          const done = !!evaluation.completedAt && !isAfter(evaluation.completedAt, endOfDay(d));
+          if (done && !isSameDay(d, deadline)) break;
+          addTaskToDay(days, d, { title: "Đánh giá chất lượng cây ra rễ", done }, exemptions, staff.id);
+          if (done) break;
+        }
+      }
+      days.sort((a, b) => a.date.localeCompare(b.date));
 
       return {
         staffId: staff.id, staffCode: staff.code, staffName: staff.name, role: "KY_THUAT" as const,
@@ -346,8 +393,11 @@ async function buildKhoMoSharedEvaluatedByDay(
     const sundayEnd = endOfDay(weekEnd);
     // Mỗi Nhóm tuần ra rễ đến hạn tuần này phải được Kho mô tạo phiếu bàn giao trong tuần (xem
     // getRootingHandoffTaskGroups) — trước đây chỉ đánh giá khi ĐÃ có phiếu, không bàn giao gì thì bỏ qua.
-    if (finishedGroups.length > 0) {
-      addEvaluated(weekEnd, "Bàn giao thành phẩm", finishedGroups.every((g) => g.done));
+    // Nhóm bị chặn vì NV Kỹ thuật chưa đánh giá chất lượng (waitingEvaluation) không tính cho Kho mô — lỗi
+    // đó tính cho NV Kỹ thuật (việc "Đánh giá chất lượng cây ra rễ", xem buildKyThuatRows).
+    const evaluableGroups = finishedGroups.filter((g) => !g.waitingEvaluation);
+    if (evaluableGroups.length > 0) {
+      addEvaluated(weekEnd, "Bàn giao thành phẩm", evaluableGroups.every((g) => g.done));
     }
     if (mediumDays.length > 0) {
       addEvaluated(weekEnd, "Nhận môi trường", mediumDays.every((d) => d.confirmedAt !== null && !isAfter(d.confirmedAt, sundayEnd)));

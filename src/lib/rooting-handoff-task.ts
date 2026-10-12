@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getCurrentWeekSlot } from "@/lib/week-rotation";
+import { getCurrentWeekSlot, toStoredWeekStart } from "@/lib/week-rotation";
 import { getRotationEpochResolver, resolveRotationEpoch } from "@/lib/rotation-epoch";
 
 export type RootingHandoffTaskGroup = {
@@ -7,6 +7,9 @@ export type RootingHandoffTaskGroup = {
   groupId: string;
   groupName: string;
   done: boolean;
+  // Chưa bàn giao vì NV Kỹ thuật chưa hoàn thành đánh giá chất lượng tuần xuất này (tới hết tuần) — Kho mô bị
+  // chặn bàn giao (POST /api/transfers), nên không tính là Kho mô không hoàn thành.
+  waitingEvaluation: boolean;
 };
 
 // Lấy mã giàn kệ ghi trong notes phiếu bàn giao thành phẩm — cả 2 luồng tạo phiếu đều ghi "Giàn kệ: A01C01,
@@ -52,14 +55,24 @@ export async function getRootingHandoffTaskGroups(
   ]);
   if (totalSlots === 0 || rooms.length === 0) return [];
 
-  const transfers = await prisma.transfer.findMany({
-    where: {
-      fromRoomId: { in: rooms.map((r) => r.id) },
-      status: { not: "REJECTED" },
-      createdAt: { gte: weekStart, lte: weekEnd },
-    },
-    select: { fromRoomId: true, notes: true, items: { select: { lot: { select: { shelfId: true } } } } },
-  });
+  const [transfers, evaluations] = await Promise.all([
+    prisma.transfer.findMany({
+      where: {
+        fromRoomId: { in: rooms.map((r) => r.id) },
+        status: { not: "REJECTED" },
+        createdAt: { gte: weekStart, lte: weekEnd },
+      },
+      select: { fromRoomId: true, notes: true, items: { select: { lot: { select: { shelfId: true } } } } },
+    }),
+    prisma.rootingQualityEvaluation.findMany({
+      where: { roomId: { in: rooms.map((r) => r.id) }, weekStart: toStoredWeekStart(weekStart) },
+      select: { roomId: true, rotationGroupId: true, completedAt: true },
+    }),
+  ]);
+  const isWaitingEvaluation = (roomId: string, groupId: string) =>
+    evaluations.some(
+      (e) => e.roomId === roomId && e.rotationGroupId === groupId && (!e.completedAt || e.completedAt.getTime() > weekEnd.getTime())
+    );
 
   const result: RootingHandoffTaskGroup[] = [];
   for (const room of rooms) {
@@ -84,12 +97,16 @@ export async function getRootingHandoffTaskGroups(
     for (const shelf of room.shelves) {
       const group = shelf.rotationGroup;
       if (!group || group.rotationOrder !== slot) continue;
-      const entry = byGroup.get(group.id) ?? { roomId: room.id, groupId: group.id, groupName: group.name, done: false, hasStock: false };
+      const entry = byGroup.get(group.id) ?? {
+        roomId: room.id, groupId: group.id, groupName: group.name, done: false, hasStock: false,
+        waitingEvaluation: isWaitingEvaluation(room.id, group.id),
+      };
       if (shelf._count.lots > 0) entry.hasStock = true;
       if (handedShelfIds.has(shelf.id)) entry.done = true;
       byGroup.set(group.id, entry);
     }
     for (const { hasStock, ...entry } of byGroup.values()) {
+      if (entry.done) entry.waitingEvaluation = false;
       if (hasStock || entry.done) result.push(entry);
     }
   }
