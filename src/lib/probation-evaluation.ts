@@ -20,12 +20,12 @@ export function isEvaluationOverdue(weekEnd: Date, now: Date = new Date()): bool
 //
 // 3 loại dòng:
 // - MANUAL: NV cấy mô tự chấm + NV Kỹ thuật chấm ĐỘC LẬP nhau, số nguyên 0-10.
-// - SPEED: điểm tự tính từ "Tốc độ trung bình của tuần" (tổng chồi tạo ra ÷ số ngày NV thật sự có nhật ký
+// - SPEED: điểm tự tính từ "Tốc độ trung bình của tuần" (tổng chồi tạo ra mọi giai đoạn ÷ số ngày NV thật sự có nhật ký
 //   cấy trong tuần, xem computeAvgSpeed) — CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay.
 // - CONTAMINATION: điểm tự tính từ tỉ lệ nhiễm (xem computeContaminationRate) theo bảng ngưỡng riêng —
 //   CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay.
 export type ManualRow = { id: string; label: string; type: "MANUAL" };
-export type SpeedRow = { id: string; label: string; type: "SPEED"; stage: "MAU_ME" | "THANH_PHAM"; target: number };
+export type SpeedRow = { id: string; label: string; type: "SPEED"; target: number };
 export type ContaminationRow = { id: string; label: string; type: "CONTAMINATION"; threshold: 5 | 10 };
 export type EvaluationRow = ManualRow | SpeedRow | ContaminationRow;
 export type ProbationEvaluationWeekTemplate = { week: number; sectionTitle: string; rows: EvaluationRow[] };
@@ -57,7 +57,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("5", "Khử trùng dụng cụ đúng quy định"),
       manual("6", "Không để mẫu hoặc miệng túi ra ngoài vùng vô trùng"),
       manual("7", "Không cắt đồng thời từ hai túi môi trường trở lên"),
-      { id: "8", label: "Đạt năng suất 650 chồi/ngày (Điểm = Tốc độ trung bình của tuần /650 *9)", type: "SPEED", stage: "MAU_ME", target: 650 },
+      { id: "8", label: "Đạt năng suất 650 chồi/ngày (Điểm = Tốc độ trung bình của tuần /650 *9)", type: "SPEED", target: 650 },
       { id: "9", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
     ],
   },
@@ -88,7 +88,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("6", "Tự chuẩn bị đầy đủ dụng cụ làm việc"),
       manual("7", "Xử lý đúng các tình huống thông thường"),
       manual("8", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
-      { id: "9", label: "Đạt tối thiểu 450 chồi/ngày (Điểm = Tốc độ trung bình của tuần /450 *9)", type: "SPEED", stage: "THANH_PHAM", target: 450 },
+      { id: "9", label: "Đạt tối thiểu 450 chồi/ngày (Điểm = Tốc độ trung bình của tuần /450 *9)", type: "SPEED", target: 450 },
       { id: "10", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
     ],
   },
@@ -101,7 +101,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("3", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
       manual("4", "Không phát sinh lỗi nghiêm trọng khi tăng tốc"),
       manual("5", "Năng suất tăng đều khoảng 15 chồi/ngày"),
-      { id: "6", label: "Đạt mức 450–525 chồi/ngày (Điểm = Tốc độ trung bình của tuần /488 *9)", type: "SPEED", stage: "THANH_PHAM", target: 488 },
+      { id: "6", label: "Đạt mức 450–525 chồi/ngày (Điểm = Tốc độ trung bình của tuần /488 *9)", type: "SPEED", target: 488 },
       { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
     ],
   },
@@ -114,7 +114,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("3", "Đảm bảo đúng điểm cắt và số lượng chồi theo chỉ định"),
       manual("4", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
       manual("5", "Tốc độ tăng ổn định, không làm ẩu"),
-      { id: "6", label: "Đạt mức 540–615 chồi/ngày (Điểm = Tốc độ trung bình của tuần /578 *9)", type: "SPEED", stage: "THANH_PHAM", target: 578 },
+      { id: "6", label: "Đạt mức 540–615 chồi/ngày (Điểm = Tốc độ trung bình của tuần /578 *9)", type: "SPEED", target: 578 },
       { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
     ],
   },
@@ -127,7 +127,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("3", "Không để tốc độ ảnh hưởng đến vô trùng"),
       manual("4", "Không để tốc độ ảnh hưởng đến chất lượng cây"),
       manual("5", "Chủ động sắp xếp dụng cụ và thời gian làm việc"),
-      { id: "6", label: "Đạt mức 630–705 chồi/ngày (Điểm = Tốc độ trung bình của tuần /668 *9)", type: "SPEED", stage: "THANH_PHAM", target: 668 },
+      { id: "6", label: "Đạt mức 630–705 chồi/ngày (Điểm = Tốc độ trung bình của tuần /668 *9)", type: "SPEED", target: 668 },
       { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
     ],
   },
@@ -140,7 +140,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("3", "Không mắc lỗi vô trùng nghiêm trọng"),
       manual("4", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
       manual("5", "Đạt năng suất tối thiểu 725 chồi/ngày"),
-      { id: "6", label: "Duy trì mức 725 chồi/ngày ổn định (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", stage: "THANH_PHAM", target: 725 },
+      { id: "6", label: "Duy trì mức 725 chồi/ngày ổn định (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", target: 725 },
       { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
     ],
   },
@@ -154,7 +154,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("4", "Tự thực hiện công việc không cần kèm từng thao tác"),
       manual("5", "Đọc hiểu đúng mã cây và chỉ định cấy"),
       manual("6", "Cây sau cấy đạt tiêu chuẩn chất lượng theo chỉ định cấy"),
-      { id: "7", label: "Duy trì năng suất ≥725 chồi/ngày (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", stage: "THANH_PHAM", target: 725 },
+      { id: "7", label: "Duy trì năng suất ≥725 chồi/ngày (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", target: 725 },
       { id: "8", label: "Tỷ lệ nhiễm phòng sáng + tối ≤10% (≤8%: 10 điểm, ≤10%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 10 },
       manual("9", "Có ý thức trách nhiệm và phối hợp trong công việc"),
       manual("10", "Ý thức bảo quản tài sản, thiết bị"),
@@ -181,25 +181,22 @@ export function scoreForContaminationRow(row: ContaminationRow, ratePct: number)
   return 0;
 }
 
-// Tốc độ trung bình của tuần (chồi/ngày) = tổng quantityCreated đúng `stage` trong khoảng tuần ÷ số ngày
-// (recordDate, phân biệt theo ngày) NV THẬT SỰ có ít nhất 1 DailyRecord trong tuần đó (không tính riêng
-// theo stage — 1 ngày có nhật ký cấy dù chỉ cấy mẫu mẹ vẫn tính là 1 ngày làm việc khi chia trung bình
-// tốc độ thành phẩm, và ngược lại) — đúng quy ước anh đã chốt.
-export async function computeAvgSpeed(
-  staffId: string,
-  stage: "MAU_ME" | "THANH_PHAM",
-  weekStart: Date,
-  weekEnd: Date
-): Promise<number> {
+// weekEnd lưu kiểu @db.Date (00:00 ngày cuối tuần) còn recordDate/enteredAt có giờ — so `lte weekEnd` sẽ
+// bỏ sót gần trọn ngày cuối, nên luôn so `lt` 00:00 ngày kế tiếp.
+function endOfWeekExclusive(weekEnd: Date): Date {
+  return addDays(weekEnd, 1);
+}
+
+// Tốc độ trung bình của tuần (chồi/ngày) = tổng quantityCreated của MỌI giai đoạn (mẫu mẹ + thành phẩm —
+// NV thử việc tuần nào cũng có thể được giao cấy mẫu mẹ, chỉ đếm thành phẩm thì ra 0 oan) trong khoảng tuần
+// ÷ số ngày (recordDate, phân biệt theo ngày) NV THẬT SỰ có ít nhất 1 DailyRecord trong tuần đó.
+export async function computeAvgSpeed(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
   const records = await prisma.dailyRecord.findMany({
-    where: { staffId, recordDate: { gte: weekStart, lte: weekEnd } },
-    select: { recordDate: true, items: { select: { stage: true, quantityCreated: true } } },
+    where: { staffId, recordDate: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } },
+    select: { recordDate: true, items: { select: { quantityCreated: true } } },
   });
   const days = new Set(records.map((r) => r.recordDate.toISOString().slice(0, 10)));
-  const total = records.reduce(
-    (sum, r) => sum + r.items.filter((i) => i.stage === stage).reduce((s, i) => s + i.quantityCreated, 0),
-    0
-  );
+  const total = records.reduce((sum, r) => sum + r.items.reduce((s, i) => s + i.quantityCreated, 0), 0);
   return days.size > 0 ? total / days.size : 0;
 }
 
@@ -216,7 +213,7 @@ export async function computeContaminationRate(staffId: string, weekStart: Date,
       fromUserId: staffId,
       fromRoom: { type: "PHONG_TOI" },
       status: { not: "REJECTED" },
-      items: { some: { lot: { enteredAt: { gte: weekStart, lte: weekEnd } } } },
+      items: { some: { lot: { enteredAt: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } } } },
     },
     select: {
       status: true,
@@ -249,15 +246,11 @@ export async function computeAutoScores(
   weekEnd: Date
 ): Promise<Record<string, number>> {
   const scores: Record<string, number> = {};
-  const speedCache = new Map<string, number>();
+  let avgSpeed: number | undefined;
   let contaminationRate: number | undefined;
   for (const row of template.rows) {
     if (row.type === "SPEED") {
-      let avgSpeed = speedCache.get(row.stage);
-      if (avgSpeed === undefined) {
-        avgSpeed = await computeAvgSpeed(staffId, row.stage, weekStart, weekEnd);
-        speedCache.set(row.stage, avgSpeed);
-      }
+      if (avgSpeed === undefined) avgSpeed = await computeAvgSpeed(staffId, weekStart, weekEnd);
       scores[row.id] = scoreForSpeedRow(row, avgSpeed);
     } else if (row.type === "CONTAMINATION") {
       if (contaminationRate === undefined) contaminationRate = await computeContaminationRate(staffId, weekStart, weekEnd);
