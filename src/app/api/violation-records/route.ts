@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
-import { computeViolationPointsApplied } from "@/lib/violation-points";
+import { isAdminRole, isViolationCheckerRole } from "@/types";
+import { computeViolationPointsApplied, findSameDayViolationByOtherChecker, sameDayViolationMessage } from "@/lib/violation-points";
 import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { createAlert } from "@/lib/inventory";
 import { z } from "zod";
@@ -21,7 +21,7 @@ const createSchema = z.object({
 export async function POST(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role) && role !== "KHO_MO" && role !== "KY_THUAT" && role !== "HANH_CHINH_NHAN_SU") {
+  if (!isAdminRole(role) && !isViolationCheckerRole(role) && role !== "KY_THUAT" && role !== "HANH_CHINH_NHAN_SU") {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
@@ -41,7 +41,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Không tìm thấy loại lỗi vi phạm" }, { status: 400 });
   }
 
-  const now = periodMonth ? resolvePayrollPeriod(periodMonth).rangeStart : new Date();
+  // Kỳ chọn là kỳ hiện tại (mặc định của form) thì ghi đúng lúc này — chỉ ghi lùi về đầu kỳ khi chọn kỳ
+  // KHÁC. Trước đây luôn lấy đầu kỳ nên mọi vi phạm ghi trong tháng đều mang ngày mùng 1, mất ngày thật.
+  const realNow = new Date();
+  const period = periodMonth ? resolvePayrollPeriod(periodMonth) : null;
+  const isBackdated = !!period && (realNow < period.rangeStart || realNow >= period.rangeEnd);
+  const now = isBackdated ? period!.rangeStart : realNow;
+
+  if (!isBackdated) {
+    const dup = await findSameDayViolationByOtherChecker(staffId, [violationTypeId], session!.user!.id, now);
+    if (dup) return NextResponse.json({ message: sameDayViolationMessage(dup, staff.name) }, { status: 409 });
+  }
+
   const pointsApplied = await computeViolationPointsApplied(staffId, violationTypeId, violationType.points, now);
 
   const record = await prisma.violationRecord.create({

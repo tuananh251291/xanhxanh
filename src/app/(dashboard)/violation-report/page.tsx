@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { isPageAllowed } from "@/lib/permissions";
-import { isAdminRole, canManagePayroll } from "@/types";
+import { isAdminRole, canManagePayroll, isViolationCheckerRole } from "@/types";
 import ViolationReportBoard from "./violation-report-board";
 import RecordViolationRecoveryBoard from "./record-violation-recovery-board";
 import DataCorrectionsBoard from "../data-corrections/data-corrections-board";
@@ -28,7 +28,7 @@ export default async function ViolationReportPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   const isHr = role === "HANH_CHINH_NHAN_SU";
-  const isKhoMo = role === "KHO_MO";
+  const isKhoMo = isViolationCheckerRole(role);
   // Tab "KPI tuân thủ" có số tiền thưởng (dữ liệu lương) — chỉ HCNS + Admin cấp cao, giống Bảng lương.
   const canSeeComplianceKpi = canManagePayroll(role);
   if (!(await isPageAllowed(role, "/violation-report")) || !(isAdminRole(role) || isKhoMo || isHr)) {

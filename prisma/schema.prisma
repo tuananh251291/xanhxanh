@@ -22,6 +22,10 @@ enum UserRole {
   KY_THUAT
   CAY_MO
   KHO_MO
+  // NV Trợ lý — cùng kho sản xuất làm việc (workplaceWarehouseId) như KHO_MO, chỉ làm phần kiểm tra/ghi nhận
+  // lỗi vi phạm của NV cấy mô (trang Báo cáo vi phạm). Cùng 1 ngày, lỗi KHO_MO đã ghi cho 1 NV cấy mô thì
+  // TRO_LY không ghi lặp lại được và ngược lại — xem findSameDayViolationByOtherChecker.
+  TRO_LY
   KHO_THANH_PHAM
   // Cùng quyền/tính năng với KHO_THANH_PHAM hiện tại (xem isKhoThanhPhamRole, src/types/index.ts) — tách
   // riêng role để sau này bổ sung tính năng quản lý riêng (duyệt/điều phối cấp trên) mà không ảnh hưởng

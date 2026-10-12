@@ -11,6 +11,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   KY_THUAT: { prefix: "NVKT", pad: 2 },
   CAY_MO: { prefix: "NVCM", pad: 3 },
   KHO_MO: { prefix: "NVK", pad: 2 },
+  TRO_LY: { prefix: "NVTL", pad: 2 },
   KHO_THANH_PHAM: { prefix: "NVTP", pad: 2 },
   QUAN_LY_KHO_THANH_PHAM: { prefix: "QLTP", pad: 2 },
   SALE: { prefix: "NVS", pad: 2 },

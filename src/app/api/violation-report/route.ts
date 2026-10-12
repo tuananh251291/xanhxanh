@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isViolationCheckerRole } from "@/types";
 import { startOfMonth, endOfMonth, startOfDay, endOfDay, isValid } from "date-fns";
 
 // Báo cáo vi phạm — tổng số lỗi vi phạm mỗi NV cấy mô bị ghi nhận trong khoảng thời gian (mặc định tháng
@@ -14,10 +14,10 @@ export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
   const canFilterByWarehouse = isAdminRole(role) || role === "HANH_CHINH_NHAN_SU";
-  if (!canFilterByWarehouse && role !== "KHO_MO") {
+  if (!canFilterByWarehouse && !isViolationCheckerRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
-  if (role === "KHO_MO" && !session?.user?.workplaceWarehouseId) {
+  if (isViolationCheckerRole(role) && !session?.user?.workplaceWarehouseId) {
     return NextResponse.json({ staffList: [] });
   }
 
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const records = await prisma.violationRecord.findMany({
     where: {
       createdAt: { gte: from, lte: to },
-      ...(role === "KHO_MO"
+      ...(isViolationCheckerRole(role)
         ? { staff: { workplaceWarehouseId: session!.user!.workplaceWarehouseId } }
         : warehouseId
           ? { staff: { workplaceWarehouseId: warehouseId } }

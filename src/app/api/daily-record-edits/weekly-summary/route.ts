@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isViolationCheckerRole } from "@/types";
 import { startOfWeek, endOfWeek } from "date-fns";
 
 // Bảng theo dõi "số lần Admin/Kho mô đã sửa nhật ký cấy" của từng NV cấy mô trong tuần này — mỗi dòng
@@ -12,10 +12,10 @@ import { startOfWeek, endOfWeek } from "date-fns";
 export async function GET(req: NextRequest) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!isAdminRole(role) && role !== "KHO_MO") {
+  if (!isAdminRole(role) && !isViolationCheckerRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
-  if (role === "KHO_MO" && !session?.user?.workplaceWarehouseId) {
+  if (isViolationCheckerRole(role) && !session?.user?.workplaceWarehouseId) {
     return NextResponse.json({ staffList: [] });
   }
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const edits = await prisma.dailyRecordEdit.findMany({
     where: {
       createdAt: { gte: weekStart, lte: weekEnd },
-      ...(role === "KHO_MO"
+      ...(isViolationCheckerRole(role)
         ? { staff: { workplaceWarehouseId: session!.user!.workplaceWarehouseId } }
         : warehouseId
           ? { staff: { workplaceWarehouseId: warehouseId } }

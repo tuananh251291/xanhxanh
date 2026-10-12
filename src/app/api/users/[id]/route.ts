@@ -7,7 +7,7 @@ import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkpl
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH"] as const;
+const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH"] as const;
 
 // NV kho mô/cấy mô/môi trường/kỹ thuật bị ràng buộc làm việc với đúng 1 kho sản xuất — KY_THUAT gán được
 // từ khi có nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" (xem src/lib/rooting-forecast.ts), CHƯA dùng field
@@ -19,7 +19,7 @@ const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_T
 // như trước (xem getFinishedQualifiedRooms ở src/lib/processing.ts). Đối tác vận hành (DOI_TAC_VAN_HANH)
 // gán với 1 Kho THỊ TRƯỜNG (WarehouseType.THI_TRUONG) — chưa có nghiệp vụ dùng field này, chỉ mới
 // lưu/hiển thị (xem comment ROLE_NAV.DOI_TAC_VAN_HANH ở src/types/index.ts).
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "TRO_LY", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
 
 const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),

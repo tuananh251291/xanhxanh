@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
-import { computeViolationPointsApplied } from "@/lib/violation-points";
+import { computeViolationPointsApplied, findSameDayViolationByOtherChecker, sameDayViolationMessage } from "@/lib/violation-points";
 import { DARK_ROOM_CHECK_VIOLATION_GROUPS } from "@/types";
 import { z } from "zod";
 
@@ -56,6 +56,14 @@ export async function POST(req: NextRequest) {
     });
     if (validCount !== violationTypeIds.length) {
       return NextResponse.json({ message: "Có loại lỗi vi phạm không hợp lệ" }, { status: 400 });
+    }
+  }
+
+  if (staffId && violationTypeIds.length > 0) {
+    const dup = await findSameDayViolationByOtherChecker(staffId, violationTypeIds, session.user.id);
+    if (dup) {
+      const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { name: true } });
+      return NextResponse.json({ message: sameDayViolationMessage(dup, staff?.name ?? "NV cấy mô") }, { status: 409 });
     }
   }
 

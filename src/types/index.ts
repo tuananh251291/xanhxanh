@@ -9,6 +9,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   KY_THUAT: "NV Kỹ thuật",
   CAY_MO: "NV Cấy mô",
   KHO_MO: "NV Kho",
+  TRO_LY: "NV Trợ lý",
   KHO_THANH_PHAM: "NV Kho thành phẩm",
   QUAN_LY_KHO_THANH_PHAM: "Quản lý kho thành phẩm",
   SALE: "Nhân viên bán hàng",
@@ -27,6 +28,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   KY_THUAT: "bg-purple-100 text-purple-800",
   CAY_MO: "bg-green-100 text-green-800",
   KHO_MO: "bg-blue-100 text-blue-800",
+  TRO_LY: "bg-violet-light text-violet-foreground",
   KHO_THANH_PHAM: "bg-yellow-100 text-yellow-800",
   QUAN_LY_KHO_THANH_PHAM: "bg-amber-100 text-amber-800",
   SALE: "bg-pink-100 text-pink-800",
@@ -111,9 +113,15 @@ export function canManageEmploymentStatus(role: UserRole | null | undefined): bo
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Kho mô và Trợ lý cùng kiểm tra/ghi nhận lỗi vi phạm NV cấy mô (trong kho làm việc của mình) — dùng ở
+// trang/API Báo cáo vi phạm thay cho so sánh `role === "KHO_MO"`.
+export function isViolationCheckerRole(role: UserRole | null | undefined): boolean {
+  return role === "KHO_MO" || role === "TRO_LY";
+}
+
 // Vai trò thuộc "cơ sở sản xuất" (kho sản xuất, khác kho thành phẩm/SALE) — dùng để giới hạn phạm vi
 // canEditEmployeeCode bên dưới, khớp nhóm "sanXuatWarehouses" ở edit-user-dialog.tsx/users/page.tsx.
-export const PRODUCTION_SITE_ROLES: UserRole[] = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "NHAN_VIEN_SAN_XUAT"];
+export const PRODUCTION_SITE_ROLES: UserRole[] = ["KHO_MO", "TRO_LY", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "NHAN_VIEN_SAN_XUAT"];
 
 // Ai được sửa riêng "Mã nhân viên" của NV thuộc cơ sở sản xuất (PRODUCTION_SITE_ROLES) — trước đây chỉ
 // sửa được qua "Sửa tài khoản" đầy đủ (chỉ SUPER_ADMIN, xem EditUserDialog), giờ mở thêm ô sửa nhanh
@@ -136,7 +144,7 @@ export function canEditEmployeeName(role: UserRole | null | undefined): boolean 
 // vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
-  "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
+  "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
   "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
   "DOI_TAC_VAN_HANH",
 ];
@@ -753,6 +761,13 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/extra-work-requests", label: "Đăng kí làm thêm", icon: "CalendarPlus" },
     { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
+    { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  // NV Trợ lý — chỉ phần kiểm tra/ghi nhận lỗi vi phạm NV cấy mô giống Kho mô (cùng phạm vi kho làm việc).
+  TRO_LY: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isViolationCheckerRole } from "@/types";
 import { getTaskCompletionReport } from "@/lib/task-completion-report";
 import { startOfWeek, isValid, parseISO } from "date-fns";
 
@@ -14,10 +14,10 @@ export async function GET(req: NextRequest) {
   const role = session?.user?.role ?? null;
   const isHr = role === "HANH_CHINH_NHAN_SU";
   const canFilterByWarehouse = isAdminRole(role) || isHr;
-  if (!canFilterByWarehouse && role !== "KHO_MO") {
+  if (!canFilterByWarehouse && !isViolationCheckerRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
-  if (role === "KHO_MO" && !session?.user?.workplaceWarehouseId) {
+  if (isViolationCheckerRole(role) && !session?.user?.workplaceWarehouseId) {
     return NextResponse.json({ staff: [] });
   }
 

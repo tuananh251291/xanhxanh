@@ -22,7 +22,7 @@ import UserInlineFieldCell from "./user-inline-field-cell";
 
 // NV/Quản lý kho thành phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao
 // tác — xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
-const WORKPLACE_ROLES = ["KHO_MO", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "TRO_LY", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
 const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
 // Đối tác vận hành làm việc với 1 Kho THỊ TRƯỜNG (WarehouseType.THI_TRUONG), khác cả kho sản xuất lẫn
 // kho thành phẩm — xem nhánh validate loại kho ở PATCH /api/users/[id].
