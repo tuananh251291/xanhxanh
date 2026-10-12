@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
 import { computeViolationPointsApplied, findSameDayViolationByOtherChecker, sameDayViolationMessage } from "@/lib/violation-points";
 import { DARK_ROOM_CHECK_VIOLATION_GROUPS } from "@/types";
+import { uploadViolationPhotos } from "@/lib/violation-photo-storage";
+import { MAX_VIOLATION_PHOTOS, MAX_VIOLATION_PHOTO_DATA_URL_LENGTH } from "@/lib/violation-photo-constants";
 import { z } from "zod";
 
 const schema = z.object({
@@ -13,6 +15,8 @@ const schema = z.object({
   // ghi kiểm tra gắn với 1 NV cụ thể.
   staffId: z.string().min(1).optional(),
   violationTypeIds: z.array(z.string().min(1)),
+  // Ảnh bằng chứng (tuỳ chọn) — data URL đã nén + đóng dấu giờ chụp ở client.
+  photos: z.array(z.string().max(MAX_VIOLATION_PHOTO_DATA_URL_LENGTH)).max(MAX_VIOLATION_PHOTOS).optional(),
 });
 
 // NV kho mô "Hoàn tất kiểm tra" 1 lượt trong nhiệm vụ nhỏ "Kiểm tra kho cá nhân" (thuộc checklist "Kiểm
@@ -28,7 +32,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { checklistItemId, staffId, violationTypeIds } = parsed.data;
+  const { checklistItemId, staffId, violationTypeIds, photos = [] } = parsed.data;
 
   if (!staffId && violationTypeIds.length > 0) {
     return NextResponse.json({ message: "Phải chọn NV cấy mô mới ghi nhận được lỗi vi phạm" }, { status: 400 });
@@ -67,6 +71,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Ảnh bằng chứng chỉ có nghĩa khi có lỗi gắn cho 1 NV — 1 bộ ảnh dùng chung cho mọi lỗi của lượt này.
+  if (photos.length > 0 && violationTypeIds.length === 0) {
+    return NextResponse.json({ message: "Chỉ đính kèm hình ảnh khi có chọn lỗi vi phạm" }, { status: 400 });
+  }
+  let photoUrls: string[] = [];
+  if (staffId && photos.length > 0) {
+    try {
+      photoUrls = await uploadViolationPhotos(photos, staffId);
+    } catch (err) {
+      return NextResponse.json({ message: err instanceof Error ? err.message : "Tải ảnh lên thất bại" }, { status: 500 });
+    }
+  }
+
   const nowCompleted = item.subTask2Done; // subTask1 vừa bật = true, completed = subTask1 && subTask2
   const itemUpdate = prisma.checklistItem.update({
     where: { id: checklistItemId },
@@ -91,6 +108,7 @@ export async function POST(req: NextRequest) {
         createdById: session.user.id,
         pointsApplied: await computeViolationPointsApplied(staffId, vt.id, vt.points, now),
         createdAt: now,
+        photoUrls,
       }))
     );
     const checkCreate = prisma.darkRoomInspectionCheck.create({
@@ -117,7 +135,7 @@ export async function POST(req: NextRequest) {
       await createAlert({
         type: "NV_VIOLATION",
         title: "Bạn vừa bị ghi nhận vi phạm khi kiểm tra kho tối",
-        message: `Lỗi: ${types.map((t) => t.label).join(", ")}`,
+        message: `Lỗi: ${types.map((t) => t.label).join(", ")}${photoUrls.length ? ` (kèm hình ảnh)` : ""}`,
         userId: staffId,
         relatedId: check.id,
         relatedType: "DarkRoomInspectionCheck",

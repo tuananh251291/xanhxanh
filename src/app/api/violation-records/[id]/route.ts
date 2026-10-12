@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { deleteViolationPhotos } from "@/lib/violation-photo-storage";
 import { auth } from "@/lib/auth";
 import { canManagePayroll } from "@/types";
 import { z } from "zod";
@@ -42,6 +43,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   const { id } = await params;
-  await prisma.violationRecord.delete({ where: { id } });
+  const deleted = await prisma.violationRecord.delete({ where: { id }, select: { photoUrls: true } });
+  // Xoá luôn ảnh bằng chứng — trừ ảnh còn dùng chung với lỗi khác cùng lượt Kiểm tra kho tối.
+  if (deleted.photoUrls.length > 0) {
+    const stillUsed = await prisma.violationRecord.findMany({
+      where: { photoUrls: { hasSome: deleted.photoUrls } },
+      select: { photoUrls: true },
+    });
+    const used = new Set(stillUsed.flatMap((r) => r.photoUrls));
+    await deleteViolationPhotos(deleted.photoUrls.filter((u) => !used.has(u))).catch((err) =>
+      console.error("[violation-records] Không xoá được ảnh vi phạm:", err)
+    );
+  }
   return NextResponse.json({ ok: true });
 }

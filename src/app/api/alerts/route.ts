@@ -52,10 +52,29 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Thông báo vi phạm NV cấy mô kèm ảnh bằng chứng Kho mô/Trợ lý chụp lúc ghi lỗi (nếu có, còn trong 14
+  // ngày lưu trữ) — relatedId là ViolationRecord (ghi trực tiếp) hoặc DarkRoomInspectionCheck (1 lượt
+  // kiểm tra kho tối, mọi lỗi của lượt dùng chung 1 bộ ảnh).
+  const violationPhotos = new Map<string, string[]>();
+  const violationAlerts = alerts.filter((a) => a.type === "NV_VIOLATION" && a.relatedId);
+  if (violationAlerts.length > 0) {
+    const recordIds = violationAlerts.filter((a) => a.relatedType === "ViolationRecord").map((a) => a.relatedId!);
+    const checkIds = violationAlerts.filter((a) => a.relatedType === "DarkRoomInspectionCheck").map((a) => a.relatedId!);
+    const records = await prisma.violationRecord.findMany({
+      where: { OR: [{ id: { in: recordIds } }, { inspectionCheckId: { in: checkIds } }], photoUrls: { isEmpty: false } },
+      select: { id: true, inspectionCheckId: true, photoUrls: true },
+    });
+    for (const r of records) {
+      violationPhotos.set(r.id, r.photoUrls);
+      if (r.inspectionCheckId) violationPhotos.set(r.inspectionCheckId, r.photoUrls);
+    }
+  }
+
   return NextResponse.json(
     alerts.map((a) => ({
       ...a,
       actionLink: a.type === "LOT_READY_TRANSFER" && a.relatedId ? actionLinks.get(a.relatedId) ?? null : null,
+      photoUrls: a.type === "NV_VIOLATION" && a.relatedId ? violationPhotos.get(a.relatedId) ?? [] : [],
     }))
   );
 }

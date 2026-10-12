@@ -5,6 +5,8 @@ import { isAdminRole, isViolationCheckerRole } from "@/types";
 import { computeViolationPointsApplied, findSameDayViolationByOtherChecker, sameDayViolationMessage } from "@/lib/violation-points";
 import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { createAlert } from "@/lib/inventory";
+import { uploadViolationPhotos } from "@/lib/violation-photo-storage";
+import { MAX_VIOLATION_PHOTOS, MAX_VIOLATION_PHOTO_DATA_URL_LENGTH } from "@/lib/violation-photo-constants";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -13,6 +15,8 @@ const createSchema = z.object({
   // Kỳ lương áp dụng (tuỳ chọn, "yyyy-MM") — dùng khi ghi bù/ghi lùi cho 1 kỳ trước, xem
   // record-violation-recovery-board.tsx. Không truyền = ghi ngay lúc này (hành vi cũ, giữ nguyên).
   periodMonth: z.string().regex(/^\d{4}-\d{2}$/, "Kỳ phải theo dạng yyyy-MM").optional(),
+  // Ảnh bằng chứng (tuỳ chọn) — data URL đã nén + đóng dấu giờ chụp ở client, tải lên lúc ghi nhận.
+  photos: z.array(z.string().max(MAX_VIOLATION_PHOTO_DATA_URL_LENGTH)).max(MAX_VIOLATION_PHOTOS).optional(),
 });
 
 // Ghi nhận vi phạm TRỰC TIẾP cho 1 NV cấy mô — không cần qua 1 lượt "Kiểm tra kho tối" nào (khác luồng
@@ -28,7 +32,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { staffId, violationTypeId, periodMonth } = parsed.data;
+  const { staffId, violationTypeId, periodMonth, photos = [] } = parsed.data;
 
   const [staff, violationType] = await Promise.all([
     prisma.user.findUnique({ where: { id: staffId }, select: { id: true, role: true, name: true } }),
@@ -53,10 +57,22 @@ export async function POST(req: NextRequest) {
     if (dup) return NextResponse.json({ message: sameDayViolationMessage(dup, staff.name) }, { status: 409 });
   }
 
+  // Ảnh chỉ giữ 14 ngày tính từ createdAt — ghi lùi về đầu kỳ cũ thì ảnh sẽ bị xoá ngay đêm đó, nên chặn.
+  if (isBackdated && photos.length > 0) {
+    return NextResponse.json({ message: "Chỉ đính kèm hình ảnh khi ghi lỗi cho kỳ hiện tại" }, { status: 400 });
+  }
+
   const pointsApplied = await computeViolationPointsApplied(staffId, violationTypeId, violationType.points, now);
 
+  let photoUrls: string[];
+  try {
+    photoUrls = await uploadViolationPhotos(photos, staffId);
+  } catch (err) {
+    return NextResponse.json({ message: err instanceof Error ? err.message : "Tải ảnh lên thất bại" }, { status: 500 });
+  }
+
   const record = await prisma.violationRecord.create({
-    data: { staffId, createdById: session!.user!.id, violationTypeId, pointsApplied, createdAt: now },
+    data: { staffId, createdById: session!.user!.id, violationTypeId, pointsApplied, createdAt: now, photoUrls },
     include: { violationType: { select: { label: true } } },
   });
 
@@ -64,7 +80,7 @@ export async function POST(req: NextRequest) {
     await createAlert({
       type: "NV_VIOLATION",
       title: "Bạn vừa bị ghi nhận vi phạm",
-      message: `Lỗi: ${record.violationType.label}`,
+      message: `Lỗi: ${record.violationType.label}${photoUrls.length ? ` (kèm hình ảnh)` : ""}`,
       userId: staffId,
       relatedId: record.id,
       relatedType: "ViolationRecord",

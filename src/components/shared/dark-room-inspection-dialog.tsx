@@ -18,6 +18,7 @@ import {
 import { ClipboardCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DARK_ROOM_CHECK_VIOLATION_GROUPS } from "@/types";
+import ViolationPhotoPicker from "@/components/shared/violation-photo-picker";
 
 type Staff = { id: string; code: string; name: string; role: string };
 type ViolationType = { id: string; label: string; groupName: string | null };
@@ -47,6 +48,7 @@ export default function DarkRoomInspectionDialog({
   const [violationTypes, setViolationTypes] = useState<ViolationType[]>([]);
   const [staffOption, setStaffOption] = useState<ComboOption | null>(null);
   const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export default function DarkRoomInspectionDialog({
   const resetForm = () => {
     setStaffOption(null);
     setSelectedTypeIds([]);
+    setPhotos([]);
   };
 
   const toggleType = (id: string) => {
@@ -87,6 +90,8 @@ export default function DarkRoomInspectionDialog({
           // Không chọn NV thì không gửi kèm lỗi vi phạm (không có ai để gắn lỗi vào) — server cũng chặn
           // lại trường hợp này, chặn sớm ở đây cho gọn.
           violationTypeIds: staffOption ? selectedTypeIds : [],
+          // Ảnh chỉ gửi khi có lỗi — server chặn ảnh không kèm lỗi nào.
+          photos: staffOption && selectedTypeIds.length > 0 ? photos : [],
         }),
       });
       const json = await res.json();
@@ -160,6 +165,13 @@ export default function DarkRoomInspectionDialog({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {staffOption && selectedTypeIds.length > 0 && (
+            <div className="space-y-1">
+              <Label className="text-sm">Hình ảnh</Label>
+              <ViolationPhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} />
             </div>
           )}
 

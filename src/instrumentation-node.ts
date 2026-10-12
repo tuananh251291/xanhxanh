@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { cleanupExpiredRejectClassificationPhotos } from "@/lib/reject-classification-storage";
 import { cleanupExpiredContaminationProposalPhotos } from "@/lib/contamination-proposal-storage";
 import { cleanupExpiredAttendanceSelfies } from "@/lib/attendance-storage";
+import { cleanupExpiredViolationPhotos } from "@/lib/violation-photo-storage";
 import { syncMotherLotDueDates } from "@/lib/mother-due-sync";
 import { syncRootingLotDueDates } from "@/lib/rooting-due-sync";
 
@@ -40,6 +41,18 @@ cron.schedule("15 3 * * *", async () => {
     }
   } catch (err) {
     console.error("[cron] Lỗi xoá ảnh selfie chấm công hết hạn:", err);
+  }
+});
+
+// Ảnh bằng chứng lỗi vi phạm NV cấy mô chỉ giữ 14 ngày — xoá hẳn khỏi bucket, giữ bản ghi vi phạm.
+cron.schedule("30 3 * * *", async () => {
+  try {
+    const { recordsCleaned } = await cleanupExpiredViolationPhotos();
+    if (recordsCleaned > 0) {
+      console.log(`[cron] Đã xoá ảnh hết hạn của ${recordsCleaned} bản ghi vi phạm`);
+    }
+  } catch (err) {
+    console.error("[cron] Lỗi xoá ảnh vi phạm hết hạn:", err);
   }
 });
 

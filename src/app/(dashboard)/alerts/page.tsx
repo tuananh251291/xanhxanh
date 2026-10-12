@@ -20,6 +20,8 @@ type Alert = {
   // Có giá trị khi thông báo cần NV tự thực hiện 1 tác vụ (xem GET /api/alerts) — bấm "Thực hiện" chỉ
   // điều hướng tới màn hình tác vụ, KHÔNG đánh dấu đã xem; thông báo tự tắt khi tác vụ xử lý xong.
   actionLink?: string | null;
+  // Ảnh bằng chứng của thông báo vi phạm (NV_VIOLATION) — chỉ còn trong 14 ngày lưu trữ.
+  photoUrls?: string[];
 };
 
 export default function AlertsPage() {
@@ -93,6 +95,16 @@ export default function AlertsPage() {
                       <Badge variant="secondary" className="text-xs">{ALERT_TYPE_LABELS[a.type] ?? a.type}</Badge>
                       <p className="text-sm font-medium text-foreground">{a.title}</p>
                       <p className="text-sm text-text-secondary whitespace-pre-line">{a.message}</p>
+                      {a.photoUrls && a.photoUrls.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {a.photoUrls.map((url) => (
+                            <a key={url} href={url} target="_blank" rel="noreferrer" className="block w-20 h-20 rounded-lg overflow-hidden border border-border">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- ảnh từ Supabase Storage, không phải asset tĩnh */}
+                              <img src={url} alt="Ảnh lỗi vi phạm" className="w-full h-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-text-muted">{formatDistanceToNow(new Date(a.createdAt), { addSuffix: true, locale: vi })}</p>
                     </div>
                     <Button

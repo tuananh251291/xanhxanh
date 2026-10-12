@@ -12,6 +12,7 @@ import {
 import { ShieldOff, ShieldCheck, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import ViolationPhotoPicker from "@/components/shared/violation-photo-picker";
 
 type Staff = { id: string; code: string; name: string; role: string };
 type ComboOption = { value: string; label: string };
@@ -35,6 +36,7 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
   const [violationTypes, setViolationTypes] = useState<ViolationType[]>([]);
   const [groupName, setGroupName] = useState<string>("");
   const [violationTypeId, setViolationTypeId] = useState<string>("");
+  const [photos, setPhotos] = useState<string[]>([]);
 
   const [behaviorTypes, setBehaviorTypes] = useState<BehaviorType[]>([]);
   const [behaviorOption, setBehaviorOption] = useState<ComboOption | null>(null);
@@ -78,6 +80,7 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
     setBehaviorOption(null);
     setPoints("");
     setReason("");
+    setPhotos([]);
   };
 
   const submitViolation = async () => {
@@ -90,7 +93,7 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
       const res = await fetch("/api/violation-records", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId: staffOption.value, violationTypeId, periodMonth }),
+        body: JSON.stringify({ staffId: staffOption.value, violationTypeId, periodMonth, photos }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
@@ -213,6 +216,10 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
                       : `-${selectedViolationType.points} điểm tuân thủ`}
                   </p>
                 )}
+                <div className="w-full space-y-1">
+                  <Label className="text-xs">Hình ảnh</Label>
+                  <ViolationPhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} />
+                </div>
                 <Button onClick={submitViolation} disabled={submitting} className="bg-destructive hover:bg-destructive/90 text-black">
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Send className="w-4 h-4 mr-1.5" />}
                   Ghi nhận

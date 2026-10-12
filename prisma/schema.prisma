@@ -784,6 +784,10 @@ model ViolationRecord {
   // thứ 2+ của CÙNG loại lỗi, CÙNG NV, trong CÙNG kỳ lương — xem payroll-calculation.ts). Không tính lại
   // sống mỗi lần xem lương, để sửa điểm cơ bản của 1 loại lỗi sau này không làm trôi số liệu lương cũ.
   pointsApplied     Int
+  // Ảnh bằng chứng Kho mô/Trợ lý chụp lúc ghi lỗi (tuỳ chọn, 1 ảnh, đã đóng dấu giờ chụp) — public URL
+  // bucket "violation-photos". Chỉ giữ 14 ngày: cron hằng ngày xoá hẳn file + làm rỗng mảng này (giữ bản ghi
+  // vi phạm), xem cleanupExpiredViolationPhotos (src/lib/violation-photo-storage.ts).
+  photoUrls         String[]                 @default([])
   createdAt         DateTime                 @default(now())
 
   @@index([staffId])
