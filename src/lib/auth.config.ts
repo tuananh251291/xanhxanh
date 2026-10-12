@@ -10,7 +10,10 @@ import type { UserRole, UserStatus } from "@prisma/client";
 export const authConfig: NextAuthConfig = {
   trustHost: true,
   pages: { signIn: "/login" },
-  session: { strategy: "jwt" },
+  // Phiên hết hạn sau 12 giờ KHÔNG thao tác (mặc định NextAuth 30 ngày — máy quên đăng xuất thì người khác dùng
+  // được tài khoản suốt 30 ngày). Hạn tự gia hạn mỗi lần đi qua proxy (JWT được ký lại với hạn mới), nên NV
+  // làm cả ca không bị đăng xuất giữa chừng; bỏ máy quá 12 giờ phải đăng nhập lại.
+  session: { strategy: "jwt", maxAge: 12 * 60 * 60 },
   providers: [],
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
