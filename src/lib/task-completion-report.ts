@@ -200,7 +200,7 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
         assignedToId: { in: staffIds },
         weekStart: { in: [toStoredWeekStart(weekStart), toStoredWeekStart(addWeeks(weekStart, 1))] },
       },
-      select: { assignedToId: true, weekStart: true, completedAt: true },
+      select: { assignedToId: true, weekStart: true, completedAt: true, createdAt: true, rotationGroup: { select: { name: true } } },
     }),
   ]);
 
@@ -282,16 +282,20 @@ async function buildKyThuatRows(weekStart: Date, weekEnd: Date, evalEnd: Date): 
       // "Đánh giá chất lượng cây ra rễ" — hạn hết Thứ 5 tuần trước tuần xuất (rootingEvalDeadline). Thứ 2–4
       // chưa xong không tính; từ ngày Thứ 5 trở đi, MỖI ngày hết ngày mà vẫn chưa hoàn thành tính 1 ngày
       // không hoàn thành, cho tới khi xong hoặc hết tuần xuất (sau đó Nhóm đã qua lượt, đánh giá không còn
-      // tác dụng). Hoàn thành đúng hạn thì ghi nhận "đã xong" ở ngày Thứ 5.
+      // tác dụng). Hoàn thành đúng hạn thì ghi nhận "đã xong" ở ngày Thứ 5. Phiếu hệ thống tạo SAU hạn (VD
+      // phiếu tuần xuất 05/10/2026 sinh trước khi có lịch mới) chỉ bắt đầu tính từ ngày phiếu được tạo.
       for (const evaluation of rootingEvaluations.filter((e) => e.assignedToId === staff.id)) {
         const exportWeek = storedWeekStartToLocal(evaluation.weekStart);
-        const deadline = startOfDay(rootingEvalDeadline(exportWeek));
+        const dueDay = startOfDay(rootingEvalDeadline(exportWeek));
+        const createdDay = startOfDay(evaluation.createdAt);
+        const deadline = isAfter(createdDay, dueDay) ? createdDay : dueDay;
+        const title = `Đánh giá chất lượng cây ra rễ (Nhóm ${evaluation.rotationGroup.name})`;
         const lastDay = endOfWeek(exportWeek, { weekStartsOn: 1 });
         for (let d = deadline; !isAfter(d, lastDay) && !isAfter(d, evalEnd); d = addDays(d, 1)) {
           if (isBefore(d, weekStart) || isBefore(d, startOfDay(staff.createdAt))) continue;
           const done = !!evaluation.completedAt && !isAfter(evaluation.completedAt, endOfDay(d));
           if (done && !isSameDay(d, deadline)) break;
-          addTaskToDay(days, d, { title: "Đánh giá chất lượng cây ra rễ", done }, exemptions, staff.id);
+          addTaskToDay(days, d, { title, done }, exemptions, staff.id);
           if (done) break;
         }
       }
