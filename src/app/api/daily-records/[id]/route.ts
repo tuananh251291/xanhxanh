@@ -12,6 +12,11 @@ import { z } from "zod";
 // mình làm việc, xem canManageDailyRecords), dùng khi NV cấy mô nhập sai số liệu (POST /api/daily-records
 // không cho NV tự sửa lại — "Đã nhập dữ liệu cho hôm nay, không thể sửa lại"). Xem GET bên dưới cho dữ
 // liệu hiển thị form sửa (kèm _count để client tự biết dòng nào đã bị khoá).
+// Tách số lượng theo mã cây trong nhóm biến thể của chỉ định — cùng ý nghĩa với m05Variants/t05Variants/
+// t01Variants ở POST /api/daily-records. Có truyền thì tổng phải khớp cột gốc (m05/t05/t01) và đây là số
+// MỚI cho đúng từng mã; không truyền thì cột gốc là số của mã chỉ định, lô mã biến thể khác giữ nguyên.
+const variantBreakdownSchema = z.array(z.object({ plantTypeId: z.string(), quantity: z.number().int().min(0) })).optional();
+
 const editSchema = z.object({
   motherChecked: z.number().int().min(0),
   motherContaminatedM05: z.number().int().min(0),
@@ -19,6 +24,9 @@ const editSchema = z.object({
   m05: z.number().int().min(0),
   t05: z.number().int().min(0),
   t01: z.number().int().min(0),
+  m05Variants: variantBreakdownSchema,
+  t05Variants: variantBreakdownSchema,
+  t01Variants: variantBreakdownSchema,
   notes: z.string().optional(),
 });
 
@@ -35,7 +43,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       instruction: {
         select: {
           code: true,
-          plantType: { select: { code: true, name: true } },
+          plantType: {
+            select: {
+              id: true, code: true, name: true,
+              variantGroup: { select: { members: { select: { id: true, code: true, name: true }, orderBy: { code: "asc" } } } },
+            },
+          },
           items: { select: { shelf: { select: { warehouseId: true } } }, take: 1 },
         },
       },
@@ -44,7 +57,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         include: {
           lot: {
             select: {
-              id: true, code: true, stageCode: true, quantity: true, initialQuantity: true, status: true,
+              id: true, code: true, stageCode: true, quantity: true, initialQuantity: true, status: true, plantTypeId: true,
               _count: { select: { transferItems: true, inspectionItems: true, contaminations: true } },
             },
           },
@@ -71,10 +84,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   );
 
   // instruction.items chỉ dùng nội bộ để xét quyền ở trên — không cần trả về client.
+  // Mã cây trong nhóm biến thể (mã của chỉ định đứng đầu) — form sửa tách ô nhập theo từng mã khi có >1 mã.
   const { instruction, ...rest } = record;
+  const { variantGroup, ...plantType } = instruction.plantType;
+  const members = variantGroup?.members ?? [];
+  const variantMembers = members.length > 1
+    ? [
+        ...members.filter((m) => m.id === plantType.id),
+        ...members.filter((m) => m.id !== plantType.id),
+      ]
+    : [];
   return NextResponse.json({
     ...rest,
-    instruction: { code: instruction.code, plantType: instruction.plantType },
+    instruction: { code: instruction.code, plantType },
+    variantMembers,
     locked,
   });
 }
@@ -86,14 +109,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = editSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { motherChecked, motherContaminatedM05, motherUsed, m05, t05, t01, notes } = parsed.data;
+  const { motherChecked, motherContaminatedM05, motherUsed, m05, t05, t01, m05Variants, t05Variants, t01Variants, notes } = parsed.data;
 
   const record = await prisma.dailyRecord.findUnique({
     where: { id },
     include: {
       instruction: {
         include: {
-          plantType: { select: { code: true, transferWaitWeeks: true, rootingWeeks: true } },
+          plantType: {
+            select: {
+              code: true, transferWaitWeeks: true, rootingWeeks: true,
+              variantGroup: { select: { members: { select: { id: true, code: true, transferWaitWeeks: true, rootingWeeks: true } } } },
+            },
+          },
           items: { include: { shelf: { select: { warehouseId: true, warehouse: { select: { code: true } } } } } },
         },
       },
@@ -165,8 +193,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  const itemsByStageCode = new Map(record.items.map((i) => [i.lot.stageCode as EditableStageCode, i]));
-  const newQuantities: Record<EditableStageCode, number> = { M05: m05, T05: t05, T01: t01 };
+  // Mỗi dòng nhật ký = 1 lô theo cặp (quy cách, mã cây) — bản ghi có tách mã biến thể (xem POST
+  // /api/daily-records) có thể có nhiều lô cùng quy cách khác mã cây.
+  const primaryPlantTypeId = record.instruction.plantTypeId;
+  const variantMembers = record.instruction.plantType.variantGroup?.members ?? [];
+  const plantTypeById = new Map<string, { code: string; transferWaitWeeks: number; rootingWeeks: number }>([
+    ...variantMembers.map((m) => [m.id, m] as const),
+    [primaryPlantTypeId, record.instruction.plantType],
+  ]);
+  const keyOf = (stageCode: string, plantTypeId: string) => `${stageCode}::${plantTypeId}`;
+  const itemsByKey = new Map(record.items.map((i) => [keyOf(i.lot.stageCode, i.lot.plantTypeId), i]));
+
+  const columns: { stageCode: EditableStageCode; total: number; breakdown: { plantTypeId: string; quantity: number }[] | undefined }[] = [
+    { stageCode: "M05", total: m05, breakdown: m05Variants },
+    { stageCode: "T05", total: t05, breakdown: t05Variants },
+    { stageCode: "T01", total: t01, breakdown: t01Variants },
+  ];
+  const newQuantities = new Map<string, { stageCode: EditableStageCode; plantTypeId: string; quantity: number }>();
+  for (const { stageCode, total, breakdown } of columns) {
+    if (breakdown && breakdown.length > 0) {
+      if (breakdown.some((b) => !plantTypeById.has(b.plantTypeId))) {
+        return NextResponse.json({ message: `Có mã cây phân loại ${stageCode} không thuộc nhóm biến thể của chỉ định` }, { status: 400 });
+      }
+      const sum = breakdown.reduce((s, b) => s + b.quantity, 0);
+      if (sum !== total) {
+        return NextResponse.json({ message: `Tổng số lượng phân loại ${stageCode} (${sum}) không khớp số đã nhập ở cột gốc (${total})` }, { status: 400 });
+      }
+      for (const b of breakdown) newQuantities.set(keyOf(stageCode, b.plantTypeId), { stageCode, plantTypeId: b.plantTypeId, quantity: b.quantity });
+    } else {
+      newQuantities.set(keyOf(stageCode, primaryPlantTypeId), { stageCode, plantTypeId: primaryPlantTypeId, quantity: total });
+    }
+  }
+  // Lô mã biến thể đang có nhưng client không gửi số (form cũ không tách mã) — giữ nguyên số hiện tại.
+  for (const item of record.items) {
+    const key = keyOf(item.lot.stageCode, item.lot.plantTypeId);
+    if (!newQuantities.has(key)) {
+      newQuantities.set(key, { stageCode: item.lot.stageCode as EditableStageCode, plantTypeId: item.lot.plantTypeId, quantity: item.lot.quantity });
+    }
+  }
 
   // Có thực sự đổi số liệu không (bấm Lưu nhưng không sửa gì thì không tính là "nhập sai") — dùng để
   // quyết định có ghi DailyRecordEdit hay không (đếm "số lần nhập sai dữ liệu trong tuần" của NV, xem
@@ -175,22 +239,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     motherUsed !== record.motherUsed ||
     motherChecked !== record.motherChecked ||
     motherContaminatedM05 !== record.motherContaminatedM05 ||
-    (Object.keys(newQuantities) as EditableStageCode[]).some(
-      (code) => newQuantities[code] !== (itemsByStageCode.get(code)?.lot.quantity ?? 0)
-    );
+    [...newQuantities].some(([key, v]) => v.quantity !== (itemsByKey.get(key)?.lot.quantity ?? 0));
 
   // Cần sẵn Phòng tối cá nhân của NV này TRƯỚC nếu có dòng quy cách mới cần tạo lô (đọc ngoài transaction,
   // giống nguyên bản POST — hàm này tự idempotent, không có gì để rollback nếu phần sau lỗi).
-  const needsNewLot = (Object.keys(newQuantities) as EditableStageCode[]).some(
-    (code) => !itemsByStageCode.has(code) && newQuantities[code] > 0
-  );
+  const needsNewLot = [...newQuantities].some(([key, v]) => !itemsByKey.has(key) && v.quantity > 0);
   const personalRoom = needsNewLot ? await getOrCreatePersonalDarkRoom(record.staffId, warehouseId) : null;
   const productLotCode = needsNewLot ? generateProductLotCode(record.instruction.code, record.recordDate) : null;
 
   await prisma.$transaction(async (tx) => {
-    for (const stageCode of Object.keys(newQuantities) as EditableStageCode[]) {
-      const existing = itemsByStageCode.get(stageCode);
-      const newQty = newQuantities[stageCode];
+    for (const [key, { stageCode, plantTypeId, quantity: newQty }] of newQuantities) {
+      const existing = itemsByKey.get(key);
 
       if (existing) {
         if (newQty === 0) {
@@ -204,15 +263,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } else if (newQty > 0) {
         // NV bỏ sót hẳn 1 quy cách — tạo lô mới, giữ nguyên enteredAt = ngày nhật ký gốc (recordDate),
         // không dùng ngày hôm nay như lúc NV tự nhập.
+        // Lô mã biến thể thêm hậu tố mã cây — cùng quy ước với POST /api/daily-records, tránh trùng
+        // (code, stageCode) với lô mã chỉ định cùng ngày.
         const stage = STAGE_BY_CODE[stageCode];
+        const itemPlantType = plantTypeById.get(plantTypeId)!;
         const expectedMoveAt =
           stage === "MAU_ME"
-            ? addWeeks(record.recordDate, record.instruction.plantType.transferWaitWeeks)
-            : addWeeks(record.recordDate, record.instruction.plantType.rootingWeeks);
+            ? addWeeks(record.recordDate, itemPlantType.transferWaitWeeks)
+            : addWeeks(record.recordDate, itemPlantType.rootingWeeks);
         const lot = await tx.lot.create({
           data: {
-            code: productLotCode!,
-            plantTypeId: record.instruction.plantTypeId,
+            code: plantTypeId === primaryPlantTypeId ? productLotCode! : `${productLotCode}-${itemPlantType.code}`,
+            plantTypeId,
             stage,
             stageCode,
             quantity: newQty,
@@ -230,7 +292,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (contamDelta !== 0) {
       // Nguồn tham chiếu để truy vết (không bắt buộc phải có) — lô M05 của chính bản ghi này nếu còn.
-      const m05LotCode = itemsByStageCode.get("M05")?.lot.code ?? null;
+      const m05LotCode = itemsByKey.get(keyOf("M05", primaryPlantTypeId))?.lot.code ?? null;
       if (contamDelta > 0) {
         if (contamLotId) {
           await tx.lot.update({ where: { id: contamLotId }, data: { quantity: { increment: contamDelta }, initialQuantity: { increment: contamDelta } } });

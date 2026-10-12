@@ -18,15 +18,29 @@ type RecordDetail = {
   motherContaminatedM05: number;
   notes: string | null;
   staff: { name: string; code: string };
-  instruction: { code: string; plantType: { code: string; name: string } };
-  items: { lot: { stageCode: string; quantity: number } }[];
+  instruction: { code: string; plantType: { id: string; code: string; name: string } };
+  items: { lot: { stageCode: string; quantity: number; plantTypeId: string } }[];
+  // Nhóm biến thể của mã chỉ định (>1 mã, mã chỉ định đứng đầu) — rỗng nếu không thuộc nhóm nào.
+  variantMembers: { id: string; code: string; name: string }[];
   locked: boolean;
 };
+
+const STAGE_COLUMNS = [
+  { stageCode: "M05", label: "M05 (cụm)", field: "m05" },
+  { stageCode: "T05", label: "T05 (cây)", field: "t05" },
+  { stageCode: "T01", label: "T01 (cây)", field: "t01" },
+] as const;
+const qtyKey = (stageCode: string, plantTypeId: string) => `${stageCode}::${plantTypeId}`;
 
 // Sửa nhật ký cấy đã lưu — CHỈ Admin/Admin cấp cao (xem PATCH /api/daily-records/[id]), dùng khi NV cấy
 // mô nhập sai số liệu và NV không tự sửa lại được (mỗi ngày chỉ nhập 1 lần). Server tự chặn (trả cờ
 // "locked") nếu bất kỳ lô nào đã tạo từ bản ghi này bị động tới ở nơi khác (bàn giao/kiểm tra
 // nhiễm/nhiễm) — hiển thị rõ lý do thay vì cho sửa rồi mới báo lỗi.
+// Mã cây có ô nhập riêng: cả nhóm biến thể (mã chỉ định đứng đầu) hoặc chỉ mã chỉ định.
+function membersOf(detail: RecordDetail): { id: string; code: string }[] {
+  return detail.variantMembers.length > 1 ? detail.variantMembers : [detail.instruction.plantType];
+}
+
 export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId: string; onSaved?: () => void }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,9 +48,8 @@ export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId:
   const [motherChecked, setMotherChecked] = useState("0");
   const [motherContaminatedM05, setMotherContaminatedM05] = useState("0");
   const [motherUsed, setMotherUsed] = useState("0");
-  const [m05, setM05] = useState("0");
-  const [t05, setT05] = useState("0");
-  const [t01, setT01] = useState("0");
+  // Số lượng theo (quy cách, mã cây) — chỉ định không thuộc nhóm biến thể thì chỉ có mã chỉ định.
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const router = useRouter();
 
@@ -47,9 +60,14 @@ export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId:
     setMotherChecked(String(data.motherChecked));
     setMotherContaminatedM05(String(data.motherContaminatedM05));
     setMotherUsed(String(data.motherUsed));
-    setM05(String(data.items.find((i) => i.lot.stageCode === "M05")?.lot.quantity ?? 0));
-    setT05(String(data.items.find((i) => i.lot.stageCode === "T05")?.lot.quantity ?? 0));
-    setT01(String(data.items.find((i) => i.lot.stageCode === "T01")?.lot.quantity ?? 0));
+    const next: Record<string, string> = {};
+    for (const { stageCode } of STAGE_COLUMNS) {
+      for (const m of membersOf(data)) {
+        const lot = data.items.find((i) => i.lot.stageCode === stageCode && i.lot.plantTypeId === m.id)?.lot;
+        next[qtyKey(stageCode, m.id)] = String(lot?.quantity ?? 0);
+      }
+    }
+    setQuantities(next);
     setNotes(data.notes ?? "");
   }, [recordId]);
 
@@ -60,6 +78,15 @@ export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId:
   }, [open]);
 
   const submit = async () => {
+    if (!detail) return;
+    const members = membersOf(detail);
+    const hasVariants = members.length > 1;
+    const payload: Record<string, unknown> = {};
+    for (const { stageCode, field } of STAGE_COLUMNS) {
+      const breakdown = members.map((m) => ({ plantTypeId: m.id, quantity: Number(quantities[qtyKey(stageCode, m.id)]) || 0 }));
+      payload[field] = breakdown.reduce((sum, b) => sum + b.quantity, 0);
+      if (hasVariants) payload[`${field}Variants`] = breakdown;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/daily-records/${recordId}`, {
@@ -69,9 +96,7 @@ export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId:
           motherChecked: Number(motherChecked) || 0,
           motherContaminatedM05: Number(motherContaminatedM05) || 0,
           motherUsed: Number(motherUsed) || 0,
-          m05: Number(m05) || 0,
-          t05: Number(t05) || 0,
-          t01: Number(t01) || 0,
+          ...payload,
           notes: notes || undefined,
         }),
       });
@@ -129,19 +154,37 @@ export default function EditDailyRecordDialog({ recordId, onSaved }: { recordId:
                     <Label className="text-xs">MM sử dụng (cụm)</Label>
                     <Input type="number" min={0} value={motherUsed} onChange={(e) => setMotherUsed(e.target.value)} />
                   </div>
-                  <div />
-                  <div className="space-y-1">
-                    <Label className="text-xs">M05 (cụm)</Label>
-                    <Input type="number" min={0} value={m05} onChange={(e) => setM05(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">T05 (cây)</Label>
-                    <Input type="number" min={0} value={t05} onChange={(e) => setT05(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">T01 (cây)</Label>
-                    <Input type="number" min={0} value={t01} onChange={(e) => setT01(e.target.value)} />
-                  </div>
+                </div>
+                {membersOf(detail).length > 1 && (
+                  <p className="text-xs text-text-secondary">
+                    Mã {detail.instruction.plantType.code} thuộc nhóm biến thể — nhập số lượng riêng cho từng mã cây.
+                  </p>
+                )}
+                <div className="space-y-3">
+                  {STAGE_COLUMNS.map(({ stageCode, label }) => {
+                    const members = membersOf(detail);
+                    const total = members.reduce((sum, m) => sum + (Number(quantities[qtyKey(stageCode, m.id)]) || 0), 0);
+                    return (
+                      <div key={stageCode} className="space-y-1">
+                        <Label className="text-xs">
+                          {label}
+                          {members.length > 1 && <span className="text-text-muted font-normal ml-1">— tổng {total.toLocaleString("vi-VN")}</span>}
+                        </Label>
+                        <div className={members.length > 1 ? "grid grid-cols-2 gap-2" : ""}>
+                          {members.map((m) => (
+                            <div key={m.id} className="flex items-center gap-2">
+                              {members.length > 1 && <span className="text-xs font-mono text-text-secondary w-14 shrink-0">{m.code}</span>}
+                              <Input
+                                type="number" min={0}
+                                value={quantities[qtyKey(stageCode, m.id)] ?? "0"}
+                                onChange={(e) => setQuantities((prev) => ({ ...prev, [qtyKey(stageCode, m.id)]: e.target.value }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Ghi chú</Label>
