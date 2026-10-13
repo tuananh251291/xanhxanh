@@ -19,6 +19,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   NHAN_VIEN_SAN_XUAT: "NV Sản xuất",
   NHAN_VIEN_QUAN_LY_VUON: "NV Quản lý vườn",
   DOI_TAC_VAN_HANH: "Đối tác vận hành",
+  KE_TOAN: "NV Kế toán",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -38,6 +39,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   NHAN_VIEN_SAN_XUAT: "bg-lime-100 text-lime-800",
   NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
   DOI_TAC_VAN_HANH: "bg-sky-100 text-sky-800",
+  KE_TOAN: "bg-info-light text-info-foreground",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — hệ thống tự tính mỗi tháng (xem src/lib/inspection-lane.ts),
@@ -146,7 +148,7 @@ export function canEditEmployeeName(role: UserRole | null | undefined): boolean 
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
   "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
   "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
-  "DOI_TAC_VAN_HANH",
+  "DOI_TAC_VAN_HANH", "KE_TOAN",
 ];
 export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN" && r !== "ADMIN_KY_THUAT");
 
@@ -871,6 +873,12 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/market-export", label: "Xuất cây", icon: "Send" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/reports/partner", label: "Báo cáo", icon: "BarChart3" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  // NV Kế toán — chưa giao nhiệm vụ nào, menu tối thiểu (giống NHAN_VIEN_QUAN_LY_VUON); thêm trang khi có
+  // yêu cầu nghiệp vụ cụ thể.
+  KE_TOAN: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
 };

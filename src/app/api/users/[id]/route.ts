@@ -7,7 +7,7 @@ import { isAdminRole, isKhoThanhPhamRole, canEditEmploymentType, canAssignWorkpl
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH"] as const;
+const ROLES = ["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH", "KE_TOAN"] as const;
 
 // NV kho mô/cấy mô/môi trường/kỹ thuật bị ràng buộc làm việc với đúng 1 kho sản xuất — KY_THUAT gán được
 // từ khi có nhiệm vụ tháng "Dự kiến đáp ứng cây ra rễ" (xem src/lib/rooting-forecast.ts), CHƯA dùng field

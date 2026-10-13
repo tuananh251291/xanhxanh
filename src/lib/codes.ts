@@ -21,6 +21,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   NHAN_VIEN_SAN_XUAT: { prefix: "NVSX", pad: 2 },
   NHAN_VIEN_QUAN_LY_VUON: { prefix: "NVQLV", pad: 2 },
   DOI_TAC_VAN_HANH: { prefix: "DTVH", pad: 2 },
+  KE_TOAN: { prefix: "NVKTO", pad: 2 },
 };
 
 // Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,

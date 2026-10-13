@@ -51,6 +51,9 @@ enum UserRole {
   // qua Warehouse.type = THI_TRUONG, KHÁC với "Phòng thị trường" (RoomType.PHONG_THI_TRUONG) vốn nằm
   // trong Kho thành phẩm cho NV bán hàng xem — 2 khái niệm không liên quan dù cùng tên gọi "thị trường".
   DOI_TAC_VAN_HANH
+  // NV Kế toán — tạo 14/10/2026, CHƯA có nhiệm vụ/trang nghiệp vụ riêng (menu tối thiểu, xem
+  // ROLE_NAV.KE_TOAN ở src/types/index.ts) — bổ sung quyền khi có yêu cầu cụ thể.
+  KE_TOAN
 }
 
 enum WarehouseType {
