@@ -1,4 +1,4 @@
-import { addWeeks, startOfWeek, endOfWeek } from "date-fns";
+import { startOfWeek, endOfWeek } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { getCurrentWeekSlot, getRootingRotationEpoch } from "@/lib/rooting-week-group";
 import { getMotherRotationEpoch } from "@/lib/mother-week-group";
@@ -134,11 +134,11 @@ export async function planShelfAssignments(
   // Tuần khởi đầu Nhóm tuần ra rễ của ĐÚNG kho đang xếp (giá trị riêng của kho, không có thì giá trị chung).
   const epochMonday = raReGroups.length > 0 ? ((await getRootingRotationEpoch(warehouseId)) ?? null) : null;
   // Nhóm tuần ra rễ của tuần atDate (Nhóm có lượt xuất đúng tuần đó). Cây lên giàn tuần W được xếp vào Nhóm
-  // có lượt xuất TUẦN TRƯỚC (W−1) — Nhóm vừa bàn giao xong nên giàn đã trống, và lượt xuất kế tiếp của nó là
-  // W−1+N = W+3 (N=4): cây ở kho đúng 3 tuần (W, W+1, W+2), Kỹ thuật đánh giá Thứ 5 tuần W+2, Kho mô xuất tuần
-  // W+3 (VD lên giàn tuần 39 → đánh giá Thứ 5 tuần 41 → xuất tuần 42). Tính theo tuần lên giàn THỰC TẾ (lúc
-  // Kho mô xếp), không theo ngày vào Phòng tối — trước đây dùng (vào Phòng tối + 1 tuần) = Nhóm có lượt xuất
-  // NGAY tuần lên giàn, nên cây ở kho 4 tuần và bị xếp lẫn với lứa cũ đang chờ xuất của chính Nhóm đó.
+  // có lượt xuất CHÍNH tuần W — Nhóm đó vừa bàn giao/dọn trống đầu tuần, lượt xuất kế tiếp là W+N (N=4): cây
+  // ở kho 4 tuần. Tính theo tuần lên giàn THỰC TẾ (lúc Kho mô xếp), không theo ngày vào Phòng tối. VD Bát
+  // Tràng: cấy 05–11/10 → lên giàn 12–18/10 (tuần 42) → Nhóm 2 (A01/A02) có lượt xuất tuần 42. Trước đây
+  // (5bc774e) chọn Nhóm xuất tuần W−1 (Nhóm 1, A03/A04) — lệch 1 tuần so với cách xoay vòng thực tế ở kho
+  // (Nhóm 3 lên giàn tuần 39, Nhóm 4 tuần 40, Nhóm 1 tuần 41, Nhóm 2 tuần 42), xếp lẫn vào lứa vừa lên tuần trước.
   function resolveRaReGroupAt(atDate: Date): { id: string; name: string; rotationOrder: number | null } | "BEFORE_EPOCH" | undefined {
     if (raReGroups.length === 0) return undefined;
     // Tuần của atDate còn TRƯỚC mốc "Tuần khởi đầu Nhóm tuần ra rễ 1" đã cấu hình — lịch xoay vòng thật
@@ -239,7 +239,7 @@ export async function planShelfAssignments(
       let pool = candidates.filter((c) => c.roomType === "PHONG_RA_RE");
       if (pool.length === 0) throw new ShelfAssignError("Không có kệ Phòng ra rễ nào trong kho này");
       if (rootingUsesRotationGroup) {
-        const resolvedGroup = resolveRaReGroupAt(addWeeks(new Date(), -1));
+        const resolvedGroup = resolveRaReGroupAt(new Date());
         if (resolvedGroup === "BEFORE_EPOCH") {
           throw new ShelfAssignError(
             `Chưa tới tuần bắt đầu lịch xoay vòng Nhóm tuần ra rễ (SUPER_ADMIN đã cấu hình ở /settings/shelf-groups nhưng còn ở tuần sau) — chưa xác định được Nhóm nào đang tới lượt`
