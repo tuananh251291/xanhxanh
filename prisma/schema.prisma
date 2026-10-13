@@ -571,6 +571,8 @@ model User {
   attendanceRequestsManaged            AttendanceRequest[]          @relation("AttendanceRequestManager")
   attendanceRequestsHrDecided          AttendanceRequest[]          @relation("AttendanceRequestHr")
   annualLeaveBalances                  AnnualLeaveBalance[]
+  assistantTasksResponsible            AssistantTask[]              @relation("AssistantTaskResponsible")
+  assistantTasksCreated                AssistantTask[]              @relation("AssistantTaskCreatedBy")
 
   @@map("users")
 }
@@ -3756,4 +3758,42 @@ model AnnualLeaveBalance {
 
   @@unique([userId, year])
   @@map("annual_leave_balances")
+}
+
+enum AssistantTaskCategory {
+  CO_DINH // Cố định — việc lặp lại định kỳ (báo cáo tuần, báo giá...)
+  PHAT_SINH // Phát sinh
+}
+
+enum AssistantTaskStatus {
+  CHUA_LAM
+  DANG_XU_LY
+  HOAN_THANH
+}
+
+// "Theo dõi công việc" — NV Trợ lý (TRO_LY) ghi lại việc Giám đốc giao cho từng người và theo dõi hạn
+// (trang /assistant-tasks, dựng theo bảng "Bảng điều khiển công việc của Giám đốc"). "Còn lại / Trễ" và
+// "Nhắc nhở" KHÔNG lưu — tính lúc hiển thị từ deadline/status/completedAt. assignedDate/deadline lưu
+// UTC-midnight của ngày (parse thẳng chuỗi "yyyy-MM-dd"), đọc lại bằng toISOString().slice(0, 10).
+model AssistantTask {
+  id            String                @id @default(cuid())
+  category      AssistantTaskCategory
+  title         String                @db.Text
+  responsibleId String
+  responsible   User                  @relation("AssistantTaskResponsible", fields: [responsibleId], references: [id])
+  assignedDate  DateTime
+  deadline      DateTime
+  status        AssistantTaskStatus   @default(CHUA_LAM)
+  // Thời điểm bấm "Hoàn thành" — để biết hoàn thành đúng hạn hay trễ bao nhiêu ngày. Bỏ hoàn thành → null.
+  completedAt   DateTime?
+  // Vướng mắc — NV Trợ lý điền tay.
+  blocker       String?               @db.Text
+  createdById   String
+  createdBy     User                  @relation("AssistantTaskCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([deadline])
+  @@index([responsibleId])
+  @@map("assistant_tasks")
 }

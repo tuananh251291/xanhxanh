@@ -639,6 +639,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
+    { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   ADMIN: [
@@ -764,9 +765,10 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
-  // NV Trợ lý — chỉ phần kiểm tra/ghi nhận lỗi vi phạm NV cấy mô giống Kho mô (cùng phạm vi kho làm việc).
+  // NV Trợ lý — kiểm tra/ghi nhận lỗi vi phạm NV cấy mô giống Kho mô (cùng phạm vi kho làm việc) + Theo dõi công việc.
   TRO_LY: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
