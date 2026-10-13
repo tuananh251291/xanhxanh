@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
 import { lotSelect, buildStagePreview, confirmStage, confirmStageManual } from "@/lib/receive-phong-toi";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
+import { uninspectedPendingItems } from "@/lib/transfer-reinspect";
 import { z } from "zod";
 
 async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
@@ -11,7 +12,7 @@ async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
     where: { id: transferId, fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId } },
     include: {
       fromUser: { select: { id: true, code: true, name: true } },
-      inspection: { select: { id: true } },
+      inspection: { select: { id: true, items: { select: { plantTypeId: true, stageCode: true } } } },
       items: {
         where: { confirmedAt: null },
         select: { id: true, lotId: true, transferId: true, lot: { select: lotSelect } },
@@ -32,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
   // Phiếu MM dư (SURPLUS_TRANSFER_TAG) không qua bước kiểm tra luồng Đỏ — luôn xếp thẳng vào Kho quá
   // hạn, không có gì để kiểm tra nhiễm (xem PATCH /api/transfers/[id], isSurplusTransfer).
   const isSurplus = transfer.notes === SURPLUS_TRANSFER_TAG;
-  if (!isSurplus && !transfer.inspection) {
+  if (!isSurplus && uninspectedPendingItems(transfer.items, transfer.inspection).length > 0) {
     return NextResponse.json({ message: "Cần kiểm tra trước khi sắp xếp về kho" }, { status: 400 });
   }
 
@@ -42,6 +43,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
     transferCode: transfer.code,
     staffCode: transfer.fromUser.code,
     staffName: transfer.fromUser.name,
+    // Nút "Kiểm tra lại" (xem reopenTransferInspection) — chỉ phiếu đã qua kiểm tra luồng Đỏ/Vàng, phiếu MM dư không có bước này.
+    canReinspect: !isSurplus && !!transfer.inspection,
     ...preview,
   });
 }
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   const transfer = await loadTransfer(transferId, workplaceWarehouseId);
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy phiếu bàn giao" }, { status: 404 });
   const isSurplus = transfer.notes === SURPLUS_TRANSFER_TAG;
-  if (!isSurplus && !transfer.inspection) {
+  if (!isSurplus && uninspectedPendingItems(transfer.items, transfer.inspection).length > 0) {
     return NextResponse.json({ message: "Cần kiểm tra trước khi sắp xếp về kho" }, { status: 400 });
   }
 

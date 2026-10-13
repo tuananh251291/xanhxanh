@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/combobox";
 import { PackageCheck, Loader2, Check, AlertTriangle, ArrowLeft, Wand2, Plus, Trash2, ShieldPlus } from "lucide-react";
 import { toast } from "sonner";
+import ReinspectButton from "../../reinspect-button";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -38,6 +39,7 @@ type LotGroup = {
 
 type Row = {
   transferCode: string;
+  canReinspect: boolean;
   rootingGroups: LotGroup[];
   motherGroups: LotGroup[];
   hasPendingRooting: boolean;
@@ -358,6 +360,14 @@ export default function PlaceBoard({ transferId }: { transferId: string }) {
   return (
     <Card>
       <CardContent className="p-0">
+        {row.canReinspect && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+            <p className="text-sm text-text-secondary">
+              Phiếu <span className="font-mono text-foreground">{row.transferCode}</span> — kết quả kiểm tra nhập sai? Bấm Kiểm tra lại để nhập lại.
+            </p>
+            <ReinspectButton transferId={transferId} transferCode={row.transferCode} />
+          </div>
+        )}
         <BackupInstructionNotice
           hasMother={row.motherGroups.some((g) => g.isBackup)}
           hasRooting={row.rootingGroups.some((g) => g.isBackup)}

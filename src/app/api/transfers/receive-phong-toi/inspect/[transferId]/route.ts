@@ -3,15 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { createAlert } from "@/lib/inventory";
+import { uninspectedPendingItems } from "@/lib/transfer-reinspect";
 import { z } from "zod";
 
+// items = CHỈ các dòng đang chờ xếp mà nhóm (mã cây + quy cách) chưa có kết quả kiểm tra — sau khi Kho mô
+// "Kiểm tra lại" (xem reopenTransferInspection) phiếu có thể còn giữ kết quả của các dòng đã xếp kệ, chỉ
+// các dòng được mở lại mới cần kiểm tra lại. pendingCount = tổng số dòng đang chờ xếp (kể cả đã kiểm tra).
 async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
-  return prisma.transfer.findFirst({
+  const transfer = await prisma.transfer.findFirst({
     where: { id: transferId, status: "PENDING", fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId } },
     include: {
       fromUser: { select: { code: true, name: true, inspectionLane: true } },
       fromRoom: { select: { warehouseId: true, warehouse: { select: { code: true } } } },
-      inspection: { select: { id: true } },
+      inspection: { select: { id: true, items: { select: { plantTypeId: true, stageCode: true } } } },
       items: {
         where: { confirmedAt: null },
         select: {
@@ -23,6 +27,8 @@ async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
       },
     },
   });
+  if (!transfer) return null;
+  return { ...transfer, pendingCount: transfer.items.length, items: uninspectedPendingItems(transfer.items, transfer.inspection) };
 }
 
 type TransferItem = NonNullable<Awaited<ReturnType<typeof loadTransfer>>>["items"][number];
@@ -39,8 +45,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
   if (transfer.fromUser.inspectionLane === "XANH") {
     return NextResponse.json({ message: "NV luồng Xanh không cần kiểm tra ở đây" }, { status: 400 });
   }
-  if (transfer.inspection) return NextResponse.json({ message: "Phiếu này đã được kiểm tra" }, { status: 400 });
-  if (transfer.items.length === 0) return NextResponse.json({ message: "Phiếu không còn lô nào để kiểm tra" }, { status: 400 });
+  if (transfer.pendingCount === 0) return NextResponse.json({ message: "Phiếu không còn lô nào để kiểm tra" }, { status: 400 });
+  if (transfer.items.length === 0) return NextResponse.json({ message: "Phiếu này đã được kiểm tra" }, { status: 400 });
 
   // Kết quả kiểm tra chỉ LƯU được gộp theo quy cách (TransferInspectionItem unique theo [inspectionId,
   // stageCode]), nhưng Kho mô NHẬP độc lập theo từng lô (mã cây + quy cách riêng) — xem POST bên dưới
@@ -93,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   if (transfer.fromUser.inspectionLane === "XANH") {
     return NextResponse.json({ message: "NV luồng Xanh không cần kiểm tra ở đây" }, { status: 400 });
   }
-  if (transfer.inspection) return NextResponse.json({ message: "Phiếu này đã được kiểm tra" }, { status: 400 });
+  if (transfer.items.length === 0) return NextResponse.json({ message: "Phiếu này đã được kiểm tra" }, { status: 400 });
 
   const itemByLotId = new Map<string, TransferItem>(transfer.items.map((i) => [i.lotId, i]));
   const expectedLotIds = new Set(itemByLotId.keys());
@@ -155,24 +161,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   const warehouseId = transfer.fromRoom!.warehouseId;
   const warehouseCode = transfer.fromRoom!.warehouse.code;
 
+  const inspectionItemsData = [...groups.values()].map((g) => ({
+    plantTypeId: g.plantTypeId,
+    stageCode: g.stageCode,
+    handedOverQuantity: g.handedOverQuantity,
+    contaminatedQuantity: g.contaminatedQuantity,
+    passedQuantity: g.handedOverQuantity - g.contaminatedQuantity,
+    randomCheckPassRate: g.rateSum / g.rateCount,
+    unqualifiedQuantity: g.unqualifiedQuantity,
+    creditedQuantity: g.creditedQuantity,
+  }));
+
   await prisma.$transaction(async (tx) => {
-    await tx.transferInspection.create({
-      data: {
-        transferId,
-        inspectedById: session.user.id,
-        items: {
-          create: [...groups.values()].map((g) => ({
-            plantTypeId: g.plantTypeId,
-            stageCode: g.stageCode,
-            handedOverQuantity: g.handedOverQuantity,
-            contaminatedQuantity: g.contaminatedQuantity,
-            passedQuantity: g.handedOverQuantity - g.contaminatedQuantity,
-            randomCheckPassRate: g.rateSum / g.rateCount,
-            unqualifiedQuantity: g.unqualifiedQuantity,
-            creditedQuantity: g.creditedQuantity,
-          })),
-        },
-      },
+    // Phiếu đã "Kiểm tra lại" mà còn giữ kết quả của dòng đã xếp kệ (xem reopenTransferInspection) — thêm
+    // kết quả mới vào đúng phiếu kiểm tra đó (TransferInspection unique theo transferId), không tạo phiếu thứ 2.
+    await tx.transferInspection.upsert({
+      where: { transferId },
+      create: { transferId, inspectedById: session.user.id, items: { create: inspectionItemsData } },
+      update: { inspectedById: session.user.id, items: { create: inspectionItemsData } },
     });
 
     // Trừ nhiễm đúng theo từng LÔ Kho mô đã nhập — input đã sẵn theo từng lô nên không cần dồn tuần tự

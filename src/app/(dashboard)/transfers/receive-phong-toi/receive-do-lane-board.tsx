@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { INSPECTION_LANE_LABELS, INSPECTION_LANE_COLORS } from "@/types";
+import ReinspectButton from "./reinspect-button";
 
 type Row = {
   transferId: string;
@@ -116,11 +117,14 @@ export default function ReceiveDoLaneBoard() {
                   </td>
                   <td className="px-4 py-3">
                     {row.hasInspection ? (
-                      <Link href={`/transfers/receive-phong-toi/place/${row.transferId}`}>
-                        <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
-                          <ArrowRight className="w-3.5 h-3.5 mr-1.5" /> Tiếp tục sắp xếp về kho
-                        </Button>
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/transfers/receive-phong-toi/place/${row.transferId}`}>
+                          <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                            <ArrowRight className="w-3.5 h-3.5 mr-1.5" /> Tiếp tục sắp xếp về kho
+                          </Button>
+                        </Link>
+                        <ReinspectButton transferId={row.transferId} transferCode={row.code} />
+                      </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <Link href={`/transfers/receive-phong-toi/inspect/${row.transferId}`}>

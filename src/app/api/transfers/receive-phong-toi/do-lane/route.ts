@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
+import { uninspectedPendingItems } from "@/lib/transfer-reinspect";
 
 // Danh sách phiếu bàn giao Phòng tối đang chờ của NV luồng Đỏ/Vàng/chưa có dữ liệu luồng — gộp theo
 // TỪNG PHIẾU (khác luồng Xanh gộp theo NV), vì bước kiểm tra nhiễm áp dụng riêng cho từng đợt bàn giao.
@@ -27,10 +28,10 @@ export async function GET() {
       code: true,
       transferredAt: true,
       fromUser: { select: { code: true, name: true } },
-      inspection: { select: { id: true } },
+      inspection: { select: { id: true, items: { select: { plantTypeId: true, stageCode: true } } } },
       items: {
         where: { confirmedAt: null },
-        select: { quantity: true, lot: { select: { code: true, stageCode: true, enteredAt: true } } },
+        select: { quantity: true, lot: { select: { code: true, stageCode: true, plantTypeId: true, enteredAt: true } } },
       },
     },
     orderBy: { transferredAt: "asc" },
@@ -46,7 +47,9 @@ export async function GET() {
       staffName: t.fromUser.name,
       items: t.items.map((i) => ({ lotCode: i.lot.code, stageCode: i.lot.stageCode, quantity: i.quantity, enteredAt: i.lot.enteredAt })),
       totalQuantity: t.items.reduce((s, i) => s + i.quantity, 0),
-      hasInspection: t.inspection !== null,
+      // "Đã kiểm tra" = mọi dòng đang chờ xếp đều đã có kết quả kiểm tra (sau "Kiểm tra lại", phiếu có thể
+      // còn giữ kết quả của dòng đã xếp kệ nhưng các dòng mở lại vẫn cần kiểm tra — xem transfer-reinspect.ts).
+      hasInspection: t.inspection !== null && uninspectedPendingItems(t.items, t.inspection).length === 0,
     }));
 
   return NextResponse.json(rows);
