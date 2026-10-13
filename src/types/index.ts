@@ -142,6 +142,12 @@ export function canEditEmployeeName(role: UserRole | null | undefined): boolean 
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Cài đặt Sale — mục Khách hàng + NV quản lý (xem /settings/sale): Admin cấp cao và NV Trợ lý (mở cho Trợ lý
+// 14/10/2026). Mục Thị trường vẫn CHỈ Admin cấp cao.
+export function canManageSaleCustomers(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "TRO_LY";
+}
+
 // Vai trò được phép gán khi tạo tài khoản mới, theo vai trò người tạo — Admin/Admin cấp cao tạo được mọi
 // vai trò (trừ SUPER_ADMIN, không tạo thêm Admin cấp cao qua UI); NV Hành chính nhân sự cũng thêm được
 // người dùng nhưng CHỈ các vị trí nhân viên, không tạo được tài khoản Admin (xem POST /api/users).
@@ -773,6 +779,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
+    // Chỉ mục Khách hàng + NV quản lý (không có Thị trường) — xem canManageSaleCustomers.
+    { href: "/settings/sale/customers", label: "Cài đặt Sale", icon: "Flag" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Nhận hàng" (/goods-receipts) gộp cả "Nhận hàng từ NCC" lẫn "Nhận bàn giao thành phẩm" (route

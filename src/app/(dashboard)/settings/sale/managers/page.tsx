@@ -1,13 +1,14 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Flag } from "lucide-react";
+import { canManageSaleCustomers } from "@/types";
 import SaleSettingsTabs from "../sale-settings-tabs";
 import ManagersBoard from "./managers-board";
 
 export default async function SaleManagersPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (role !== "SUPER_ADMIN") redirect("/dashboard");
+  if (!canManageSaleCustomers(role)) redirect("/dashboard");
 
   return (
     <div className="space-y-6">
@@ -17,7 +18,7 @@ export default async function SaleManagersPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">Danh sách khách hàng, thị trường và phân công nhân viên quản lý cho đội bán hàng.</p>
       </div>
-      <SaleSettingsTabs active="/settings/sale/managers" />
+      <SaleSettingsTabs active="/settings/sale/managers" showMarkets={role === "SUPER_ADMIN"} />
       <ManagersBoard />
     </div>
   );

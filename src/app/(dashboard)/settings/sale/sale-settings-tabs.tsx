@@ -6,10 +6,11 @@ const TABS = [
   { href: "/settings/sale/managers", label: "NV quản lý" },
 ] as const;
 
-export default function SaleSettingsTabs({ active }: { active: (typeof TABS)[number]["href"] }) {
+// showMarkets = false ẩn tab Thị trường — NV Trợ lý chỉ được Khách hàng + NV quản lý (xem canManageSaleCustomers).
+export default function SaleSettingsTabs({ active, showMarkets = false }: { active: (typeof TABS)[number]["href"]; showMarkets?: boolean }) {
   return (
     <div className="flex gap-2">
-      {TABS.map((tab) => (
+      {TABS.filter((tab) => showMarkets || tab.href !== "/settings/sale/markets").map((tab) => (
         <Link
           key={tab.href}
           href={tab.href}

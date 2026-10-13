@@ -17,7 +17,7 @@ export default async function SaleMarketsPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">Danh sách khách hàng, thị trường và phân công nhân viên quản lý cho đội bán hàng.</p>
       </div>
-      <SaleSettingsTabs active="/settings/sale/markets" />
+      <SaleSettingsTabs active="/settings/sale/markets" showMarkets />
       <MarketsBoard />
     </div>
   );

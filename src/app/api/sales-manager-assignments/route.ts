@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { canManageSaleCustomers } from "@/types";
 import { z } from "zod";
 
 const upsertSchema = z.object({
@@ -11,8 +12,8 @@ const upsertSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ Admin cấp cao mới xem được phân công quản lý" }, { status: 403 });
+  if (!canManageSaleCustomers(session?.user?.role)) {
+    return NextResponse.json({ message: "Chỉ Admin cấp cao / NV Trợ lý mới xem được phân công quản lý" }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);
   const marketId = searchParams.get("marketId") || undefined;
@@ -33,8 +34,8 @@ export async function GET(req: NextRequest) {
 // phải xoá dòng cũ trước, đúng ngữ nghĩa "mỗi (NV bán hàng, thị trường) có đúng 1 NV quản lý".
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ Admin cấp cao mới được gán quản lý" }, { status: 403 });
+  if (!canManageSaleCustomers(session?.user?.role)) {
+    return NextResponse.json({ message: "Chỉ Admin cấp cao / NV Trợ lý mới được gán quản lý" }, { status: 403 });
   }
   const body = await req.json();
   const parsed = upsertSchema.safeParse(body);
