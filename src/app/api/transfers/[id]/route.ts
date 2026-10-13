@@ -139,6 +139,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { action, shelfAssignments, finishedSplit } = parsed.data;
 
+  // Kho mô hoàn lại phiếu MM dư (VD NV cấy mô gửi sai số) — phiếu chưa xếp kệ gì nên huỷ hẳn: xoá phiếu + lô
+  // MM dư sinh kèm (xem POST /api/instructions/[id]/surplus-handover), bỏ dấu surplusHandedOverAt để NV cấy
+  // mô thấy lại nút bàn giao MM dư trên /my-instructions và gửi lại đúng số (MM dư tính lại từ nhật ký cấy).
+  // Trước đây chỉ đổi phiếu sang REJECTED: chỉ định vẫn mang dấu "đã bàn giao" nên NV không gửi lại được, và
+  // lô MM dư còn ACTIVE treo lơ lửng không kệ/phòng (CDFD02C07051026 Kim Động, 12/10/2026).
+  if (action === "reject" && transfer.notes === SURPLUS_TRANSFER_TAG) {
+    const lotIds = transfer.items.map((i) => i.lotId);
+    const instructionIds = [...new Set(transfer.items.map((i) => i.lot.instructionId).filter((v): v is string => !!v))];
+    const instructions = await prisma.plantingInstruction.findMany({ where: { id: { in: instructionIds } }, select: { code: true } });
+    await prisma.$transaction(async (tx) => {
+      await tx.transferItem.deleteMany({ where: { transferId: id } });
+      await tx.transfer.delete({ where: { id } });
+      await tx.lot.deleteMany({ where: { id: { in: lotIds } } });
+      await tx.plantingInstruction.updateMany({ where: { id: { in: instructionIds } }, data: { surplusHandedOverAt: null } });
+      await tx.alert.updateMany({
+        where: { type: "LOT_READY_TRANSFER", relatedId: id, status: "UNREAD" },
+        data: { status: "READ", readAt: new Date() },
+      });
+    });
+    await createAlert({
+      type: "INSTRUCTION_RETURNED_UNHANDED",
+      title: "Phiếu bàn giao MM dư bị hoàn lại",
+      message: `${session.user.name} đã hoàn lại phiếu MM dư ${transfer.code} (chỉ định ${instructions.map((i) => i.code).join(", ")}) — kiểm tra lại số liệu rồi bàn giao MM dư lại tại "Chỉ định của tôi"`,
+      userId: transfer.fromUserId,
+      relatedType: "PlantingInstruction",
+    });
+    return NextResponse.json({ success: true });
+  }
+
   if (action === "reject") {
     await prisma.transfer.update({ where: { id }, data: { status: "REJECTED" } });
     // Phiếu bị từ chối thì không còn gì để nhận — tắt thông báo "chờ nhận" cho mọi người nhận.
