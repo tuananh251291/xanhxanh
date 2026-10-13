@@ -26,6 +26,25 @@ function reportClientError(stage: string, message: string) {
   }).catch(() => null);
 }
 
+const GEO_STALL_MS = 20000;
+
+// Hướng dẫn khi điện thoại không trả lời yêu cầu vị trí (xem stallTimer trong bước 1) — theo loại máy/trình duyệt.
+function geoStalledSteps(): string[] {
+  const ua = navigator.userAgent;
+  const inApp = /Zalo|FBAN|FBAV|FB_IAB|Instagram/i.test(ua);
+  const ios = /iPhone|iPad|iPod/i.test(ua);
+  return [
+    ...(inApp ? [`Bạn đang mở trong ứng dụng ${/Zalo/i.test(ua) ? "Zalo" : "Facebook"} — bấm ⋮ hoặc ··· → "Mở bằng trình duyệt" (${ios ? "Safari" : "Chrome"}).`] : []),
+    ios
+      ? "Vào Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị: BẬT."
+      : "Kéo thanh thông báo xuống, bật Vị trí (GPS); tắt Tiết kiệm pin nếu đang bật.",
+    ios
+      ? "Nếu Safari hỏi \"Cho phép dùng vị trí\" thì chọn Cho phép."
+      : "Nhìn thanh địa chỉ Chrome: nếu có biểu tượng vị trí bị gạch/nhấp nháy thì bấm vào → Cho phép.",
+    "Bấm Thử lại (hoặc tải lại trang).",
+  ];
+}
+
 function geoErrorMessage(err: GeolocationPositionError): string {
   if (err.code === err.PERMISSION_DENIED) {
     const ua = navigator.userAgent;
@@ -59,6 +78,7 @@ export default function CheckInFlowDialog({
   const [step, setStep] = useState<Step>("locating");
   const [fix, setFix] = useState<Fix | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [geoStalled, setGeoStalled] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
@@ -76,7 +96,7 @@ export default function CheckInFlowDialog({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setStep("locating"); setFix(null); setGeoError(null); setCameraError(null); setCameraReady(false); setResultMessage("");
+      setStep("locating"); setFix(null); setGeoError(null); setGeoStalled(false); setCameraError(null); setCameraReady(false); setResultMessage("");
     }
   }
 
@@ -94,21 +114,26 @@ export default function CheckInFlowDialog({
       reportClientError("geo-unsupported", navigator.userAgent);
       return;
     }
+    let gotAnswer = false;
+    const onPosition = (pos: GeolocationPosition) => {
+      gotAnswer = true;
+      const next: Fix = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        distance: distanceMeters(pos.coords.latitude, pos.coords.longitude, site.latitude, site.longitude),
+      };
+      const prev = fixRef.current;
+      // Luôn lấy toạ độ mới nhất — trừ khi đã có 1 lần vào bán kính mà lần mới (GPS nhảy) lại ra ngoài.
+      const keepPrev = !!prev && prev.distance <= site.radiusMeters && next.distance > site.radiusMeters;
+      if (!keepPrev) { fixRef.current = next; setFix(next); }
+      setGeoError(null);
+      setGeoStalled(false);
+    };
     const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const next: Fix = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          distance: distanceMeters(pos.coords.latitude, pos.coords.longitude, site.latitude, site.longitude),
-        };
-        const prev = fixRef.current;
-        // Luôn lấy toạ độ mới nhất — trừ khi đã có 1 lần vào bán kính mà lần mới (GPS nhảy) lại ra ngoài.
-        const keepPrev = !!prev && prev.distance <= site.radiusMeters && next.distance > site.radiusMeters;
-        if (!keepPrev) { fixRef.current = next; setFix(next); }
-        setGeoError(null);
-      },
+      onPosition,
       (err) => {
+        gotAnswer = true;
         setGeoError(geoErrorMessage(err));
         reportClientError(`geo-${err.code}`, `${err.message} | ${navigator.userAgent}`);
         // Bị từ chối quyền thì dừng dò (dò tiếp chỉ lặp lại cùng lỗi) — NV bấm "Thử lại" sau khi sửa cài đặt.
@@ -116,7 +141,28 @@ export default function CheckInFlowDialog({
       },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
     );
-    return () => navigator.geolocation.clearWatch(watchId);
+    // Song song xin 1 vị trí nhanh qua Wifi/4G (không chờ GPS) — trong nhà GPS có thể rất lâu mới có, vị trí
+    // mạng thường có ngay và đủ dùng với bán kính khu ~100m. watchPosition có toạ độ GPS sau đó thì tự thay.
+    // Lỗi của lần xin này bỏ qua — watchPosition ở trên đã báo lỗi nếu có.
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { if (!fixRef.current) onPosition(pos); },
+      () => null,
+      { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 }
+    );
+    // Điện thoại im lặng hẳn (không toạ độ, không báo lỗi — VD hộp hỏi quyền Vị trí của Chrome bị ẩn thành
+    // biểu tượng nhỏ, trình duyệt trong Zalo treo khi xin vị trí, máy tắt Định vị/tiết kiệm pin): trước đây
+    // vòng quay "Đang lấy vị trí" chạy mãi, server không có log gì (12/10/2026: Kim Động, NV Android 10 kẹt
+    // cả ngày). Sau 20 giây hiện hướng dẫn + nút Thử lại, gửi log kèm trạng thái quyền để tra nguyên nhân.
+    const stallTimer = setTimeout(async () => {
+      if (gotAnswer || fixRef.current) return;
+      setGeoStalled(true);
+      let permission = "unknown";
+      try {
+        permission = (await navigator.permissions?.query({ name: "geolocation" }))?.state ?? "unknown";
+      } catch { /* trình duyệt cũ không có Permissions API */ }
+      reportClientError("geo-stalled", `permission=${permission} | ${navigator.userAgent}`);
+    }, GEO_STALL_MS);
+    return () => { clearTimeout(stallTimer); navigator.geolocation.clearWatch(watchId); };
   }, [open, step, site, watchKey]);
 
   // Bước 2: bật camera trước trong trang.
@@ -228,6 +274,14 @@ export default function CheckInFlowDialog({
                 <p className="font-semibold text-foreground">Bước 1/2 — Xác định vị trí</p>
                 {geoError ? (
                   <p className="text-destructive">{geoError}</p>
+                ) : !fix && geoStalled ? (
+                  <div className="space-y-1.5">
+                    <p className="text-warning-foreground font-medium">Điện thoại chưa trả về vị trí sau 20 giây. Làm lần lượt:</p>
+                    <ol className="list-decimal pl-5 space-y-1 text-text-secondary">
+                      {geoStalledSteps().map((s) => <li key={s}>{s}</li>)}
+                    </ol>
+                    <p className="text-xs text-text-muted flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Vẫn đang tiếp tục dò vị trí…</p>
+                  </div>
                 ) : !fix ? (
                   <p className="text-text-secondary flex items-center gap-1.5"><Loader2 className="w-4 h-4 animate-spin" /> Đang lấy vị trí GPS…</p>
                 ) : (
@@ -241,8 +295,8 @@ export default function CheckInFlowDialog({
               </div>
             </div>
             <div className="flex gap-2 justify-end">
-              {(geoError || (fix && !inRadius)) && (
-                <Button variant="outline" onClick={() => { fixRef.current = null; setFix(null); setGeoError(null); setWatchKey((k) => k + 1); }}>
+              {(geoError || geoStalled || (fix && !inRadius)) && (
+                <Button variant="outline" onClick={() => { fixRef.current = null; setFix(null); setGeoError(null); setGeoStalled(false); setWatchKey((k) => k + 1); }}>
                   <RefreshCw className="w-4 h-4" /> Thử lại
                 </Button>
               )}
@@ -302,7 +356,7 @@ export default function CheckInFlowDialog({
             <p className="text-sm text-destructive">{resultMessage}</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>Đóng</Button>
-              <Button onClick={() => { fixRef.current = null; setFix(null); setStep("locating"); setWatchKey((k) => k + 1); }}>Thử lại</Button>
+              <Button onClick={() => { fixRef.current = null; setFix(null); setGeoStalled(false); setStep("locating"); setWatchKey((k) => k + 1); }}>Thử lại</Button>
             </div>
           </div>
         )}
