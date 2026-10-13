@@ -104,7 +104,16 @@ function LotGroupRows({
             <td className="px-4 py-3" colSpan={6}>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs text-text-secondary">{group.plantTypeCode}</span>
-                <span className="text-destructive text-xs flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {group.error}</span>
+                {group.error ? (
+                  <span className="text-destructive text-xs flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {group.error}</span>
+                ) : (
+                  // Lô còn 0 (VD Kho mô kiểm tra báo nhiễm hết) — không còn gì để xếp kệ, không phải lỗi. Vẫn cần bấm
+                  // xác nhận để đóng dòng này (phiếu chỉ chuyển CONFIRMED khi mọi dòng đã xác nhận).
+                  <span className="text-text-secondary text-xs">
+                    <Badge variant="outline" className="mr-1.5">{group.stageCode}</Badge>
+                    Còn 0 {group.stageCode.startsWith("M") ? "cụm" : "cây"} (đã chuyển hết sang Phòng nhiễm) — không cần xếp kệ, bấm xác nhận để đóng dòng này
+                  </span>
+                )}
               </div>
             </td>
           )}
@@ -120,7 +129,7 @@ function LotGroupRows({
                   {processing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
                   {buttonLabel}
                 </Button>
-                {secondaryButton && (
+                {secondaryButton && group.quantity > 0 && (
                   <Button
                     size="sm"
                     variant="outline"
