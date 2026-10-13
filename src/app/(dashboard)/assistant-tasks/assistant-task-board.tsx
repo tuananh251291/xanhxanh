@@ -2,13 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxClear,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import {
   ASSISTANT_TASK_CATEGORY_LABELS,
@@ -45,6 +56,12 @@ export default function AssistantTaskBoard({ staffOptions }: { staffOptions: Sta
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>(ALL);
   const [tone, setTone] = useState<AssistantTaskTone | null>(null);
+  const [status, setStatus] = useState<string>(ALL);
+  const [responsible, setResponsible] = useState<StaffOption | null>(null);
+  const [assignedFrom, setAssignedFrom] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [deadlineFrom, setDeadlineFrom] = useState("");
+  const [deadlineTo, setDeadlineTo] = useState("");
   const [editing, setEditing] = useState<AssistantTaskRow | "new" | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -59,26 +76,52 @@ export default function AssistantTaskBoard({ staffOptions }: { staffOptions: Sta
     () => (tasks ?? []).map((t) => ({ task: t, info: describeAssistantTask(t) })),
     [tasks]
   );
+  // Lọc người chịu trách nhiệm: chỉ gợi ý người ĐANG có việc trong bảng (không phải toàn bộ nhân sự).
+  const responsibleOptions = useMemo(() => {
+    const m = new Map<string, StaffOption>();
+    for (const t of tasks ?? []) {
+      if (!m.has(t.responsibleId)) m.set(t.responsibleId, { value: t.responsibleId, label: `${t.responsible.name} (${t.responsible.code})` });
+    }
+    return [...m.values()].sort((a, b) => a.label.localeCompare(b.label, "vi"));
+  }, [tasks]);
+
+  // Mọi bộ lọc TRỪ nhóm màu — số đếm trên 4 ô màu tính theo tập này để khớp với các bộ lọc đang chọn.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const inRange = (key: string, from: string, to: string) => (!from || key >= from) && (!to || key <= to);
+    return described.filter(({ task }) =>
+      (category === ALL || task.category === category) &&
+      (status === ALL || task.status === status) &&
+      (!responsible || task.responsibleId === responsible.value) &&
+      inRange(taskDateKey(task.assignedDate), assignedFrom, assignedTo) &&
+      inRange(taskDateKey(task.deadline), deadlineFrom, deadlineTo) &&
+      (!q || task.title.toLowerCase().includes(q) || task.responsible.name.toLowerCase().includes(q) || task.responsible.code.toLowerCase().includes(q))
+    );
+  }, [described, search, category, status, responsible, assignedFrom, assignedTo, deadlineFrom, deadlineTo]);
+
   const countByTone = useMemo(() => {
     const c: Record<AssistantTaskTone, number> = { overdue: 0, "due-soon": 0, "in-progress": 0, done: 0 };
-    for (const d of described) c[d.info.tone]++;
+    for (const d of filtered) c[d.info.tone]++;
     return c;
-  }, [described]);
+  }, [filtered]);
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return described
-      .filter(({ task, info }) =>
-        (category === ALL || task.category === category) &&
-        (!tone || info.tone === tone) &&
-        (!q || task.title.toLowerCase().includes(q) || task.responsible.name.toLowerCase().includes(q) || task.responsible.code.toLowerCase().includes(q))
-      )
-      // Việc cần chú ý lên đầu (trễ → sắp đến hạn → đang xử lý → hoàn thành), cùng nhóm thì theo deadline.
-      .sort((a, b) =>
-        TONE_ORDER.indexOf(a.info.tone) - TONE_ORDER.indexOf(b.info.tone) ||
-        (a.info.tone === "done" ? b.task.deadline.localeCompare(a.task.deadline) : a.task.deadline.localeCompare(b.task.deadline))
-      );
-  }, [described, search, category, tone]);
+  const rows = useMemo(
+    () =>
+      filtered
+        .filter(({ info }) => !tone || info.tone === tone)
+        // Việc cần chú ý lên đầu (trễ → sắp đến hạn → đang xử lý → hoàn thành), cùng nhóm thì theo deadline.
+        .sort((a, b) =>
+          TONE_ORDER.indexOf(a.info.tone) - TONE_ORDER.indexOf(b.info.tone) ||
+          (a.info.tone === "done" ? b.task.deadline.localeCompare(a.task.deadline) : a.task.deadline.localeCompare(b.task.deadline))
+        ),
+    [filtered, tone]
+  );
+
+  const hasFilter = !!(search || category !== ALL || status !== ALL || responsible || assignedFrom || assignedTo || deadlineFrom || deadlineTo || tone);
+  const clearFilters = () => {
+    setSearch(""); setCategory(ALL); setStatus(ALL); setResponsible(null);
+    setAssignedFrom(""); setAssignedTo(""); setDeadlineFrom(""); setDeadlineTo(""); setTone(null);
+  };
 
   const save = async (values: TaskFormValues, id?: string) => {
     const res = await fetch(id ? `/api/assistant-tasks/${id}` : "/api/assistant-tasks", {
@@ -139,9 +182,55 @@ export default function AssistantTaskBoard({ staffOptions }: { staffOptions: Sta
             {Object.entries(ASSISTANT_TASK_CATEGORY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select items={{ [ALL]: "Tất cả trạng thái", ...ASSISTANT_TASK_STATUS_LABELS }} value={status} onValueChange={(v) => setStatus(v as string)}>
+          <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
+            {Object.entries(ASSISTANT_TASK_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Combobox
+          items={responsibleOptions}
+          value={responsible}
+          isItemEqualToValue={(a: StaffOption, b: StaffOption) => a.value === b.value}
+          onValueChange={(v) => setResponsible(v as StaffOption | null)}
+        >
+          <ComboboxInputGroup className="h-9 w-60">
+            <ComboboxInput placeholder="Người chịu trách nhiệm…" />
+            {responsible && <ComboboxClear />}
+            <ComboboxTrigger />
+          </ComboboxInputGroup>
+          <ComboboxContent>
+            <ComboboxEmpty>Không tìm thấy</ComboboxEmpty>
+            <ComboboxList>
+              {(item: StaffOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
         <Button className="ml-auto" onClick={() => setEditing("new")}>
           <Plus className="w-4 h-4" /> Thêm công việc
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <div className="flex items-center gap-1.5">
+          <span className="text-text-secondary font-medium">Ngày bàn giao</span>
+          <Input type="date" className="h-9 w-40" value={assignedFrom} max={assignedTo || undefined} onChange={(e) => setAssignedFrom(e.target.value)} />
+          <span className="text-text-muted">→</span>
+          <Input type="date" className="h-9 w-40" value={assignedTo} min={assignedFrom || undefined} onChange={(e) => setAssignedTo(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-text-secondary font-medium">Deadline</span>
+          <Input type="date" className="h-9 w-40" value={deadlineFrom} max={deadlineTo || undefined} onChange={(e) => setDeadlineFrom(e.target.value)} />
+          <span className="text-text-muted">→</span>
+          <Input type="date" className="h-9 w-40" value={deadlineTo} min={deadlineFrom || undefined} onChange={(e) => setDeadlineTo(e.target.value)} />
+        </div>
+        {hasFilter && (
+          <Button variant="outline" size="sm" onClick={clearFilters}>
+            <X className="w-4 h-4" /> Xoá bộ lọc
+          </Button>
+        )}
+        <span className="text-text-muted">{rows.length}/{tasks?.length ?? 0} công việc</span>
       </div>
 
       <Card>
