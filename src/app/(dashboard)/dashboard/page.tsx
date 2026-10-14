@@ -26,6 +26,7 @@ import { hasPendingDarkRoomHandover } from "@/lib/cay-mo-quest-stats";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { summarizeMotherWeekGroups, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
+import { ensureStockCountReminder, getMonthEndStockCountTask } from "@/lib/stock-count";
 import DailyTaskCompleteDialog from "@/app/(dashboard)/task-assignment/daily-task-complete-dialog";
 import ConfirmTaskButton from "@/components/shared/confirm-task-button";
 import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-roadmap";
@@ -731,11 +732,15 @@ export default async function DashboardPage() {
   }
 
   if (isKhoThanhPhamRole(role)) {
-    const [stats, myTasks] = await Promise.all([
+    const [stats, myTasks, stockCountTask] = await Promise.all([
       getKhoMoStats(),
       getMyPendingTasks(userId),
+      role === "QUAN_LY_KHO_THANH_PHAM" ? getMonthEndStockCountTask(session?.user?.workplaceWarehouseId) : Promise.resolve(null),
     ]);
-    return <KhoDashboard stats={stats} role={role} myTasks={myTasks} />;
+    if (stockCountTask && session?.user?.workplaceWarehouseId) {
+      await ensureStockCountReminder(userId, session.user.workplaceWarehouseId, stockCountTask);
+    }
+    return <KhoDashboard stats={stats} role={role} myTasks={myTasks} stockCountTask={stockCountTask} />;
   }
 
   if (role === "DOI_TAC_VAN_HANH") {
@@ -1474,11 +1479,12 @@ function MoiTruongDashboard({
 }
 
 function KhoDashboard({
-  stats, role, myTasks,
+  stats, role, myTasks, stockCountTask = null,
 }: {
   stats: Awaited<ReturnType<typeof getKhoMoStats>>;
   role: UserRole;
   myTasks: MyTask[];
+  stockCountTask?: Awaited<ReturnType<typeof getMonthEndStockCountTask>>;
 }) {
   const mauMe = stats.activeLots.find((l) => l.stage === "MAU_ME");
   const thanhPham = stats.activeLots.find((l) => l.stage === "THANH_PHAM");
@@ -1495,6 +1501,27 @@ function KhoDashboard({
           <StatCard title="Lô mẫu mẹ đang lưu" value={mauMe?._count ?? 0} icon={Sun} color="green" subtitle={`${mauMe?._sum?.quantity ?? 0} bình`} />
           <StatCard title="Lô thành phẩm đang lưu" value={thanhPham?._count ?? 0} icon={Package} color="blue" subtitle={`${thanhPham?._sum?.quantity ?? 0} bình`} />
         </div>
+      )}
+
+      {/* Nhiệm vụ cuối tháng — chỉ hiện từ 4 ngày trước hạn (xem getMonthEndStockCountTask), không tính vào
+          báo cáo Không hoàn thành nhiệm vụ. */}
+      {stockCountTask && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Công việc trong tuần</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <WeeklyTaskRow
+              href={stockCountTask.reportId ? `/stock-counts/${stockCountTask.reportId}` : "/stock-counts"}
+              icon={ClipboardCheck}
+              title={`Đối chiếu tồn kho cuối tháng ${stockCountTask.month}/${stockCountTask.year}`}
+              deadline={`Cần gửi báo cáo trước ngày cuối tháng — hạn ${format(stockCountTask.deadline, "dd/MM/yyyy", { locale: vi })}${stockCountTask.recheck ? " · Admin cấp cao yêu cầu kiểm tra lại" : ""}`}
+              percent={stockCountTask.done ? 100 : 0}
+              countLabel={stockCountTask.done ? "đã gửi" : stockCountTask.overdue ? "quá hạn" : "chưa gửi"}
+              badgeState={stockCountTask.done ? "done" : stockCountTask.overdue ? "urgent" : "not_done"}
+            />
+          </CardContent>
+        </Card>
       )}
 
       <Card>

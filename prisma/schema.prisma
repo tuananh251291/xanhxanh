@@ -343,6 +343,9 @@ enum AlertType {
   STOCK_COUNT_SUBMITTED
   STOCK_COUNT_RECHECK_REQUESTED
   STOCK_COUNT_APPLIED
+  // Nhắc Quản lý kho TP đến hạn gửi báo cáo đối chiếu tồn kho cuối tháng (4 ngày trước hạn) — 1 lần/kho/tháng,
+  // relatedId = "<warehouseId>:<năm>-<tháng>" để không gửi lặp (xem ensureStockCountReminder).
+  STOCK_COUNT_DUE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
