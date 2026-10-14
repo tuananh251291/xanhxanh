@@ -460,6 +460,9 @@ export const ALERT_TYPE_LABELS = {
   REJECTED_GOODS_PROPOSAL_APPROVED: "Đề xuất phân loại hàng không đạt đã duyệt",
   ATTENDANCE_REQUEST: "Đơn chấm công cần duyệt",
   ATTENDANCE_REQUEST_DECIDED: "Kết quả đơn chấm công",
+  STOCK_COUNT_SUBMITTED: "Báo cáo đối chiếu tồn kho mới",
+  STOCK_COUNT_RECHECK_REQUESTED: "Yêu cầu kiểm tra lại tồn kho",
+  STOCK_COUNT_APPLIED: "Đã áp số liệu đối chiếu tồn kho",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -474,6 +477,9 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   MOTHER_WAREHOUSE_TRANSFER_INCOMING: "/handover-in?tab=mother-stock",
   ATTENDANCE_REQUEST: "/attendance/approvals",
   ATTENDANCE_REQUEST_DECIDED: "/attendance?tab=requests",
+  STOCK_COUNT_SUBMITTED: "/stock-counts",
+  STOCK_COUNT_RECHECK_REQUESTED: "/stock-counts",
+  STOCK_COUNT_APPLIED: "/stock-counts",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -648,6 +654,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
+    { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   ADMIN: [
@@ -781,6 +788,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     // Chỉ mục Khách hàng + NV quản lý (không có Thị trường) — xem canManageSaleCustomers.
     { href: "/settings/sale/customers", label: "Cài đặt Sale", icon: "Flag" },
+    { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // "Nhận hàng" (/goods-receipts) gộp cả "Nhận hàng từ NCC" lẫn "Nhận bàn giao thành phẩm" (route
@@ -822,6 +830,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/inventory-flow-summary", label: "Báo cáo Nhập - Xuất", icon: "BarChart3" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
+    { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   SALE: [
@@ -858,6 +867,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/probation-evaluations", label: "Báo cáo đánh giá thử việc", icon: "ClipboardCheck" },
     { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
+    { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   NHAN_VIEN_SAN_XUAT: [

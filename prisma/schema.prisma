@@ -337,6 +337,12 @@ enum AlertType {
   // NV bán hàng đã "Duyệt" đề xuất phân loại hàng không đạt (có thể đã sửa số Huỷ/Trồng) — báo lại đúng
   // NV Đối tác vận hành đã gửi đề xuất đó (userId = RejectedGoodsClassification.createdById).
   REJECTED_GOODS_PROPOSAL_APPROVED
+  // Đối chiếu tồn kho cuối tháng (Kho thành phẩm, /stock-counts): Quản lý kho TP gửi báo cáo — báo NV Trợ lý,
+  // Admin cấp cao, Hành chính nhân sự (targetRole); Admin cấp cao yêu cầu kiểm tra lại / đã áp số liệu thực tế
+  // — báo đúng người lập báo cáo (userId) + NV Trợ lý, HCNS.
+  STOCK_COUNT_SUBMITTED
+  STOCK_COUNT_RECHECK_REQUESTED
+  STOCK_COUNT_APPLIED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -576,6 +582,8 @@ model User {
   annualLeaveBalances                  AnnualLeaveBalance[]
   assistantTasksResponsible            AssistantTask[]              @relation("AssistantTaskResponsible")
   assistantTasksCreated                AssistantTask[]              @relation("AssistantTaskCreatedBy")
+  stockCountReportsCreated             StockCountReport[]           @relation("StockCountReportCreatedBy")
+  stockCountReportsDecided             StockCountReport[]           @relation("StockCountReportDecidedBy")
 
   @@map("users")
 }
@@ -869,6 +877,7 @@ model PlantType {
   sealingTaskItems           SealingTaskItem[]
   rootingQualityEvaluationItems RootingQualityEvaluationItem[]
   rejectedGoodsClassificationItems RejectedGoodsClassificationItem[]
+  stockCountItems                  StockCountItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -1157,6 +1166,7 @@ model Warehouse {
   operationErrorTickets       OperationErrorTicket[]
   attendanceSite              AttendanceSite?
   attendanceRecords           AttendanceRecord[]
+  stockCountReports           StockCountReport[]
 
   @@map("warehouses")
 }
@@ -1196,6 +1206,7 @@ model Room {
   contaminationProposals          ContaminationProposal[]
   marketExportItems               MarketExportItem[]
   rootingQualityEvaluations       RootingQualityEvaluation[]
+  stockCountItems                 StockCountItem[]
 
   @@map("rooms")
 }
@@ -3799,4 +3810,68 @@ model AssistantTask {
   @@index([deadline])
   @@index([responsibleId])
   @@map("assistant_tasks")
+}
+
+enum StockCountStatus {
+  DRAFT // Quản lý kho đang nhập số thực tế, chưa gửi
+  SUBMITTED // Đã gửi — chờ Admin cấp cao xem
+  RECHECK_REQUESTED // Admin cấp cao yêu cầu kiểm tra lại — Quản lý kho sửa rồi gửi lại
+  APPLIED // Admin cấp cao đã áp số thực tế vào tồn kho (tồn đầu kỳ tháng sau) — khoá, không sửa nữa
+}
+
+// Đối chiếu tồn kho cuối tháng — Kho thành phẩm (trang /stock-counts, dựng theo mẫu "BÁO CÁO ĐỐI CHIẾU TỒN
+// KHO THÀNH PHẨM"). Quản lý kho TP lập 1 báo cáo/kho/tháng: hệ thống chụp tồn phần mềm theo từng (phòng +
+// mã cây + quy cách), Quản lý điền tồn thực tế + giải trình chênh lệch rồi gửi (báo Trợ lý, Admin cấp cao,
+// HCNS). Admin cấp cao: "Kiểm tra lại" (trả về Quản lý) hoặc "Áp số thực tế" — cộng/trừ ĐÚNG phần chênh lệch
+// (thực tế − tồn phần mềm lúc chụp) vào tồn hiện tại, để không xoá nhập/xuất phát sinh sau ngày kiểm kê.
+model StockCountReport {
+  id           String           @id @default(cuid())
+  warehouseId  String
+  warehouse    Warehouse        @relation(fields: [warehouseId], references: [id])
+  year         Int
+  month        Int
+  // Ngày kiểm kê thực tế (UTC-midnight của ngày, giống AssistantTask).
+  countDate    DateTime
+  status       StockCountStatus @default(DRAFT)
+  // Phần 2 của mẫu — "Hướng xử lý / đề xuất".
+  proposal     String?          @db.Text
+  // Lần chụp tồn phần mềm gần nhất (tạo báo cáo hoặc bấm "Cập nhật tồn phần mềm").
+  snapshotAt   DateTime
+  createdById  String
+  createdBy    User             @relation("StockCountReportCreatedBy", fields: [createdById], references: [id])
+  submittedAt  DateTime?
+  // Quyết định gần nhất của Admin cấp cao (kiểm tra lại / áp số).
+  decidedById  String?
+  decidedBy    User?            @relation("StockCountReportDecidedBy", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  // Lý do yêu cầu kiểm tra lại (Admin cấp cao nhập).
+  recheckNote  String?          @db.Text
+  appliedAt    DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  items        StockCountItem[]
+
+  @@unique([warehouseId, year, month])
+  @@map("stock_count_reports")
+}
+
+model StockCountItem {
+  id             String           @id @default(cuid())
+  reportId       String
+  report         StockCountReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  roomId         String
+  room           Room             @relation(fields: [roomId], references: [id])
+  plantTypeId    String
+  plantType      PlantType        @relation(fields: [plantTypeId], references: [id])
+  stageCode      String
+  // Tồn phần mềm lúc chụp (cộng mọi lô ACTIVE của phòng + mã cây + quy cách).
+  systemQuantity Int
+  // Tồn thực tế Quản lý kho đếm — null = chưa nhập.
+  actualQuantity Int?
+  explanation    String?          @db.Text
+  // Số thực sự đã cộng/trừ vào tồn lúc áp (có thể nhỏ hơn chênh lệch nếu thiếu mà tồn hiện tại không đủ để trừ).
+  appliedDelta   Int?
+
+  @@unique([reportId, roomId, plantTypeId, stageCode])
+  @@map("stock_count_items")
 }
