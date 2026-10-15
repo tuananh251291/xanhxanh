@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, UserCheck, ShieldCheck } from "lucide-react";
+import { Loader2, UserCheck, ShieldCheck, Send } from "lucide-react";
 import { toast } from "sonner";
 
 const NONE = "NONE";
@@ -19,20 +20,26 @@ type StaffOption = { id: string; code: string; name: string };
 // endpoint nhận PATCH { action: "assign", assignedToId }, 3 route đều cùng hình dạng này.
 // confirmedAt có giá trị (NV đã bấm "Xác nhận" nhận việc ở Dashboard) — KHOÁ đổi người phụ trách, kể cả
 // với Quản lý (canAssign=true) — luôn hiện badge tham khảo, không còn dropdown.
+// submitLabel có giá trị (vd "Bàn giao" ở /orders/pack): chọn NV trong dropdown CHƯA gán ngay, phải bấm
+// nút submitLabel mới gửi PATCH — không truyền thì giữ hành vi cũ (chọn là gán luôn).
 export default function KhoTpAssignCell({
   endpoint,
   assignedTo,
   staffOptions,
   canAssign,
   confirmedAt,
+  submitLabel,
 }: {
   endpoint: string;
   assignedTo: StaffOption | null;
   staffOptions: StaffOption[];
   canAssign: boolean;
   confirmedAt?: Date | string | null;
+  submitLabel?: string;
 }) {
   const [saving, setSaving] = useState(false);
+  const currentId = assignedTo?.id ?? NONE;
+  const [selected, setSelected] = useState(currentId);
   const router = useRouter();
 
   const assign = async (staffId: string) => {
@@ -45,7 +52,7 @@ export default function KhoTpAssignCell({
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
-      toast.success(staffId === NONE ? "Đã bỏ gán" : "Đã giao việc");
+      toast.success(staffId === NONE ? "Đã bỏ gán" : submitLabel ? `Đã ${submitLabel.toLowerCase()}` : "Đã giao việc");
       router.refresh();
     } finally {
       setSaving(false);
@@ -75,8 +82,13 @@ export default function KhoTpAssignCell({
     ...staffOptions.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` })),
   ];
 
-  return (
-    <Select items={items} value={assignedTo?.id ?? NONE} onValueChange={(v) => assign(v as string)} disabled={saving}>
+  const select = (
+    <Select
+      items={items}
+      value={submitLabel ? selected : currentId}
+      onValueChange={(v) => (submitLabel ? setSelected(v as string) : assign(v as string))}
+      disabled={saving}
+    >
       <SelectTrigger className="h-8 text-xs w-48">
         {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <SelectValue placeholder="Chưa giao" />}
       </SelectTrigger>
@@ -87,5 +99,16 @@ export default function KhoTpAssignCell({
         ))}
       </SelectContent>
     </Select>
+  );
+
+  if (!submitLabel) return select;
+
+  return (
+    <div className="flex items-center gap-2">
+      {select}
+      <Button size="sm" className="h-8" disabled={saving || selected === currentId} onClick={() => assign(selected)}>
+        <Send className="w-3.5 h-3.5 mr-1.5" /> {submitLabel}
+      </Button>
+    </div>
   );
 }

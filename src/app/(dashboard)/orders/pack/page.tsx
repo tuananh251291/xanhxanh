@@ -99,12 +99,15 @@ export default async function OrdersPackPage() {
                         staffOptions={staffUsers}
                         canAssign={canAssign}
                         confirmedAt={order.assignmentConfirmedAt}
+                        submitLabel="Bàn giao"
                       />
+                      {/* Quản lý/Admin chỉ phân công (chọn NV → Bàn giao), không nhặt hàng — nút "Nhặt hàng"
+                          chỉ dành cho NV kho thành phẩm được giao đơn. */}
                       {packStatus.variant === "completed" ? (
                         <Button size="sm" variant="outline" className="h-8 bg-card text-text-muted cursor-not-allowed" disabled>
                           <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Đã sắp xếp xong
                         </Button>
-                      ) : (
+                      ) : canAssign ? null : (
                         <Link href={`/orders/pack/${order.id}`}>
                           <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
                             <ListChecks className="w-3.5 h-3.5 mr-1.5" /> Nhặt hàng
