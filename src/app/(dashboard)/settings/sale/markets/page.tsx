@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Flag } from "lucide-react";
-import { canEditSaleMarkets, canManageSaleCustomers } from "@/types";
+import { canEditSaleMarkets, canAccessSaleCustomerList, canManageSaleCustomers } from "@/types";
 import SaleSettingsTabs from "../sale-settings-tabs";
 import MarketsBoard from "./markets-board";
 
@@ -19,7 +19,7 @@ export default async function SaleMarketsPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">Danh sách khách hàng, thị trường và phân công nhân viên quản lý cho đội bán hàng.</p>
       </div>
-      <SaleSettingsTabs active="/settings/sale/markets" />
+      <SaleSettingsTabs active="/settings/sale/markets" showCustomers={canAccessSaleCustomerList(role)} />
       <MarketsBoard readOnly={!canEditSaleMarkets(role)} />
     </div>
   );

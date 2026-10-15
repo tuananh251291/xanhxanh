@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canManageSaleCustomers } from "@/types";
+import { canAccessSaleCustomerList } from "@/types";
 import { z } from "zod";
 import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
 
@@ -21,7 +21,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!canManageSaleCustomers(session?.user?.role)) {
+  if (!canAccessSaleCustomerList(session?.user?.role)) {
     return NextResponse.json({ message: "Chỉ Admin cấp cao / NV Trợ lý mới được sửa khách hàng" }, { status: 403 });
   }
   const { id } = await params;

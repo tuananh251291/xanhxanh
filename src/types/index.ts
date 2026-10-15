@@ -148,6 +148,14 @@ export function canManageSaleCustomers(role: UserRole | null | undefined): boole
   return role === "SUPER_ADMIN" || role === "TRO_LY";
 }
 
+// Riêng mục Khách hàng (danh sách, thêm/sửa, nhập/cập nhật bằng Excel): NV Trợ lý chỉ được TẠM THỜI tới hết
+// 18/10/2026 (mở 15/10/2026, 3 ngày) — sau mốc này ẩn hẳn mục Khách hàng với Trợ lý (tab, trang, API), Trợ lý
+// vẫn giữ NV quản lý + Thị trường (xem) theo canManageSaleCustomers/canEditSaleMarkets.
+export const TRO_LY_SALE_CUSTOMERS_UNTIL = new Date("2026-10-19T00:00:00+07:00");
+export function canAccessSaleCustomerList(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || (role === "TRO_LY" && Date.now() < TRO_LY_SALE_CUSTOMERS_UNTIL.getTime());
+}
+
 export function canEditSaleMarkets(role: UserRole | null | undefined): boolean {
   return role === "SUPER_ADMIN";
 }

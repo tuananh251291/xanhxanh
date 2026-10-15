@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders } from "@/lib/excel-import";
 import { normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
 import { generateCustomerCode } from "@/lib/codes";
+import { canAccessSaleCustomerList } from "@/types";
 
 type RowError = { row: number; label: string; message: string };
 
@@ -30,8 +31,8 @@ const CUSTOMER_GROUP_TEXT: Record<string, "KHACH_SI_NHO" | "KHACH_CONG_TY" | "KH
 // cột này qua Excel, chỉ cấu hình tay ở /settings/sale/managers; giờ cho phép cả 2 cách).
 export async function GET() {
   const session = await auth();
-  if (session?.user?.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ Admin cấp cao mới được nhập Excel khách hàng" }, { status: 403 });
+  if (!canAccessSaleCustomerList(session?.user?.role)) {
+    return NextResponse.json({ message: "Không có quyền nhập Excel khách hàng" }, { status: 403 });
   }
 
   const [markets, staff] = await Promise.all([
@@ -117,8 +118,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (session?.user?.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ Admin cấp cao mới được nhập Excel khách hàng" }, { status: 403 });
+  if (!canAccessSaleCustomerList(session?.user?.role)) {
+    return NextResponse.json({ message: "Không có quyền nhập Excel khách hàng" }, { status: 403 });
   }
 
   const formData = await req.formData();

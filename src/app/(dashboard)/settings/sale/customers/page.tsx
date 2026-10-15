@@ -1,14 +1,15 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Flag } from "lucide-react";
-import { canManageSaleCustomers } from "@/types";
+import { canAccessSaleCustomerList, canManageSaleCustomers } from "@/types";
 import SaleSettingsTabs from "../sale-settings-tabs";
 import CustomersBoard from "./customers-board";
 
 export default async function SaleCustomersPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!canManageSaleCustomers(role)) redirect("/dashboard");
+  // NV Trợ lý hết hạn mục Khách hàng (xem canAccessSaleCustomerList) — menu "Cài đặt Sale" vẫn trỏ về đây, chuyển sang NV quản lý.
+  if (!canAccessSaleCustomerList(role)) redirect(canManageSaleCustomers(role) ? "/settings/sale/managers" : "/dashboard");
 
   return (
     <div className="space-y-6">

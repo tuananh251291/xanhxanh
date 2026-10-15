@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canManageSaleCustomers } from "@/types";
+import { canAccessSaleCustomerList } from "@/types";
 import { z } from "zod";
 import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite } from "@/lib/customer";
 import { generateCustomerCode } from "@/lib/codes";
@@ -40,7 +40,7 @@ const CUSTOMER_LIST_SELECT = {
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!canManageSaleCustomers(session?.user?.role)) {
+  if (!canAccessSaleCustomerList(session?.user?.role)) {
     return NextResponse.json({ message: "Chỉ Admin cấp cao / NV Trợ lý mới xem được danh sách khách hàng" }, { status: 403 });
   }
 
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!canManageSaleCustomers(session?.user?.role)) {
+  if (!canAccessSaleCustomerList(session?.user?.role)) {
     return NextResponse.json({ message: "Chỉ Admin cấp cao / NV Trợ lý mới được tạo khách hàng" }, { status: 403 });
   }
   const body = await req.json();
