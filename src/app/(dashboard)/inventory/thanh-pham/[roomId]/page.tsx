@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Package, PackageCheck, Eye, Globe, ArrowLeft, ChevronLeft, ChevronRight, Hourglass } from "lucide-react";
 import Link from "next/link";
-import { ROOM_TYPE_LABELS } from "@/types";
+import { ROOM_TYPE_LABELS, FINISHED_STAGE_COLUMNS } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 
@@ -48,14 +48,16 @@ export default async function ThanhPhamRoomPage({
   });
 
   // Không theo dõi theo mã lô — cộng gộp số lượng theo loại cây, tách riêng quy cách T01/T05/T10.
-  const aggMap = new Map<string, { code: string; name: string; t01: number; t05: number; t10: number }>();
+  const aggMap = new Map<string, { code: string; name: string; byStage: Record<string, number> }>();
   for (const lot of lots) {
-    const existing = aggMap.get(lot.plantTypeId) ?? { code: lot.plantType.code, name: lot.plantType.name, t01: 0, t05: 0, t10: 0 };
-    if (lot.stageCode === "T01") existing.t01 += lot.quantity;
-    else if (lot.stageCode === "T05") existing.t05 += lot.quantity;
-    else if (lot.stageCode === "T10") existing.t10 += lot.quantity;
+    const existing = aggMap.get(lot.plantTypeId) ?? { code: lot.plantType.code, name: lot.plantType.name, byStage: {} };
+    existing.byStage[lot.stageCode] = (existing.byStage[lot.stageCode] ?? 0) + lot.quantity;
     aggMap.set(lot.plantTypeId, existing);
   }
+  // T01/T05/T10 luôn hiện; T06/T20/T25 (chỉ có từ nhập hàng) chỉ hiện cột khi phòng có tồn quy cách đó.
+  const stageColumns = FINISHED_STAGE_COLUMNS.filter(
+    (c) => c === "T01" || c === "T05" || c === "T10" || [...aggMap.values()].some((r) => (r.byStage[c] ?? 0) !== 0)
+  );
   const aggregated = Array.from(aggMap.values()).sort((a, b) => a.code.localeCompare(b.code));
   const totalQuantity = lots.reduce((s, l) => s + l.quantity, 0);
 
@@ -97,9 +99,9 @@ export default async function ThanhPhamRoomPage({
                     <tr className="bg-primary-light">
                       <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã cây</th>
                       <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Loại cây</th>
-                      <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T01</th>
-                      <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T05</th>
-                      <th className="text-right px-3 py-2 text-sm text-primary-strong font-bold">T10</th>
+                      {stageColumns.map((c) => (
+                        <th key={c} className="text-right px-3 py-2 text-sm text-primary-strong font-bold">{c}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -107,9 +109,9 @@ export default async function ThanhPhamRoomPage({
                       <tr key={row.code} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                         <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
                         <td className="px-3 py-2">{row.name}</td>
-                        <td className="px-3 py-2 text-right font-medium">{row.t01.toLocaleString("vi-VN")}</td>
-                        <td className="px-3 py-2 text-right font-medium">{row.t05.toLocaleString("vi-VN")}</td>
-                        <td className="px-3 py-2 text-right font-medium">{row.t10.toLocaleString("vi-VN")}</td>
+                        {stageColumns.map((c) => (
+                          <td key={c} className="px-3 py-2 text-right font-medium">{(row.byStage[c] ?? 0).toLocaleString("vi-VN")}</td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>

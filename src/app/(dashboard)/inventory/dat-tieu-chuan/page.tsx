@@ -9,6 +9,7 @@ import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeSummary from "../thanh-pham/plant-type-summary";
 import ThiTruongInventoryBoard from "../thi-truong/thi-truong-inventory-board";
+import { FINISHED_STAGE_COLUMNS } from "@/types";
 
 const LOT_SELECT = {
   quantity: true,
@@ -100,16 +101,10 @@ export default async function AvailableInventoryPage() {
   // T10 chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực tiếp từ Phòng
   // ra rễ) — vẫn hiển thị ở đây vì trang này đọc thẳng lô trong Phòng đạt tiêu chuẩn/Phòng thị trường.
   const roomStageTotals = (lots: { stageCode: string; quantity: number; orderItems: { quantity: number }[] }[]) =>
-    lots.reduce(
-      (acc, l) => {
-        const available = netQuantity(l);
-        if (l.stageCode === "T01") acc.t01 += available;
-        else if (l.stageCode === "T05") acc.t05 += available;
-        else if (l.stageCode === "T10") acc.t10 += available;
-        return acc;
-      },
-      { t01: 0, t05: 0, t10: 0 }
-    );
+    lots.reduce<Record<string, number>>((acc, l) => {
+      acc[l.stageCode] = (acc[l.stageCode] ?? 0) + netQuantity(l);
+      return acc;
+    }, {});
 
   const totalLots = rooms.flatMap((r) => r.lots).filter((l) => netQuantity(l) > 0);
   const totalQuantity = totalLots.reduce((s, l) => s + netQuantity(l), 0);
@@ -156,7 +151,7 @@ export default async function AvailableInventoryPage() {
           {rooms.map((room) => {
             const isHome = room.id === homeRoom?.id;
             const Icon = isHome ? PackageCheck : Globe;
-            const { t01, t05, t10 } = roomStageTotals(room.lots);
+            const byStage = roomStageTotals(room.lots);
             return (
               <Card key={room.id}>
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -165,9 +160,9 @@ export default async function AvailableInventoryPage() {
                     <span className="font-semibold text-foreground break-words">{room.name}</span>
                     <Badge variant="secondary">{room.warehouse.name} ({room.warehouse.code})</Badge>
                     {isHome && <Badge className="bg-primary-light text-primary-strong">Kho của bạn</Badge>}
-                    <Badge variant="outline" className="text-xs">T01: {t01.toLocaleString("vi-VN")}</Badge>
-                    <Badge variant="outline" className="text-xs">T05: {t05.toLocaleString("vi-VN")}</Badge>
-                    {t10 > 0 && <Badge variant="outline" className="text-xs">T10: {t10.toLocaleString("vi-VN")}</Badge>}
+                    {FINISHED_STAGE_COLUMNS.filter((c) => c === "T01" || c === "T05" || (byStage[c] ?? 0) > 0).map((c) => (
+                      <Badge key={c} variant="outline" className="text-xs">{c}: {(byStage[c] ?? 0).toLocaleString("vi-VN")}</Badge>
+                    ))}
                   </div>
                   <Link href={`/inventory/dat-tieu-chuan/${room.id}`}>
                     <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">

@@ -301,6 +301,9 @@ export const INBOUND_SPEC_LABELS = {
   T25: "T25 — túi 25 cây",
 } as const;
 
+// Thứ tự cột quy cách trên các bảng tồn kho thành phẩm (theo cỡ túi tăng dần).
+export const FINISHED_STAGE_COLUMNS = ["T01", "T05", "T06", "T10", "T20", "T25"] as const;
+
 // Mọi quy cách túi thành phẩm có thể có trong tồn kho/đơn hàng.
 export const ALL_FINISHED_STAGE_CODES = [...Object.keys(FINISHED_SPEC_LABELS), ...Object.keys(INBOUND_SPEC_LABELS)] as (
   keyof typeof FINISHED_SPEC_LABELS | keyof typeof INBOUND_SPEC_LABELS

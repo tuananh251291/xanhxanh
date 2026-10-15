@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Package, PackageCheck, Eye, Globe, Layers, Search, Hourglass } from "lucide-react";
 import Link from "next/link";
-import { ROOM_TYPE_LABELS } from "@/types";
+import { ROOM_TYPE_LABELS, FINISHED_STAGE_COLUMNS } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeSummary from "./plant-type-summary";
@@ -38,18 +38,13 @@ export default async function ThanhPhamInventoryPage() {
     orderBy: [{ warehouse: { name: "asc" } }, { type: "asc" }],
   });
 
-  // Không theo dõi theo mã lô — cộng gộp số lượng theo quy cách T01/T05/T10 cho mỗi phòng. T10 chỉ phát
+  // Không theo dõi theo mã lô — cộng gộp số lượng theo quy cách (FINISHED_STAGE_COLUMNS) cho mỗi phòng. T10 chỉ phát
   // sinh trong Kho thành phẩm (đóng gói lại từ T01/T05), không sản xuất trực tiếp từ Phòng ra rễ.
   const roomStageTotals = (lots: { quantity: number; stageCode: string }[]) =>
-    lots.reduce(
-      (acc, l) => {
-        if (l.stageCode === "T01") acc.t01 += l.quantity;
-        else if (l.stageCode === "T05") acc.t05 += l.quantity;
-        else if (l.stageCode === "T10") acc.t10 += l.quantity;
-        return acc;
-      },
-      { t01: 0, t05: 0, t10: 0 }
-    );
+    lots.reduce<Record<string, number>>((acc, l) => {
+      acc[l.stageCode] = (acc[l.stageCode] ?? 0) + l.quantity;
+      return acc;
+    }, {});
 
   const totalLots = rooms.flatMap((r) => r.lots);
   const totalQuantity = totalLots.reduce((s, l) => s + l.quantity, 0);
@@ -89,7 +84,7 @@ export default async function ThanhPhamInventoryPage() {
 
       {rooms.map((room) => {
         const Icon = ROOM_TYPE_ICONS[room.type] ?? Package;
-        const { t01, t05, t10 } = roomStageTotals(room.lots);
+        const byStage = roomStageTotals(room.lots);
         return (
           <Card key={room.id}>
             <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -97,9 +92,9 @@ export default async function ThanhPhamInventoryPage() {
                 <Icon className="w-5 h-5 text-primary-strong shrink-0" />
                 <span className="font-semibold text-foreground break-words">{room.name}</span>
                 <Badge variant="secondary">{ROOM_TYPE_LABELS[room.type]}</Badge>
-                <Badge variant="outline" className="text-xs">T01: {t01.toLocaleString("vi-VN")}</Badge>
-                <Badge variant="outline" className="text-xs">T05: {t05.toLocaleString("vi-VN")}</Badge>
-                {t10 > 0 && <Badge variant="outline" className="text-xs">T10: {t10.toLocaleString("vi-VN")}</Badge>}
+                {FINISHED_STAGE_COLUMNS.filter((c) => c === "T01" || c === "T05" || (byStage[c] ?? 0) > 0).map((c) => (
+                  <Badge key={c} variant="outline" className="text-xs">{c}: {(byStage[c] ?? 0).toLocaleString("vi-VN")}</Badge>
+                ))}
               </div>
               <Link href={`/inventory/thanh-pham/${room.id}`}>
                 <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
