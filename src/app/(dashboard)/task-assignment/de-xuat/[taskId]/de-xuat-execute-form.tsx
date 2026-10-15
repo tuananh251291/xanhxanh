@@ -110,10 +110,10 @@ export default function DeXuatExecuteForm({
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
       // Không bắt buộc chọn Vườn sản xuất khi không có vườn nào để chọn (Đối tác vận hành ở Kho thị
       // trường — xem page.tsx truyền gardens=[] cho trường hợp này).
-      if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error("Chưa chọn Vườn sản xuất cho dòng Trồng"); return; }
+      if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error("Chưa chọn Vườn sản xuất cho dòng Chuyển về Kho xử lý"); return; }
       if (isMarketPartner) {
         if (r.huy > 0 && r.huyPhotos.length === 0) { toast.error(`${r.lot.plantType.code}: cần đính kèm ảnh cho phần đề xuất huỷ`); return; }
-        if (r.trong > 0 && r.trongPhotos.length === 0) { toast.error(`${r.lot.plantType.code}: cần đính kèm ảnh cho phần đề xuất trồng`); return; }
+        if (r.trong > 0 && r.trongPhotos.length === 0) { toast.error(`${r.lot.plantType.code}: cần đính kèm ảnh cho phần chuyển về Kho xử lý`); return; }
       }
     }
 
@@ -173,6 +173,12 @@ export default function DeXuatExecuteForm({
         </div>
       </div>
 
+      <div className="text-sm text-warning-foreground bg-warning-light rounded-lg p-3 space-y-1">
+        <p>Nhân viên kho lọc hàng nhiễm không còn khả năng sống điền số vào cột Đề xuất Hủy.</p>
+        <p>Số lượng hàng không đạt tiêu chuẩn còn lại điền vào cột Chuyển về Kho xử lý.</p>
+        <p>Sắp xếp luôn sản phẩm không đạt về kho Xử lý.</p>
+      </div>
+
       <Card>
         <CardHeader><CardTitle className="text-base">Chọn phòng</CardTitle></CardHeader>
         <CardContent className="space-y-1">
@@ -197,7 +203,7 @@ export default function DeXuatExecuteForm({
           <CardContent className="space-y-4">
             {isMarketPartner && (
               <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3">
-                Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/trồng để quản lý kĩ thuật xác nhận lại.
+                Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/chuyển về Kho xử lý để quản lý kĩ thuật xác nhận lại.
                 <br />
                 Lưu ý hình ảnh cần chụp trên nền trắng, sắp xếp gọn gàng để hiển thị rõ số lượng, các lỗi
                 của cây, tem tên cây quay ra mặt trước.
@@ -220,11 +226,11 @@ export default function DeXuatExecuteForm({
                         <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Quy cách</th>
                         <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Tồn kho</th>
                         <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-28">Đề xuất hủy</th>
-                        <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-28">Đề xuất trồng</th>
+                        <th className="text-right px-3 py-2 text-base text-primary-strong font-bold w-28">Chuyển về Kho xử lý</th>
                         {isMarketPartner && (
                           <>
                             <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh huỷ</th>
-                            <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh trồng</th>
+                            <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh chuyển Kho xử lý</th>
                           </>
                         )}
                       </tr>
@@ -280,7 +286,7 @@ export default function DeXuatExecuteForm({
 
                 {gardens.length > 0 && (
                   <div className="space-y-1 max-w-sm">
-                    <Label>Vườn sản xuất <span className="text-text-muted font-normal">(áp dụng cho mọi dòng Trồng đã nhập)</span></Label>
+                    <Label>Vườn sản xuất <span className="text-text-muted font-normal">(áp dụng cho mọi dòng Chuyển về Kho xử lý đã nhập)</span></Label>
                     <Select
                       items={gardens.map((g) => ({ value: g.id, label: `${g.name} (${g.code})` }))}
                       value={productionGardenId}
