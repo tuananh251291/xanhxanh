@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Truck, ClipboardCheck } from "lucide-react";
+import { Truck, ClipboardCheck, FileSpreadsheet } from "lucide-react";
+import ExcelImportCard from "@/components/shared/excel-import-card";
 import { isPageAllowed } from "@/lib/permissions";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
@@ -201,7 +202,16 @@ export default async function GoodsReceiptsPage({
 
         <TabsContent value="planned" className="mt-4">
           {workplaceWarehouseId ? (
-            <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
+            <div className="space-y-6">
+              <ExcelImportCard
+                icon={<FileSpreadsheet className="w-5 h-5" />}
+                title="Tải lên dự kiến nhập hàng bằng Excel"
+                description="Tải file mẫu, điền mỗi dòng 1 mã hàng + quy cách (có thể nhiều NCC/Khu SX và nhiều ngày hàng về) rồi tải lên — các dòng cùng NCC/Khu SX + ngày hàng về gộp thành 1 phiếu. Xem sheet Hướng dẫn và Danh mục trong file mẫu."
+                templateUrl="/api/goods-receipts/import"
+                uploadUrl="/api/goods-receipts/import"
+              />
+              <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
+            </div>
           ) : (
             <Card><CardContent className="py-8 text-center text-text-muted">
               Bạn chưa được gán địa điểm làm việc (kho thành phẩm) — liên hệ Admin cấp cao để được gán trước khi nhập hàng.

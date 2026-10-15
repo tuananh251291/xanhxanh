@@ -13,24 +13,28 @@ function isKhoThanhPham(role: string | null | undefined) {
   return role === "KHO_THANH_PHAM" || role === "QUAN_LY_KHO_THANH_PHAM";
 }
 
-// Mẫu Excel "Kế hoạch nhập kho hàng loạt" — mỗi dòng = 1 (mã hàng, quy cách) của 1 lần hàng về; nhiều
-// dòng cùng Mã NCC + Ngày hàng về được gộp thành 1 phiếu (xem POST bên dưới), khác form thủ công chỉ
-// tạo được 1 phiếu/lần.
+const SHEET_NAME = "Dự kiến nhập hàng";
+const LEGACY_SHEET_NAME = "Kế hoạch nhập kho"; // tên sheet của file mẫu cũ — vẫn nhận
+
+// Mẫu Excel "Dự kiến nhập hàng" — mỗi dòng = 1 (mã hàng, quy cách) của 1 lần hàng về; nhiều dòng cùng
+// đơn vị cung cấp + Ngày hàng về được gộp thành 1 phiếu (xem POST bên dưới), khác form thủ công chỉ
+// tạo được 1 phiếu/lần. Đơn vị cung cấp = mã NCC ngoài HOẶC mã Khu SX nội bộ (giống combobox ở form tay).
 export async function GET() {
   const session = await auth();
   if (!isKhoThanhPham(session?.user?.role)) {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
 
-  const [suppliers, plantTypes] = await Promise.all([
+  const [suppliers, gardens, plantTypes] = await Promise.all([
     prisma.supplier.findMany({ where: { isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.productionGarden.findMany({ where: { isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.plantType.findMany({ where: { isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("Kế hoạch nhập kho");
+  const sheet = workbook.addWorksheet(SHEET_NAME);
   sheet.columns = [
-    { header: "Mã NCC", key: "supplierCode", width: 14 },
+    { header: "Mã NCC / Khu SX", key: "supplierCode", width: 18 },
     { header: "Mã hàng", key: "plantTypeCode", width: 14 },
     { header: "Quy cách", key: "stageCode", width: 12 },
     { header: "Số lượng", key: "quantity", width: 12 },
@@ -57,10 +61,11 @@ export async function GET() {
   ];
   lookupSheet.getRow(1).font = { bold: true };
   for (const s of suppliers) lookupSheet.addRow({ kind: "Nhà cung cấp", code: s.code, name: s.name });
+  for (const g of gardens) lookupSheet.addRow({ kind: "Khu SX nội bộ", code: g.code, name: g.name });
   for (const p of plantTypes) lookupSheet.addRow({ kind: "Loại cây", code: p.code, name: p.name });
 
   addGuideSheet(workbook, [
-    { column: "Mã NCC", required: true, description: "Mã nhà cung cấp đã có trong hệ thống — xem sheet Danh mục." },
+    { column: "Mã NCC / Khu SX", required: true, description: "Mã nhà cung cấp hoặc mã Khu SX nội bộ đã có trong hệ thống — xem sheet Danh mục." },
     { column: "Mã hàng", required: true, description: "Mã loại cây đã có trong hệ thống — xem sheet Danh mục." },
     { column: "Quy cách", required: true, description: "T01 (túi 1 cây) / T05 (túi 5 cây) / T06 (túi 6 cây) / T10 (túi 10 cây) / T20 (túi 20 cây) / T25 (túi 25 cây)." },
     { column: "Số lượng", required: true, description: "Số nguyên dương." },
@@ -72,7 +77,12 @@ export async function GET() {
     {
       column: "Ghi chú",
       required: false,
-      description: "Ghi chú cho phiếu — nếu nhiều dòng cùng Mã NCC + Ngày hàng về có ghi chú khác nhau, hệ thống lấy ghi chú của dòng đầu tiên.",
+      description: "Ghi chú cho phiếu — nếu nhiều dòng cùng Mã NCC/Khu SX + Ngày hàng về có ghi chú khác nhau, hệ thống lấy ghi chú của dòng đầu tiên.",
+    },
+    {
+      column: "Cách gộp phiếu",
+      required: false,
+      description: "Các dòng cùng Mã NCC/Khu SX + Ngày hàng về được gộp thành 1 phiếu dự kiến nhập hàng. File có lỗi ở bất kỳ dòng nào sẽ không tạo phiếu nào — sửa hết lỗi rồi tải lại. Dòng 2 (dòng ví dụ tô màu) luôn bị bỏ qua.",
     },
   ]);
 
@@ -80,7 +90,7 @@ export async function GET() {
   return new NextResponse(buffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="mau-ke-hoach-nhap-kho.xlsx"`,
+      "Content-Disposition": `attachment; filename="mau-du-kien-nhap-hang.xlsx"`,
     },
   });
 }
@@ -88,7 +98,8 @@ export async function GET() {
 type RowError = { row: number; label: string; message: string };
 type ParsedRow = {
   row: number;
-  supplierId: string;
+  supplierId: string | null;
+  productionGardenId: string | null;
   supplierCode: string;
   plantTypeId: string;
   plantTypeCode: string;
@@ -118,11 +129,12 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ message: "File không đúng định dạng Excel (.xlsx)" }, { status: 400 });
   }
-  const sheet = workbook.getWorksheet("Kế hoạch nhập kho") ?? workbook.worksheets[0];
+  const sheet = workbook.getWorksheet(SHEET_NAME) ?? workbook.getWorksheet(LEGACY_SHEET_NAME) ?? workbook.worksheets[0];
   if (!sheet) return NextResponse.json({ message: "File không có sheet dữ liệu" }, { status: 400 });
 
-  const [suppliers, plantTypes, room, creatingUser] = await Promise.all([
+  const [suppliers, gardens, plantTypes, room, creatingUser] = await Promise.all([
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
+    prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
     getFinishedQualifiedRooms().then((rooms) => rooms.find((r) => r.warehouseId === workplaceWarehouseId) ?? null),
     prisma.user.findUnique({ where: { id: session!.user.id }, select: { code: true } }),
@@ -131,6 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Kho thành phẩm bạn đang làm việc chưa có Phòng đạt tiêu chuẩn — liên hệ Admin tạo phòng trước" }, { status: 400 });
   }
   const supplierByCode = new Map(suppliers.map((s) => [s.code.toUpperCase(), s]));
+  const gardenByCode = new Map(gardens.map((g) => [g.code.toUpperCase(), g]));
   const plantTypeByCode = new Map(plantTypes.map((p) => [p.code.toUpperCase(), p]));
   const staffCode = creatingUser?.code ?? "000";
 
@@ -148,9 +161,11 @@ export async function POST(req: NextRequest) {
     if (!supplierCode && !plantTypeCode && quantity === undefined) return; // dòng trống — bỏ qua.
 
     const label = `${supplierCode || "?"} · ${plantTypeCode || "?"}`;
-    if (!supplierCode) { errors.push({ row: rowNumber, label, message: "Thiếu Mã NCC" }); return; }
+    if (!supplierCode) { errors.push({ row: rowNumber, label, message: "Thiếu Mã NCC / Khu SX" }); return; }
+    // Ưu tiên NCC ngoài nếu (hiếm) trùng mã với 1 Khu SX nội bộ.
     const supplier = supplierByCode.get(supplierCode.toUpperCase());
-    if (!supplier) { errors.push({ row: rowNumber, label, message: `Không tìm thấy nhà cung cấp "${supplierCode}"` }); return; }
+    const garden = supplier ? undefined : gardenByCode.get(supplierCode.toUpperCase());
+    if (!supplier && !garden) { errors.push({ row: rowNumber, label, message: `Không tìm thấy nhà cung cấp / Khu SX "${supplierCode}"` }); return; }
 
     if (!plantTypeCode) { errors.push({ row: rowNumber, label, message: "Thiếu Mã hàng" }); return; }
     const plantType = plantTypeByCode.get(plantTypeCode.toUpperCase());
@@ -168,8 +183,9 @@ export async function POST(req: NextRequest) {
 
     parsedRows.push({
       row: rowNumber,
-      supplierId: supplier.id,
-      supplierCode: supplier.code,
+      supplierId: supplier?.id ?? null,
+      productionGardenId: garden?.id ?? null,
+      supplierCode: (supplier ?? garden)!.code,
       plantTypeId: plantType.id,
       plantTypeCode: plantType.code,
       stageCode,
@@ -182,17 +198,18 @@ export async function POST(req: NextRequest) {
   if (errors.length > 0) return NextResponse.json({ successCount: 0, errors });
   if (parsedRows.length === 0) return NextResponse.json({ message: "File không có dòng dữ liệu nào" }, { status: 400 });
 
-  // Gộp các dòng cùng Mã NCC + Ngày hàng về (theo ngày, không theo giờ) thành 1 phiếu Kế hoạch nhập kho.
-  const groups = new Map<string, { supplierId: string; expectedDate: Date; notes?: string; items: ParsedRow[] }>();
+  // Gộp các dòng cùng đơn vị cung cấp + Ngày hàng về (theo ngày, không theo giờ) thành 1 phiếu dự kiến.
+  type Group = { supplierId: string | null; productionGardenId: string | null; expectedDate: Date; notes?: string; items: ParsedRow[] };
+  const groups = new Map<string, Group>();
   for (const r of parsedRows) {
     const dateKey = r.expectedDate.toISOString().slice(0, 10);
-    const key = `${r.supplierId}::${dateKey}`;
+    const key = `${r.supplierId ? `s:${r.supplierId}` : `g:${r.productionGardenId}`}::${dateKey}`;
     const group = groups.get(key);
     if (group) {
       group.items.push(r);
       if (!group.notes && r.notes) group.notes = r.notes;
     } else {
-      groups.set(key, { supplierId: r.supplierId, expectedDate: r.expectedDate, notes: r.notes || undefined, items: [r] });
+      groups.set(key, { supplierId: r.supplierId, productionGardenId: r.productionGardenId, expectedDate: r.expectedDate, notes: r.notes || undefined, items: [r] });
     }
   }
 
@@ -200,7 +217,8 @@ export async function POST(req: NextRequest) {
     const codes: string[] = [];
     for (const group of groups.values()) {
       const receipt = await createPlannedGoodsReceipt(tx, {
-        supplierId: group.supplierId,
+        supplierId: group.supplierId ?? undefined,
+        productionGardenId: group.productionGardenId ?? undefined,
         roomId: room.id,
         createdById: session!.user.id,
         notes: group.notes,
@@ -218,5 +236,10 @@ export async function POST(req: NextRequest) {
     return codes;
   });
 
-  return NextResponse.json({ successCount: parsedRows.length, receiptCount: createdCodes.length, errors: [] });
+  return NextResponse.json({
+    successCount: parsedRows.length,
+    receiptCount: createdCodes.length,
+    summary: `Đã tạo ${createdCodes.length} phiếu dự kiến nhập hàng từ ${parsedRows.length} dòng: ${createdCodes.join(", ")}`,
+    errors: [],
+  });
 }
