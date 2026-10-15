@@ -121,10 +121,22 @@ export async function ensureWeeklyDeXuatTask(warehouseId: string | null) {
   }
 }
 
-// Nhiệm vụ tuần của Quản lý kho thành phẩm (QLK_DE_XUAT_TUAN) — 1 việc/kho/tuần, slotKey "manager":
-// gộp phần hủy từ phiếu kiểm tra của NV thành Đề xuất hủy, tạo Đề xuất trồng/Phiếu xử lý từ Phòng chờ xử
-// lý (xem /task-assignment/qlk-de-xuat/[taskId]). Phải gửi trong ngày Thứ Sáu — nhắc Quản lý từ sáng Thứ
-// Sáu nếu chưa gửi, 1 lần/tuần (dedup qua relatedId). Không gán NV cụ thể — mọi Quản lý của kho đều làm được.
+// Nhiệm vụ tuần của Quản lý kho thành phẩm (QLK_DE_XUAT_TUAN) — 3 việc riêng/kho/tuần theo slotKey (xem
+// QLK_WEEKLY_SLOTS): Đề xuất hủy (gộp phần hủy từ phiếu kiểm tra của NV), Đề xuất trồng và Phiếu xử lý (cả
+// 2 lấy từ Phòng chờ xử lý) — xem /task-assignment/qlk-de-xuat/[taskId]. Phải gửi trong ngày Thứ Sáu —
+// nhắc Quản lý từ sáng Thứ Sáu nếu còn việc chưa gửi, 1 lần/tuần/việc (dedup qua relatedId). Không gán NV
+// cụ thể — mọi Quản lý của kho đều làm được. slotKey có tiền tố "qlk-" vì @@unique([warehouseId, weekStart,
+// slotKey]) dùng chung với các việc DE_XUAT_TRONG_HUY của NV cùng kho/tuần.
+export const QLK_WEEKLY_SLOTS = {
+  "qlk-huy": "Đề xuất hủy",
+  "qlk-trong": "Đề xuất trồng",
+  "qlk-xu-ly": "Phiếu xử lý",
+} as const;
+export type QlkWeeklySlot = keyof typeof QLK_WEEKLY_SLOTS;
+// slotKey "manager" = việc gộp cả 3 phần của bản cũ (trước khi tách) — coi như việc Đề xuất hủy.
+export const qlkSlotOf = (slotKey: string | null): QlkWeeklySlot =>
+  slotKey && slotKey in QLK_WEEKLY_SLOTS ? (slotKey as QlkWeeklySlot) : "qlk-huy";
+
 export async function ensureWeeklyManagerTask(warehouseId: string | null) {
   if (!warehouseId) return;
   const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { type: true } });
@@ -132,32 +144,52 @@ export async function ensureWeeklyManagerTask(warehouseId: string | null) {
 
   const weekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-  let task = await prisma.dailyTask.findFirst({
-    where: { type: "QLK_DE_XUAT_TUAN", warehouseId, weekStart, slotKey: "manager" },
-    select: { id: true, code: true, status: true, title: true },
-  });
-  if (!task) {
-    task = await prisma.dailyTask.create({
-      data: {
-        code: await generateDailyTaskCode(),
-        type: "QLK_DE_XUAT_TUAN",
-        warehouseId,
-        weekStart,
-        slotKey: "manager",
-        title: `Đề xuất trồng/hủy & Phiếu xử lý tuần ${getWeek(weekStart, { weekStartsOn: 1 })} (ngày ${format(weekStart, "dd/MM", { locale: vi })} đến ngày ${format(weekEnd, "dd/MM", { locale: vi })})`,
-        notes: "Tự động tạo hàng tuần cho Quản lý kho thành phẩm — gửi trong ngày Thứ Sáu.",
-      },
-      select: { id: true, code: true, status: true, title: true },
-    });
+  const weekLabel = `tuần ${getWeek(weekStart, { weekStartsOn: 1 })} (ngày ${format(weekStart, "dd/MM", { locale: vi })} đến ngày ${format(weekEnd, "dd/MM", { locale: vi })})`;
+  const select = { id: true, code: true, status: true, title: true, slotKey: true } as const;
+  const tasks = await prisma.dailyTask.findMany({ where: { type: "QLK_DE_XUAT_TUAN", warehouseId, weekStart }, select });
+
+  // Việc gộp kiểu cũ (slotKey "manager") của tuần này: chưa gửi → đổi thành việc Đề xuất hủy (giữ mã);
+  // đã gửi (gồm cả 3 phần) → tuần này không sinh thêm việc nào.
+  const legacyIdx = tasks.findIndex((t) => t.slotKey === "manager");
+  if (legacyIdx >= 0) {
+    const legacy = tasks[legacyIdx];
+    if (legacy.status !== "PENDING") return;
+    if (!tasks.some((t) => t.slotKey === "qlk-huy")) {
+      tasks[legacyIdx] = await prisma.dailyTask.update({
+        where: { id: legacy.id },
+        data: { slotKey: "qlk-huy", title: `${QLK_WEEKLY_SLOTS["qlk-huy"]} ${weekLabel}` },
+        select,
+      });
+    }
   }
 
-  if (task.status === "PENDING" && new Date() >= getDeXuatDeadline(weekStart)) {
-    const relatedId = `weekly-qlk-de-xuat:${warehouseId}:${format(weekStart, "yyyy-MM-dd")}`;
+  for (const slotKey of Object.keys(QLK_WEEKLY_SLOTS) as QlkWeeklySlot[]) {
+    if (tasks.some((t) => t.slotKey === slotKey)) continue;
+    tasks.push(
+      await prisma.dailyTask.create({
+        data: {
+          code: await generateDailyTaskCode(),
+          type: "QLK_DE_XUAT_TUAN",
+          warehouseId,
+          weekStart,
+          slotKey,
+          title: `${QLK_WEEKLY_SLOTS[slotKey]} ${weekLabel}`,
+          notes: "Tự động tạo hàng tuần cho Quản lý kho thành phẩm — gửi trong ngày Thứ Sáu.",
+        },
+        select,
+      })
+    );
+  }
+
+  if (new Date() < getDeXuatDeadline(weekStart)) return;
+  for (const task of tasks) {
+    if (task.status !== "PENDING") continue;
+    const relatedId = `weekly-qlk-de-xuat:${warehouseId}:${format(weekStart, "yyyy-MM-dd")}:${task.slotKey}`;
     const sent = await prisma.alert.findFirst({ where: { type: "DE_XUAT_TRONG_HUY_WEEKLY_DUE", relatedId } });
     if (!sent) {
       await createAlert({
         type: "DE_XUAT_TRONG_HUY_WEEKLY_DUE",
-        title: "Hôm nay Thứ Sáu: gửi Đề xuất trồng/hủy tuần",
+        title: `Hôm nay Thứ Sáu: gửi ${QLK_WEEKLY_SLOTS[qlkSlotOf(task.slotKey)]} tuần`,
         message: `Cần gửi "${task.title ?? task.code}" trong hôm nay — vào Phân công nhiệm vụ để thực hiện.`,
         targetRole: "QUAN_LY_KHO_THANH_PHAM",
         relatedId,

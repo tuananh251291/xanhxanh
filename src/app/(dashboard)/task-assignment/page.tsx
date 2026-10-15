@@ -10,6 +10,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { getPendingReturnInspections } from "@/lib/return-inspection";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 import { toStoredWeekStart } from "@/lib/week-rotation";
+import { QLK_WEEKLY_SLOTS, qlkSlotOf } from "@/lib/daily-task-weekly";
 import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
@@ -88,13 +89,13 @@ export default async function TaskAssignmentPage() {
         _count: { select: { checkLines: true } },
       },
     }),
-    // Nhiệm vụ tuần của Quản lý (QLK_DE_XUAT_TUAN, xem ensureWeeklyManagerTask) — 1 việc/kho/tuần.
+    // Nhiệm vụ tuần của Quản lý (QLK_DE_XUAT_TUAN, xem ensureWeeklyManagerTask) — 3 việc/kho/tuần (Hủy/Trồng/Xử lý).
     prisma.dailyTask.findMany({
       where: { type: "QLK_DE_XUAT_TUAN", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
       orderBy: { weekStart: "desc" },
-      take: 8,
+      take: 15,
       select: {
-        id: true, code: true, status: true, title: true, weekStart: true, completedAt: true, resultNotes: true,
+        id: true, code: true, status: true, title: true, weekStart: true, completedAt: true, resultNotes: true, slotKey: true,
         proposals: { select: { status: true } },
       },
     }),
@@ -106,6 +107,11 @@ export default async function TaskAssignmentPage() {
   const readyToShipOrders = confirmedOrders.filter((o) => getOrderPackStatus(o).variant === "completed");
 
   const currentWeekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  // Trong cùng tuần xếp theo thứ tự Hủy → Trồng → Xử lý.
+  const slotOrder = Object.keys(QLK_WEEKLY_SLOTS);
+  const sortedQlkTasks = [...qlkTasks].sort((a, b) =>
+    (b.weekStart?.getTime() ?? 0) - (a.weekStart?.getTime() ?? 0) || slotOrder.indexOf(qlkSlotOf(a.slotKey)) - slotOrder.indexOf(qlkSlotOf(b.slotKey))
+  );
   const thisWeekTasks = deXuatTasks.filter((d) => d.weekStart?.getTime() === currentWeekStart.getTime());
   const thisWeekIds = new Set(thisWeekTasks.map((d) => d.id));
   const otherDeXuatTasks = deXuatTasks.filter((d) => !thisWeekIds.has(d.id));
@@ -193,12 +199,12 @@ export default async function TaskAssignmentPage() {
         <CardContent className="space-y-3">
           <div className="space-y-2">
             <p className="text-xs font-semibold text-text-secondary mb-1.5">
-              Việc của Quản lý — gộp Đề xuất hủy, tạo Đề xuất trồng / Phiếu xử lý từ Phòng chờ xử lý (gửi trong ngày Thứ Sáu)
+              Việc của Quản lý — 3 việc riêng: Đề xuất hủy (gộp từ phiếu của NV), Đề xuất trồng và Phiếu xử lý (từ Phòng chờ xử lý) — gửi trong ngày Thứ Sáu
             </p>
-            {qlkTasks.length === 0 ? (
+            {sortedQlkTasks.length === 0 ? (
               <p className="text-sm text-text-muted py-2">Việc tuần này chưa được tạo — sẽ tự xuất hiện khi có ai vào trang.</p>
             ) : (
-              qlkTasks.map((q) => (
+              sortedQlkTasks.map((q) => (
                 <div key={q.id} className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border ${q.weekStart?.getTime() === currentWeekStart.getTime() ? "bg-warning-light/30 border-warning" : "bg-background border-divider"}`}>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{q.title ?? q.code}</p>
