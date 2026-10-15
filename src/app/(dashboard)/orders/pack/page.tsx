@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PackageOpen, ListChecks, CheckCircle2 } from "lucide-react";
+import { PackageOpen, ListChecks, Eye } from "lucide-react";
 import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
@@ -102,11 +102,14 @@ export default async function OrdersPackPage() {
                         submitLabel="Bàn giao"
                       />
                       {/* Quản lý/Admin chỉ phân công (chọn NV → Bàn giao), không nhặt hàng — nút "Nhặt hàng"
-                          chỉ dành cho NV kho thành phẩm được giao đơn. */}
+                          chỉ dành cho NV kho thành phẩm được giao đơn. Đơn đã sắp xếp xong thì ai cũng
+                          "Xem lại" được (vào lại trang nhặt hàng, vẫn sửa được khi đơn còn chờ xuất). */}
                       {packStatus.variant === "completed" ? (
-                        <Button size="sm" variant="outline" className="h-8 bg-card text-text-muted cursor-not-allowed" disabled>
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Đã sắp xếp xong
-                        </Button>
+                        <Link href={`/orders/pack/${order.id}`}>
+                          <Button size="sm" variant="outline" className="h-8">
+                            <Eye className="w-3.5 h-3.5 mr-1.5" /> Xem lại
+                          </Button>
+                        </Link>
                       ) : canAssign ? null : (
                         <Link href={`/orders/pack/${order.id}`}>
                           <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
