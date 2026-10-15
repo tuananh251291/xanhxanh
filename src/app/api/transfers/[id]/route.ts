@@ -13,7 +13,7 @@ const confirmSchema = z.object({
   action: z.enum(["confirm", "reject", "assign", "ack"]),
   shelfAssignments: z.array(z.object({ lotId: z.string(), shelfId: z.string() })).optional(),
   // Nhận thành phẩm từ Phòng ra rễ — chia số lượng theo TỪNG loại cây + quy cách (T01/T05) vào Phòng
-  // theo dõi/Phòng hàn túi (không được gộp nhiều loại cây lại rồi chia theo tổng quy cách).
+  // đạt tiêu chuẩn/Phòng chờ xử lý (không được gộp nhiều loại cây lại rồi chia theo tổng quy cách).
   finishedSplit: z.array(z.object({ roomId: z.string(), plantTypeId: z.string(), stageCode: z.string(), quantity: z.number().int().positive() })).optional(),
   // Nhận hàng ở Kho thị trường (từ Kho thành phẩm) — chia số THỰC NHẬN theo từng loại cây + quy cách
   // vào Phòng sản phẩm đạt/không đạt. Tổng 2 số này được phép NHỎ HƠN số đã gửi (hao hụt vận chuyển,
@@ -239,15 +239,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // không cần chọn kệ.
   if (transfer.toWarehouse?.type === "THANH_PHAM") {
     // Thành phẩm mới nhận từ Phòng ra rễ — KHO_THANH_PHAM tự chia số lượng theo quy cách (T01/T05)
-    // vào Phòng theo dõi / Phòng hàn túi (xem finishedSplit). Luân chuyển nội bộ giữa các phòng KTP đã
+    // vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý (xem finishedSplit). Luân chuyển nội bộ giữa các phòng KTP đã
     // có sẵn 1 phòng đích cụ thể (toRoomId chọn lúc tạo phiếu) nên không cần bước chia này.
     const isExternalFinishedHandoff = transfer.fromRoom?.type === "PHONG_RA_RE";
 
     if (isExternalFinishedHandoff) {
       if (!finishedSplit || finishedSplit.length === 0) {
-        return NextResponse.json({ message: "Cần nhập số lượng phân bổ vào Phòng theo dõi / Phòng hàn túi" }, { status: 400 });
+        return NextResponse.json({ message: "Cần nhập số lượng phân bổ vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý" }, { status: 400 });
       }
 
+      // Chỉ được chia vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý đang hoạt động của đúng kho nhận.
+      const allowedRooms = await prisma.room.findMany({
+        where: { warehouseId: transfer.toWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY"] } },
+        select: { id: true },
+      });
+      const allowedRoomIds = new Set(allowedRooms.map((r) => r.id));
+      if (finishedSplit.some((s) => !allowedRoomIds.has(s.roomId))) {
+        return NextResponse.json({ message: "Phòng nhận không hợp lệ — chỉ chia vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý" }, { status: 400 });
+      }
       // Chia riêng theo TỪNG loại cây + quy cách — không được gộp nhiều loại cây lại rồi chia theo tổng
       // quy cách (VD 2 loại cây cùng có T01 phải tách 2 dòng riêng, không cộng chung).
       const groupKey = (plantTypeId: string, stageCode: string) => `${plantTypeId}:${stageCode}`;

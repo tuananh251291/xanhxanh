@@ -229,6 +229,7 @@ export const ROOM_TYPE_LABELS = {
   PHONG_THEO_DOI: "Phòng theo dõi",
   PHONG_HAN_TUI: "Phòng hàn túi",
   PHONG_THI_TRUONG: "Phòng thị trường",
+  PHONG_CHO_XU_LY: "Phòng chờ xử lý",
   PHONG_SAN_PHAM_DAT: "Phòng sản phẩm đạt",
   PHONG_SAN_PHAM_KHONG_DAT: "Phòng sản phẩm không đạt",
   PHONG_CAY_TRONG: "Phòng cây trồng",
@@ -243,6 +244,7 @@ export const ROOM_TYPE_COLORS = {
   PHONG_THEO_DOI: "bg-orange-100 text-orange-800",
   PHONG_HAN_TUI: "bg-purple-100 text-purple-800",
   PHONG_THI_TRUONG: "bg-cyan-100 text-cyan-800",
+  PHONG_CHO_XU_LY: "bg-warning-light text-warning-foreground",
   PHONG_SAN_PHAM_DAT: "bg-emerald-100 text-emerald-800",
   PHONG_SAN_PHAM_KHONG_DAT: "bg-rose-100 text-rose-800",
   PHONG_CAY_TRONG: "bg-teal-100 text-teal-800",
@@ -396,6 +398,7 @@ export const REPACK_STATUS_LABELS = {
   ASSIGNED: "Chờ NV nhận bàn giao",
   IN_PROGRESS: "Đang xử lý",
   PENDING_PLACEMENT: "Chờ kiểm tra & sắp xếp",
+  PENDING_RETURN: "Chờ Kho TP nhận lại",
   COMPLETED: "Hoàn thành",
   CANCELLED: "Đã hủy",
 } as const;
@@ -410,6 +413,7 @@ export const TRANSFER_STATUS_LABELS = {
 export const DAILY_TASK_TYPE_LABELS = {
   KIEM_TRA_CAY: "Kiểm tra cây",
   DE_XUAT_TRONG_HUY: "Đề xuất trồng/hủy",
+  QLK_DE_XUAT_TUAN: "Đề xuất trồng/hủy tuần (Quản lý)",
 } as const;
 
 export const DAILY_TASK_STATUS_LABELS = {
@@ -448,6 +452,10 @@ export const ALERT_TYPE_LABELS = {
   CUSTOMER_STATUS_UPDATE_DUE: "Cần cập nhật tình trạng khách hàng",
   INSTRUCTION_RETURNED_UNHANDED: "Chỉ định cấy được hoàn lại",
   DE_XUAT_TRONG_HUY_WEEKLY_DUE: "Nhắc hạn Đề xuất trồng/hủy tuần",
+  FINISHED_GOODS_WEEKLY_CHECK_SUBMITTED: "Phiếu kiểm tra kho cây tuần",
+  KTP_REPACK_CREATED: "Phiếu xử lý từ Kho thành phẩm",
+  KTP_REPACK_RETURNED: "Phiếu xử lý chờ Kho TP nhận lại",
+  GARDEN_HANDOVER_CREATED: "Phiếu bàn giao về Vườn sản xuất",
   RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
   MOTHER_FORECAST_MONTHLY_DUE: "Nhiệm vụ Dự kiến đáp ứng mẫu mẹ đến hạn",
   MOTHER_OUTPUT_SHORTFALL: "Sản lượng mẫu mẹ tụt dưới kế hoạch",

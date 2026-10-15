@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Check, PackageCheck } from "lucide-react";
+import { Loader2, Check, PackageCheck, Send } from "lucide-react";
 import { toast } from "sonner";
 
 type RepackForReview = {
@@ -17,7 +17,8 @@ type RepackForReview = {
   khoMoInspectedAt: string | null;
   confirmedPassedQuantity: number | null;
   confirmedFailedQuantity: number | null;
-  sourceShelf: { code: string; warehouseId: string };
+  // null = Phiếu xử lý từ Kho thành phẩm — sau khi kiểm tra thì "Bàn giao lại Kho thành phẩm" thay vì xếp kệ.
+  sourceShelf: { code: string; warehouseId: string } | null;
 };
 
 type LotWithShelf = { shelf: { code: string } | null };
@@ -27,9 +28,10 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
   const router = useRouter();
   const [passed, setPassed] = useState(String(instruction.reportedPassedQuantity ?? 0));
   const [failed, setFailed] = useState(String(instruction.reportedFailedQuantity ?? 0));
-  const [shelfCode, setShelfCode] = useState(instruction.sourceShelf.code);
+  const sourceShelf = instruction.sourceShelf;
+  const [shelfCode, setShelfCode] = useState(sourceShelf?.code ?? "");
   const [shelfOptions, setShelfOptions] = useState<ShelfOption[]>([]);
-  const [loadingShelves, setLoadingShelves] = useState(true);
+  const [loadingShelves, setLoadingShelves] = useState(!!sourceShelf);
   const [submitting, setSubmitting] = useState(false);
 
   // Chỉ cho chọn kệ ĐÃ CÓ SẴN cây thành phẩm (Phòng ra rễ, đúng kho) — tránh Kho mô gõ nhầm sang kệ trống
@@ -37,22 +39,23 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
   // không, vì đây là gợi ý mặc định — xem placeRepackOutput (src/lib/repack-placement.ts) cho phép riêng
   // kệ gốc bất kể còn hàng hay không.
   useEffect(() => {
-    fetch(`/api/lots?roomType=PHONG_RA_RE&stage=THANH_PHAM&status=ACTIVE&warehouseId=${instruction.sourceShelf.warehouseId}`)
+    if (!sourceShelf) return;
+    fetch(`/api/lots?roomType=PHONG_RA_RE&stage=THANH_PHAM&status=ACTIVE&warehouseId=${sourceShelf.warehouseId}`)
       .then((r) => r.json())
       .then((data: LotWithShelf[]) => {
         const codes = new Set<string>();
         if (Array.isArray(data)) {
           for (const l of data) if (l.shelf) codes.add(l.shelf.code);
         }
-        codes.add(instruction.sourceShelf.code);
+        codes.add(sourceShelf.code);
         setShelfOptions(
           Array.from(codes)
             .sort()
-            .map((code) => ({ code, label: code === instruction.sourceShelf.code ? `${code} (kệ gốc)` : code }))
+            .map((code) => ({ code, label: code === sourceShelf.code ? `${code} (kệ gốc)` : code }))
         );
       })
       .finally(() => setLoadingShelves(false));
-  }, [instruction.sourceShelf.code, instruction.sourceShelf.warehouseId]);
+  }, [sourceShelf]);
 
   const inspect = async () => {
     setSubmitting(true);
@@ -84,6 +87,20 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
     } finally { setSubmitting(false); }
   };
 
+  const returnToKtp = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/repack-instructions/${instruction.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnToKtp: true }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã bàn giao lại Kho thành phẩm");
+      router.refresh();
+    } finally { setSubmitting(false); }
+  };
+
   if (!instruction.khoMoInspectedAt) {
     return (
       <div className="flex flex-wrap items-end gap-3">
@@ -98,6 +115,21 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
         <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={inspect}>
           {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
           Xác nhận kiểm tra
+        </Button>
+      </div>
+    );
+  }
+
+  if (!sourceShelf) {
+    return (
+      <div className="flex flex-wrap items-end gap-3">
+        <p className="text-sm text-text-secondary">
+          Đã kiểm tra: <b className="text-foreground">{instruction.confirmedPassedQuantity}</b> đạt /{" "}
+          <b className="text-foreground">{instruction.confirmedFailedQuantity}</b> không đạt
+        </p>
+        <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={returnToKtp}>
+          {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+          Bàn giao lại Kho thành phẩm
         </Button>
       </div>
     );

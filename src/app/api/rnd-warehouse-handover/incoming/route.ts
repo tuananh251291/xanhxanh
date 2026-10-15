@@ -44,7 +44,7 @@ export async function GET() {
       : Promise.resolve([]),
     isKhoThanhPhamRole(role)
       ? prisma.room.findMany({
-          where: { warehouseId: workplaceWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI"] } },
+          where: { warehouseId: workplaceWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY"] } },
           select: { code: true, name: true, type: true },
           orderBy: { code: "asc" },
         })

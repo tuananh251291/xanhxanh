@@ -28,7 +28,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   });
   if (!instruction) return NextResponse.json({ message: "Không tìm thấy chỉ định" }, { status: 404 });
-  if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session!.user.workplaceWarehouseId) {
+  // Phiếu xử lý Kho thành phẩm không xếp kệ — Kho mô "Bàn giao lại Kho thành phẩm" thay vào đó (xem PATCH
+  // /api/repack-instructions/[id] nhánh returnToKtp).
+  if (!instruction.sourceShelf || !instruction.sourceShelfId) {
+    return NextResponse.json({ message: "Phiếu xử lý của Kho thành phẩm — bàn giao lại Kho thành phẩm thay vì xếp kệ" }, { status: 400 });
+  }
+  const sourceShelf = instruction.sourceShelf;
+  const sourceShelfId = instruction.sourceShelfId;
+  if (role === "KHO_MO" && sourceShelf.warehouseId !== session!.user.workplaceWarehouseId) {
     return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
   }
   if (instruction.status !== "PENDING_PLACEMENT") {
@@ -45,14 +52,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const { shelf, lot } = await placeRepackOutput(tx, {
         repackInstruction: {
           id: instruction.id,
-          sourceShelfId: instruction.sourceShelfId,
+          sourceShelfId,
           outputStageCode: instruction.outputStageCode,
           confirmedPassedQuantity: instruction.confirmedPassedQuantity,
           confirmedFailedQuantity: instruction.confirmedFailedQuantity,
           plantType: instruction.plantType,
         },
-        shelfCode: parsed.data.shelfCode || instruction.sourceShelf.code,
-        warehouseId: instruction.sourceShelf.warehouseId,
+        shelfCode: parsed.data.shelfCode || sourceShelf.code,
+        warehouseId: sourceShelf.warehouseId,
         staffCode: staff?.code ?? "000",
       });
       return tx.repackInstruction.update({

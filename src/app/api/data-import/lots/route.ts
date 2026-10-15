@@ -11,7 +11,7 @@ import { cellText, cellDate, styleExampleRow, addGuideSheet, markRequiredHeaders
 
 // Cấp mã lô trong bộ nhớ — trần cao (kệ không gán NV dùng chung gốc "NV000", trần 50 cũ gây lỗi 500).
 const MAX_CODE_ATTEMPTS = 100000;
-const FINISHED_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
+const FINISHED_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_THI_TRUONG"] as const;
 
 type RowError = { row: number; label: string; message: string };
 

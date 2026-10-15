@@ -204,26 +204,20 @@ export default function ExtraWorkRequestForm({
 
             <div className="space-y-2">
               <Label className="text-xs">
-                Lý do đăng ký ({canRegisterCayThem ? "chọn 1 trong 2" : "chỉ NV luồng Xanh mới đăng ký cấy thêm cây được"} — Kho mô xem thông tin này để quyết định duyệt)
+                Lý do đăng ký (chỉ NV luồng Xanh mới đăng ký cấy thêm cây được — Kho mô xem thông tin này để quyết định duyệt)
               </Label>
               {canRegisterCayThem && (
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
                     checked={overtimePurpose === "CAY_THEM"}
-                    disabled={overtimePurpose === "HAN_TUI"}
                     onCheckedChange={(checked) => setOvertimePurpose(checked ? "CAY_THEM" : null)}
                   />
                   <span className="text-sm">Đăng ký cấy thêm cây</span>
                 </label>
               )}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={overtimePurpose === "HAN_TUI"}
-                  disabled={overtimePurpose === "CAY_THEM"}
-                  onCheckedChange={(checked) => setOvertimePurpose(checked ? "HAN_TUI" : null)}
-                />
-                <span className="text-sm">Đăng ký hàn túi</span>
-              </label>
+              {!canRegisterCayThem && (
+                <p className="text-sm text-text-muted">Bạn chưa thuộc luồng Xanh nên chưa đăng ký làm thêm được.</p>
+              )}
             </div>
 
             <div className="space-y-2">

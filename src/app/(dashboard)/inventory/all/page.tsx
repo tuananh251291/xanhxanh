@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Warehouse, Moon, Sun, Sprout, Package, PackageCheck, Eye, Globe, AlertTriangle } from "lucide-react";
+import { Warehouse, Moon, Sun, Sprout, Package, PackageCheck, Eye, Globe, AlertTriangle, Hourglass } from "lucide-react";
 import { ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
@@ -17,6 +17,7 @@ const ROOM_TYPE_ICONS: Record<RoomType, typeof Sun> = {
   PHONG_DAT_TIEU_CHUAN: PackageCheck,
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
+  PHONG_CHO_XU_LY: Hourglass,
   PHONG_THI_TRUONG: Globe,
   PHONG_SAN_PHAM_DAT: PackageCheck,
   PHONG_SAN_PHAM_KHONG_DAT: Package,
@@ -29,6 +30,7 @@ const ROOM_TYPES_ORDER: RoomType[] = [
   "PHONG_TOI",
   "PHONG_NHIEM",
   "PHONG_DAT_TIEU_CHUAN",
+  "PHONG_CHO_XU_LY",
   "PHONG_THEO_DOI",
   "PHONG_HAN_TUI",
   "PHONG_THI_TRUONG",

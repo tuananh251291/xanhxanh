@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
+import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
 
 class InsufficientStockError extends Error {}
@@ -14,6 +15,7 @@ async function loadInstruction(id: string) {
       plantType: { select: { id: true, code: true, name: true } },
       sourceShelf: { select: { id: true, code: true, name: true, warehouseId: true, warehouse: { select: { name: true, code: true } } } },
       sourceLot: { select: { id: true, code: true, quantity: true, stageCode: true } },
+      ktpRoom: { select: { id: true, code: true, name: true, warehouseId: true } },
       createdBy: { select: { id: true, name: true, code: true } },
       assignedTo: { select: { id: true, name: true, code: true, workplaceWarehouseId: true } },
       assignedBy: { select: { name: true, code: true } },
@@ -23,6 +25,14 @@ async function loadInstruction(id: string) {
       outputLot: { select: { code: true, quantity: true } },
     },
   });
+}
+
+type LoadedInstruction = NonNullable<Awaited<ReturnType<typeof loadInstruction>>>;
+
+// Kho sản xuất đang thực hiện chỉ định — chỉ định thường suy ra từ kệ nguồn, chỉ định từ Phiếu xử lý Kho
+// thành phẩm (ktpRoomId) lưu thẳng productionWarehouseId (không có kệ nguồn).
+function productionWarehouseIdOf(instruction: LoadedInstruction): string | null {
+  return instruction.productionWarehouseId ?? instruction.sourceShelf?.warehouseId ?? null;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -40,7 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (role === "KY_THUAT" && instruction.createdById !== session.user.id) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
-  if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session.user.workplaceWarehouseId) {
+  if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }
 
@@ -67,6 +77,15 @@ const patchSchema = z.union([
     }),
   }),
   z.object({ cancel: z.literal(true) }),
+  // Kho mô bàn giao lại kết quả Phiếu xử lý cho Kho thành phẩm (thay bước "Sắp xếp" lên kệ).
+  z.object({ returnToKtp: z.literal(true) }),
+  // Kho thành phẩm xác nhận nhận lại — đạt vào Phòng đạt tiêu chuẩn, không đạt về Phòng chờ xử lý.
+  z.object({
+    ktpReceive: z.object({
+      passedQuantity: z.number().int().min(0),
+      failedQuantity: z.number().int().min(0),
+    }),
+  }),
 ]);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -85,7 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // ---- KHO_MO chọn NV cấy mô thực hiện — mirror nhánh assignedToId "kệ chung" của PlantingInstruction ----
   if ("assignedToId" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-    if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session.user.workplaceWarehouseId) {
+    if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
     }
     if (instruction.status !== "CREATED") {
@@ -95,7 +114,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id: body.assignedToId },
       select: { role: true, isActive: true, workplaceWarehouseId: true },
     });
-    if (!staff || staff.role !== "CAY_MO" || !staff.isActive || staff.workplaceWarehouseId !== instruction.sourceShelf.warehouseId) {
+    if (!staff || staff.role !== "CAY_MO" || !staff.isActive || staff.workplaceWarehouseId !== productionWarehouseIdOf(instruction)) {
       return NextResponse.json({ message: "Nhân viên cấy mô không hợp lệ cho kho này" }, { status: 400 });
     }
     const updated = await prisma.repackInstruction.update({
@@ -112,7 +131,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // ở field đích (fulfilledRepackInstructionId thay vì fulfilledInstructionId).
   if ("assignExtraWorkRequestId" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-    if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session.user.workplaceWarehouseId) {
+    if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
     }
     if (instruction.status !== "CREATED") {
@@ -123,7 +142,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: { staff: { select: { id: true, role: true, isActive: true, workplaceWarehouseId: true } } },
     });
     if (!extraWorkRequest) return NextResponse.json({ message: "Không tìm thấy đăng ký" }, { status: 404 });
-    if (extraWorkRequest.staff.workplaceWarehouseId !== instruction.sourceShelf.warehouseId) {
+    if (extraWorkRequest.staff.workplaceWarehouseId !== productionWarehouseIdOf(instruction)) {
       return NextResponse.json({ message: "Đăng ký không thuộc kho của chỉ định này" }, { status: 403 });
     }
     if (role === "KHO_MO" && extraWorkRequest.staff.workplaceWarehouseId !== session.user.workplaceWarehouseId) {
@@ -154,15 +173,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.status !== "ASSIGNED") {
       return NextResponse.json({ message: "Chỉ định không ở trạng thái chờ nhận bàn giao" }, { status: 400 });
     }
+    // Phiếu xử lý Kho thành phẩm đã trừ tồn Phòng chờ xử lý ngay lúc tạo (hàng rời Kho thành phẩm) —
+    // NV nhận bàn giao chỉ đổi trạng thái, không trừ lại.
+    if (!instruction.sourceLotId) {
+      const updated = await prisma.repackInstruction.update({ where: { id }, data: { staffConfirmedAt: new Date(), status: "IN_PROGRESS" } });
+      return NextResponse.json(updated);
+    }
+    const sourceLotId = instruction.sourceLotId;
     try {
       const updated = await prisma.$transaction(async (tx) => {
-        const sourceLot = await tx.lot.findUnique({ where: { id: instruction.sourceLotId }, select: { quantity: true } });
+        const sourceLot = await tx.lot.findUnique({ where: { id: sourceLotId }, select: { quantity: true } });
         if (!sourceLot || sourceLot.quantity < instruction.inputQuantity) {
           throw new InsufficientStockError(
             `Lô nguồn không còn đủ số lượng (còn ${sourceLot?.quantity ?? 0}, cần ${instruction.inputQuantity})`
           );
         }
-        await tx.lot.update({ where: { id: instruction.sourceLotId }, data: { quantity: { decrement: instruction.inputQuantity } } });
+        await tx.lot.update({ where: { id: sourceLotId }, data: { quantity: { decrement: instruction.inputQuantity } } });
         return tx.repackInstruction.update({
           where: { id },
           data: { staffConfirmedAt: new Date(), status: "IN_PROGRESS" },
@@ -211,7 +237,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await createAlert({
         type: "REPACK_QUANTITY_MISMATCH",
         title: "Chỉ định cấy xử lý báo số lượng không đủ",
-        message: `${session.user.name} báo số lượng thực tế trên kệ ${instruction.sourceShelf.code} không khớp chỉ định ${instruction.code} (cần ${instruction.inputQuantity} ${instruction.inputStageCode})${note ? ` — ghi chú: ${note}` : ""} — cần kiểm tra lại trước khi gán NV khác.`,
+        message: `${session.user.name} báo số lượng thực tế ${instruction.sourceShelf ? `trên kệ ${instruction.sourceShelf.code}` : "nhận từ Kho thành phẩm"} không khớp chỉ định ${instruction.code} (cần ${instruction.inputQuantity} ${instruction.inputStageCode})${note ? ` — ghi chú: ${note}` : ""} — cần kiểm tra lại trước khi gán NV khác.`,
         userId: instruction.assignedById,
         relatedId: instruction.id,
         relatedType: "RepackInstruction",
@@ -223,14 +249,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // ---- Kho mô/Admin hoàn tác "Nhận bàn giao" — HOÀN LẠI TỒN KHO ----
   if ("undoConfirmReceived" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-    if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session.user.workplaceWarehouseId) {
+    if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
     }
     if (!instruction.staffConfirmedAt || instruction.staffHandedBackAt) {
       return NextResponse.json({ message: "Chỉ hoàn tác được khi NV đã nhận bàn giao nhưng chưa bàn giao kết quả" }, { status: 400 });
     }
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.lot.update({ where: { id: instruction.sourceLotId }, data: { quantity: { increment: instruction.inputQuantity } } });
+      if (instruction.sourceLotId) {
+        await tx.lot.update({ where: { id: instruction.sourceLotId }, data: { quantity: { increment: instruction.inputQuantity } } });
+      }
       return tx.repackInstruction.update({
         where: { id },
         data: { staffConfirmedAt: null, status: "ASSIGNED" },
@@ -265,7 +293,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // ---- Kho mô kiểm tra lại kết quả (giống mức độ review của chỉ định cấy bình thường) ----
   if ("inspect" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
-    if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session.user.workplaceWarehouseId) {
+    if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
     }
     if (instruction.status !== "PENDING_PLACEMENT") {
@@ -288,9 +316,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  // ---- KY_THUAT/Admin hủy chỉ định — chỉ khi chưa trừ tồn kho ----
+  // ---- KY_THUAT/Admin hủy chỉ định — chỉ khi NV chưa nhận bàn giao. Phiếu xử lý Kho thành phẩm thì đúng
+  // Quản lý kho thành phẩm đã tạo cũng hủy được — HOÀN LẠI Phòng chờ xử lý (đã trừ lúc tạo phiếu). ----
   if ("cancel" in body) {
-    if (role !== "KY_THUAT" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    const isKtpCreator = !!instruction.ktpRoomId && role === "QUAN_LY_KHO_THANH_PHAM" && instruction.createdById === session.user.id;
+    if (role !== "KY_THUAT" && !isAdminRole(role) && !isKtpCreator) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     if (role === "KY_THUAT" && instruction.createdById !== session.user.id) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     }
@@ -307,7 +337,78 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { fulfilledRepackInstructionId: id },
         data: { fulfilledAt: null, fulfilledRepackInstructionId: null },
       });
+      if (instruction.ktpRoomId) {
+        await upsertLot(tx, instruction.ktpRoomId, instruction.plantTypeId, instruction.plantType.code, instruction.inputStageCode, instruction.inputQuantity, instruction.createdBy.code);
+      }
       return tx.repackInstruction.update({ where: { id }, data: { status: "CANCELLED" } });
+    });
+    return NextResponse.json(updated);
+  }
+
+  // ---- Kho mô bàn giao lại kết quả Phiếu xử lý cho Kho thành phẩm (sau khi đã kiểm tra) ----
+  if ("returnToKtp" in body) {
+    if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+    if (!instruction.ktpRoomId) return NextResponse.json({ message: "Chỉ định này không phải Phiếu xử lý của Kho thành phẩm" }, { status: 400 });
+    if (instruction.status !== "PENDING_PLACEMENT" || !instruction.khoMoInspectedAt) {
+      return NextResponse.json({ message: "Cần kiểm tra kết quả trước khi bàn giao lại Kho thành phẩm" }, { status: 400 });
+    }
+    const updated = await prisma.repackInstruction.update({
+      where: { id },
+      data: { returnedAt: new Date(), returnedById: session.user.id, status: "PENDING_RETURN" },
+    });
+    for (const targetRole of ["QUAN_LY_KHO_THANH_PHAM", "KHO_THANH_PHAM"] as const) {
+      await createAlert({
+        type: "KTP_REPACK_RETURNED",
+        title: "Phiếu xử lý đã xong — chờ Kho thành phẩm nhận lại",
+        message: `${session.user.name} bàn giao lại kết quả phiếu xử lý ${instruction.code} (${instruction.plantType.name} ${instruction.outputStageCode}): ${instruction.confirmedPassedQuantity ?? 0} đạt / ${instruction.confirmedFailedQuantity ?? 0} không đạt — vào Nhận hàng > Phiếu xử lý để xác nhận.`,
+        targetRole,
+        relatedId: instruction.id,
+        relatedType: "RepackInstruction",
+      });
+    }
+    return NextResponse.json(updated);
+  }
+
+  // ---- Kho thành phẩm xác nhận nhận lại kết quả Phiếu xử lý ----
+  if ("ktpReceive" in body) {
+    if (role !== "KHO_THANH_PHAM" && role !== "QUAN_LY_KHO_THANH_PHAM" && !isAdminRole(role)) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    if (!instruction.ktpRoom || instruction.status !== "PENDING_RETURN") {
+      return NextResponse.json({ message: "Phiếu xử lý không ở trạng thái chờ Kho thành phẩm nhận lại" }, { status: 400 });
+    }
+    const { passedQuantity, failedQuantity } = body.ktpReceive;
+    if (passedQuantity + failedQuantity > instruction.inputQuantity) {
+      return NextResponse.json({ message: "Tổng đạt + không đạt vượt quá số lượng đã gửi xử lý" }, { status: 400 });
+    }
+    const ktpRoom = instruction.ktpRoom;
+    const datRoom = await prisma.room.findFirst({
+      where: { warehouseId: ktpRoom.warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
+      select: { id: true },
+    });
+    if (!datRoom) return NextResponse.json({ message: "Kho thành phẩm chưa có Phòng đạt tiêu chuẩn" }, { status: 400 });
+    const staff = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
+    const staffCode = staff?.code ?? "000";
+    const updated = await prisma.$transaction(async (tx) => {
+      if (passedQuantity > 0) {
+        await upsertLot(tx, datRoom.id, instruction.plantTypeId, instruction.plantType.code, instruction.outputStageCode, passedQuantity, staffCode);
+      }
+      if (failedQuantity > 0) {
+        await upsertLot(tx, ktpRoom.id, instruction.plantTypeId, instruction.plantType.code, instruction.outputStageCode, failedQuantity, staffCode);
+      }
+      return tx.repackInstruction.update({
+        where: { id },
+        data: {
+          ktpConfirmedAt: new Date(),
+          ktpConfirmedById: session.user.id,
+          ktpPassedQuantity: passedQuantity,
+          ktpFailedQuantity: failedQuantity,
+          status: "COMPLETED",
+        },
+      });
     });
     return NextResponse.json(updated);
   }

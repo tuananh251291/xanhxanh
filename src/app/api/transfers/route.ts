@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
           type: true,
           shelves: { where: { isActive: true, roomId: null } },
           // Kho thành phẩm — cần 2 phòng này để chia số lượng khi nhận bàn giao thành phẩm từ Phòng ra rễ.
-          rooms: { where: { type: { in: ["PHONG_THEO_DOI", "PHONG_HAN_TUI"] }, isActive: true }, select: { id: true, name: true, type: true } },
+          rooms: { where: { type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY"] }, isActive: true }, select: { id: true, name: true, type: true } },
         },
       },
       toRoom: { select: { name: true, type: true, shelves: { where: { isActive: true } } } },

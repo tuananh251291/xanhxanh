@@ -20,7 +20,7 @@ const PENDING_ACTION_TEXT: Record<PendingAction["type"], { title: string; body: 
   },
   insufficient: {
     title: "Báo số lượng không đủ?",
-    body: (item) => `Báo số lượng thực tế trên kệ ${item.sourceShelf.code} KHÔNG khớp chỉ định (cần ${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})? Chỉ định sẽ được trả lại cho Kho mô gán lại.`,
+    body: (item) => `Báo số lượng thực tế ${item.sourceShelf ? `trên kệ ${item.sourceShelf.code}` : "nhận từ Kho thành phẩm"} KHÔNG khớp chỉ định (cần ${item.inputQuantity.toLocaleString("vi-VN")} cây ${item.inputStageCode})? Chỉ định sẽ được trả lại cho Kho mô gán lại.`,
   },
   handback: {
     title: "Xác nhận hoàn thành?",
@@ -38,8 +38,9 @@ type RepackItem = {
   expectedOutputQuantity: number;
   staffConfirmedAt: string | null;
   plantType: { code: string; name: string };
-  sourceShelf: { code: string };
-  sourceLot: { code: string };
+  // null = Phiếu xử lý từ Kho thành phẩm (không có kệ/lô nguồn trong kho sản xuất).
+  sourceShelf: { code: string } | null;
+  sourceLot: { code: string } | null;
 };
 
 // Bảng THỨ 2, tách biệt hoàn toàn với bảng tuần chỉ định cấy thường ở trên — hiện "Chỉ định cấy xử lý"
@@ -150,7 +151,7 @@ export default function RepackInstructionPanel() {
             <div key={item.id} className="border rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm font-medium text-foreground">
-                  <span className="font-mono">{item.code}</span> — {item.plantType.code} — {item.sourceLot.code} ({item.sourceShelf.code})
+                  <span className="font-mono">{item.code}</span> — {item.plantType.code} — {item.sourceShelf && item.sourceLot ? `${item.sourceLot.code} (${item.sourceShelf.code})` : "Phiếu xử lý từ Kho thành phẩm"}
                 </p>
                 {overdue && (
                   <Badge className="bg-warning-light text-warning-foreground">

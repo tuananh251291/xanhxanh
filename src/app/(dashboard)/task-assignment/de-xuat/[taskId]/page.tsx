@@ -20,13 +20,16 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
     select: {
       id: true, code: true, type: true, status: true, roomId: true, assignedToId: true, weekStart: true,
       title: true, plantCategoryCodes: true,
+      _count: { select: { proposals: { where: { status: { not: "DRAFT" } } } } },
     },
   });
   if (!task || task.type !== "DE_XUAT_TRONG_HUY") notFound();
 
   const isManager = role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(role);
   if (task.assignedToId !== session.user.id && !isManager) redirect("/task-assignment");
-  if (task.status !== "PENDING") redirect("/task-assignment");
+  // Đã gửi đề xuất rồi (dù Admin chưa duyệt) thì không cho thực hiện lại — xem chặn tương ứng ở
+  // POST /api/contamination-proposals.
+  if (task.status !== "PENDING" || task._count.proposals > 0) redirect("/task-assignment");
 
   // Đối tác vận hành ở Kho thị trường có 3 phòng cố định KHÁC HẲN 4 loại phòng Kho thành phẩm — và không
   // chọn Vườn sản xuất cho đề xuất Trồng (gardens rỗng, xem POST /api/contamination-proposals nhánh

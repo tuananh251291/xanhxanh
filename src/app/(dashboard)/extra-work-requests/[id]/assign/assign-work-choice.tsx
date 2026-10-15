@@ -4,10 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, PackageOpen, ArrowLeft, ArrowRight, Send } from "lucide-react";
-import SealingTaskForm from "./sealing-task-form";
+import { ClipboardList, ArrowLeft, ArrowRight, Send } from "lucide-react";
 
-type Choice = "instruction" | "hantui";
+type Choice = "instruction";
 
 export default function AssignWorkChoice({
   requestId,
@@ -49,15 +48,6 @@ export default function AssignWorkChoice({
               </div>
             </CardContent>
           </Card>
-          <Card className="cursor-pointer hover:border-primary transition-colors" onClick={() => setChoice("hantui")}>
-            <CardContent className="py-8 flex flex-col items-center text-center gap-3">
-              <PackageOpen className="w-8 h-8 text-primary-strong" />
-              <div>
-                <p className="font-bold text-foreground">Giao việc hàn túi</p>
-                <p className="text-sm text-text-secondary mt-1">Hỗ trợ Kho thành phẩm hàn/đóng gói lại túi sản phẩm</p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -92,14 +82,6 @@ export default function AssignWorkChoice({
         </div>
       )}
 
-      {choice === "hantui" && (
-        <div className="space-y-4">
-          <Button variant="ghost" size="sm" onClick={() => setChoice(null)}>
-            <ArrowLeft className="w-4 h-4 mr-1.5" /> Quay lại
-          </Button>
-          <SealingTaskForm requestId={requestId} />
-        </div>
-      )}
     </div>
   );
 }

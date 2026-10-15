@@ -4,19 +4,20 @@ import { redirect, notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, PackageCheck, Eye, Globe, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { Package, PackageCheck, Eye, Globe, ArrowLeft, ChevronLeft, ChevronRight, Hourglass } from "lucide-react";
 import Link from "next/link";
 import { ROOM_TYPE_LABELS } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 
 const PAGE_SIZE = 12;
-const FINISHED_ROOM_TYPES: RoomType[] = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"];
+const FINISHED_ROOM_TYPES: RoomType[] = ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_THI_TRUONG"];
 
 const ROOM_TYPE_ICONS: Partial<Record<RoomType, typeof Package>> = {
   PHONG_DAT_TIEU_CHUAN: PackageCheck,
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
+  PHONG_CHO_XU_LY: Hourglass,
   PHONG_THI_TRUONG: Globe,
 };
 

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, PackageCheck, Eye, Globe, Layers, Search } from "lucide-react";
+import { Package, PackageCheck, Eye, Globe, Layers, Search, Hourglass } from "lucide-react";
 import Link from "next/link";
 import { ROOM_TYPE_LABELS } from "@/types";
 import type { RoomType } from "@prisma/client";
@@ -15,6 +15,7 @@ const ROOM_TYPE_ICONS: Partial<Record<RoomType, typeof Package>> = {
   PHONG_DAT_TIEU_CHUAN: PackageCheck,
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
+  PHONG_CHO_XU_LY: Hourglass,
   PHONG_THI_TRUONG: Globe,
 };
 
@@ -25,7 +26,7 @@ export default async function ThanhPhamInventoryPage() {
 
   const rooms = await prisma.room.findMany({
     where: {
-      type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] },
+      type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_THI_TRUONG"] },
       isActive: true,
     },
     include: {

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   else if (role === "KY_THUAT") where.createdById = session.user.id;
   else if (role === "KHO_MO") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
-    where.sourceShelf = { warehouseId: session.user.workplaceWarehouseId };
+    where.OR = [{ sourceShelf: { warehouseId: session.user.workplaceWarehouseId } }, { productionWarehouseId: session.user.workplaceWarehouseId }];
   } else if (!isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }

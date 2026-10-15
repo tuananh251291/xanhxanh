@@ -83,7 +83,7 @@ export default async function TaskAssignmentPage() {
         id: true, code: true, status: true, title: true, weekStart: true, plantCategoryCodes: true, assignmentConfirmedAt: true,
         room: { select: { name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
-        proposals: { select: { status: true } },
+        proposals: { where: { status: { not: "DRAFT" } }, select: { status: true } },
       },
     }),
   ]);
@@ -249,7 +249,7 @@ type DeXuatTask = {
 };
 
 // Hàng hiển thị 1 nhiệm vụ Kiểm nhiễm - Đề xuất trồng/hủy — dùng chung cho việc tuần này (highlight) và
-// lịch sử. PENDING luôn có nút "Thực hiện" dẫn sang /task-assignment/de-xuat/[id] (đi qua
+// lịch sử. PENDING chưa gửi đề xuất nào mới có nút "Thực hiện" dẫn sang /task-assignment/de-xuat/[id] (đi qua
 // ContaminationProposal có sẵn) — nhiệm vụ chỉ tự chuyển "Đã hoàn thành" khi Admin duyệt hết đề xuất liên
 // kết (xem ensureDeXuatTaskCompletion), không phải lúc bấm nút.
 function DeXuatTaskRow({
@@ -262,6 +262,8 @@ function DeXuatTaskRow({
 }) {
   const scope = d.room ? d.room.name : d.plantCategoryCodes.length > 0 ? d.plantCategoryCodes.join(", ") : null;
   const approvedCount = d.proposals.filter((p) => p.status === "APPROVED").length;
+  const hasPending = d.proposals.some((p) => p.status === "PENDING");
+  const hasRejected = d.proposals.some((p) => p.status === "REJECTED");
 
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border ${highlight ? "bg-warning-light/30 border-warning" : "bg-background border-divider"}`}>
@@ -279,14 +281,20 @@ function DeXuatTaskRow({
         {canAssign && d.status === "PENDING" && (
           <KhoTpAssignCell endpoint={`/api/daily-tasks/${d.id}`} assignedTo={d.assignedTo} staffOptions={staffOptions} canAssign={canAssign} confirmedAt={d.assignmentConfirmedAt} />
         )}
-        {d.status === "PENDING" ? (
+        {d.status !== "PENDING" ? (
+          <Badge variant="completed">Đã hoàn thành</Badge>
+        ) : hasPending ? (
+          <Badge variant="in-progress">Đã thực hiện · Chờ Admin duyệt</Badge>
+        ) : hasRejected ? (
+          <Link href="/contamination-proposals">
+            <Badge variant="overdue">Bị từ chối · Sửa &amp; gửi lại</Badge>
+          </Link>
+        ) : (
           <Link href={`/task-assignment/de-xuat/${d.id}`}>
             <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
               <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện
             </Button>
           </Link>
-        ) : (
-          <Badge variant="completed">Đã hoàn thành</Badge>
         )}
       </div>
     </div>

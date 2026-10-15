@@ -22,6 +22,10 @@ export default async function RepackInstructionDetailPage({ params }: { params: 
       plantType: { select: { code: true, name: true } },
       sourceShelf: { select: { code: true, name: true, warehouseId: true, warehouse: { select: { name: true } } } },
       sourceLot: { select: { code: true } },
+      ktpRoom: { select: { name: true, warehouse: { select: { name: true } } } },
+      productionWarehouse: { select: { name: true } },
+      returnedBy: { select: { name: true } },
+      ktpConfirmedBy: { select: { name: true } },
       createdBy: { select: { name: true, code: true } },
       assignedTo: { select: { name: true, code: true } },
       assignedBy: { select: { name: true } },
@@ -35,10 +39,11 @@ export default async function RepackInstructionDetailPage({ params }: { params: 
 
   if (role === "CAY_MO" && instruction.assignedToId !== session!.user.id) redirect("/dashboard");
   if (role === "KY_THUAT" && instruction.createdById !== session!.user.id) redirect("/dashboard");
-  if (role === "KHO_MO" && instruction.sourceShelf.warehouseId !== session!.user.workplaceWarehouseId) redirect("/dashboard");
+  const productionWarehouseId = instruction.productionWarehouseId ?? instruction.sourceShelf?.warehouseId ?? null;
+  if (role === "KHO_MO" && productionWarehouseId !== session!.user.workplaceWarehouseId) redirect("/dashboard");
 
   const canCancel =
-    (role === "KY_THUAT" && instruction.createdById === session!.user.id || isAdminRole(role)) &&
+    ((role === "KY_THUAT" || (role === "QUAN_LY_KHO_THANH_PHAM" && !!instruction.ktpRoomId)) && instruction.createdById === session!.user.id || isAdminRole(role)) &&
     !instruction.staffConfirmedAt &&
     instruction.status !== "CANCELLED" &&
     instruction.status !== "COMPLETED";
@@ -61,7 +66,11 @@ export default async function RepackInstructionDetailPage({ params }: { params: 
 
       <Card>
         <CardContent className="py-4 space-y-1 text-sm">
-          <p><span className="text-text-muted">Kệ + lô nguồn:</span> <span className="font-medium text-foreground">{instruction.sourceShelf.code} ({instruction.sourceShelf.warehouse.name}) — {instruction.sourceLot.code}</span></p>
+          {instruction.sourceShelf && instruction.sourceLot ? (
+            <p><span className="text-text-muted">Kệ + lô nguồn:</span> <span className="font-medium text-foreground">{instruction.sourceShelf.code} ({instruction.sourceShelf.warehouse.name}) — {instruction.sourceLot.code}</span></p>
+          ) : (
+            <p><span className="text-text-muted">Nguồn:</span> <span className="font-medium text-foreground">Phiếu xử lý — {instruction.ktpRoom?.name} ({instruction.ktpRoom?.warehouse.name}) → {instruction.productionWarehouse?.name}</span></p>
+          )}
           <p><span className="text-text-muted">Chuyển quy cách:</span> <span className="font-medium text-foreground">{instruction.inputStageCode} → {instruction.outputStageCode}</span></p>
           <p><span className="text-text-muted">Số lượng đầu vào:</span> <span className="font-medium text-foreground">{instruction.inputQuantity.toLocaleString("vi-VN")} cây</span></p>
           <p><span className="text-text-muted">Dự kiến đầu ra:</span> <span className="font-medium text-foreground">{instruction.expectedOutputQuantity.toLocaleString("vi-VN")} cây</span></p>
@@ -77,7 +86,14 @@ export default async function RepackInstructionDetailPage({ params }: { params: 
           <p><span className="text-text-muted">NV nhận bàn giao:</span> {fmt(instruction.staffConfirmedAt)}</p>
           <p><span className="text-text-muted">NV bàn giao kết quả:</span> {fmt(instruction.staffHandedBackAt)}{instruction.reportedPassedQuantity != null && ` — tự khai ${instruction.reportedPassedQuantity} đạt / ${instruction.reportedFailedQuantity} không đạt`}</p>
           <p><span className="text-text-muted">Kho mô kiểm tra:</span> {fmt(instruction.khoMoInspectedAt)}{instruction.khoMoInspectedBy ? ` bởi ${instruction.khoMoInspectedBy.name}` : ""}{instruction.confirmedPassedQuantity != null && ` — xác nhận ${instruction.confirmedPassedQuantity} đạt / ${instruction.confirmedFailedQuantity} không đạt`}</p>
+          {instruction.ktpRoomId ? (
+            <>
+              <p><span className="text-text-muted">Kho mô bàn giao lại Kho TP:</span> {fmt(instruction.returnedAt)}{instruction.returnedBy ? ` bởi ${instruction.returnedBy.name}` : ""}</p>
+              <p><span className="text-text-muted">Kho TP nhận lại:</span> {fmt(instruction.ktpConfirmedAt)}{instruction.ktpConfirmedBy ? ` bởi ${instruction.ktpConfirmedBy.name}` : ""}{instruction.ktpPassedQuantity != null && ` — ${instruction.ktpPassedQuantity} đạt (Phòng đạt tiêu chuẩn) / ${instruction.ktpFailedQuantity} không đạt (Phòng chờ xử lý)`}</p>
+            </>
+          ) : (
           <p><span className="text-text-muted">Sắp xếp lên kệ:</span> {fmt(instruction.placedAt)}{instruction.placedBy ? ` bởi ${instruction.placedBy.name}` : ""}{instruction.actualOutputShelf && ` — kệ ${instruction.actualOutputShelf.code}`}</p>
+          )}
           {instruction.creditedQuantity != null && (
             <p className="pt-2 border-t"><span className="text-text-muted">Số lượng được ghi nhận (tính lương):</span> <b className="text-primary-strong">{instruction.creditedQuantity.toLocaleString("vi-VN")} cây</b></p>
           )}

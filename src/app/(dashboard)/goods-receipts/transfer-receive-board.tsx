@@ -54,7 +54,7 @@ export default function TransferReceiveBoard() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [shelfMap, setShelfMap] = useState<Record<string, string>>({});
-  // Chia số lượng thành phẩm (theo từng loại cây + quy cách T01/T05) vào Phòng theo dõi / Phòng hàn túi
+  // Chia số lượng thành phẩm (theo từng loại cây + quy cách T01/T05) vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý
   // lúc nhận từ Phòng ra rễ — key = `${transferId}:${plantTypeId}:${stageCode}:${roomId}`.
   const [splitInputs, setSplitInputs] = useState<Record<string, number>>({});
   const [processing, setProcessing] = useState<string | null>(null);
@@ -178,7 +178,7 @@ export default function TransferReceiveBoard() {
                   {pendingTransfers.map((t) => {
                     const isToFinishedWarehouse = t.toWarehouse?.type === "THANH_PHAM";
                     // Bàn giao thành phẩm từ Phòng ra rễ → cần chia số lượng theo loại cây + quy cách vào Phòng
-                    // theo dõi/Phòng hàn túi. Luân chuyển nội bộ giữa các phòng KTP đã có sẵn 1 phòng đích cụ thể.
+                    // đạt tiêu chuẩn/Phòng chờ xử lý. Luân chuyển nội bộ giữa các phòng KTP đã có sẵn 1 phòng đích cụ thể.
                     const isExternalFinishedHandoff = isToFinishedWarehouse && t.fromRoom?.type === "PHONG_RA_RE";
                     const isSurplus = t.notes === SURPLUS_TRANSFER_TAG;
                     const isAuto = isSurplus || t.fromRoom?.type === "PHONG_TOI";
@@ -190,8 +190,8 @@ export default function TransferReceiveBoard() {
                           ? "auto"
                           : "manual";
 
-                    const theoDoiRoom = t.toWarehouse?.rooms.find((r) => r.type === "PHONG_THEO_DOI");
-                    const hanTuiRoom = t.toWarehouse?.rooms.find((r) => r.type === "PHONG_HAN_TUI");
+                    const datRoom = t.toWarehouse?.rooms.find((r) => r.type === "PHONG_DAT_TIEU_CHUAN");
+                    const choXuLyRoom = t.toWarehouse?.rooms.find((r) => r.type === "PHONG_CHO_XU_LY");
                     // Chia riêng theo TỪNG loại cây + quy cách — không được gộp nhiều loại cây lại rồi chia
                     // theo tổng quy cách (VD 2 loại cây cùng có T01 phải tách 2 dòng riêng).
                     type SplitGroup = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; total: number };
@@ -217,14 +217,14 @@ export default function TransferReceiveBoard() {
                     const splitKey = (plantTypeId: string, stageCode: string, roomId: string) => `${t.id}:${plantTypeId}:${stageCode}:${roomId}`;
                     const getSplit = (g: SplitGroup, roomId: string) => splitInputs[splitKey(g.plantTypeId, g.stageCode, roomId)] ?? 0;
                     const rowSum = (g: SplitGroup) =>
-                      (theoDoiRoom ? getSplit(g, theoDoiRoom.id) : 0) + (hanTuiRoom ? getSplit(g, hanTuiRoom.id) : 0);
-                    const allMatched = theoDoiRoom && hanTuiRoom && groups.length > 0 && groups.every((g) => rowSum(g) === g.total);
+                      (datRoom ? getSplit(g, datRoom.id) : 0) + (choXuLyRoom ? getSplit(g, choXuLyRoom.id) : 0);
+                    const allMatched = datRoom && choXuLyRoom && groups.length > 0 && groups.every((g) => rowSum(g) === g.total);
 
                     const submitSplit = () => {
-                      if (!theoDoiRoom || !hanTuiRoom) return;
+                      if (!datRoom || !choXuLyRoom) return;
                       const finishedSplit = groups.flatMap((g) => [
-                        { roomId: theoDoiRoom.id, plantTypeId: g.plantTypeId, stageCode: g.stageCode, quantity: getSplit(g, theoDoiRoom.id) },
-                        { roomId: hanTuiRoom.id, plantTypeId: g.plantTypeId, stageCode: g.stageCode, quantity: getSplit(g, hanTuiRoom.id) },
+                        { roomId: datRoom.id, plantTypeId: g.plantTypeId, stageCode: g.stageCode, quantity: getSplit(g, datRoom.id) },
+                        { roomId: choXuLyRoom.id, plantTypeId: g.plantTypeId, stageCode: g.stageCode, quantity: getSplit(g, choXuLyRoom.id) },
                       ]).filter((s) => s.quantity > 0);
                       confirm(t.id, t.items, "split", false, finishedSplit);
                     };
@@ -274,11 +274,11 @@ export default function TransferReceiveBoard() {
                                 {isExternalFinishedHandoff ? (
                                   <>
                                     <p className="text-xs text-text-secondary bg-info-light rounded p-2">
-                                      Kho thành phẩm không quản lý theo giàn kệ — chia số lượng theo từng loại cây + quy cách vào Phòng theo dõi / Phòng hàn túi (được phép chia vào 1 hoặc cả 2 phòng).
+                                      Kho thành phẩm không quản lý theo giàn kệ — chia số lượng theo từng loại cây + quy cách vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý (được phép chia vào 1 hoặc cả 2 phòng).
                                     </p>
-                                    {!theoDoiRoom || !hanTuiRoom ? (
+                                    {!datRoom || !choXuLyRoom ? (
                                       <p className="text-sm text-destructive flex items-center gap-1.5">
-                                        <AlertTriangle className="w-4 h-4" /> Chưa có đủ Phòng theo dõi / Phòng hàn túi trong kho thành phẩm — liên hệ Admin tạo phòng.
+                                        <AlertTriangle className="w-4 h-4" /> Chưa có đủ Phòng đạt tiêu chuẩn / Phòng chờ xử lý trong kho thành phẩm — liên hệ Admin tạo phòng.
                                       </p>
                                     ) : (
                                       <div className="overflow-x-auto border rounded-lg bg-background">
@@ -289,8 +289,8 @@ export default function TransferReceiveBoard() {
                                               <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
                                               <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Quy cách</th>
                                               <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tổng theo phiếu</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{theoDoiRoom.name}</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{hanTuiRoom.name}</th>
+                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{datRoom.name}</th>
+                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{choXuLyRoom.name}</th>
                                               <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Đã nhập</th>
                                             </tr>
                                           </thead>
@@ -308,9 +308,9 @@ export default function TransferReceiveBoard() {
                                                       type="number"
                                                       min={0}
                                                       className="w-24 h-8"
-                                                      value={getSplit(g, theoDoiRoom.id) || ""}
+                                                      value={getSplit(g, datRoom.id) || ""}
                                                       onChange={(e) =>
-                                                        setSplitInputs((prev) => ({ ...prev, [splitKey(g.plantTypeId, g.stageCode, theoDoiRoom.id)]: Math.max(0, parseInt(e.target.value, 10) || 0) }))
+                                                        setSplitInputs((prev) => ({ ...prev, [splitKey(g.plantTypeId, g.stageCode, datRoom.id)]: Math.max(0, parseInt(e.target.value, 10) || 0) }))
                                                       }
                                                     />
                                                   </td>
@@ -319,9 +319,9 @@ export default function TransferReceiveBoard() {
                                                       type="number"
                                                       min={0}
                                                       className="w-24 h-8"
-                                                      value={getSplit(g, hanTuiRoom.id) || ""}
+                                                      value={getSplit(g, choXuLyRoom.id) || ""}
                                                       onChange={(e) =>
-                                                        setSplitInputs((prev) => ({ ...prev, [splitKey(g.plantTypeId, g.stageCode, hanTuiRoom.id)]: Math.max(0, parseInt(e.target.value, 10) || 0) }))
+                                                        setSplitInputs((prev) => ({ ...prev, [splitKey(g.plantTypeId, g.stageCode, choXuLyRoom.id)]: Math.max(0, parseInt(e.target.value, 10) || 0) }))
                                                       }
                                                     />
                                                   </td>
@@ -335,7 +335,7 @@ export default function TransferReceiveBoard() {
                                         </table>
                                       </div>
                                     )}
-                                    {theoDoiRoom && hanTuiRoom && !allMatched && (
+                                    {datRoom && choXuLyRoom && !allMatched && (
                                       <p className="text-sm text-destructive flex items-center gap-1.5">
                                         <AlertTriangle className="w-4 h-4" /> Tổng số lượng chưa khớp với phiếu bàn giao — vui lòng kiểm tra lại.
                                       </p>

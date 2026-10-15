@@ -17,6 +17,7 @@ const STATUS_COLORS: Record<RepackInstructionStatus, string> = {
   ASSIGNED: "bg-info-light text-info-foreground",
   IN_PROGRESS: "bg-warning-light text-warning-foreground",
   PENDING_PLACEMENT: "bg-warning-light text-warning-foreground",
+  PENDING_RETURN: "bg-info-light text-info-foreground",
   COMPLETED: "bg-primary-light text-primary-strong",
   CANCELLED: "bg-danger-light text-destructive",
 };
@@ -46,7 +47,8 @@ export default async function RepackInstructionsBoard({
 
   const where: Record<string, unknown> = {};
   if (role === "KY_THUAT") where.createdById = userId;
-  if (role === "KHO_MO") where.sourceShelf = { warehouseId: workplaceWarehouseId };
+  // Chỉ định từ Phiếu xử lý Kho thành phẩm không có kệ nguồn — lọc theo productionWarehouseId.
+  if (role === "KHO_MO") where.OR = [{ sourceShelf: { warehouseId: workplaceWarehouseId } }, { productionWarehouseId: workplaceWarehouseId }];
 
   // Không còn cần tải sẵn danh sách NV cấy mô — gán qua AssignRepackStaffCell giờ chỉ cho chọn trong số
   // NV đã đăng ký hoàn thành sớm/làm thêm ĐÃ DUYỆT (tự tải riêng qua GET /api/extra-work-requests
@@ -57,12 +59,18 @@ export default async function RepackInstructionsBoard({
       plantType: { select: { code: true, name: true } },
       sourceShelf: { select: { code: true, warehouseId: true } },
       sourceLot: { select: { code: true } },
+      ktpRoom: { select: { name: true, warehouse: { select: { name: true } } } },
       assignedTo: { select: { name: true } },
       quantityIssueReportedBy: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
+
+  const sourceLabel = (inst: (typeof instructions)[number]) =>
+    inst.sourceShelf && inst.sourceLot
+      ? `${inst.sourceLot.code} (${inst.sourceShelf.code})`
+      : `Phiếu xử lý từ ${inst.ktpRoom?.warehouse.name ?? "Kho thành phẩm"}`;
 
   const needsAssignment = role === "KHO_MO" ? instructions.filter((i) => i.status === "CREATED") : [];
   const needsReview = role === "KHO_MO" ? instructions.filter((i) => i.status === "PENDING_PLACEMENT") : [];
@@ -75,7 +83,7 @@ export default async function RepackInstructionsBoard({
             <RefreshCw className="w-6 h-6 text-primary-strong" /> Chỉ định cấy xử lý
           </h1>
           <p className="text-text-secondary text-sm mt-1">
-            Đóng gói lại thành phẩm ở Phòng ra rễ sang quy cách khác (VD T05 → T01)
+            Đóng gói lại thành phẩm ở Phòng ra rễ sang quy cách khác (VD T05 → T01), hoặc xử lý hàng không đạt từ Phiếu xử lý của Kho thành phẩm
           </p>
         </div>
         {canCreate && <CreateRepackInstructionDialog />}
@@ -91,7 +99,7 @@ export default async function RepackInstructionsBoard({
                   <div>
                     <p className="font-mono font-medium text-info-foreground">{inst.code}</p>
                     <p className="text-sm text-text-secondary">
-                      {inst.plantType.code} — {inst.sourceLot.code} ({inst.sourceShelf.code}) —{" "}
+                      {inst.plantType.code} — {sourceLabel(inst)} —{" "}
                       {inst.inputQuantity.toLocaleString("vi-VN")} cây {inst.inputStageCode} → {inst.outputStageCode}
                     </p>
                   </div>
@@ -102,7 +110,7 @@ export default async function RepackInstructionsBoard({
                     <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0" />
                     <div>
                       <p className="font-medium">
-                        {inst.quantityIssueReportedBy?.name ?? "NV cấy mô"} báo số lượng thực tế trên kệ {inst.sourceShelf.code} không khớp chỉ định
+                        {inst.quantityIssueReportedBy?.name ?? "NV cấy mô"} báo số lượng thực tế {inst.sourceShelf ? `trên kệ ${inst.sourceShelf.code}` : "nhận từ Kho thành phẩm"} không khớp chỉ định
                         {" "}({format(inst.quantityIssueReportedAt, "HH:mm dd/MM/yyyy", { locale: vi })})
                       </p>
                       {inst.quantityIssueNote && <p className="mt-0.5">Ghi chú: {inst.quantityIssueNote}</p>}
@@ -118,7 +126,7 @@ export default async function RepackInstructionsBoard({
 
       {needsReview.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-base font-bold text-foreground">Cần kiểm tra & sắp xếp</h2>
+          <h2 className="text-base font-bold text-foreground">Cần kiểm tra & sắp xếp / bàn giao lại Kho thành phẩm</h2>
           {needsReview.map((inst) => (
             <Card key={inst.id} className="border border-warning-light">
               <CardContent className="py-4 space-y-3">
@@ -137,7 +145,7 @@ export default async function RepackInstructionsBoard({
                     khoMoInspectedAt: inst.khoMoInspectedAt ? inst.khoMoInspectedAt.toISOString() : null,
                     confirmedPassedQuantity: inst.confirmedPassedQuantity,
                     confirmedFailedQuantity: inst.confirmedFailedQuantity,
-                    sourceShelf: { code: inst.sourceShelf.code, warehouseId: inst.sourceShelf.warehouseId },
+                    sourceShelf: inst.sourceShelf ? { code: inst.sourceShelf.code, warehouseId: inst.sourceShelf.warehouseId } : null,
                   }}
                 />
               </CardContent>
@@ -173,7 +181,10 @@ export default async function RepackInstructionsBoard({
                     {instructions.map((inst) => (
                       <tr key={inst.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                         <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{inst.code}</td>
-                        <td className="px-4 py-3 text-sm text-foreground">{inst.plantType.code}</td>
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {inst.plantType.code}
+                          {inst.ktpRoomId && <Badge variant="info" className="ml-1.5">Kho TP</Badge>}
+                        </td>
                         <td className="px-4 py-3 text-sm text-foreground">{inst.inputStageCode} → {inst.outputStageCode}</td>
                         <td className="px-4 py-3 text-sm text-foreground">
                           {inst.assignedTo?.name ?? <Badge variant="secondary">Chưa gán</Badge>}

@@ -27,7 +27,8 @@ const createSchema = z.discriminatedUnion("type", [
     // Bắt buộc chọn 1 trong 2 lý do — KHO_MO xem để quyết định duyệt hay không (xem ExtraWorkPurpose).
     // CHỈ 2 giá trị hiện tại — COMPLETE_MAIN_INSTRUCTION/INCREASE_OUTPUT là lịch sử cũ, không cho tạo
     // mới nữa (vẫn còn trong Prisma enum để hiển thị đúng các đăng ký cũ, xem prisma/schema.prisma).
-    purpose: z.enum(["CAY_THEM", "HAN_TUI"], { message: "Chọn lý do đăng ký làm thêm" }),
+    // "Đăng ký hàn túi" (HAN_TUI) đã bỏ cùng nghiệp vụ Hàn túi — enum chỉ còn giữ cho dữ liệu cũ.
+    purpose: z.enum(["CAY_THEM"], { message: "Chọn lý do đăng ký làm thêm" }),
   }),
 ]);
 
@@ -209,8 +210,7 @@ export async function POST(req: NextRequest) {
   }
 
   // "Đăng ký cấy thêm cây" chỉ dành cho NV thuộc luồng Xanh (kiểm tra ít, đủ tin tưởng giao thêm việc
-  // cấy) — luồng Vàng/Đỏ chỉ còn lựa chọn "Đăng ký hàn túi" (client đã ẩn lựa chọn này, chặn lại ở đây
-  // đề phòng gọi thẳng API). Không chặn HAN_TUI theo luồng nào.
+  // cấy) — client đã ẩn lựa chọn này với luồng Vàng/Đỏ, chặn lại ở đây đề phòng gọi thẳng API.
   if (parsed.data.purpose === "CAY_THEM") {
     const staff = await prisma.user.findUnique({ where: { id: staffId }, select: { inspectionLane: true } });
     if (staff?.inspectionLane !== "XANH") {

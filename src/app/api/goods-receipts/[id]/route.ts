@@ -31,7 +31,7 @@ const patchSchema = z.discriminatedUnion("action", [confirmSchema, cancelSchema,
 //
 // action=confirm: Kho thành phẩm nhập số liệu THẬT (có thể khác ước tính lúc lập kế hoạch), ghi đè lên
 // GoodsReceiptItem, chuyển lô "ảo" (plannedLotId) sang ACTIVE với đúng số lượng "đạt" thật, cộng phần
-// "không đạt" vào Phòng theo dõi cùng kho (y hệt nhánh nhập hàng thật của POST /api/goods-receipts).
+// "không đạt" vào Phòng chờ xử lý cùng kho (y hệt nhánh nhập hàng thật của POST /api/goods-receipts).
 // Nếu số "đạt" thật ít hơn tổng đã bị các đơn HELD/CONFIRMED giữ chỗ trên lô đó → CHẶN xác nhận, báo rõ
 // đơn nào bị ảnh hưởng để Admin/Sale tự xử lý (không tự hủy đơn nào).
 //
@@ -145,11 +145,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let rejectRoomId: string | null = null;
   if (parsed.data.items.some((i) => i.quantityRejected > 0)) {
     const rejectRoom = await prisma.room.findFirst({
-      where: { warehouseId: receipt.room.warehouseId, type: "PHONG_THEO_DOI", isActive: true },
+      where: { warehouseId: receipt.room.warehouseId, type: "PHONG_CHO_XU_LY", isActive: true },
       select: { id: true },
     });
     if (!rejectRoom) {
-      return NextResponse.json({ message: "Kho này chưa có Phòng theo dõi — liên hệ Admin trước khi ghi nhận hàng không đạt" }, { status: 400 });
+      return NextResponse.json({ message: "Kho này chưa có Phòng chờ xử lý — liên hệ Admin trước khi ghi nhận hàng không đạt" }, { status: 400 });
     }
     rejectRoomId = rejectRoom.id;
   }

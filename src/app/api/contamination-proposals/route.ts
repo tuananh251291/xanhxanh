@@ -161,11 +161,24 @@ export async function POST(req: NextRequest) {
   }
 
   if (dailyTaskId) {
-    const task = await prisma.dailyTask.findUnique({ where: { id: dailyTaskId }, select: { type: true, assignedToId: true } });
-    const canUseTask = task?.type === "DE_XUAT_TRONG_HUY" && (
+    const task = await prisma.dailyTask.findUnique({ where: { id: dailyTaskId }, select: { type: true, status: true, assignedToId: true } });
+    const canUseTask = task?.type === "DE_XUAT_TRONG_HUY" && task.status === "PENDING" && (
       task.assignedToId === session!.user.id || session!.user.role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(session!.user.role)
     );
     if (!canUseTask) return NextResponse.json({ message: "Nhiệm vụ không hợp lệ" }, { status: 400 });
+    // Mỗi nhiệm vụ chỉ được "Thực hiện" 1 lần — đã gửi đề xuất rồi thì chờ Admin duyệt (phiếu bị từ chối
+    // sửa qua "Sửa & gửi lại", không tạo phiếu mới). Ngoại lệ duy nhất: các dòng tiếp theo của CHÍNH lần
+    // gửi đó (form gửi từng dòng 1, kèm batchCode = mã dòng đầu tiên của lần gửi).
+    const existing = await prisma.contaminationProposal.findMany({
+      where: { dailyTaskId, status: { not: "DRAFT" } },
+      select: { code: true, batchCode: true, requestedById: true },
+    });
+    const sameSubmission = !!requestedBatchCode && existing.some((p) =>
+      p.requestedById === session!.user.id && (p.code === requestedBatchCode || p.batchCode === requestedBatchCode)
+    );
+    if (existing.length > 0 && !sameSubmission) {
+      return NextResponse.json({ message: "Nhiệm vụ này đã được thực hiện, đang chờ Admin duyệt" }, { status: 400 });
+    }
   }
 
   const code = await generateContaminationProposalCode(type);

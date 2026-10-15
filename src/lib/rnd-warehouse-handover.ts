@@ -168,7 +168,7 @@ export async function confirmRndOutputReceipt(params: {
     // Kho thành phẩm — không quản lý theo giàn kệ, Admin/Kho thành phẩm chọn thẳng 1 Phòng của kho mình
     // (Phòng đạt tiêu chuẩn/theo dõi/hàn túi) để nhận lô R&D.
     const toRoom = await prisma.room.findFirst({
-      where: { code: locationCode, warehouseId: workplaceWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI"] } },
+      where: { code: locationCode, warehouseId: workplaceWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY"] } },
       select: { id: true, code: true },
     });
     if (!toRoom) throw new ShelfAssignError(`Không tìm thấy phòng đang hoạt động thuộc kho này với mã: ${toLocationCode}`);

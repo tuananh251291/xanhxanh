@@ -6,7 +6,7 @@ import { addDays, endOfMonth, startOfDay, subMonths } from "date-fns";
 // Đối chiếu tồn kho cuối tháng — Kho thành phẩm (/stock-counts, xem StockCountReport trong schema.prisma).
 
 // Phòng của Kho thành phẩm có tồn để đối chiếu (lô gắn thẳng vào phòng, không qua kệ).
-export const STOCK_COUNT_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG"] as const;
+export const STOCK_COUNT_ROOM_TYPES = ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_THI_TRUONG"] as const;
 
 type Client = Prisma.TransactionClient | typeof prisma;
 const comboKey = (roomId: string, plantTypeId: string, stageCode: string) => `${roomId}::${plantTypeId}::${stageCode}`;

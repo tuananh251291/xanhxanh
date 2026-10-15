@@ -48,7 +48,7 @@ const createSchema = z.discriminatedUnion("status", [
 // (T01/T05/T10) — phần "đạt" (quantityDelivered - quantityRejected) cộng thẳng vào 1 lô ACTIVE đúng quy
 // cách đó trong Phòng đạt tiêu chuẩn đã chọn (tăng cả tồn thực tế lẫn tồn đạt tiêu chuẩn, giống pattern
 // merge-hoặc-tạo-mới ở POST /api/processing-tickets); phần "không đạt" cộng vào 1 lô ACTIVE cùng quy
-// cách trong Phòng theo dõi CÙNG kho đó (tăng tồn thực tế vì trang tồn thực tế cộng gộp mọi phòng của
+// cách trong Phòng chờ xử lý CÙNG kho đó (tăng tồn thực tế vì trang tồn thực tế cộng gộp mọi phòng của
 // kho thành phẩm, nhưng KHÔNG tăng tồn đạt tiêu chuẩn vì trang tồn đạt tiêu chuẩn chỉ đọc Phòng đạt tiêu
 // chuẩn — xem src/app/(dashboard)/inventory/dat-tieu-chuan/page.tsx). Đơn vị luôn tính theo cây.
 //
@@ -143,11 +143,11 @@ export async function POST(req: NextRequest) {
 
     const roomWithWarehouse = await prisma.room.findUnique({ where: { id: data.roomId }, select: { warehouseId: true } });
     const rejectRoom = await prisma.room.findFirst({
-      where: { warehouseId: roomWithWarehouse!.warehouseId, type: "PHONG_THEO_DOI", isActive: true },
+      where: { warehouseId: roomWithWarehouse!.warehouseId, type: "PHONG_CHO_XU_LY", isActive: true },
       select: { id: true },
     });
     if (data.items.some((i) => i.quantityRejected > 0) && !rejectRoom) {
-      return NextResponse.json({ message: "Kho này chưa có Phòng theo dõi — liên hệ Admin trước khi ghi nhận hàng không đạt" }, { status: 400 });
+      return NextResponse.json({ message: "Kho này chưa có Phòng chờ xử lý — liên hệ Admin trước khi ghi nhận hàng không đạt" }, { status: 400 });
     }
     for (const item of data.items) {
       if (item.quantityRejected > item.quantityDelivered) {
