@@ -87,7 +87,7 @@ export async function GET() {
       column: "Mã khách hàng",
       required: isActingForSale,
       description: isActingForSale
-        ? "Mã khách (VD KH00001) — chỉ cần điền ở dòng dữ liệu đầu tiên, các dòng sau để trống hoặc ghi giống hệt. Khách phải do đúng NV bán hàng ở cột bên cạnh phụ trách."
+        ? "Mã khách (VD KH00001) — chỉ cần điền ở dòng dữ liệu đầu tiên, các dòng sau để trống hoặc ghi giống hệt. Không bắt buộc có trong danh mục Khách hàng; nếu đã có thì khách phải do đúng NV bán hàng ở cột bên cạnh phụ trách."
         : "Mã khách bạn đang phụ trách (VD KH00001) — chỉ cần điền ở dòng dữ liệu đầu tiên; để trống thì chọn khách trên màn hình.",
     },
     ...(isActingForSale
@@ -195,6 +195,7 @@ export async function POST(req: NextRequest) {
   const saleCode = pickHeaderValue("saleCode", "Mã NV bán hàng");
 
   let customerId: string | undefined;
+  let freeCustomerCode: string | undefined;
   let saleUserId: string | undefined;
   if (isActingForSale && !customerCode) {
     errors.push({ row: firstRow, label: "Mã khách hàng", message: "Thiếu Mã khách hàng" });
@@ -212,7 +213,11 @@ export async function POST(req: NextRequest) {
   }
   if (customerCode) {
     const customer = await prisma.customer.findUnique({ where: { code: customerCode }, select: { id: true, assignedToId: true } });
-    if (!customer) {
+    if (!customer && isActingForSale) {
+      // Quản lý kho thành phẩm tạo hộ — mã khách KHÔNG bắt buộc có trong danh mục (xem freeCustomerCode,
+      // POST /api/orders): trả về nguyên mã để điền sẵn vào ô gõ tay trên form.
+      freeCustomerCode = customerCode;
+    } else if (!customer) {
       errors.push({ row: firstRow, label: customerCode, message: `Không tìm thấy khách hàng mã "${customerCode}"` });
     } else if (!isActingForSale && customer.assignedToId !== session.user.id) {
       errors.push({ row: firstRow, label: customerCode, message: "Bạn không phụ trách khách hàng này" });
@@ -226,5 +231,5 @@ export async function POST(req: NextRequest) {
   }
 
   if (errors.length > 0) return NextResponse.json({ items: [], errors });
-  return NextResponse.json({ items, errors: [], customerId, saleUserId });
+  return NextResponse.json({ items, errors: [], customerId, freeCustomerCode, saleUserId });
 }

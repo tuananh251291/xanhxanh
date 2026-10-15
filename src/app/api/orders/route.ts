@@ -21,6 +21,10 @@ const createSchema = z.object({
   // sang 1 Kho thị trường — xem checkbox "Kho thị trường" ở order-check-form.tsx), validate ở dưới vì
   // zod .refine không hiển thị lỗi rõ theo từng field.
   customerId: z.string().optional(),
+  // Quản lý kho thành phẩm tạo hộ — Mã khách hàng gõ tay, KHÔNG bắt buộc có trong danh mục Khách hàng
+  // (khách mới chưa kịp tạo mã). Khi đó đơn không gắn customerId, chỉ snapshot customerCode, NV bán hàng
+  // (saleId) lấy thẳng theo saleUserId đã chọn. Sale tự tạo vẫn phải chọn khách có sẵn (customerId).
+  freeCustomerCode: z.string().trim().max(50).optional(),
   // Quản lý kho thành phẩm tạo hộ — NV bán hàng đã chọn ở ô "Mã NV bán hàng" (hoặc đọc từ cột Mã NV
   // bán hàng trong file Excel). Chỉ để đối chiếu: phải đúng NV đang phụ trách khách (saleId vẫn lấy theo
   // customer.assignedToId), tránh giữ đơn nhầm khách của NV khác.
@@ -74,13 +78,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { customerId, saleUserId, marketWarehouseId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
+  const { customerId, freeCustomerCode, saleUserId, marketWarehouseId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
   const shipDate = new Date(expectedShipAt);
   if (Number.isNaN(shipDate.getTime())) {
     return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
   }
-  if (!customerId && !marketWarehouseId) {
+  if (!customerId && !marketWarehouseId && !freeCustomerCode) {
     return NextResponse.json({ message: "Cần chọn khách hàng hoặc Kho thị trường" }, { status: 400 });
+  }
+  if (freeCustomerCode && session.user.role !== "QUAN_LY_KHO_THANH_PHAM") {
+    return NextResponse.json({ message: "Chỉ chọn được khách hàng có trong danh sách bạn phụ trách" }, { status: 403 });
   }
 
   // Đơn gửi nội bộ sang Kho thị trường (checkbox "Kho thị trường" ở order-check-form.tsx) — thay thế hẳn
@@ -89,8 +96,25 @@ export async function POST(req: NextRequest) {
   // không có 1 khách cụ thể nào bị "giữ hộ").
   let customer: { id: string; code: string; customerGroup: string | null; assignedToId: string | null } | null = null;
   let marketWarehouse: { id: string; code: string; type: string } | null = null;
+  // Khách gõ tay ngoài danh mục (chỉ Quản lý kho thành phẩm tạo hộ) — NV bán hàng chọn ở ô "Mã NV bán
+  // hàng" là saleId của đơn; không có CustomerGroup nên giữ đơn theo Năng lực giữ đơn của NV đó.
+  let freeCustomer: { code: string; saleId: string } | null = null;
 
-  if (customerId) {
+  if (freeCustomerCode && !customerId && !marketWarehouseId) {
+    const code = freeCustomerCode.toUpperCase();
+    if (!saleUserId) return NextResponse.json({ message: "Cần chọn NV bán hàng" }, { status: 400 });
+    const saleUser = await prisma.user.findUnique({ where: { id: saleUserId }, select: { role: true, isActive: true } });
+    if (!saleUser || saleUser.role !== "SALE" || !saleUser.isActive) {
+      return NextResponse.json({ message: "Không tìm thấy NV bán hàng" }, { status: 400 });
+    }
+    // Mã trùng khách đã có trong danh mục thì vẫn phải đúng NV phụ trách — tránh lách qua ô gõ tay để
+    // giữ đơn cho khách của NV khác.
+    const existing = await prisma.customer.findUnique({ where: { code }, select: { assignedToId: true } });
+    if (existing && existing.assignedToId !== saleUserId) {
+      return NextResponse.json({ message: `Mã khách hàng "${code}" đã có trong hệ thống và không do NV bán hàng đã chọn phụ trách` }, { status: 400 });
+    }
+    freeCustomer = { code, saleId: saleUserId };
+  } else if (customerId) {
     // Chỉ giữ đơn được cho khách hàng ĐÚNG mình đang phụ trách (assignedToId) — khớp đúng phạm vi khách NV
     // Sale thấy được ở /customer-status (GET /api/customer-status), tránh giữ nhầm/giữ hộ khách người khác.
     // Quản lý kho thành phẩm thao tác HỘ (xem canActAsSale) không bị giới hạn theo khách mình phụ trách —
@@ -128,7 +152,9 @@ export async function POST(req: NextRequest) {
   // Năng lực giữ đơn (ngày) riêng từng NV Sale (Admin gõ tay ở /users) là NGOẠI LỆ — chỉ khi chưa cài đặt
   // (null) mới rơi về "Thời gian giữ đơn mặc định" chung ở /settings (SystemConfig "default_hold_days"),
   // đọc SỐNG mỗi lần tạo đơn nên Admin sửa số mặc định là áp dụng ngay cho mọi NV chưa có số riêng.
-  const salesUserHoldDays = !customer
+  const salesUserHoldDays = freeCustomer
+    ? (await prisma.user.findUnique({ where: { id: freeCustomer.saleId }, select: { holdDays: true } }))?.holdDays
+    : !customer
     ? session.user.holdDays
     : session.user.role === "SALE"
       ? session.user.holdDays
@@ -153,8 +179,8 @@ export async function POST(req: NextRequest) {
           data: {
             code,
             exportCode,
-            saleId: customer ? customer.assignedToId! : session.user.id,
-            customerCode: customer ? customer.code : marketWarehouse!.code,
+            saleId: customer ? customer.assignedToId! : freeCustomer ? freeCustomer.saleId : session.user.id,
+            customerCode: customer ? customer.code : freeCustomer ? freeCustomer.code : marketWarehouse!.code,
             customerId: customer?.id,
             marketWarehouseId: marketWarehouse?.id,
             market,

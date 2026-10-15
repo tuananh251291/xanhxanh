@@ -47,7 +47,7 @@ export default async function OrdersPage() {
     isActingForSale
       ? prisma.user.findMany({
           where: { role: "SALE", isActive: true, status: "APPROVED" },
-          select: { id: true, code: true, name: true },
+          select: { id: true, code: true, name: true, holdDays: true },
           orderBy: { code: "asc" },
         })
       : Promise.resolve([]),
@@ -59,6 +59,9 @@ export default async function OrdersPage() {
     id: c.id, code: c.code, name: c.name, customerGroup: c.customerGroup, assignedToId: c.assignedToId,
     holdDays: c.assignedTo?.holdDays ?? defaultHoldDays,
   }));
+  // holdDays của NV bán hàng — dùng khi Quản lý kho thành phẩm gõ tay mã khách ngoài danh mục (không có
+  // khách để suy ra NV/holdDays như trên).
+  const salesUsersWithHold = salesUsers.map((u) => ({ id: u.id, code: u.code, name: u.name, holdDays: u.holdDays ?? defaultHoldDays }));
 
   return (
     <div className="space-y-6">
@@ -73,7 +76,7 @@ export default async function OrdersPage() {
         </p>
       </div>
 
-      <OrderCheckForm plantTypes={plantTypes} customers={customers} salesUsers={salesUsers} isActingForSale={isActingForSale} />
+      <OrderCheckForm plantTypes={plantTypes} customers={customers} salesUsers={salesUsersWithHold} isActingForSale={isActingForSale} />
 
       {recentOrders.length > 0 && (
         <Card>

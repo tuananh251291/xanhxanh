@@ -114,7 +114,7 @@ const availabilityKey = (plantTypeId: string, stageCode: string) => `${plantType
 // (có thể khác nhau giữa các khách) — xem src/app/(dashboard)/orders/page.tsx.
 type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; assignedToId: string | null; holdDays: number | null };
 type MarketWarehouse = { id: string; code: string; name: string };
-type SalesUser = { id: string; code: string; name: string };
+type SalesUser = { id: string; code: string; name: string; holdDays: number };
 
 export default function OrderCheckForm({
   plantTypes, customers, salesUsers, isActingForSale,
@@ -145,8 +145,20 @@ export default function OrderCheckForm({
     setSaleUserId(id);
     if (id && customers.find((c) => c.id === customerId)?.assignedToId !== id) setCustomerId("");
   };
-  const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
-  const holdDays = selectedCustomer?.holdDays ?? null;
+  // Quản lý kho thành phẩm tạo hộ: tích "Khách chưa có trong hệ thống" thì gõ tay Mã khách hàng (không
+  // cần có trong danh mục Khách hàng — xem freeCustomerCode ở POST /api/orders), holdDays lấy theo NV bán
+  // hàng đã chọn.
+  const [useFreeCustomer, setUseFreeCustomer] = useState(false);
+  const [freeCustomerCode, setFreeCustomerCode] = useState("");
+  const toggleFreeCustomer = (checked: boolean) => {
+    setUseFreeCustomer(checked);
+    if (checked) setCustomerId("");
+    else setFreeCustomerCode("");
+  };
+  const selectedCustomer = useFreeCustomer ? null : customers.find((c) => c.id === customerId) ?? null;
+  const holdDays = useFreeCustomer
+    ? salesUsers.find((u) => u.id === saleUserId)?.holdDays ?? null
+    : selectedCustomer?.holdDays ?? null;
   // Tích "Kho thị trường" — thay thế hẳn vai trò khách hàng, đơn gửi nội bộ sang 1 Kho thị trường (Đối
   // tác vận hành quản lý) thay vì bán cho khách ngoài. Xem POST /api/orders (marketWarehouseId) và
   // shipOrder (src/app/api/orders/[id]/route.ts — tự tạo phiếu Transfer gửi sang kho này lúc Xuất kho).
@@ -199,7 +211,7 @@ export default function OrderCheckForm({
 
   const toggleMarketWarehouse = (checked: boolean) => {
     setSendToMarketWarehouse(checked);
-    if (checked) setCustomerId("");
+    if (checked) { setCustomerId(""); setUseFreeCustomer(false); setFreeCustomerCode(""); }
     else setMarketWarehouseId("");
   };
 
@@ -263,8 +275,8 @@ export default function OrderCheckForm({
     } else if (isActingForSale && !saleUserId) {
       toast.error("Cần chọn NV bán hàng");
       return;
-    } else if (!customerId) {
-      toast.error("Cần chọn khách hàng");
+    } else if (useFreeCustomer ? !freeCustomerCode.trim() : !customerId) {
+      toast.error(useFreeCustomer ? "Cần nhập Mã khách hàng" : "Cần chọn khách hàng");
       return;
     }
     if (!market) { toast.error("Cần chọn thị trường"); return; }
@@ -277,7 +289,8 @@ export default function OrderCheckForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: sendToMarketWarehouse ? undefined : customerId,
+          customerId: sendToMarketWarehouse || useFreeCustomer ? undefined : customerId,
+          freeCustomerCode: !sendToMarketWarehouse && useFreeCustomer ? freeCustomerCode.trim() : undefined,
           saleUserId: sendToMarketWarehouse || !isActingForSale ? undefined : saleUserId,
           marketWarehouseId: sendToMarketWarehouse ? marketWarehouseId : undefined,
           market, expectedShipAt, exportCode: exportCode || undefined, items,
@@ -295,6 +308,7 @@ export default function OrderCheckForm({
       setExcelErrors([]);
       setCustomerId("");
       setSaleUserId("");
+      toggleFreeCustomer(false);
       toggleMarketWarehouse(false);
       setMarket("");
       setExpectedShipAt("");
@@ -356,7 +370,12 @@ export default function OrderCheckForm({
         // chọn bên dưới, vẫn đổi lại được trước khi bấm "Tạm giữ đơn hàng".
         if (json.customerId) {
           toggleMarketWarehouse(false);
+          toggleFreeCustomer(false);
           setCustomerId(json.customerId);
+        } else if (json.freeCustomerCode && isActingForSale) {
+          toggleMarketWarehouse(false);
+          toggleFreeCustomer(true);
+          setFreeCustomerCode(json.freeCustomerCode);
         }
         if (json.saleUserId && isActingForSale) setSaleUserId(json.saleUserId);
         toast.success(`Đã đọc ${json.items.length} dòng từ file`);
@@ -657,7 +676,7 @@ export default function OrderCheckForm({
         <Card>
           <CardHeader><CardTitle className="text-base">Thông tin khách hàng</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {customerId && !holdDays && (
+            {(useFreeCustomer ? !!saleUserId : !!customerId) && !holdDays && (
               <div className="flex items-center gap-2 text-sm font-medium text-destructive bg-danger-light rounded-lg p-3">
                 <TriangleAlert className="w-4 h-4 shrink-0" />
                 Chưa xác định được &quot;Năng lực giữ đơn&quot; cho khách này — liên hệ Admin trước khi tạm giữ đơn hàng.
@@ -697,6 +716,15 @@ export default function OrderCheckForm({
               )}
               <div className="space-y-1">
                 <Label>Mã khách hàng {!sendToMarketWarehouse && "*"}</Label>
+                {useFreeCustomer ? (
+                  <Input
+                    value={freeCustomerCode}
+                    onChange={(e) => setFreeCustomerCode(e.target.value.toUpperCase())}
+                    placeholder="Gõ mã khách hàng…"
+                    disabled={sendToMarketWarehouse}
+                    maxLength={50}
+                  />
+                ) : (
                 <Combobox
                   items={customerOptions}
                   value={customerOptions.find((o) => o.value === customerId) ?? null}
@@ -715,6 +743,13 @@ export default function OrderCheckForm({
                     </ComboboxList>
                   </ComboboxContent>
                 </Combobox>
+                )}
+                {isActingForSale && (
+                  <label className="flex items-center gap-2 pt-1.5 cursor-pointer">
+                    <Checkbox checked={useFreeCustomer} onCheckedChange={(v) => toggleFreeCustomer(!!v)} disabled={sendToMarketWarehouse} />
+                    <span className="text-sm text-text-secondary">Khách chưa có trong hệ thống — gõ mã tay</span>
+                  </label>
+                )}
                 {selectedCustomer?.customerGroup && (
                   <p className="text-xs text-text-muted">{CUSTOMER_GROUP_LABELS[selectedCustomer.customerGroup]}</p>
                 )}
