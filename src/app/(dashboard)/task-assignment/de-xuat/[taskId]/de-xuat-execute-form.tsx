@@ -115,7 +115,9 @@ export default function DeXuatExecuteForm({
   // vì số cây, phải bấm xác nhận lần nữa (send) mới thật sự gửi.
   const submit = () => {
     const rows = collectRows();
-    if (rows.length === 0) { toast.error("Chưa nhập số lượng dòng nào"); return; }
+    // Kho thành phẩm: không nhập dòng nào vẫn gửi được (không có cây hỏng/hủy) — Đối tác vận hành vẫn bắt
+    // buộc vì luồng đề xuất cũ không có phiếu rỗng.
+    if (rows.length === 0 && isMarketPartner) { toast.error("Chưa nhập số lượng dòng nào"); return; }
     for (const r of rows) {
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
       // Kho thành phẩm: hủy + chuyển phòng đều trừ khỏi CÙNG lô này nên tổng không được vượt tồn.
@@ -359,13 +361,15 @@ export default function DeXuatExecuteForm({
           <DialogHeader><DialogTitle>Kiểm tra lại số liệu</DialogTitle></DialogHeader>
           <div className="flex items-start gap-2 text-sm font-medium text-warning-foreground bg-warning-light rounded-lg p-3">
             <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
-            Hãy kiểm tra số liệu một lần nữa, chắc chắn rằng đây là số cây, không phải số túi.
+            {!isMarketPartner && collectRows().length === 0
+              ? "Bạn chưa nhập dòng nào — xác nhận kiểm tra xong, không có cây nào hỏng/hủy?"
+              : "Hãy kiểm tra số liệu một lần nữa, chắc chắn rằng đây là số cây, không phải số túi."}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>Kiểm tra lại</Button>
             <Button className="bg-primary hover:bg-primary-hover" onClick={send} disabled={submitting}>
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              {isMarketPartner ? "Đúng là số cây, gửi đề xuất" : "Đúng là số cây, gửi phiếu"}
+              {isMarketPartner ? "Đúng là số cây, gửi đề xuất" : collectRows().length === 0 ? "Xác nhận, không có cây hỏng" : "Đúng là số cây, gửi phiếu"}
             </Button>
           </DialogFooter>
         </DialogContent>

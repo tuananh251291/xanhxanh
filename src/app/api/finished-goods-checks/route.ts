@@ -18,8 +18,7 @@ const schema = z.object({
         destroyQuantity: z.number().int().min(0),
         toProcessingQuantity: z.number().int().min(0),
       })
-    )
-    .min(1),
+    ),
 });
 
 // NV Kho thành phẩm gửi phiếu "Kiểm tra kho cây theo tuần" (DailyTask DE_XUAT_TRONG_HUY) — KHÔNG gửi Admin
@@ -44,7 +43,7 @@ export async function POST(req: NextRequest) {
   const { dailyTaskId, roomId, lines } = parsed.data;
 
   const activeLines = lines.filter((l) => l.destroyQuantity > 0 || l.toProcessingQuantity > 0);
-  if (activeLines.length === 0) return NextResponse.json({ message: "Chưa nhập số lượng dòng nào" }, { status: 400 });
+  // Không nhập dòng nào = kiểm tra xong, không có cây nào hỏng/hủy — vẫn gửi phiếu (rỗng) để hoàn thành nhiệm vụ.
   const keys = new Set(activeLines.map((l) => `${l.plantTypeId}:${l.stageCode}`));
   if (keys.size !== activeLines.length) return NextResponse.json({ message: "Trùng dòng mã cây/quy cách" }, { status: 400 });
 
@@ -116,7 +115,9 @@ export async function POST(req: NextRequest) {
   await createAlert({
     type: "FINISHED_GOODS_WEEKLY_CHECK_SUBMITTED",
     title: "Có phiếu kiểm tra kho cây tuần mới",
-    message: `${session.user.name} gửi phiếu "${task.title ?? task.code}" (${room.name}): đề xuất hủy ${totalDestroy.toLocaleString("vi-VN")} cây, chuyển về Phòng chờ xử lý ${totalProcessing.toLocaleString("vi-VN")} cây.`,
+    message: activeLines.length === 0
+      ? `${session.user.name} đã kiểm tra "${task.title ?? task.code}" (${room.name}): không có cây nào hỏng/hủy.`
+      : `${session.user.name} gửi phiếu "${task.title ?? task.code}" (${room.name}): đề xuất hủy ${totalDestroy.toLocaleString("vi-VN")} cây, chuyển về Phòng chờ xử lý ${totalProcessing.toLocaleString("vi-VN")} cây.`,
     targetRole: "QUAN_LY_KHO_THANH_PHAM",
     relatedId: task.id,
     relatedType: "DailyTask",
