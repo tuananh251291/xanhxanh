@@ -67,7 +67,7 @@ export default async function MasterDataPage() {
               <SuppliersContent />
             </TabsContent>
             <TabsContent value="sale" className="mt-4 space-y-4">
-              <SaleSettingsTabs active="/settings/sale/customers" showMarkets />
+              <SaleSettingsTabs active="/settings/sale/customers" />
               <CustomersBoard />
             </TabsContent>
           </>

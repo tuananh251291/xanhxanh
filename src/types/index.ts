@@ -143,9 +143,13 @@ export function canEditEmployeeName(role: UserRole | null | undefined): boolean 
 }
 
 // Cài đặt Sale — mục Khách hàng + NV quản lý (xem /settings/sale): Admin cấp cao và NV Trợ lý (mở cho Trợ lý
-// 14/10/2026). Mục Thị trường vẫn CHỈ Admin cấp cao.
+// 14/10/2026). Mục Thị trường: Trợ lý chỉ XEM (15/10/2026), thêm/sửa/bật tắt CHỈ Admin cấp cao — canEditSaleMarkets.
 export function canManageSaleCustomers(role: UserRole | null | undefined): boolean {
   return role === "SUPER_ADMIN" || role === "TRO_LY";
+}
+
+export function canEditSaleMarkets(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN";
 }
 
 // Vai trò được phép gán khi tạo tài khoản mới, theo vai trò người tạo — Admin/Admin cấp cao tạo được mọi
@@ -792,7 +796,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
-    // Chỉ mục Khách hàng + NV quản lý (không có Thị trường) — xem canManageSaleCustomers.
+    // Khách hàng + NV quản lý đủ quyền; Thị trường chỉ xem — xem canManageSaleCustomers/canEditSaleMarkets.
     { href: "/settings/sale/customers", label: "Cài đặt Sale", icon: "Flag" },
     { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
