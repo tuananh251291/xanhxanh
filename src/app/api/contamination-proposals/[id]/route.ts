@@ -5,6 +5,7 @@ import { isAdminRole } from "@/types";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
+import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
 import { z } from "zod";
 
 const schema = z.union([
@@ -119,9 +120,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const proposal = await prisma.contaminationProposal.findUnique({
     where: { id },
-    include: { plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true } }, requestedBy: { select: { code: true } } },
+    include: {
+      plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true } }, requestedBy: { select: { code: true } },
+      room: { select: { type: true } },
+    },
   });
   if (!proposal) return NextResponse.json({ message: "Không tìm thấy đề xuất" }, { status: 404 });
+  if (requiresSuperAdminApproval(proposal.room) && session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Đề xuất từ Phòng chờ xử lý chỉ Admin cấp cao được duyệt" }, { status: 403 });
+  }
 
   // NV bán hàng có RetailWarehouseAccess tới đúng kho này (đề xuất do Đối tác vận hành gửi) cũng duyệt
   // được, KHÔNG chỉ Admin — Kho mô/Kho thành phẩm không ai gán RetailWarehouseAccess nên vẫn chỉ Admin
@@ -136,7 +143,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { action, reason } = parsed.data;
 
-  await prisma.$transaction(async (tx) => {
+  const newHandoverIds = await prisma.$transaction(async (tx) => {
     await tx.contaminationProposal.update({
       where: { id },
       data: {
@@ -169,7 +176,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
       }
     }
+
+    // Đề xuất Trồng của Kho thành phẩm (từ Phòng chờ xử lý) được duyệt → tự tạo/gộp phiếu bàn giao về Vườn.
+    return action === "approve" ? attachApprovedToGardenHandover(tx, [id]) : [];
   });
+  await notifyGardenHandoversCreated(newHandoverIds);
 
   if (action === "reject") {
     const typeLabel = proposal.type === "TRONG" ? "Trồng lại" : "Hủy bỏ";

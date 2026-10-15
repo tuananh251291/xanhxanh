@@ -412,6 +412,14 @@ export async function generateReplantHandoverCode(date: Date = new Date()): Prom
   return nextCodeWithSuffix(base, existing.map((e) => e.code));
 }
 
+// Mã phiếu bàn giao về Vườn sản xuất = "BGV" + ngày tạo "ddMMyy" (+ "-n" nếu trùng) — cùng kiểu
+// generateReplantHandoverCode. client tuỳ chọn — truyền tx khi gọi trong transaction duyệt đề xuất.
+export async function generateGardenHandoverCode(client: Prisma.TransactionClient | typeof prisma = prisma, date: Date = new Date()): Promise<string> {
+  const base = `BGV${format(date, "ddMMyy")}`;
+  const existing = await client.gardenHandover.findMany({ where: { code: { startsWith: base } }, select: { code: true } });
+  return nextCodeWithSuffix(base, existing.map((e) => e.code));
+}
+
 // Mã phân loại hàng không đạt = "PLKD-" + năm tháng tạo "YYYYMM" + số thứ tự 4 chữ số trong tháng —
 // giống hệt công thức generateGoodsReceiptCode. client tuỳ chọn — LUÔN truyền tx vì hàm này được gọi
 // ngay trong transaction "Xác nhận nhận hàng" (PATCH /api/transfers/[id]).

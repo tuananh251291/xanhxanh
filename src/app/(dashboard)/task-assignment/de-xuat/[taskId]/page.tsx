@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { isAdminRole } from "@/types";
-import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
+import { WEEKLY_CHECK_ROOM_TYPES } from "@/lib/finished-goods";
 import { MARKET_ROOM_TYPES } from "@/lib/market-inspection";
 import { getDeXuatDeadline } from "@/lib/daily-task-weekly";
 import { format } from "date-fns";
@@ -39,14 +39,14 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
   const [rooms, gardens] = await Promise.all([
     workplaceWarehouseId
       ? prisma.room.findMany({
-          where: { warehouseId: workplaceWarehouseId, type: { in: isMarketPartner ? MARKET_ROOM_TYPES : FINISHED_GOODS_ROOM_TYPES }, isActive: true },
+          where: { warehouseId: workplaceWarehouseId, type: { in: isMarketPartner ? MARKET_ROOM_TYPES : WEEKLY_CHECK_ROOM_TYPES }, isActive: true },
           select: { id: true, name: true, type: true },
           orderBy: { type: "asc" },
         })
       : [],
-    isMarketPartner
-      ? Promise.resolve([])
-      : prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
+    // Kho thành phẩm không còn chọn Vườn ở đây — NV chỉ chuyển hàng không đạt về Phòng chờ xử lý, Quản lý
+    // kho thành phẩm mới đề xuất Trồng (chọn Vườn) ở nhiệm vụ tuần của mình.
+    Promise.resolve([] as { id: string; code: string; name: string }[]),
   ]);
 
   const deadlineLabel = task.weekStart

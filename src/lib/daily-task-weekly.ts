@@ -121,6 +121,52 @@ export async function ensureWeeklyDeXuatTask(warehouseId: string | null) {
   }
 }
 
+// Nhiệm vụ tuần của Quản lý kho thành phẩm (QLK_DE_XUAT_TUAN) — 1 việc/kho/tuần, slotKey "manager":
+// gộp phần hủy từ phiếu kiểm tra của NV thành Đề xuất hủy, tạo Đề xuất trồng/Phiếu xử lý từ Phòng chờ xử
+// lý (xem /task-assignment/qlk-de-xuat/[taskId]). Phải gửi trong ngày Thứ Sáu — nhắc Quản lý từ sáng Thứ
+// Sáu nếu chưa gửi, 1 lần/tuần (dedup qua relatedId). Không gán NV cụ thể — mọi Quản lý của kho đều làm được.
+export async function ensureWeeklyManagerTask(warehouseId: string | null) {
+  if (!warehouseId) return;
+  const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { type: true } });
+  if (warehouse?.type !== "THANH_PHAM") return;
+
+  const weekStart = toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+  let task = await prisma.dailyTask.findFirst({
+    where: { type: "QLK_DE_XUAT_TUAN", warehouseId, weekStart, slotKey: "manager" },
+    select: { id: true, code: true, status: true, title: true },
+  });
+  if (!task) {
+    task = await prisma.dailyTask.create({
+      data: {
+        code: await generateDailyTaskCode(),
+        type: "QLK_DE_XUAT_TUAN",
+        warehouseId,
+        weekStart,
+        slotKey: "manager",
+        title: `Đề xuất trồng/hủy & Phiếu xử lý tuần ${getWeek(weekStart, { weekStartsOn: 1 })} (ngày ${format(weekStart, "dd/MM", { locale: vi })} đến ngày ${format(weekEnd, "dd/MM", { locale: vi })})`,
+        notes: "Tự động tạo hàng tuần cho Quản lý kho thành phẩm — gửi trong ngày Thứ Sáu.",
+      },
+      select: { id: true, code: true, status: true, title: true },
+    });
+  }
+
+  if (task.status === "PENDING" && new Date() >= getDeXuatDeadline(weekStart)) {
+    const relatedId = `weekly-qlk-de-xuat:${warehouseId}:${format(weekStart, "yyyy-MM-dd")}`;
+    const sent = await prisma.alert.findFirst({ where: { type: "DE_XUAT_TRONG_HUY_WEEKLY_DUE", relatedId } });
+    if (!sent) {
+      await createAlert({
+        type: "DE_XUAT_TRONG_HUY_WEEKLY_DUE",
+        title: "Hôm nay Thứ Sáu: gửi Đề xuất trồng/hủy tuần",
+        message: `Cần gửi "${task.title ?? task.code}" trong hôm nay — vào Phân công nhiệm vụ để thực hiện.`,
+        targetRole: "QUAN_LY_KHO_THANH_PHAM",
+        relatedId,
+        relatedType: "DailyTask",
+      });
+    }
+  }
+}
+
 // Nhiệm vụ DE_XUAT_TRONG_HUY chỉ tính hoàn thành khi TOÀN BỘ ContaminationProposal liên kết (xem
 // dailyTaskId) đã được Admin Duyệt — không phải lúc NV gửi. Tính lazy, không hook vào route duyệt.
 export async function ensureDeXuatTaskCompletion(warehouseId: string | null) {

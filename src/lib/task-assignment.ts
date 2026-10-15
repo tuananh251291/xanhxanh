@@ -118,7 +118,7 @@ export async function getOutstandingTasks(warehouseId: string | null): Promise<O
     tasks.push({ key: `or-${o.id}`, title: `Sắp xếp đơn hàng — ${o.code} (KH ${o.customerCode})`, createdAt: o.createdAt, assignedTo: o.assignedTo, confirmedAt: o.assignmentConfirmedAt });
   }
   for (const d of dailyTasks) {
-    const isDeXuat = d.type === "DE_XUAT_TRONG_HUY";
+    const isDeXuat = d.type === "DE_XUAT_TRONG_HUY" || d.type === "QLK_DE_XUAT_TUAN";
     const label = isDeXuat
       ? (d.title ?? d.code)
       : `Kiểm tra cây — ${d.code}${d.plantType ? ` (${d.plantType.name})` : d.room ? ` (${d.room.name})` : ""}`;
@@ -203,7 +203,7 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     });
   }
   for (const d of dailyTasks) {
-    const isDeXuat = d.type === "DE_XUAT_TRONG_HUY";
+    const isDeXuat = d.type === "DE_XUAT_TRONG_HUY" || d.type === "QLK_DE_XUAT_TUAN";
     tasks.push({
       key: `dt-${d.id}`,
       href: "/task-assignment",

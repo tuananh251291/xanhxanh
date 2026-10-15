@@ -17,8 +17,9 @@ import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import TransferReceiveBoard from "./transfer-receive-board";
 import GoodsReceiptActions from "./goods-receipt-actions";
+import RepackReturnBoard from "./repack-return-board";
 
-const TAB_VALUES = ["ncc", "transfer", "planned"] as const;
+const TAB_VALUES = ["ncc", "transfer", "repack", "planned"] as const;
 
 export default async function GoodsReceiptsPage({
   searchParams,
@@ -104,6 +105,7 @@ export default async function GoodsReceiptsPage({
         <TabsList>
           <TabsTrigger value="ncc">Nhận hàng từ NCC</TabsTrigger>
           <TabsTrigger value="transfer">Nhận bàn giao thành phẩm</TabsTrigger>
+          <TabsTrigger value="repack">Nhận lại phiếu xử lý</TabsTrigger>
           <TabsTrigger value="planned">Dự kiến nhập hàng</TabsTrigger>
         </TabsList>
 
@@ -190,6 +192,10 @@ export default async function GoodsReceiptsPage({
 
         <TabsContent value="transfer" className="mt-4">
           <TransferReceiveBoard />
+        </TabsContent>
+
+        <TabsContent value="repack" className="mt-4">
+          <RepackReturnBoard warehouseId={workplaceWarehouseId} />
         </TabsContent>
 
 

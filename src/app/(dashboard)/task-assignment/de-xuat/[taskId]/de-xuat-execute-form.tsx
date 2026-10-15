@@ -37,8 +37,9 @@ export default function DeXuatExecuteForm({
   isMarketPartner: boolean;
 }) {
   const router = useRouter();
-  // Kho thành phẩm gọi cột "Trồng" là "Chuyển về Kho xử lý"; Đối tác vận hành giữ nhãn cũ.
-  const trongLabel = isMarketPartner ? "Đề xuất trồng" : "Chuyển về Kho xử lý";
+  // Kho thành phẩm: cột thứ 2 là "Chuyển về Phòng chờ xử lý" và phiếu gửi Quản lý kho thành phẩm (POST
+  // /api/finished-goods-checks); Đối tác vận hành giữ nguyên luồng/nhãn cũ (đề xuất Trồng/Hủy gửi duyệt).
+  const trongLabel = isMarketPartner ? "Đề xuất trồng" : "Chuyển về Phòng chờ xử lý";
   const [roomId, setRoomId] = useState(initialRoomId ?? "");
   const [allLots, setAllLots] = useState<Lot[]>([]);
   // PlantType.code = 2 ký tự mã Loại cây + 3 ký tự riêng (VD "MT001") — xem prisma/schema.prisma.
@@ -117,6 +118,8 @@ export default function DeXuatExecuteForm({
     if (rows.length === 0) { toast.error("Chưa nhập số lượng dòng nào"); return; }
     for (const r of rows) {
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
+      // Kho thành phẩm: hủy + chuyển phòng đều trừ khỏi CÙNG lô này nên tổng không được vượt tồn.
+      if (!isMarketPartner && r.huy + r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: tổng hủy + chuyển vượt quá tồn kho`); return; }
       // Không bắt buộc chọn Vườn sản xuất khi không có vườn nào để chọn (Đối tác vận hành ở Kho thị
       // trường — xem page.tsx truyền gardens=[] cho trường hợp này).
       if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error(`Chưa chọn Vườn sản xuất cho dòng ${trongLabel}`); return; }
@@ -128,7 +131,30 @@ export default function DeXuatExecuteForm({
     setConfirmOpen(true);
   };
 
+  const sendCheck = async () => {
+    const rows = collectRows();
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/finished-goods-checks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dailyTaskId: taskId,
+          roomId,
+          lines: rows.map((r) => ({ plantTypeId: r.lot.plantTypeId, stageCode: r.lot.stageCode, destroyQuantity: r.huy, toProcessingQuantity: r.trong })),
+        }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Gửi phiếu thất bại"); return; }
+      toast.success("Đã gửi phiếu kiểm tra cho Quản lý kho thành phẩm");
+      router.push("/task-assignment");
+    } finally {
+      setSubmitting(false);
+      setConfirmOpen(false);
+    }
+  };
+
   const send = async () => {
+    if (!isMarketPartner) return sendCheck();
     const rows = collectRows();
     setSubmitting(true);
     let batchCode: string | undefined;
@@ -190,8 +216,8 @@ export default function DeXuatExecuteForm({
       {!isMarketPartner && (
         <div className="text-sm text-warning-foreground bg-warning-light rounded-lg p-3 space-y-1">
           <p>Nhân viên kho lọc hàng nhiễm không còn khả năng sống điền số vào cột Đề xuất Hủy.</p>
-          <p>Số lượng hàng không đạt tiêu chuẩn còn lại điền vào cột Chuyển về Kho xử lý.</p>
-          <p>Sắp xếp luôn sản phẩm không đạt về kho Xử lý.</p>
+          <p>Số lượng hàng không đạt tiêu chuẩn còn lại điền vào cột Chuyển về Phòng chờ xử lý.</p>
+          <p>Sắp xếp luôn sản phẩm không đạt về Phòng chờ xử lý.</p>
         </div>
       )}
 
@@ -320,7 +346,7 @@ export default function DeXuatExecuteForm({
 
                 <Button className="w-full bg-primary hover:bg-primary-hover" onClick={submit} disabled={submitting}>
                   {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                  Tạo phiếu đề xuất
+                  {isMarketPartner ? "Tạo phiếu đề xuất" : "Gửi phiếu kiểm tra cho Quản lý"}
                 </Button>
               </>
             )}
@@ -339,7 +365,7 @@ export default function DeXuatExecuteForm({
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>Kiểm tra lại</Button>
             <Button className="bg-primary hover:bg-primary-hover" onClick={send} disabled={submitting}>
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              Đúng là số cây, gửi đề xuất
+              {isMarketPartner ? "Đúng là số cây, gửi đề xuất" : "Đúng là số cây, gửi phiếu"}
             </Button>
           </DialogFooter>
         </DialogContent>

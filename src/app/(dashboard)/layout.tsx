@@ -13,7 +13,7 @@ import { ensureInstructionsEnded, ensureBackupInstructionsCleaned } from "@/lib/
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { ensureMediumOrdersSent } from "@/lib/medium-order-lifecycle";
 import { ensureCustomerAutoExpire, ensureCustomerStatusReminders } from "@/lib/customer-lifecycle";
-import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion } from "@/lib/daily-task-weekly";
+import { ensureWeeklyDeXuatTask, ensureDeXuatTaskCompletion, ensureWeeklyManagerTask } from "@/lib/daily-task-weekly";
 import { ensureWeeklyMarketInspectionTask } from "@/lib/market-inspection";
 import { ensureRootingForecastReminder } from "@/lib/rooting-forecast";
 import { ensureMotherForecastReminder, ensureMotherOutputShortfallAlerts } from "@/lib/mother-forecast";
@@ -67,6 +67,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (isKhoThanhPhamRole(role)) {
     await ensureWeeklyDeXuatTask(session.user.workplaceWarehouseId);
     await ensureDeXuatTaskCompletion(session.user.workplaceWarehouseId);
+    await ensureWeeklyManagerTask(session.user.workplaceWarehouseId);
   }
   if (role === "DOI_TAC_VAN_HANH") {
     await ensureWeeklyMarketInspectionTask(session.user.workplaceWarehouseId);

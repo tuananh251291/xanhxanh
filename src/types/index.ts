@@ -506,6 +506,10 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   STOCK_COUNT_DUE: "/stock-counts",
   SALES_MANAGER_IMPORT_PENDING: "/settings/sale/managers",
   SALES_MANAGER_IMPORT_DECIDED: "/settings/sale/managers",
+  FINISHED_GOODS_WEEKLY_CHECK_SUBMITTED: "/task-assignment",
+  KTP_REPACK_CREATED: "/repack-instructions",
+  KTP_REPACK_RETURNED: "/goods-receipts?tab=repack",
+  GARDEN_HANDOVER_CREATED: "/garden-handovers",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -669,6 +673,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
     { href: "/production-gardens", label: "Vườn sản xuất", icon: "Sprout" },
+    { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "PackageCheck" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
@@ -856,6 +861,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
     { href: "/reports/inventory-flow-summary", label: "Báo cáo Nhập - Xuất", icon: "BarChart3" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+    { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "Sprout" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -906,6 +912,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // sửa) — menu tối thiểu, mở rộng sau nếu NVQLV cần tự thao tác trên Vườn của mình.
   NHAN_VIEN_QUAN_LY_VUON: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/garden-handovers", label: "Nhận cây từ Kho thành phẩm", icon: "PackageCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Nhận hàng gửi từ Kho thành phẩm (xem /transfers/send-market, KHO_THANH_PHAM/QUAN_LY_KHO_THANH_PHAM) —

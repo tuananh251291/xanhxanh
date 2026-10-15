@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
+import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
 
 const include = {
   plantType: { select: { code: true, name: true } },
@@ -61,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const { batchCode } = await params;
   const pending = await prisma.contaminationProposal.findMany({
     where: { ...batchWhere(batchCode), status: "PENDING" },
-    select: { id: true, warehouseId: true },
+    select: { id: true, warehouseId: true, room: { select: { type: true } } },
   });
   if (pending.length === 0) return NextResponse.json({ message: "Không có dòng nào đang chờ duyệt" }, { status: 400 });
 
@@ -74,10 +75,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
     return NextResponse.json({ message: "Bạn không có quyền duyệt đề xuất này" }, { status: 403 });
   }
 
-  await prisma.contaminationProposal.updateMany({
-    where: { id: { in: pending.map((p) => p.id) } },
-    data: { status: "APPROVED", approvedById: session!.user!.id, approvedAt: new Date() },
+  if (pending.some((p) => requiresSuperAdminApproval(p.room)) && session?.user?.role !== "SUPER_ADMIN") {
+    return NextResponse.json({ message: "Đề xuất từ Phòng chờ xử lý chỉ Admin cấp cao được duyệt" }, { status: 403 });
+  }
+
+  const newHandoverIds = await prisma.$transaction(async (tx) => {
+    await tx.contaminationProposal.updateMany({
+      where: { id: { in: pending.map((p) => p.id) } },
+      data: { status: "APPROVED", approvedById: session!.user!.id, approvedAt: new Date() },
+    });
+    return attachApprovedToGardenHandover(tx, pending.map((p) => p.id));
   });
+  await notifyGardenHandoversCreated(newHandoverIds);
 
   return NextResponse.json({ success: true, count: pending.length });
 }

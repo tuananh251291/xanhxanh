@@ -32,6 +32,7 @@ export default async function TaskAssignmentPage() {
     staffKhoThanhPham,
     staffAll,
     deXuatTasks,
+    qlkTasks,
   ] = await Promise.all([
     prisma.goodsReceipt.findMany({
       where: { status: "PLANNED", room: { warehouseId: workplaceWarehouseId ?? "" } },
@@ -84,6 +85,17 @@ export default async function TaskAssignmentPage() {
         room: { select: { name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
         proposals: { where: { status: { not: "DRAFT" } }, select: { status: true } },
+        _count: { select: { checkLines: true } },
+      },
+    }),
+    // Nhiệm vụ tuần của Quản lý (QLK_DE_XUAT_TUAN, xem ensureWeeklyManagerTask) — 1 việc/kho/tuần.
+    prisma.dailyTask.findMany({
+      where: { type: "QLK_DE_XUAT_TUAN", ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+      orderBy: { weekStart: "desc" },
+      take: 8,
+      select: {
+        id: true, code: true, status: true, title: true, weekStart: true, completedAt: true, resultNotes: true,
+        proposals: { select: { status: true } },
       },
     }),
   ]);
@@ -176,9 +188,41 @@ export default async function TaskAssignmentPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 4. Kiểm nhiễm - Đề xuất trồng/hủy</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 4. Kiểm tra kho cây tuần - Đề xuất trồng/hủy</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-text-secondary mb-1.5">
+              Việc của Quản lý — gộp Đề xuất hủy, tạo Đề xuất trồng / Phiếu xử lý từ Phòng chờ xử lý (gửi trong ngày Thứ Sáu)
+            </p>
+            {qlkTasks.length === 0 ? (
+              <p className="text-sm text-text-muted py-2">Việc tuần này chưa được tạo — sẽ tự xuất hiện khi có ai vào trang.</p>
+            ) : (
+              qlkTasks.map((q) => (
+                <div key={q.id} className={`flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border ${q.weekStart?.getTime() === currentWeekStart.getTime() ? "bg-warning-light/30 border-warning" : "bg-background border-divider"}`}>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{q.title ?? q.code}</p>
+                    <p className="text-xs text-text-secondary">
+                      <span className="font-mono">{q.code}</span>
+                      {q.proposals.length > 0 && ` · ${q.proposals.filter((p) => p.status === "APPROVED").length}/${q.proposals.length} dòng đề xuất đã được Duyệt`}
+                      {q.resultNotes?.startsWith("Gộp vào") && ` · ${q.resultNotes}`}
+                    </p>
+                  </div>
+                  {q.status === "PENDING" ? (
+                    <Link href={`/task-assignment/qlk-de-xuat/${q.id}`}>
+                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                        <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Badge variant="completed">Đã gửi</Badge>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <p className="text-xs font-semibold text-text-secondary pt-2 border-t border-divider">Việc của NV — kiểm tra kho cây, gửi phiếu cho Quản lý</p>
           {thisWeekTasks.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-text-secondary mb-1.5">Việc tuần này (tự sinh — cần hoàn thành trước Thứ Sáu, nhắc từ Thứ 4)</p>
@@ -246,6 +290,7 @@ type DeXuatTask = {
   assignedTo: { id: string; code: string; name: string } | null;
   assignmentConfirmedAt: Date | null;
   proposals: { status: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED" }[];
+  _count: { checkLines: number };
 };
 
 // Hàng hiển thị 1 nhiệm vụ Kiểm nhiễm - Đề xuất trồng/hủy — dùng chung cho việc tuần này (highlight) và
@@ -282,7 +327,7 @@ function DeXuatTaskRow({
           <KhoTpAssignCell endpoint={`/api/daily-tasks/${d.id}`} assignedTo={d.assignedTo} staffOptions={staffOptions} canAssign={canAssign} confirmedAt={d.assignmentConfirmedAt} />
         )}
         {d.status !== "PENDING" ? (
-          <Badge variant="completed">Đã hoàn thành</Badge>
+          <Badge variant="completed">{d._count.checkLines > 0 ? "Đã gửi phiếu cho Quản lý" : "Đã hoàn thành"}</Badge>
         ) : hasPending ? (
           <Badge variant="in-progress">Đã thực hiện · Chờ Admin duyệt</Badge>
         ) : hasRejected ? (

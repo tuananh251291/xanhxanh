@@ -363,7 +363,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await createAlert({
         type: "KTP_REPACK_RETURNED",
         title: "Phiếu xử lý đã xong — chờ Kho thành phẩm nhận lại",
-        message: `${session.user.name} bàn giao lại kết quả phiếu xử lý ${instruction.code} (${instruction.plantType.name} ${instruction.outputStageCode}): ${instruction.confirmedPassedQuantity ?? 0} đạt / ${instruction.confirmedFailedQuantity ?? 0} không đạt — vào Nhận hàng > Phiếu xử lý để xác nhận.`,
+        message: `${session.user.name} bàn giao lại kết quả phiếu xử lý ${instruction.code} (${instruction.plantType.name} ${instruction.outputStageCode}): ${instruction.confirmedPassedQuantity ?? 0} đạt / ${instruction.confirmedFailedQuantity ?? 0} không đạt — vào Nhận hàng > Nhận lại phiếu xử lý để xác nhận.`,
         targetRole,
         relatedId: instruction.id,
         relatedType: "RepackInstruction",
