@@ -28,7 +28,9 @@ const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ 
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
 type DemandRow = { key: string; plantTypeId: string; stageCode: "T01" | "T05" | "T10"; quantity: string };
-type ExcelItem = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; notes?: string };
+// quantityInput = số lượng đang sửa trên giao diện (chuỗi để gõ dở/xoá trắng được), khởi tạo từ quantity trong file.
+type ExcelItem = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; quantityInput: string; notes?: string };
+const isValidQty = (v: string) => /^\d+$/.test(v.trim()) && Number(v) > 0;
 type ExcelRowError = { row: number; label: string; message: string };
 type Alternative = {
   stageCode: string; available: number; suggestedQty: number; surplusQuantity: number; accepted: boolean;
@@ -341,11 +343,21 @@ export default function OrderCheckForm({
     submitHold(items);
   };
 
-  // Bỏ qua bước Check/alternatives hoàn toàn — items lấy nguyên từ Excel (đã validate mã cây/quy
-  // cách/số lượng ở POST /api/orders/import-items), không thay thế quy cách/làm tròn túi.
+  // Bỏ qua bước Check/alternatives hoàn toàn — items lấy từ Excel (đã validate mã cây/quy cách ở
+  // POST /api/orders/import-items), không thay thế quy cách/làm tròn túi.
+  // Số lượng lấy theo ô đã sửa trên giao diện (không phải số gốc trong file).
   const onHoldExcel = () => {
-    submitHold(excelItems.map((i) => ({ plantTypeId: i.plantTypeId, stageCode: i.stageCode, quantity: i.quantity, notes: i.notes })));
+    const invalid = excelItems.findIndex((i) => !isValidQty(i.quantityInput));
+    if (invalid >= 0) {
+      const it = excelItems[invalid];
+      toast.error(`Dòng ${invalid + 1} (${it.plantTypeCode} ${it.stageCode}): số lượng phải là số nguyên lớn hơn 0`);
+      return;
+    }
+    submitHold(excelItems.map((i) => ({ plantTypeId: i.plantTypeId, stageCode: i.stageCode, quantity: Number(i.quantityInput), notes: i.notes })));
   };
+
+  const updateExcelQty = (index: number, value: string) =>
+    setExcelItems((prev) => prev.map((it, i) => (i === index ? { ...it, quantityInput: value } : it)));
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -365,7 +377,7 @@ export default function OrderCheckForm({
         setExcelErrors(json.errors);
         toast.error(`Chưa nhập được gì — file có ${json.errors.length} dòng lỗi, xem chi tiết bên dưới rồi sửa lại và tải lên lại`);
       } else {
-        setExcelItems(json.items);
+        setExcelItems((json.items as Omit<ExcelItem, "quantityInput">[]).map((it) => ({ ...it, quantityInput: String(it.quantity) })));
         // Mã khách hàng/Mã NV bán hàng đọc từ file (đã validate khớp nhau ở server) — điền sẵn vào ô
         // chọn bên dưới, vẫn đổi lại được trước khi bấm "Tạm giữ đơn hàng".
         if (json.customerId) {
@@ -553,7 +565,19 @@ export default function OrderCheckForm({
                         <td className="px-3 py-1.5 font-mono">{it.plantTypeCode}</td>
                         <td className="px-3 py-1.5">{it.plantTypeName}</td>
                         <td className="px-3 py-1.5">{it.stageCode}</td>
-                        <td className="px-3 py-1.5 text-right font-medium">{it.quantity.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-1.5 text-right">
+                          <Input
+                            type="number"
+                            min={1}
+                            step={1}
+                            className={`h-8 w-28 ml-auto text-right font-medium ${isValidQty(it.quantityInput) ? "" : "border-destructive"}`}
+                            value={it.quantityInput}
+                            onChange={(e) => updateExcelQty(i, e.target.value)}
+                          />
+                          {it.quantityInput.trim() !== String(it.quantity) && (
+                            <p className="text-xs text-text-muted pt-0.5">Trong file: {it.quantity.toLocaleString("vi-VN")}</p>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5 text-text-secondary">{it.notes || "—"}</td>
                       </tr>
                     ))}
