@@ -4,7 +4,7 @@ import { FlaskConical } from "lucide-react";
 import { isKhoThanhPhamRole } from "@/types";
 import RndWarehouseHandoverBoard from "./rnd-warehouse-handover-board";
 
-// Nhận bàn giao sản phẩm R&D (Admin kỹ thuật gửi từ "Kho SX R&D") — dành cho Kho mô (kho đích là khu
+// Nhận bàn giao sản phẩm R&D (Admin kỹ thuật gửi từ "Kho sản xuất R&D") — dành cho Kho mô (kho đích là khu
 // sản xuất, chọn giàn kệ) và Kho thành phẩm (kho đích là kho thành phẩm, chọn phòng) — xem
 // GET/POST /api/rnd-warehouse-handover/*.
 export default async function RndWarehouseHandoverPage() {
@@ -19,7 +19,7 @@ export default async function RndWarehouseHandoverPage() {
           <FlaskConical className="w-6 h-6 text-primary-strong" /> Nhận bàn giao R&D
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Xác nhận nhận sản phẩm R&D (Admin kỹ thuật gửi từ Kho SX R&D) vào tồn kho của cơ sở bạn.
+          Xác nhận nhận sản phẩm R&D (Admin kỹ thuật gửi từ Kho sản xuất R&D) vào tồn kho của cơ sở bạn.
         </p>
       </div>
 

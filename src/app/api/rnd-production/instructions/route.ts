@@ -7,7 +7,7 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek } from "date-fns";
 import { z } from "zod";
 
-// "Tạo chỉ định cấy R&D" — Admin kỹ thuật tạo 1 chỉ định cấy THẬT tại "Kho SX R&D" (xem
+// "Tạo chỉ định cấy R&D" — Admin kỹ thuật tạo 1 chỉ định cấy THẬT tại "Kho sản xuất R&D" (xem
 // src/lib/rnd-instruction-warehouse.ts), dùng mã cây/môi trường CÓ SẴN (không phải giống mới, khác hẳn
 // TrialVariety/TrialCultivationRound — feature đó tách biệt hoàn toàn khỏi kho thật). Giao cho CHÍNH MÌNH
 // (mặc định, không truyền assignedToId) hoặc cho 1 NV cấy mô THẬT đã được gán làm việc tại R&D (sửa
@@ -70,10 +70,10 @@ export async function POST(req: NextRequest) {
   if (!mediumType) return NextResponse.json({ message: "Không tìm thấy môi trường" }, { status: 400 });
   if (!assignedStaff) return NextResponse.json({ message: "Không tìm thấy NV được giao" }, { status: 400 });
   // Tự giao cho chính mình luôn hợp lệ (Admin kỹ thuật) — giao cho người khác thì bắt buộc là NV cấy mô
-  // THẬT, đang hoạt động, và đã được gán làm việc tại đúng Kho SX R&D (qua trang Người dùng).
+  // THẬT, đang hoạt động, và đã được gán làm việc tại đúng Kho sản xuất R&D (qua trang Người dùng).
   if (assignedToId !== session.user.id) {
     if (!assignedStaff.isActive || assignedStaff.role !== "CAY_MO" || assignedStaff.workplaceWarehouseId !== rndWarehouse.id) {
-      return NextResponse.json({ message: "NV được giao không hợp lệ — cần là NV cấy mô đang làm việc tại Kho SX R&D" }, { status: 400 });
+      return NextResponse.json({ message: "NV được giao không hợp lệ — cần là NV cấy mô đang làm việc tại Kho sản xuất R&D" }, { status: 400 });
     }
   }
 

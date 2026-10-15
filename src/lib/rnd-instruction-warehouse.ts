@@ -3,7 +3,7 @@ import { generateWarehouseCode } from "@/lib/codes";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import type { Prisma, Warehouse, Shelf } from "@prisma/client";
 
-// "Kho SX R&D" — kho sản xuất (type SAN_XUAT) riêng cho Admin kỹ thuật tự tạo chỉ định cấy cho mình
+// "Kho sản xuất R&D" — kho sản xuất (type SAN_XUAT) riêng cho Admin kỹ thuật tự tạo chỉ định cấy cho mình
 // (xem POST /api/rnd-production/instructions). CHỈ có Phòng tối (mỗi Admin kỹ thuật 1 phòng riêng, giống
 // hệt Phòng tối cá nhân của NV cấy mô thường) + Phòng nhiễm khi phát sinh nhiễm — KHÔNG có Phòng mẫu
 // mẹ/Phòng ra rễ (kho sáng, sửa 23/09/2026): trước đây có 2 phòng này chỉ để làm "điểm neo kỹ thuật" cho
@@ -14,7 +14,7 @@ import type { Prisma, Warehouse, Shelf } from "@prisma/client";
 // thuật đang thao tác (mỗi người 1 kệ neo riêng, không dùng chung nữa) — vẫn cần 1 Shelf (không dùng
 // roomId trực tiếp) vì PlantingInstructionItem.shelfId bắt buộc có giá trị.
 // isRnd đánh dấu để tra cứu đáng tin cậy, không so tên chuỗi (xem Warehouse.isRnd, schema.prisma).
-const RND_WAREHOUSE_NAME = "Kho SX R&D";
+const RND_WAREHOUSE_NAME = "Kho sản xuất R&D";
 const RND_INPUT_SHELF_SUFFIX = "PS-BUCKET";
 const RND_OUTPUT_SHELF_SUFFIX = "PRR-BUCKET";
 

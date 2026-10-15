@@ -14,7 +14,7 @@ const TAB_VALUES = ["mother-stock", "medium", "rnd", "ktp-repack"] as const;
 // gốc (route gốc vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO, xem ROLE_NAV): "Nhận bàn giao mẫu
 // mẹ" (kho sản xuất khác gửi tới, xem confirmMotherStockReceipt — thông báo MOTHER_WAREHOUSE_TRANSFER_
 // INCOMING trỏ thẳng tới đây, xem ALERT_DETAIL_LINKS), "Nhận bàn giao môi trường" (/medium-orders/receive),
-// "Nhận bàn giao R&D" (Admin kỹ thuật gửi từ Kho SX R&D, /rnd-warehouse-handover).
+// "Nhận bàn giao R&D" (Admin kỹ thuật gửi từ Kho sản xuất R&D, /rnd-warehouse-handover).
 export default async function HandoverInPage({
   searchParams,
 }: {

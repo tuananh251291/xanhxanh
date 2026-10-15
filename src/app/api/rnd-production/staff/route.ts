@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
-// Danh sách NV cấy mô thuộc khu sản xuất R&D (User.workplaceWarehouseId = Kho SX R&D) — dùng cho ô
+// Danh sách NV cấy mô thuộc khu sản xuất R&D (User.workplaceWarehouseId = Kho sản xuất R&D) — dùng cho ô
 // "Giao cho" khi Admin kỹ thuật tạo chỉ định cấy R&D (xem CreateInstructionDialog, rnd-production-board.tsx
 // + POST /api/rnd-production/instructions). Admin kỹ thuật vẫn luôn tự giao được cho chính mình (mặc
 // định, không cần chọn) — đây chỉ là các lựa chọn THÊM cho NV cấy mô thật đã được gán làm việc tại đây

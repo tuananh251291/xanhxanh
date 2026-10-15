@@ -10,7 +10,7 @@ import { getOrCreateRndWarehouse, getOrCreateRndInputShelf, getOrCreateRndOutput
 // xác nhận riêng, KHÔNG qua receive-phong-toi/do-lane vì pipeline đó hard-code giả định "phòng nguồn
 // cùng kho với người xem", sẽ không hiện phiếu liên kho cho đúng người nhận). Admin kỹ thuật KHÔNG chọn
 // từ lô có sẵn — tự khai thẳng mã cây/quy cách/số lượng đang có trong tay rồi bàn giao ngay, hệ thống tự
-// tạo 1 Lot mới trên kệ ẩn của "Kho SX R&D" (getOrCreateRndInputShelf cho M05, getOrCreateRndOutputShelf
+// tạo 1 Lot mới trên kệ ẩn của "Kho sản xuất R&D" (getOrCreateRndInputShelf cho M05, getOrCreateRndOutputShelf
 // cho T05/T01) rồi bàn giao lô đó đi luôn — không cần đã tồn tại trong Phòng tối cá nhân/qua bước nhập
 // dữ liệu cấy trước.
 export async function sendRndOutputToWarehouse(params: {
@@ -89,7 +89,7 @@ export async function sendRndOutputToWarehouse(params: {
       createAlert({
         type: "LOT_READY_TRANSFER",
         title: "Có phiếu bàn giao từ R&D chờ nhận",
-        message: `Kho SX R&D đã gửi phiếu ${transfer.code} — ${quantity.toLocaleString("vi-VN")} cụm, chờ xác nhận nhập kho`,
+        message: `Kho sản xuất R&D đã gửi phiếu ${transfer.code} — ${quantity.toLocaleString("vi-VN")} cụm, chờ xác nhận nhập kho`,
         userId: u.id,
         relatedId: transfer.id,
         relatedType: "Transfer",

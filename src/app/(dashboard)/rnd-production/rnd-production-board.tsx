@@ -198,7 +198,7 @@ function CreateInstructionDialog({
     if (!open) return;
     fetch("/api/plant-types").then((r) => r.json()).then((data: PlantType[]) => setPlantTypes(Array.isArray(data) ? data : []));
     fetch("/api/medium-types").then((r) => r.json()).then((data: MediumType[]) => setMediumTypes(Array.isArray(data) ? data : []));
-    // NV cấy mô thật đã được gán làm việc tại Kho SX R&D (canAssignWorkplace, trang Người dùng) — có thể
+    // NV cấy mô thật đã được gán làm việc tại Kho sản xuất R&D (canAssignWorkplace, trang Người dùng) — có thể
     // rỗng nếu chưa NV nào được gán, khi đó chỉ còn lựa chọn "Chính mình". assignedToOption đã tự về lại
     // selfOption mỗi lần đóng dialog (xem reset(), gọi trong onOpenChange) nên không cần set lại ở đây.
     fetch("/api/rnd-production/staff").then((r) => r.json()).then((data: RndStaff[]) => setRndStaff(Array.isArray(data) ? data : []));

@@ -75,7 +75,7 @@ export default function StockInForm({
   const isAdmin = !fixedWarehouse;
   const [warehouseId, setWarehouseId] = useState(fixedWarehouse?.id ?? "");
 
-  // Kho SX R&D không chia giàn kệ (coi cả kho như 1 phòng chung) — bỏ hẳn bước chọn giàn kệ, server tự
+  // Kho sản xuất R&D không chia giàn kệ (coi cả kho như 1 phòng chung) — bỏ hẳn bước chọn giàn kệ, server tự
   // gán vào đúng 1 kệ ẩn theo khu vực (xem getOrCreateRndInputShelf/getOrCreateRndOutputShelf, route.ts).
   const isRndWarehouse = fixedWarehouse ? fixedWarehouse.isRnd : (warehouses.find((w) => w.id === warehouseId)?.isRnd ?? false);
 

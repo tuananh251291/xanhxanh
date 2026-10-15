@@ -161,7 +161,7 @@ export default function RndWarehouseHandoverBoard({ isKhoMo }: { isKhoMo: boolea
                   </span>
                 </p>
                 <p className="text-sm text-foreground">
-                  Từ <strong>Kho SX R&D</strong> — {row.fromUserName} ({row.fromUserCode})
+                  Từ <strong>Kho sản xuất R&D</strong> — {row.fromUserName} ({row.fromUserCode})
                 </p>
                 {row.items.map((it, idx) => (
                   <p key={idx} className="text-sm text-text-secondary">

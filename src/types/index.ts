@@ -355,7 +355,7 @@ export const SURPLUS_TRANSFER_TAG = "SURPLUS_MOTHER_HANDOVER";
 // chỉ định kết thúc, luôn cùng 1 kho, không cho KHO_MO tự chọn đích).
 export const MOTHER_WAREHOUSE_TRANSFER_TAG = "MOTHER_WAREHOUSE_TRANSFER";
 
-// Đánh dấu Transfer bàn giao SẢN PHẨM R&D (mẫu mẹ hoặc thành phẩm) từ "Kho SX R&D" sang 1 kho sản xuất
+// Đánh dấu Transfer bàn giao SẢN PHẨM R&D (mẫu mẹ hoặc thành phẩm) từ "Kho sản xuất R&D" sang 1 kho sản xuất
 // THẬT khác (Admin kỹ thuật chọn đích, xem src/lib/rnd-warehouse-handover.ts) — khác
 // MOTHER_WAREHOUSE_TRANSFER_TAG (đó là KHO_MO chuyển mẫu mẹ giữa 2 kho thật, nguồn luôn có giàn kệ thật,
 // còn đây nguồn là Phòng tối cá nhân của Admin kỹ thuật, không qua giàn kệ nào).

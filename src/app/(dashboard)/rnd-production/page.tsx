@@ -5,7 +5,7 @@ import { Sprout } from "lucide-react";
 import RndProductionBoard from "./rnd-production-board";
 
 // Trang RIÊNG của Admin kỹ thuật — CHỈ role này (không mở cho ADMIN/SUPER_ADMIN, khác /rnd) vì đây là
-// chỉ định cấy THẬT, có ảnh hưởng tồn kho thật (Lot/PlantingInstruction thật tại "Kho SX R&D") — khác
+// chỉ định cấy THẬT, có ảnh hưởng tồn kho thật (Lot/PlantingInstruction thật tại "Kho sản xuất R&D") — khác
 // hẳn "R&D" (TrialVariety/TrialCultivationRound, tách biệt hoàn toàn khỏi kho thật). Xem
 // src/lib/rnd-instruction-warehouse.ts + POST /api/rnd-production/instructions. Giao được cho chính mình
 // HOẶC cho NV cấy mô thật đã gán làm việc tại R&D (sửa 23/09/2026) — truyền sẵn code/tên của chính Admin

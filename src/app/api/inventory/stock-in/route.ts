@@ -40,7 +40,7 @@ const schema = z
   .refine((data) => data.destination !== "DARK_ROOM" || !!data.staffId, {
     message: "Thiếu NV cấy mô",
   })
-  // shelfId chỉ bắt buộc kiểm tra kỹ hơn bên dưới trong handler (sau khi biết kho có phải Kho SX R&D hay
+  // shelfId chỉ bắt buộc kiểm tra kỹ hơn bên dưới trong handler (sau khi biết kho có phải Kho sản xuất R&D hay
   // không — R&D không có khái niệm giàn kệ, hệ thống tự gán kệ ẩn duy nhất, xem comment ở handler).
   .refine((data) => data.destination !== "DARK_ROOM" || data.items.every((i) => !!i.enteredDate), {
     message: "Thiếu ngày nhập kho tối",
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
   }
   const warehouseId = resolved.warehouseId;
 
-  // Kho SX R&D không có khái niệm giàn kệ — coi cả kho như 1 phòng chung, hệ thống tự gán vào đúng 1 kệ
+  // Kho sản xuất R&D không có khái niệm giàn kệ — coi cả kho như 1 phòng chung, hệ thống tự gán vào đúng 1 kệ
   // ẩn duy nhất theo khu vực (getOrCreateRndInputShelf/getOrCreateRndOutputShelf, xem rnd-instruction-
   // warehouse.ts) thay vì bắt NV chọn giàn kệ như kho sản xuất thường.
   const warehouseIsRnd = (await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { isRnd: true } }))?.isRnd ?? false;
