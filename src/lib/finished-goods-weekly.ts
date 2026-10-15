@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getProcessingRoom } from "@/lib/finished-goods";
+import { getProcessingRoom, getReservedForHandover } from "@/lib/finished-goods";
 
 // Dữ liệu cho nhiệm vụ tuần của Quản lý kho thành phẩm (QLK_DE_XUAT_TUAN, xem
 // /task-assignment/qlk-de-xuat/[taskId] + POST /api/finished-goods-weekly/[taskId]):
@@ -49,6 +49,16 @@ export async function getManagerWeeklyData(warehouseId: string) {
     const g = stockMap.get(key) ?? { plantTypeId: l.plantTypeId, plantTypeCode: l.plantType.code, plantTypeName: l.plantType.name, stageCode: l.stageCode, quantity: 0 };
     g.quantity += l.quantity;
     stockMap.set(key, g);
+  }
+
+  // Trừ phần đã giữ chỗ cho Phiếu xử lý Kho thành phẩm chưa bấm Bàn giao (tồn thật chưa trừ).
+  if (processingRoom) {
+    const reserved = await getReservedForHandover(processingRoom.id);
+    for (const [key, qty] of reserved) {
+      const g = stockMap.get(key);
+      if (g) g.quantity -= qty;
+    }
+    for (const [key, g] of stockMap) if (g.quantity <= 0) stockMap.delete(key);
   }
 
   const byCode = (a: { plantTypeCode: string; stageCode: string }, b: { plantTypeCode: string; stageCode: string }) =>

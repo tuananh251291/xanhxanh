@@ -6,8 +6,9 @@ import { isPageAllowed } from "@/lib/permissions";
 import { IncomingTab as ReceiveMotherStockTab } from "../mother-warehouse-transfer/mother-warehouse-transfer-board";
 import MediumOrdersReceiveBoard from "../medium-orders/receive/medium-orders-receive-board";
 import RndWarehouseHandoverBoard from "../rnd-warehouse-handover/rnd-warehouse-handover-board";
+import KtpRepackReceiveBoard from "./ktp-repack-receive-board";
 
-const TAB_VALUES = ["mother-stock", "medium", "rnd"] as const;
+const TAB_VALUES = ["mother-stock", "medium", "rnd", "ktp-repack"] as const;
 
 // Gộp 3 luồng Kho mô nhận hàng từ kho/NV khác vào 1 menu — mỗi tab tái dùng NGUYÊN VẸN board của route
 // gốc (route gốc vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO, xem ROLE_NAV): "Nhận bàn giao mẫu
@@ -33,7 +34,7 @@ export default async function HandoverInPage({
           <PackageCheck className="w-6 h-6 text-primary-strong" /> Nhận bàn giao liên kho
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Xác nhận nhận mẫu mẹ từ kho sản xuất khác, môi trường, hoặc sản phẩm R&D.
+          Xác nhận nhận mẫu mẹ từ kho sản xuất khác, môi trường, sản phẩm R&D, hoặc Phiếu xử lý từ Kho thành phẩm.
         </p>
       </div>
 
@@ -42,6 +43,7 @@ export default async function HandoverInPage({
           <TabsTrigger value="mother-stock">Nhận bàn giao mẫu mẹ</TabsTrigger>
           <TabsTrigger value="medium">Nhận bàn giao môi trường</TabsTrigger>
           <TabsTrigger value="rnd">Nhận bàn giao R&D</TabsTrigger>
+          <TabsTrigger value="ktp-repack">Nhận phiếu xử lý từ Kho TP</TabsTrigger>
         </TabsList>
 
         <TabsContent value="mother-stock" className="mt-4">
@@ -54,6 +56,10 @@ export default async function HandoverInPage({
 
         <TabsContent value="rnd" className="mt-4">
           <RndWarehouseHandoverBoard isKhoMo={true} />
+        </TabsContent>
+
+        <TabsContent value="ktp-repack" className="mt-4">
+          <KtpRepackReceiveBoard warehouseId={session!.user.workplaceWarehouseId ?? null} />
         </TabsContent>
       </Tabs>
     </div>

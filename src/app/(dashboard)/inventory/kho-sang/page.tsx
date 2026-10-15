@@ -86,7 +86,7 @@ export default async function KhoSangPage({
     ? "PHONG_MAU_ME"
     : onlyRootingRoom
       ? "PHONG_RA_RE"
-      : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] };
+      : { in: ["PHONG_MAU_ME", "PHONG_RA_RE", "PHONG_DOI_XU_LY"] };
 
   // Chỉ tải danh sách phòng (nhẹ) — KHÔNG kèm shelves/lots nữa, vì có phòng tới 600+ kệ khiến trang tải
   // ~9 giây. Phòng mẫu mẹ giờ tự tải kệ theo trang qua GET /api/shelves/mother-room (xem MotherShelfTable).
@@ -151,7 +151,8 @@ export default async function KhoSangPage({
 
   // Phòng ra rễ (chỉ KHO_MO xem, KY_THUAT không có) vẫn hiển thị dạng thẻ theo kệ như cũ, ít kệ hơn nhiều
   // so với Phòng mẫu mẹ nên chưa cần phân trang — tải riêng, không dính vào query rooms ở trên nữa.
-  const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE").map((r) => r.id);
+  // Phòng đợi xử lý (hàng từ Phiếu xử lý Kho thành phẩm) hiển thị theo giàn giống Phòng ra rễ.
+  const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE" || r.type === "PHONG_DOI_XU_LY").map((r) => r.id);
   // Tìm theo mã cây (RootingPlantSearch, ?plantTypeIds=) — lọc NGAY ở query: chỉ tải kệ có ít nhất 1 lô
   // khớp 1 trong các mã cây đó (bớt hẳn kệ khác trong danh sách thay vì hiện "Trống" gây rối), và trong 1
   // kệ có nhiều mã cây khác nhau (Phòng ra rễ không có plantTypeId cố định như Phòng mẫu mẹ) chỉ hiện

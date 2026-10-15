@@ -238,6 +238,7 @@ export const ROOM_TYPE_LABELS = {
   PHONG_HAN_TUI: "Phòng hàn túi",
   PHONG_THI_TRUONG: "Phòng thị trường",
   PHONG_CHO_XU_LY: "Phòng chờ xử lý",
+  PHONG_DOI_XU_LY: "Phòng đợi xử lý",
   PHONG_SAN_PHAM_DAT: "Phòng sản phẩm đạt",
   PHONG_SAN_PHAM_KHONG_DAT: "Phòng sản phẩm không đạt",
   PHONG_CAY_TRONG: "Phòng cây trồng",
@@ -253,6 +254,7 @@ export const ROOM_TYPE_COLORS = {
   PHONG_HAN_TUI: "bg-purple-100 text-purple-800",
   PHONG_THI_TRUONG: "bg-cyan-100 text-cyan-800",
   PHONG_CHO_XU_LY: "bg-warning-light text-warning-foreground",
+  PHONG_DOI_XU_LY: "bg-warning-light text-warning-foreground",
   PHONG_SAN_PHAM_DAT: "bg-emerald-100 text-emerald-800",
   PHONG_SAN_PHAM_KHONG_DAT: "bg-rose-100 text-rose-800",
   PHONG_CAY_TRONG: "bg-teal-100 text-teal-800",
@@ -402,6 +404,9 @@ export function instructionDisplayStatus(
 }
 
 export const REPACK_STATUS_LABELS = {
+  KTP_WAITING_HANDOVER: "Chờ Kho TP bàn giao",
+  KTP_HANDED_OVER: "Chờ Kho mô nhận",
+  WAITING_RETURN_HANDOVER: "Chờ Kho mô bàn giao lại Kho TP",
   CREATED: "Chờ gán NV",
   ASSIGNED: "Chờ NV nhận bàn giao",
   IN_PROGRESS: "Đang xử lý",
@@ -507,7 +512,7 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   SALES_MANAGER_IMPORT_PENDING: "/settings/sale/managers",
   SALES_MANAGER_IMPORT_DECIDED: "/settings/sale/managers",
   FINISHED_GOODS_WEEKLY_CHECK_SUBMITTED: "/task-assignment",
-  KTP_REPACK_CREATED: "/repack-instructions",
+  KTP_REPACK_CREATED: "/handover-in?tab=ktp-repack",
   KTP_REPACK_RETURNED: "/goods-receipts?tab=repack",
   GARDEN_HANDOVER_CREATED: "/garden-handovers",
 };
@@ -829,6 +834,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
+    { href: "/ktp-handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
     { href: "/inventory/thanh-pham", label: "Xem tồn thực tế", icon: "Package" },
@@ -852,6 +858,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/task-progress", label: "Theo dõi tiến độ công việc", icon: "Gauge" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
+    { href: "/ktp-handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },

@@ -18,6 +18,7 @@ const ROOM_TYPE_ICONS: Record<RoomType, typeof Sun> = {
   PHONG_THEO_DOI: Eye,
   PHONG_HAN_TUI: Package,
   PHONG_CHO_XU_LY: Hourglass,
+  PHONG_DOI_XU_LY: Hourglass,
   PHONG_THI_TRUONG: Globe,
   PHONG_SAN_PHAM_DAT: PackageCheck,
   PHONG_SAN_PHAM_KHONG_DAT: Package,
@@ -27,6 +28,7 @@ const ROOM_TYPE_ICONS: Record<RoomType, typeof Sun> = {
 const ROOM_TYPES_ORDER: RoomType[] = [
   "PHONG_MAU_ME",
   "PHONG_RA_RE",
+  "PHONG_DOI_XU_LY",
   "PHONG_TOI",
   "PHONG_NHIEM",
   "PHONG_DAT_TIEU_CHUAN",

@@ -50,7 +50,7 @@ const NO_SHELF_ROOM_TYPES = new Set<RoomType>([
 ]);
 // Kho sản xuất chỉ có đúng 4 loại phòng này — nhóm lại 2 tầng cho dễ nhìn: Phòng sáng (mẫu mẹ + ra rễ)
 // và Phòng tối (phòng nhiễm + các phòng tối cá nhân theo từng NV cấy mô).
-const BRIGHT_ROOM_TYPES = new Set<RoomType>(["PHONG_MAU_ME", "PHONG_RA_RE"]);
+const BRIGHT_ROOM_TYPES = new Set<RoomType>(["PHONG_MAU_ME", "PHONG_RA_RE", "PHONG_DOI_XU_LY"]);
 const DARK_ROOM_TYPES = new Set<RoomType>(["PHONG_TOI", "PHONG_NHIEM"]);
 
 type WarehouseData = {

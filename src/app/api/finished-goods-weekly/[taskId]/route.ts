@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole, FINISHED_SPEC_LABELS } from "@/types";
-import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
+import { createAlert } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
 import { generateContaminationProposalCode, generateRepackInstructionCode } from "@/lib/codes";
-import { getProcessingRoom, deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
+import { getProcessingRoom, deductFromRoomFifo, getAvailableInProcessingRoom, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { qlkSlotOf } from "@/lib/daily-task-weekly";
 import { z } from "zod";
 
@@ -32,8 +32,9 @@ const schema = z.object({
 //   roomId = Phòng chờ xử lý (Admin cấp cao từ chối thì hoàn về đó); phần Quản lý giảm cộng Phòng chờ xử lý.
 // - qlk-trong: trừ Phòng chờ xử lý, tạo phiếu TRONG gửi Admin cấp cao — duyệt thì tự tạo phiếu bàn giao về
 //   Vườn (xem PATCH /api/contamination-proposals/[id]).
-// - qlk-xu-ly: trừ Phòng chờ xử lý, tạo chỉ định xử lý (RepackInstruction có ktpRoomId) ở khu sản xuất đã
-//   chọn — không cần duyệt, Kho mô gán NV cấy mô, xong thì bàn giao lại Kho thành phẩm.
+// - qlk-xu-ly: tạo Phiếu xử lý (RepackInstruction có ktpRoomId, KTP_WAITING_HANDOVER) cho khu sản xuất đã
+//   chọn — không cần duyệt, CHƯA trừ Phòng chờ xử lý (chỉ giữ chỗ): Kho thành phẩm vào "Bàn giao liên kho"
+//   bấm Bàn giao mới trừ, Kho mô nhận vào Phòng đợi xử lý, xử lý xong bàn giao liên kho lại Kho thành phẩm.
 // Việc này + các việc cùng loại của tuần trước còn PENDING đều chuyển COMPLETED. Gửi không có dòng nào
 // vẫn được (tuần đó không có gì cần làm).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
@@ -114,7 +115,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   const staffCode = me?.code ?? "000";
 
   let created = { huy: 0, trong: 0, xuLy: 0 };
-  const repackIds: string[] = [];
   try {
     created = await prisma.$transaction(async (tx) => {
       const locked = await tx.dailyTask.updateMany({ where: { id: task.id, status: "PENDING" }, data: { status: "COMPLETED", completedAt: new Date(), resultNotes: data.notes } });
@@ -159,6 +159,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
       let trongBatch: string | null = null;
       for (const l of plantLines) {
         const pt = ptById.get(l.plantTypeId)!;
+        const availablePlant = await getAvailableInProcessingRoom(tx, processingRoom.id, l.plantTypeId, l.stageCode);
+        if (availablePlant < l.quantity) {
+          throw new InsufficientRoomStockError(`Đề xuất trồng ${pt.code} ${l.stageCode}: chỉ còn ${availablePlant.toLocaleString("vi-VN")} cây (đã trừ phần giữ chỗ cho Phiếu xử lý chưa bàn giao)`);
+        }
         await deductFromRoomFifo(tx, processingRoom.id, l.plantTypeId, l.stageCode, l.quantity, `Đề xuất trồng ${pt.code} ${l.stageCode}`);
         const code = await generateContaminationProposalCode("TRONG", now, tx);
         trongBatch = trongBatch ?? code;
@@ -174,17 +178,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
 
       for (const l of processLines) {
         const pt = ptById.get(l.plantTypeId)!;
-        await deductFromRoomFifo(tx, processingRoom.id, l.plantTypeId, l.stageCode, l.quantity, `Phiếu xử lý ${pt.code} ${l.stageCode}`);
+        // Chỉ giữ chỗ — tồn trừ lúc Kho thành phẩm bấm Bàn giao (PATCH /api/repack-instructions/[id] ktpHandover).
+        const availableProcess = await getAvailableInProcessingRoom(tx, processingRoom.id, l.plantTypeId, l.stageCode);
+        if (availableProcess < l.quantity) {
+          throw new InsufficientRoomStockError(`Phiếu xử lý ${pt.code} ${l.stageCode}: chỉ còn ${availableProcess.toLocaleString("vi-VN")} cây chưa giữ chỗ`);
+        }
         const code = await generateRepackInstructionCode({ warehouseCode: productionWarehouse!.code, shelfCode: "TP", client: tx });
-        const inst = await tx.repackInstruction.create({
+        await tx.repackInstruction.create({
           data: {
             code, plantTypeId: l.plantTypeId, ktpRoomId: processingRoom.id, productionWarehouseId: productionWarehouse!.id,
             inputStageCode: l.stageCode, inputQuantity: l.quantity, outputStageCode: l.outputStageCode,
-            expectedOutputQuantity: l.quantity, createdById: session.user.id, notes: data.notes, status: "CREATED",
+            expectedOutputQuantity: l.quantity, createdById: session.user.id, notes: data.notes, status: "KTP_WAITING_HANDOVER",
           },
           select: { id: true },
         });
-        repackIds.push(inst.id);
       }
 
       return { huy, trong, xuLy: processLines.length };
@@ -202,17 +209,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
       targetRole: "SUPER_ADMIN",
       relatedId: task.id,
       relatedType: "DailyTask",
-    });
-  }
-  if (created.xuLy > 0 && productionWarehouse) {
-    await createAlertForWarehouseStaff({
-      role: "KHO_MO",
-      warehouseId: productionWarehouse.id,
-      type: "KTP_REPACK_CREATED",
-      title: "Có Phiếu xử lý mới từ Kho thành phẩm",
-      message: `${session.user.name} gửi ${created.xuLy} phiếu xử lý sang ${productionWarehouse.name} — vào Chỉ định cấy > Chỉ định cấy xử lý để gán NV cấy mô.`,
-      relatedId: repackIds[0],
-      relatedType: "RepackInstruction",
     });
   }
 

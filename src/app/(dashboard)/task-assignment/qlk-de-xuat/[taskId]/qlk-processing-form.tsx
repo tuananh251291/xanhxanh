@@ -114,7 +114,7 @@ export default function QlkProcessingForm({
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Gửi thất bại"); return; }
-      toast.success(json.xuLy > 0 ? `Đã tạo ${json.xuLy} phiếu xử lý` : "Đã hoàn thành việc tuần (không có phiếu xử lý)");
+      toast.success(json.xuLy > 0 ? `Đã tạo ${json.xuLy} phiếu xử lý — vào Bàn giao liên kho để bàn giao` : "Đã hoàn thành việc tuần (không có phiếu xử lý)");
       router.push("/task-assignment");
       router.refresh();
     } finally {
@@ -148,7 +148,7 @@ export default function QlkProcessingForm({
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Tạo phiếu xử lý (từ Phòng chờ xử lý)</CardTitle>
           <p className="text-xs text-text-secondary">
-            Không cần duyệt — mỗi dòng thành 1 chỉ định cấy xử lý ở khu sản xuất đã chọn, Kho mô gán NV cấy mô, xử lý xong bàn giao lại Kho thành phẩm.
+            Không cần duyệt — mỗi dòng thành 1 phiếu xử lý chờ bàn giao ở Bàn giao liên kho. Bấm Bàn giao ở đó mới trừ Phòng chờ xử lý; Kho mô khu sản xuất nhận vào Phòng đợi xử lý, xử lý xong bàn giao liên kho lại Kho thành phẩm.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">

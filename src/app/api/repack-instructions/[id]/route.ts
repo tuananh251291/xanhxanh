@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
-import { createAlert } from "@/lib/inventory";
+import { isAdminRole, sumLotQuantity } from "@/types";
+import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
+import { generateLotCode } from "@/lib/codes";
+import { deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { z } from "zod";
 
 class InsufficientStockError extends Error {}
@@ -22,7 +24,7 @@ async function loadInstruction(id: string) {
       khoMoInspectedBy: { select: { name: true, code: true } },
       placedBy: { select: { name: true, code: true } },
       actualOutputShelf: { select: { code: true } },
-      outputLot: { select: { code: true, quantity: true } },
+      outputLot: { select: { id: true, code: true, quantity: true } },
     },
   });
 }
@@ -77,7 +79,12 @@ const patchSchema = z.union([
     }),
   }),
   z.object({ cancel: z.literal(true) }),
-  // Kho mô bàn giao lại kết quả Phiếu xử lý cho Kho thành phẩm (thay bước "Sắp xếp" lên kệ).
+  // Phiếu xử lý Kho thành phẩm — luồng bàn giao liên kho 2 chiều:
+  // 1. Kho thành phẩm "Bàn giao" phiếu đang chờ (trừ Phòng chờ xử lý) → Kho mô khu sản xuất nhận.
+  z.object({ ktpHandover: z.literal(true) }),
+  // 2. Kho mô "Nhận" → cộng vào 1 giàn Phòng đợi xử lý (thành kệ/lô nguồn của chỉ định xử lý).
+  z.object({ khoMoReceive: z.object({ shelfId: z.string().min(1) }) }),
+  // 3. Xử lý xong, đã xếp về giàn Phòng đợi xử lý → Kho mô bàn giao liên kho lại cho Kho thành phẩm.
   z.object({ returnToKtp: z.literal(true) }),
   // Kho thành phẩm xác nhận nhận lại — đạt vào Phòng đạt tiêu chuẩn, không đạt về Phòng chờ xử lý.
   z.object({
@@ -316,11 +323,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  // ---- KY_THUAT/Admin hủy chỉ định — chỉ khi NV chưa nhận bàn giao. Phiếu xử lý Kho thành phẩm thì đúng
-  // Quản lý kho thành phẩm đã tạo cũng hủy được — HOÀN LẠI Phòng chờ xử lý (đã trừ lúc tạo phiếu). ----
+  // ---- KY_THUAT/Admin hủy chỉ định — chỉ khi NV chưa nhận bàn giao. Phiếu xử lý Kho thành phẩm chỉ hủy được
+  // khi Kho thành phẩm CHƯA bàn giao sang khu sản xuất (chưa trừ tồn nào) — Quản lý kho thành phẩm đã tạo
+  // phiếu hoặc Admin. ----
   if ("cancel" in body) {
     const isKtpCreator = !!instruction.ktpRoomId && role === "QUAN_LY_KHO_THANH_PHAM" && instruction.createdById === session.user.id;
     if (role !== "KY_THUAT" && !isAdminRole(role) && !isKtpCreator) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    if (instruction.ktpRoomId && instruction.status !== "KTP_WAITING_HANDOVER") {
+      return NextResponse.json({ message: "Phiếu xử lý đã bàn giao sang khu sản xuất — không hủy được nữa" }, { status: 400 });
+    }
     if (role === "KY_THUAT" && instruction.createdById !== session.user.id) {
       return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     }
@@ -337,28 +348,129 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { fulfilledRepackInstructionId: id },
         data: { fulfilledAt: null, fulfilledRepackInstructionId: null },
       });
-      if (instruction.ktpRoomId) {
-        await upsertLot(tx, instruction.ktpRoomId, instruction.plantTypeId, instruction.plantType.code, instruction.inputStageCode, instruction.inputQuantity, instruction.createdBy.code);
-      }
       return tx.repackInstruction.update({ where: { id }, data: { status: "CANCELLED" } });
     });
     return NextResponse.json(updated);
   }
 
-  // ---- Kho mô bàn giao lại kết quả Phiếu xử lý cho Kho thành phẩm (sau khi đã kiểm tra) ----
+  // ---- Kho thành phẩm "Bàn giao" Phiếu xử lý sang khu sản xuất — TRỪ Phòng chờ xử lý tại đây ----
+  if ("ktpHandover" in body) {
+    if (role !== "KHO_THANH_PHAM" && role !== "QUAN_LY_KHO_THANH_PHAM" && !isAdminRole(role)) {
+      return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    }
+    if (!instruction.ktpRoom || instruction.status !== "KTP_WAITING_HANDOVER") {
+      return NextResponse.json({ message: "Phiếu xử lý không ở trạng thái chờ bàn giao" }, { status: 400 });
+    }
+    if (role !== "SUPER_ADMIN" && role !== "ADMIN" && instruction.ktpRoom.warehouseId !== session.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Phiếu không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+    const ktpRoom = instruction.ktpRoom;
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        const locked = await tx.repackInstruction.updateMany({
+          where: { id, status: "KTP_WAITING_HANDOVER" },
+          data: { status: "KTP_HANDED_OVER", ktpHandedOverAt: new Date(), ktpHandedOverById: session.user.id },
+        });
+        if (locked.count === 0) throw new InsufficientRoomStockError("Phiếu đã được bàn giao");
+        await deductFromRoomFifo(tx, ktpRoom.id, instruction.plantTypeId, instruction.inputStageCode, instruction.inputQuantity, `${ktpRoom.name} ${instruction.plantType.code} ${instruction.inputStageCode}`);
+        return tx.repackInstruction.findUnique({ where: { id } });
+      });
+      await createAlertForWarehouseStaff({
+        role: "KHO_MO",
+        warehouseId: instruction.productionWarehouseId,
+        type: "KTP_REPACK_CREATED",
+        title: "Kho thành phẩm bàn giao Phiếu xử lý",
+        message: `${session.user.name} bàn giao phiếu xử lý ${instruction.code}: ${instruction.inputQuantity.toLocaleString("vi-VN")} cây ${instruction.plantType.name} ${instruction.inputStageCode} — vào Nhận bàn giao liên kho để nhận vào Phòng đợi xử lý.`,
+        relatedId: instruction.id,
+        relatedType: "RepackInstruction",
+      });
+      return NextResponse.json(updated);
+    } catch (err) {
+      if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+      throw err;
+    }
+  }
+
+  // ---- Kho mô nhận Phiếu xử lý vào 1 giàn Phòng đợi xử lý — tạo lô nguồn, chỉ định về "Chờ gán NV" ----
+  if ("khoMoReceive" in body) {
+    if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+    const warehouseId = instruction.productionWarehouseId;
+    if (!warehouseId || instruction.status !== "KTP_HANDED_OVER") {
+      return NextResponse.json({ message: "Phiếu xử lý không ở trạng thái chờ Kho mô nhận" }, { status: 400 });
+    }
+    if (role === "KHO_MO" && warehouseId !== session.user.workplaceWarehouseId) {
+      return NextResponse.json({ message: "Phiếu không thuộc kho bạn làm việc" }, { status: 403 });
+    }
+    const shelf = await prisma.shelf.findFirst({
+      where: { id: body.khoMoReceive.shelfId, warehouseId, isActive: true, room: { type: "PHONG_DOI_XU_LY" } },
+      select: { id: true, code: true, capacity: true, lots: { where: { status: "ACTIVE" }, select: { quantity: true } } },
+    });
+    if (!shelf) return NextResponse.json({ message: "Giàn không thuộc Phòng đợi xử lý của kho này" }, { status: 400 });
+    if (shelf.capacity !== null && sumLotQuantity(shelf.lots) + instruction.inputQuantity > shelf.capacity) {
+      return NextResponse.json({ message: `Giàn ${shelf.code} không đủ chỗ trống — chọn giàn khác` }, { status: 409 });
+    }
+    const staff = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
+    const updated = await prisma.$transaction(async (tx) => {
+      const locked = await tx.repackInstruction.updateMany({ where: { id, status: "KTP_HANDED_OVER" }, data: { status: "CREATED" } });
+      if (locked.count === 0) throw new InsufficientRoomStockError("Phiếu đã được nhận");
+      const now = new Date();
+      const lot = await tx.lot.create({
+        data: {
+          code: await generateLotCode({ plantTypeCode: instruction.plantType.code, staffCode: staff?.code ?? "000", stageCode: instruction.inputStageCode, date: now, client: tx }),
+          plantTypeId: instruction.plantTypeId,
+          stage: "THANH_PHAM",
+          stageCode: instruction.inputStageCode,
+          shelfId: shelf.id,
+          quantity: instruction.inputQuantity,
+          initialQuantity: instruction.inputQuantity,
+          status: "ACTIVE",
+          enteredAt: now,
+        },
+        select: { id: true },
+      });
+      return tx.repackInstruction.update({
+        where: { id },
+        data: { sourceShelfId: shelf.id, sourceLotId: lot.id, khoMoReceivedAt: now, khoMoReceivedById: session.user.id },
+      });
+    }).catch((err) => {
+      if (err instanceof InsufficientRoomStockError) return null;
+      throw err;
+    });
+    if (!updated) return NextResponse.json({ message: "Phiếu đã được nhận" }, { status: 409 });
+    return NextResponse.json(updated);
+  }
+
+  // ---- Kho mô bàn giao liên kho lại cho Kho thành phẩm: trừ lô kết quả trên giàn Phòng đợi xử lý ----
   if ("returnToKtp" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
     }
     if (!instruction.ktpRoomId) return NextResponse.json({ message: "Chỉ định này không phải Phiếu xử lý của Kho thành phẩm" }, { status: 400 });
-    if (instruction.status !== "PENDING_PLACEMENT" || !instruction.khoMoInspectedAt) {
-      return NextResponse.json({ message: "Cần kiểm tra kết quả trước khi bàn giao lại Kho thành phẩm" }, { status: 400 });
+    if (instruction.status !== "WAITING_RETURN_HANDOVER" || !instruction.outputLot) {
+      return NextResponse.json({ message: "Cần sắp xếp kết quả về giàn Phòng đợi xử lý trước khi bàn giao lại Kho thành phẩm" }, { status: 400 });
     }
-    const updated = await prisma.repackInstruction.update({
-      where: { id },
-      data: { returnedAt: new Date(), returnedById: session.user.id, status: "PENDING_RETURN" },
-    });
+    const outputLot = instruction.outputLot;
+    const total = (instruction.confirmedPassedQuantity ?? 0) + (instruction.confirmedFailedQuantity ?? 0);
+    let updated;
+    try {
+      updated = await prisma.$transaction(async (tx) => {
+        const locked = await tx.repackInstruction.updateMany({
+          where: { id, status: "WAITING_RETURN_HANDOVER" },
+          data: { returnedAt: new Date(), returnedById: session.user.id, status: "PENDING_RETURN" },
+        });
+        if (locked.count === 0) throw new InsufficientRoomStockError("Phiếu đã được bàn giao lại");
+        const lot = await tx.lot.findUnique({ where: { id: outputLot.id }, select: { quantity: true } });
+        if (!lot || lot.quantity < total) {
+          throw new InsufficientRoomStockError(`Lô ${outputLot.code} trên giàn chỉ còn ${lot?.quantity ?? 0}, cần ${total}`);
+        }
+        await tx.lot.update({ where: { id: outputLot.id }, data: { quantity: { decrement: total } } });
+        return tx.repackInstruction.findUnique({ where: { id } });
+      });
+    } catch (err) {
+      if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+      throw err;
+    }
     for (const targetRole of ["QUAN_LY_KHO_THANH_PHAM", "KHO_THANH_PHAM"] as const) {
       await createAlert({
         type: "KTP_REPACK_RETURNED",

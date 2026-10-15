@@ -15,7 +15,13 @@ export async function createDefaultProductionRooms(
     data: [
       { code: `${code}-PS`, name: "Phòng mẫu mẹ", type: "PHONG_MAU_ME", warehouseId },
       { code: `${code}-PRR`, name: "Phòng ra rễ", type: "PHONG_RA_RE", warehouseId },
+      { code: `${code}-DXL`, name: "Phòng đợi xử lý", type: "PHONG_DOI_XU_LY", warehouseId },
       { code: `${code}-NHIEM`, name: "Phòng nhiễm", type: "PHONG_NHIEM", warehouseId },
     ],
   });
+  // Phòng đợi xử lý có sẵn 1 giàn — Admin thêm giàn sau ở Quản lý kho nếu cần.
+  const doiXuLy = await client.room.findFirst({ where: { warehouseId, type: "PHONG_DOI_XU_LY" }, select: { id: true } });
+  if (doiXuLy) {
+    await client.shelf.create({ data: { code: `${code}-DXL-G01`, name: "Giàn đợi xử lý 01", warehouseId, roomId: doiXuLy.id } });
+  }
 }

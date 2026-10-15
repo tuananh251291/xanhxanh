@@ -31,9 +31,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Phiếu xử lý Kho thành phẩm không xếp kệ — Kho mô "Bàn giao lại Kho thành phẩm" thay vào đó (xem PATCH
   // /api/repack-instructions/[id] nhánh returnToKtp).
   if (!instruction.sourceShelf || !instruction.sourceShelfId) {
-    return NextResponse.json({ message: "Phiếu xử lý của Kho thành phẩm — bàn giao lại Kho thành phẩm thay vì xếp kệ" }, { status: 400 });
+    return NextResponse.json({ message: "Chỉ định chưa có kệ nguồn (Kho mô chưa nhận Phiếu xử lý)" }, { status: 400 });
   }
   const sourceShelf = instruction.sourceShelf;
+  const isKtp = !!instruction.ktpRoomId;
   const sourceShelfId = instruction.sourceShelfId;
   if (role === "KHO_MO" && sourceShelf.warehouseId !== session!.user.workplaceWarehouseId) {
     return NextResponse.json({ message: "Chỉ định không thuộc kho bạn làm việc" }, { status: 403 });
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         shelfCode: parsed.data.shelfCode || sourceShelf.code,
         warehouseId: sourceShelf.warehouseId,
         staffCode: staff?.code ?? "000",
+        roomType: isKtp ? "PHONG_DOI_XU_LY" : "PHONG_RA_RE",
       });
       return tx.repackInstruction.update({
         where: { id },
@@ -69,7 +71,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           placedById: session!.user.id,
           actualOutputShelfId: shelf.id,
           outputLotId: lot.id,
-          status: "COMPLETED",
+          // Phiếu xử lý Kho thành phẩm: còn bước Kho mô bàn giao liên kho lại Kho thành phẩm.
+          status: isKtp ? "WAITING_RETURN_HANDOVER" : "COMPLETED",
         },
       });
     });

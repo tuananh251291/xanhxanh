@@ -52,3 +52,29 @@ export async function deductFromRoomFifo(
     remaining -= take;
   }
 }
+
+// Số cây đã "giữ chỗ" trong Phòng chờ xử lý cho Phiếu xử lý mà Kho thành phẩm CHƯA bấm Bàn giao
+// (RepackInstruction KTP_WAITING_HANDOVER — tồn chỉ trừ lúc bàn giao), theo `${plantTypeId}:${stageCode}`.
+// Phiếu xử lý/Đề xuất trồng mới chỉ được lấy phần còn lại (tồn − giữ chỗ).
+export async function getReservedForHandover(roomId: string, client: Client = prisma): Promise<Map<string, number>> {
+  const rows = await client.repackInstruction.groupBy({
+    by: ["plantTypeId", "inputStageCode"],
+    where: { ktpRoomId: roomId, status: "KTP_WAITING_HANDOVER" },
+    _sum: { inputQuantity: true },
+  });
+  return new Map(rows.map((r) => [`${r.plantTypeId}:${r.inputStageCode}`, r._sum.inputQuantity ?? 0]));
+}
+
+// Tồn còn lấy được của 1 mã cây + quy cách trong Phòng chờ xử lý (tồn thật − phần đã giữ chỗ).
+export async function getAvailableInProcessingRoom(
+  tx: Prisma.TransactionClient,
+  roomId: string,
+  plantTypeId: string,
+  stageCode: string
+): Promise<number> {
+  const [agg, reserved] = await Promise.all([
+    tx.lot.aggregate({ where: { roomId, plantTypeId, stageCode, status: "ACTIVE" }, _sum: { quantity: true } }),
+    getReservedForHandover(roomId, tx),
+  ]);
+  return (agg._sum.quantity ?? 0) - (reserved.get(`${plantTypeId}:${stageCode}`) ?? 0);
+}

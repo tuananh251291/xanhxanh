@@ -13,6 +13,9 @@ import AssignRepackStaffCell from "./assign-repack-staff-cell";
 import RepackReviewPanel from "./repack-review-panel";
 
 const STATUS_COLORS: Record<RepackInstructionStatus, string> = {
+  KTP_WAITING_HANDOVER: "bg-muted text-text-secondary",
+  KTP_HANDED_OVER: "bg-info-light text-info-foreground",
+  WAITING_RETURN_HANDOVER: "bg-info-light text-info-foreground",
   CREATED: "bg-muted text-text-secondary",
   ASSIGNED: "bg-info-light text-info-foreground",
   IN_PROGRESS: "bg-warning-light text-warning-foreground",
@@ -126,7 +129,7 @@ export default async function RepackInstructionsBoard({
 
       {needsReview.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-base font-bold text-foreground">Cần kiểm tra & sắp xếp / bàn giao lại Kho thành phẩm</h2>
+          <h2 className="text-base font-bold text-foreground">Cần kiểm tra & sắp xếp</h2>
           {needsReview.map((inst) => (
             <Card key={inst.id} className="border border-warning-light">
               <CardContent className="py-4 space-y-3">
@@ -146,6 +149,7 @@ export default async function RepackInstructionsBoard({
                     confirmedPassedQuantity: inst.confirmedPassedQuantity,
                     confirmedFailedQuantity: inst.confirmedFailedQuantity,
                     sourceShelf: inst.sourceShelf ? { code: inst.sourceShelf.code, warehouseId: inst.sourceShelf.warehouseId } : null,
+                    isKtp: !!inst.ktpRoomId,
                   }}
                 />
               </CardContent>

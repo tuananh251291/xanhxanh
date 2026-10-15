@@ -8,8 +8,9 @@ import { SendTab as SendMotherStockTab } from "../mother-warehouse-transfer/moth
 import { getRootingGroupsForHandoff } from "../transfers/finished/rooting-groups";
 import TransferFinishedForm from "../transfers/finished/transfer-finished-form";
 import ReplantHandoverBoard from "../replant-handovers/replant-handover-board";
+import KtpRepackReturnBoard from "./ktp-repack-return-board";
 
-const TAB_VALUES = ["mother-stock", "finished", "replant"] as const;
+const TAB_VALUES = ["mother-stock", "finished", "replant", "ktp-repack"] as const;
 
 // Gộp 3 luồng Kho mô gửi hàng đi kho/NV khác vào 1 menu — mỗi tab tái dùng NGUYÊN VẸN board/form của
 // route gốc (route gốc vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO, xem ROLE_NAV): "Bàn giao mẫu
@@ -52,6 +53,7 @@ export default async function HandoverOutPage({
           <TabsTrigger value="mother-stock">Bàn giao mẫu mẹ</TabsTrigger>
           <TabsTrigger value="finished">Bàn giao thành phẩm</TabsTrigger>
           <TabsTrigger value="replant">Bàn giao cây trồng</TabsTrigger>
+          <TabsTrigger value="ktp-repack">Bàn giao phiếu xử lý về Kho TP</TabsTrigger>
         </TabsList>
 
         <TabsContent value="mother-stock" className="mt-4">
@@ -70,6 +72,10 @@ export default async function HandoverOutPage({
 
         <TabsContent value="replant" className="mt-4">
           <ReplantHandoverBoard canCreate={true} />
+        </TabsContent>
+
+        <TabsContent value="ktp-repack" className="mt-4">
+          <KtpRepackReturnBoard warehouseId={session!.user.workplaceWarehouseId ?? null} />
         </TabsContent>
       </Tabs>
     </div>
