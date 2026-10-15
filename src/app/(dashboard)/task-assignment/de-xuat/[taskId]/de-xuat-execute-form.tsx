@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Send, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowLeft, Send, Loader2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 import { CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS } from "@/lib/contamination-proposal-constants";
@@ -48,6 +49,7 @@ export default function DeXuatExecuteForm({
   const [values, setValues] = useState<Record<string, RowValue>>({});
   const [productionGardenId, setProductionGardenId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   // key = `${lotId}:huy|trong` — ô nào đang tải ảnh lên.
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
 
@@ -100,13 +102,18 @@ export default function DeXuatExecuteForm({
     }).catch(() => {});
   };
 
-  const submit = async () => {
-    const rows = lots
+  const collectRows = () =>
+    lots
       .map((l) => {
         const v = getValue(l.id);
         return { lot: l, huy: parseInt(v.huy, 10) || 0, trong: parseInt(v.trong, 10) || 0, huyPhotos: v.huyPhotos, trongPhotos: v.trongPhotos };
       })
       .filter((r) => r.huy > 0 || r.trong > 0);
+
+  // Bấm "Tạo phiếu đề xuất" chỉ kiểm tra hợp lệ rồi mở hộp thoại hỏi lại — NV hay nhầm nhập số túi thay
+  // vì số cây, phải bấm xác nhận lần nữa (send) mới thật sự gửi.
+  const submit = () => {
+    const rows = collectRows();
     if (rows.length === 0) { toast.error("Chưa nhập số lượng dòng nào"); return; }
     for (const r of rows) {
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
@@ -118,7 +125,11 @@ export default function DeXuatExecuteForm({
         if (r.trong > 0 && r.trongPhotos.length === 0) { toast.error(`${r.lot.plantType.code}: cần đính kèm ảnh cho phần đề xuất trồng`); return; }
       }
     }
+    setConfirmOpen(true);
+  };
 
+  const send = async () => {
+    const rows = collectRows();
     setSubmitting(true);
     let batchCode: string | undefined;
     let successCount = 0;
@@ -157,6 +168,7 @@ export default function DeXuatExecuteForm({
       }
     } finally {
       setSubmitting(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -315,6 +327,23 @@ export default function DeXuatExecuteForm({
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={confirmOpen} onOpenChange={(o) => { if (!submitting) setConfirmOpen(o); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Kiểm tra lại số liệu</DialogTitle></DialogHeader>
+          <div className="flex items-start gap-2 text-sm font-medium text-warning-foreground bg-warning-light rounded-lg p-3">
+            <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
+            Hãy kiểm tra số liệu một lần nữa, chắc chắn rằng đây là số cây, không phải số túi.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>Kiểm tra lại</Button>
+            <Button className="bg-primary hover:bg-primary-hover" onClick={send} disabled={submitting}>
+              {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              Đúng là số cây, gửi đề xuất
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
