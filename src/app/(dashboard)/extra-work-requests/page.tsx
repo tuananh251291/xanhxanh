@@ -4,6 +4,7 @@ import { CalendarPlus } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole } from "@/types";
 import ExtraWorkRequestBoard from "./extra-work-request-board";
+import SealingTaskReceiveBoard from "./sealing-task-receive-board";
 
 export default async function ExtraWorkRequestsPage() {
   const session = await auth();
@@ -23,6 +24,11 @@ export default async function ExtraWorkRequestsPage() {
       </div>
 
       <ExtraWorkRequestBoard />
+
+      <div className="space-y-3">
+        <h2 className="text-base font-bold text-foreground">Việc hàn túi chờ xác nhận</h2>
+        <SealingTaskReceiveBoard />
+      </div>
     </div>
   );
 }

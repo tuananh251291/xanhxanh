@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCheck, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { ProposalItemsTable, summarizeBatchStatus, type Proposal } from "../contamination-proposal-board";
+import { ProposalItemsTable, summarizeBatchStatus, canApproveProposal, type Proposal } from "../contamination-proposal-board";
 
 // Trang chi tiết 1 "đề xuất" (batchCode, hoặc chính `code` của dòng đơn lẻ tạo trước khi có tính năng
 // gộp) — tách khỏi popup "Xem thêm" cũ vì có phiếu gộp tới vài chục loại cây, hiện hết trong 1 khung nhỏ
@@ -96,7 +96,7 @@ export default function BatchDetailBoard({
       ) : (
         (() => {
           const summary = summarizeBatchStatus(items);
-          const pendingCount = items.filter((p) => p.status === "PENDING").length;
+          const pendingCount = items.filter((p) => p.status === "PENDING" && canApproveProposal(p, currentUserRole)).length;
           const total = items.reduce((s, p) => s + p.quantity, 0);
           return (
             <Card>

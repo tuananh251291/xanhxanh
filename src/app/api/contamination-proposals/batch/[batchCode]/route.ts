@@ -9,7 +9,7 @@ import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGarde
 const include = {
   plantType: { select: { code: true, name: true } },
   warehouse: { select: { code: true, name: true } },
-  room: { select: { name: true } },
+  room: { select: { name: true, type: true } },
   requestedBy: { select: { name: true } },
   approvedBy: { select: { name: true } },
   productionGarden: { select: { code: true, name: true } },

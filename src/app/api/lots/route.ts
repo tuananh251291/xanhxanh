@@ -49,7 +49,8 @@ export async function GET(req: NextRequest) {
     // Kho sản xuất vẫn gắn qua kệ (shelf.roomId).
     where.OR = [{ roomId }, { shelf: { roomId } }];
   } else if (warehouseId) {
-    where.shelf = { warehouseId };
+    // Kèm roomType (nếu có, trừ PHONG_TOI vốn không qua kệ) — VD lấy thành phẩm Phòng ra rễ của đúng 1 kho.
+    where.shelf = { warehouseId, ...(roomType && roomType !== "PHONG_TOI" ? { room: { type: roomType } } : {}) };
   } else if (roomType === "PHONG_TOI") {
     // Phòng tối cá nhân giờ là 1 Room riêng/NV — Lot gắn thẳng vào Room đó (roomId), không qua kệ.
     where.room = { type: "PHONG_TOI" };

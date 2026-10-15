@@ -1889,11 +1889,10 @@ model RepackInstruction {
 }
 
 // ============================================================
-// SEALING TASKS — "Giao việc hàn túi": NV cấy mô (từ 1 ExtraWorkRequest đã duyệt) sang hỗ trợ Kho
-// thành phẩm hàn/đóng gói lại túi sản phẩm đang nằm ở Phòng theo dõi. Khác RepackInstruction (xử lý
-// NGAY TRONG kho sản xuất, tự Kho mô kiểm tra/sắp xếp lại) — đây là việc XUYÊN 2 kho: Kho mô giao việc,
-// nhưng Phòng theo dõi (nguồn, trừ tồn ngay lúc giao) và Phòng hàn túi (đích, cộng tồn lúc xác nhận) đều
-// thuộc Kho thành phẩm nên bước xác nhận cuối do Kho thành phẩm làm — KHÔNG phải Kho mô.
+// SEALING TASKS — "Giao việc hàn túi": NV cấy mô (từ 1 ExtraWorkRequest đã duyệt) hàn/đóng gói lại túi
+// thành phẩm đang nằm trên kệ Phòng ra rễ của KHU SẢN XUẤT nơi NV làm việc (warehouseId = kho sản xuất).
+// Kho thành phẩm không còn Phòng theo dõi/hàn túi — Kho mô giao việc VÀ xác nhận kết quả, không trừ/chuyển
+// tồn (túi vẫn trên kệ). Bản ghi cũ (warehouseId = kho thành phẩm) chỉ còn là lịch sử.
 // ============================================================
 
 enum SealingTaskStatus {

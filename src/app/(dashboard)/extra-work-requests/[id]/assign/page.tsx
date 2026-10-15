@@ -30,6 +30,7 @@ export default async function AssignExtraWorkPage({ params }: { params: Promise<
   return (
     <AssignWorkChoice
       requestId={request.id}
+      warehouseId={request.staff.workplaceWarehouseId}
       staffName={request.staff.name}
       staffCode={request.staff.code}
       requestType={request.type}

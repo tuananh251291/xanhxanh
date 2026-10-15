@@ -13,6 +13,7 @@ import { Loader2, Check, X, ChevronDown, ChevronUp, Pencil, Send, ArrowRight } f
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 
 export type Proposal = {
   id: string;
@@ -28,7 +29,7 @@ export type Proposal = {
   plantType: { code: string; name: string };
   warehouse: { name: string; code: string };
   warehouseId: string;
-  room: { name: string } | null;
+  room: { name: string; type?: string } | null;
   productionGarden: { code: string; name: string } | null;
   requestedBy: { name: string };
   requestedById: string;
@@ -36,6 +37,12 @@ export type Proposal = {
   photoUrls: string[];
 };
 export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
+
+// Đề xuất của Quản lý kho thành phẩm từ Phòng chờ xử lý chỉ Admin cấp cao duyệt (xem
+// requiresSuperAdminApproval, src/lib/garden-handover.ts) — Admin thường không hiện nút Duyệt/Từ chối.
+export function canApproveProposal(p: Proposal, role: string | null | undefined): boolean {
+  return p.room?.type !== "PHONG_CHO_XU_LY" || role === "SUPER_ADMIN";
+}
 
 // Nhóm các dòng cùng batchCode (cùng 1 lần bấm "Gửi đề xuất trồng/hủy") thành 1 "đề xuất" — dòng cũ tạo
 // trước khi có tính năng gộp (batchCode null) hiển thị như 1 đề xuất riêng, dùng chính code của nó.
@@ -204,6 +211,8 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
   onReview: (id: string, action: "approve" | "reject", reason?: string) => void;
   onSaved: () => void;
 }) {
+  const { data: session } = useSession();
+  const role = session?.user?.role;
   return (
     <div className="overflow-x-auto rounded-lg border border-divider">
       <table className="w-full text-sm">
@@ -247,7 +256,7 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
               <td className="px-3 py-2 text-right font-medium text-foreground">{p.quantity.toLocaleString("vi-VN")}</td>
               {(canApprove || canSubmit) && (
                 <td className="px-3 py-2">
-                  {canApprove && p.status === "PENDING" && (
+                  {canApprove && p.status === "PENDING" && canApproveProposal(p, role) && (
                     <div className="flex gap-1 justify-end">
                       <RejectDialog loading={processingId === p.id} onConfirm={(reason) => onReview(p.id, "reject", reason)} />
                       <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === p.id} onClick={() => onReview(p.id, "approve")}>
@@ -339,7 +348,8 @@ export default function ContaminationProposalBoard({ canApprove }: { canApprove:
 
   const huyProposals = proposals.filter((p) => p.type === "HUY");
   const trongProposals = proposals.filter((p) => p.type === "TRONG");
-  const pendingCount = proposals.filter((p) => p.status === "PENDING").length;
+  const { data: session } = useSession();
+  const pendingCount = proposals.filter((p) => p.status === "PENDING" && canApproveProposal(p, session?.user?.role)).length;
   const huyBatches = groupIntoBatches(huyProposals);
   const trongBatches = groupIntoBatches(trongProposals);
 
