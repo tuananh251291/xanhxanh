@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getAccessibleRoomIds, getQualifiedLots } from "@/lib/order-availability";
-import { canActAsSale } from "@/types";
+import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 
-const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
+const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
 
 // Tra nhanh tồn đạt tiêu chuẩn cho 1 tổ hợp loại cây + quy cách — dùng để hiện "Số lượng đạt tiêu chuẩn" ngay khi
 // Sale (hoặc Quản lý kho thành phẩm thao tác hộ, xem canActAsSale) chọn loại cây/quy cách trên form
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Thiếu plantTypeId hoặc stageCode" }, { status: 400 });
   }
   if (!FINISHED_STAGE_CODES.has(stageCode)) {
-    return NextResponse.json({ message: `Quy cách "${stageCode}" không hợp lệ (T01/T05/T10)` }, { status: 400 });
+    return NextResponse.json({ message: `Quy cách "${stageCode}" không hợp lệ (T01/T05/T06/T10/T20/T25)` }, { status: 400 });
   }
 
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);

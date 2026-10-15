@@ -287,7 +287,24 @@ export const FINISHED_SPEC_BAG_SIZE = {
   T01: 1,
   T05: 5,
   T10: 10,
+  T06: 6,
+  T20: 20,
+  T25: 25,
 } as const;
+
+// Quy cách túi chỉ có khi NHẬP HÀNG từ NCC/khu sản xuất (không đóng gói ra trong hệ thống) — nhập vào kho
+// rồi xuất bán luôn (đơn hàng nhận được) hoặc Xử lý cây đổi sang T01/T05/T10. Không phải đầu ra của bất
+// kỳ chỉ định/phiếu xử lý nào (đầu ra vẫn chỉ FINISHED_SPEC_LABELS).
+export const INBOUND_SPEC_LABELS = {
+  T06: "T06 — túi 6 cây",
+  T20: "T20 — túi 20 cây",
+  T25: "T25 — túi 25 cây",
+} as const;
+
+// Mọi quy cách túi thành phẩm có thể có trong tồn kho/đơn hàng.
+export const ALL_FINISHED_STAGE_CODES = [...Object.keys(FINISHED_SPEC_LABELS), ...Object.keys(INBOUND_SPEC_LABELS)] as (
+  keyof typeof FINISHED_SPEC_LABELS | keyof typeof INBOUND_SPEC_LABELS
+)[];
 
 // Quy cách chậu (Phòng cây trồng, Kho thị trường) — gắn trên Lot.stageCode khi stage = THANH_PHAM, dùng
 // riêng cho "Xuất cây" (Đối tác vận hành, xem src/lib/market-export.ts). Khác hẳn FINISHED_SPEC_LABELS

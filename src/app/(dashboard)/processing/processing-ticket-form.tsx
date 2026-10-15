@@ -29,6 +29,13 @@ const STAGE_OPTIONS = [
   { value: "T05", label: "T05 (túi 5 cây)" },
   { value: "T10", label: "T10 (túi 10 cây)" },
 ];
+// Đầu vào nhận thêm quy cách chỉ có khi nhập hàng (T06/T20/T25) để đổi sang T01/T05/T10 — đầu ra không có.
+const INPUT_STAGE_OPTIONS = [
+  ...STAGE_OPTIONS,
+  { value: "T06", label: "T06 (túi 6 cây)" },
+  { value: "T20", label: "T20 (túi 20 cây)" },
+  { value: "T25", label: "T25 (túi 25 cây)" },
+];
 
 export default function ProcessingTicketForm({ rooms, plantTypes }: { rooms: Room[]; plantTypes: PlantType[] }) {
   const [roomId, setRoomId] = useState("");
@@ -142,10 +149,10 @@ export default function ProcessingTicketForm({ rooms, plantTypes }: { rooms: Roo
             <p className="text-sm font-semibold text-primary-strong">Đầu vào cần xử lý</p>
             <div className="space-y-1">
               <Label>Quy cách *</Label>
-              <Select items={STAGE_OPTIONS} value={inputStageCode} onValueChange={(v) => setInputStageCode(v as string)}>
+              <Select items={INPUT_STAGE_OPTIONS} value={inputStageCode} onValueChange={(v) => setInputStageCode(v as string)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {STAGE_OPTIONS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                  {INPUT_STAGE_OPTIONS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

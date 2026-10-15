@@ -5,9 +5,13 @@ import { generateProcessingTicketCode, generateLotCode } from "@/lib/codes";
 import { getQualifiedLots } from "@/lib/order-availability";
 import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { z } from "zod";
+import { FINISHED_SPEC_LABELS, ALL_FINISHED_STAGE_CODES } from "@/types";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
-const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
+// Đầu vào nhận thêm T06/T20/T25 (quy cách chỉ có khi nhập hàng, xem INBOUND_SPEC_LABELS) — đầu ra vẫn chỉ
+// T01/T05/T10.
+const INPUT_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
+const OUTPUT_STAGE_CODES = new Set<string>(Object.keys(FINISHED_SPEC_LABELS));
 
 const createSchema = z
   .object({
@@ -41,8 +45,8 @@ export async function POST(req: NextRequest) {
   }
   const { roomId, plantTypeId, inputStageCode, inputQuantity, outputStageCode, outputQuantity, notes, dueAt } = parsed.data;
 
-  if (!FINISHED_STAGE_CODES.has(inputStageCode) || !FINISHED_STAGE_CODES.has(outputStageCode)) {
-    return NextResponse.json({ message: "Quy cách không hợp lệ (T01/T05/T10)" }, { status: 400 });
+  if (!INPUT_STAGE_CODES.has(inputStageCode) || !OUTPUT_STAGE_CODES.has(outputStageCode)) {
+    return NextResponse.json({ message: "Quy cách không hợp lệ (đầu vào T01/T05/T06/T10/T20/T25, đầu ra T01/T05/T10)" }, { status: 400 });
   }
 
   const validRooms = await getFinishedQualifiedRooms();

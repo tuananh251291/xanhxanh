@@ -6,11 +6,11 @@ import { generateOrderCode } from "@/lib/codes";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { getSystemConfig } from "@/lib/inventory";
-import { canActAsSale } from "@/types";
+import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
-const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
+const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
 
 // Nhóm khách hàng "Khách công ty lớn" được giữ đơn 5 THÁNG kể từ lúc Tạm giữ, thay vì theo Năng lực giữ
 // đơn (ngày) mặc định của NV Sale — xem CustomerGroup, prisma/schema.prisma.
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   for (const item of parsed.data.items) {
     if (!FINISHED_STAGE_CODES.has(item.stageCode)) {
-      return NextResponse.json({ message: `Quy cách "${item.stageCode}" không hợp lệ (T01/T05/T10)` }, { status: 400 });
+      return NextResponse.json({ message: `Quy cách "${item.stageCode}" không hợp lệ (T01/T05/T06/T10/T20/T25)` }, { status: 400 });
     }
   }
 

@@ -3,9 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
 import { cellText, cellNumber, styleExampleRow, markRequiredHeaders, addGuideSheet } from "@/lib/excel-import";
-import { canActAsSale } from "@/types";
+import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 
-const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
+const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
 
 // Tải mẫu Excel cho bảng "Bảng thông tin" của đơn hàng (Mã cây/Tên cây/Quy cách/Số lượng/Yêu cầu đặc
 // biệt + Mã khách hàng/Mã NV bán hàng). Mã khách hàng/Mã NV bán hàng là thông tin ĐẦU PHIẾU (1 đơn = 1
@@ -80,7 +80,7 @@ export async function GET() {
   addGuideSheet(workbook, [
     { column: "Mã cây", required: true, description: "Đúng mã loại cây đã có trong hệ thống — sai mã sẽ báo lỗi khi tải lên." },
     { column: "Tên cây (chỉ tham khảo)", required: false, description: "Không đọc lại khi nhập — chỉ để người điền đối chiếu đúng mã cây." },
-    { column: "Quy cách", required: true, description: "Chỉ nhận T01, T05 hoặc T10." },
+    { column: "Quy cách", required: true, description: "Chỉ nhận T01, T05, T06, T10, T20 hoặc T25." },
     { column: "Số lượng (cây)", required: true, description: "Số nguyên dương." },
     { column: "Yêu cầu đặc biệt", required: false, description: "Ghi chú riêng cho dòng hàng này, hiện trên phiếu in." },
     {
@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
       continue;
     }
     if (!FINISHED_STAGE_CODES.has(parsed.stageCode)) {
-      errors.push({ row: parsed.row, label: parsed.plantTypeCode, message: `Quy cách "${parsed.stageCode}" không hợp lệ (T01/T05/T10)` });
+      errors.push({ row: parsed.row, label: parsed.plantTypeCode, message: `Quy cách "${parsed.stageCode}" không hợp lệ (T01/T05/T06/T10/T20/T25)` });
       continue;
     }
     if (parsed.quantity === undefined || !Number.isFinite(parsed.quantity) || parsed.quantity <= 0 || !Number.isInteger(parsed.quantity)) {

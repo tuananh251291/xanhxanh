@@ -31,6 +31,9 @@ const STAGE_OPTIONS = [
   { value: "T01", label: "T01 (túi 1 cây)" },
   { value: "T05", label: "T05 (túi 5 cây)" },
   { value: "T10", label: "T10 (túi 10 cây)" },
+  { value: "T06", label: "T06 (túi 6 cây)" },
+  { value: "T20", label: "T20 (túi 20 cây)" },
+  { value: "T25", label: "T25 (túi 25 cây)" },
 ];
 
 let rowKeySeq = 0;

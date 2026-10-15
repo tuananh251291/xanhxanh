@@ -8,17 +8,20 @@ import { createAlert } from "@/lib/inventory";
 import { addDays } from "date-fns";
 import { cellDate } from "@/lib/excel-import";
 import { z } from "zod";
+import { ALL_FINISHED_STAGE_CODES } from "@/types";
+
+const STAGE_CODES = ALL_FINISHED_STAGE_CODES as [string, ...string[]];
 
 const confirmedItemSchema = z.object({
   plantTypeId: z.string().min(1),
-  stageCode: z.enum(["T01", "T05", "T10"]),
+  stageCode: z.enum(STAGE_CODES),
   quantityDelivered: z.number().int().positive(),
   quantityRejected: z.number().int().min(0),
 });
 
 const plannedItemSchema = z.object({
   plantTypeId: z.string().min(1),
-  stageCode: z.enum(["T01", "T05", "T10"]),
+  stageCode: z.enum(STAGE_CODES),
   estimatedQuantity: z.number().int().positive(),
 });
 
@@ -45,7 +48,7 @@ const createSchema = z.discriminatedUnion("status", [
 ]);
 
 // "Nhập hàng" — Kho thành phẩm ghi nhận 1 lần nhận hàng từ nhà cung cấp ngoài. Mỗi dòng tự chọn quy cách
-// (T01/T05/T10) — phần "đạt" (quantityDelivered - quantityRejected) cộng thẳng vào 1 lô ACTIVE đúng quy
+// (T01/T05/T10, hoặc T06/T20/T25 chỉ có ở nhập hàng — xem INBOUND_SPEC_LABELS) — phần "đạt" (quantityDelivered - quantityRejected) cộng thẳng vào 1 lô ACTIVE đúng quy
 // cách đó trong Phòng đạt tiêu chuẩn đã chọn (tăng cả tồn thực tế lẫn tồn đạt tiêu chuẩn, giống pattern
 // merge-hoặc-tạo-mới ở POST /api/processing-tickets); phần "không đạt" cộng vào 1 lô ACTIVE cùng quy
 // cách trong Phòng chờ xử lý CÙNG kho đó (tăng tồn thực tế vì trang tồn thực tế cộng gộp mọi phòng của

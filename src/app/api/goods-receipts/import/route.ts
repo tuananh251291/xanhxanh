@@ -5,8 +5,9 @@ import { getFinishedQualifiedRooms } from "@/lib/processing";
 import { createPlannedGoodsReceipt } from "@/lib/goods-receipt";
 import { cellText, cellNumber, cellDate, markRequiredHeaders, styleExampleRow, addGuideSheet } from "@/lib/excel-import";
 import ExcelJS from "exceljs";
+import { ALL_FINISHED_STAGE_CODES } from "@/types";
 
-const STAGE_CODES = ["T01", "T05", "T10"];
+const STAGE_CODES: string[] = ALL_FINISHED_STAGE_CODES;
 
 function isKhoThanhPham(role: string | null | undefined) {
   return role === "KHO_THANH_PHAM" || role === "QUAN_LY_KHO_THANH_PHAM";
@@ -61,7 +62,7 @@ export async function GET() {
   addGuideSheet(workbook, [
     { column: "Mã NCC", required: true, description: "Mã nhà cung cấp đã có trong hệ thống — xem sheet Danh mục." },
     { column: "Mã hàng", required: true, description: "Mã loại cây đã có trong hệ thống — xem sheet Danh mục." },
-    { column: "Quy cách", required: true, description: "T01 (túi 1 cây) / T05 (túi 5 cây) / T10 (túi 10 cây)." },
+    { column: "Quy cách", required: true, description: "T01 (túi 1 cây) / T05 (túi 5 cây) / T06 (túi 6 cây) / T10 (túi 10 cây) / T20 (túi 20 cây) / T25 (túi 25 cây)." },
     { column: "Số lượng", required: true, description: "Số nguyên dương." },
     {
       column: "Ngày hàng về",
@@ -155,7 +156,7 @@ export async function POST(req: NextRequest) {
     const plantType = plantTypeByCode.get(plantTypeCode.toUpperCase());
     if (!plantType) { errors.push({ row: rowNumber, label, message: `Không tìm thấy loại cây "${plantTypeCode}"` }); return; }
 
-    if (!STAGE_CODES.includes(stageCode)) { errors.push({ row: rowNumber, label, message: "Quy cách phải là T01, T05 hoặc T10" }); return; }
+    if (!STAGE_CODES.includes(stageCode)) { errors.push({ row: rowNumber, label, message: "Quy cách phải là T01, T05, T06, T10, T20 hoặc T25" }); return; }
 
     if (quantity === undefined) { errors.push({ row: rowNumber, label, message: "Thiếu Số lượng" }); return; }
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {

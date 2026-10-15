@@ -21,13 +21,13 @@ import {
 } from "@/components/ui/combobox";
 import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert, Download, Upload, PenLine, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
-import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, type CustomerGroup } from "@/types";
+import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, FINISHED_SPEC_BAG_SIZE, type CustomerGroup } from "@/types";
 
 const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ value, label }));
 
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
-type DemandRow = { key: string; plantTypeId: string; stageCode: "T01" | "T05" | "T10"; quantity: string };
+type DemandRow = { key: string; plantTypeId: string; stageCode: string; quantity: string };
 // quantityInput = số lượng đang sửa trên giao diện (chuỗi để gõ dở/xoá trắng được), khởi tạo từ quantity trong file.
 type ExcelItem = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; quantityInput: string; notes?: string };
 const isValidQty = (v: string) => /^\d+$/.test(v.trim()) && Number(v) > 0;
@@ -38,7 +38,7 @@ type Alternative = {
   usesPlannedStock: boolean; plannedDate: string | null; bufferQuantity: number;
 };
 
-const BAG_SIZE: Record<string, number> = { T01: 1, T05: 5, T10: 10 };
+const BAG_SIZE: Record<string, number> = FINISHED_SPEC_BAG_SIZE;
 
 // Phân bổ lại phần thiếu (remainingTotal) cho các đề xuất thay thế theo đúng thứ tự ưu tiên server đã
 // trả về — bỏ tích 1 đề xuất thì phần thiếu nó đang bù tự động dồn sang đề xuất còn lại (tính lại từ
@@ -102,6 +102,9 @@ const STAGE_OPTIONS = [
   { value: "T01", label: "T01 (túi 1 cây)" },
   { value: "T05", label: "T05 (túi 5 cây)" },
   { value: "T10", label: "T10 (túi 10 cây)" },
+  { value: "T06", label: "T06 (túi 6 cây)" },
+  { value: "T20", label: "T20 (túi 20 cây)" },
+  { value: "T25", label: "T25 (túi 25 cây)" },
 ];
 
 let rowKeySeq = 0;
@@ -459,7 +462,7 @@ export default function OrderCheckForm({
                       </Combobox>
                     </td>
                     <td className="px-3 py-1.5">
-                      <Select items={STAGE_OPTIONS} value={row.stageCode} onValueChange={(v) => updateRow(row.key, { stageCode: v as "T01" | "T05" | "T10" })}>
+                      <Select items={STAGE_OPTIONS} value={row.stageCode} onValueChange={(v) => updateRow(row.key, { stageCode: v as string })}>
                         <SelectTrigger className="w-full h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {STAGE_OPTIONS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}

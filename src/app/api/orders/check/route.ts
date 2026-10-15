@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots, parseBagSize } from "@/lib/order-availability";
-import { canActAsSale } from "@/types";
+import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực
 // tiếp từ Phòng ra rễ) — vẫn hợp lệ ở đây vì Sale chỉ bao giờ tham chiếu tồn kho trong Phòng đạt tiêu
 // chuẩn/Phòng thị trường (xem getAccessibleRoomIds), không đụng tới phía sản xuất.
-const FINISHED_STAGE_CODES = new Set(["T01", "T05", "T10"]);
+const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
 
 const checkSchema = z.object({
   // Ngày xuất dự kiến — quyết định lô "ảo" nào (Kế hoạch nhập kho chưa về, xem
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
 
   for (const item of parsed.data.items) {
     if (!FINISHED_STAGE_CODES.has(item.stageCode)) {
-      return NextResponse.json({ message: `Quy cách "${item.stageCode}" không hợp lệ (T01/T05/T10)` }, { status: 400 });
+      return NextResponse.json({ message: `Quy cách "${item.stageCode}" không hợp lệ (T01/T05/T06/T10/T20/T25)` }, { status: 400 });
     }
   }
 
