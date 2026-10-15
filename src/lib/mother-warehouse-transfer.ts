@@ -157,16 +157,29 @@ export async function sendMotherStockToWarehouse(params: {
   };
 }
 
+// Số thực nhận có thể xếp ra NHIỀU giàn đích (1 chuyến lớn thường vượt chỗ trống của 1 giàn) — mỗi dòng
+// placements = 1 giàn + số cụm xếp lên giàn đó, tổng các dòng = số lượng thực nhận (0 dòng = nhận 0 cụm,
+// đóng phiếu). Dòng trùng giàn được gộp. Kiểm tra từng giàn (đúng kho/Phòng mẫu mẹ, đúng mã cây được
+// phép, không vượt chỗ trống CỦA GIÀN ĐÓ) trước, rồi tạo mỗi giàn 1 lô mới trong CÙNG 1 transaction — 1
+// giàn lỗi thì không giàn nào được xếp.
+export type MotherReceiptPlacement = { toShelfCode: string; quantity: number };
+
 export async function confirmMotherStockReceipt(params: {
   transferId: string;
-  toShelfCode?: string;
-  actualQuantity: number;
+  placements: MotherReceiptPlacement[];
   workplaceWarehouseId: string;
   confirmedByUserId: string;
-}): Promise<{ createdLotCode: string | null; shortfall: number; sentQuantity: number }> {
-  const { transferId, toShelfCode, actualQuantity, workplaceWarehouseId, confirmedByUserId } = params;
+}): Promise<{ createdLotCodes: string[]; actualQuantity: number; shortfall: number; sentQuantity: number }> {
+  const { transferId, workplaceWarehouseId, confirmedByUserId } = params;
 
-  if (actualQuantity < 0) throw new ShelfAssignError("Số lượng thực nhận không được âm");
+  const mergedPlacements = new Map<string, number>();
+  for (const p of params.placements) {
+    if (!Number.isInteger(p.quantity) || p.quantity <= 0) throw new ShelfAssignError("Số cụm xếp lên mỗi giàn phải lớn hơn 0");
+    const code = p.toShelfCode.trim().toUpperCase();
+    if (!code) throw new ShelfAssignError("Cần chọn giàn đích cho mỗi dòng");
+    mergedPlacements.set(code, (mergedPlacements.get(code) ?? 0) + p.quantity);
+  }
+  const actualQuantity = Array.from(mergedPlacements.values()).reduce((s, q) => s + q, 0);
 
   const confirmedByUser = await prisma.user.findUnique({ where: { id: confirmedByUserId }, select: { code: true } });
   const confirmedByCode = confirmedByUser?.code ?? confirmedByUserId.slice(0, 6);
@@ -192,11 +205,10 @@ export async function confirmMotherStockReceipt(params: {
   const plantTypeName = first.plantType.name;
   const stageCode = first.stageCode;
 
-  let toShelf: { id: string; code: string; capacity: number | null; assignedStaffId: string | null; plantTypeId: string | null; allowedCodes: string[]; lots: { quantity: number }[] } | null = null;
-  if (actualQuantity > 0) {
-    if (!toShelfCode) throw new ShelfAssignError("Cần chọn giàn đích khi số lượng thực nhận lớn hơn 0");
-    toShelf = await prisma.shelf.findFirst({
-      where: { code: toShelfCode.trim().toUpperCase(), warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
+  const targets: { shelfId: string; quantity: number }[] = [];
+  for (const [toShelfCode, quantity] of mergedPlacements) {
+    const toShelf = await prisma.shelf.findFirst({
+      where: { code: toShelfCode, warehouseId: workplaceWarehouseId, isActive: true, room: { type: "PHONG_MAU_ME" } },
       select: {
         id: true,
         code: true,
@@ -219,15 +231,16 @@ export async function confirmMotherStockReceipt(params: {
     }
     if (toShelf.capacity !== null) {
       const capLeft = toShelf.capacity - toShelf.lots.reduce((s, l) => s + l.quantity, 0);
-      if (actualQuantity > capLeft) {
-        throw new ShelfAssignError(`Giàn ${toShelf.code} không đủ chỗ — còn trống ${Math.max(0, capLeft).toLocaleString("vi-VN")} cụm, cần xếp ${actualQuantity.toLocaleString("vi-VN")} cụm`);
+      if (quantity > capLeft) {
+        throw new ShelfAssignError(`Giàn ${toShelf.code} không đủ chỗ — còn trống ${Math.max(0, capLeft).toLocaleString("vi-VN")} cụm, cần xếp ${quantity.toLocaleString("vi-VN")} cụm`);
       }
     }
+    targets.push({ shelfId: toShelf.id, quantity });
   }
 
-  let createdLotCode: string | null = null;
+  const createdLotCodes: string[] = [];
   await prisma.$transaction(async (tx) => {
-    if (actualQuantity > 0 && toShelf) {
+    for (const t of targets) {
       const code = await generateLotCode({ plantTypeCode, staffCode: confirmedByCode, stageCode, client: tx });
       await tx.lot.create({
         data: {
@@ -235,14 +248,14 @@ export async function confirmMotherStockReceipt(params: {
           plantTypeId,
           stage: "MAU_ME",
           stageCode,
-          shelfId: toShelf.id,
-          quantity: actualQuantity,
-          initialQuantity: actualQuantity,
+          shelfId: t.shelfId,
+          quantity: t.quantity,
+          initialQuantity: t.quantity,
           status: "ACTIVE",
           enteredAt: new Date(),
         },
       });
-      createdLotCode = code;
+      createdLotCodes.push(code);
     }
 
     await tx.transferItem.updateMany({ where: { transferId: transfer.id }, data: { confirmedAt: new Date() } });
@@ -278,5 +291,5 @@ export async function confirmMotherStockReceipt(params: {
     }
   }
 
-  return { createdLotCode, shortfall, sentQuantity };
+  return { createdLotCodes, actualQuantity, shortfall, sentQuantity };
 }

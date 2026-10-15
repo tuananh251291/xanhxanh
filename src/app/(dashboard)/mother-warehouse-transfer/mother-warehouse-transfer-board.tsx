@@ -16,7 +16,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Truck, PackageCheck, Loader2, Send, Check, Plus, Trash2 } from "lucide-react";
+import { Truck, PackageCheck, Loader2, Send, Check, Plus, Trash2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -34,7 +34,43 @@ type DestShelf = {
   plantTypeCode: string | null;
   assignedStaffName: string | null;
   allowedCodes: string[];
+  lots: { plantTypeCode: string; quantity: number }[];
 };
+
+// Giàn nhận được mã cây này không — khớp đúng điều kiện server kiểm tra ở confirmMotherStockReceipt:
+// giàn gán riêng NV chỉ nhận đúng mã cây của giàn; giàn chung theo "Cho phép xếp" (tiền tố mã), rỗng = mọi mã.
+function destShelfAccepts(s: DestShelf, plantTypeCode: string): boolean {
+  if (s.assignedStaffName) return s.plantTypeCode === plantTypeCode;
+  return s.allowedCodes.length === 0 || s.allowedCodes.some((c) => plantTypeCode.startsWith(c));
+}
+
+function destShelfFree(s: DestShelf): number {
+  return s.capacity === null ? Infinity : Math.max(0, s.capacity - s.used);
+}
+
+// "Gợi ý giàn" — chia số cần xếp ra các giàn nhận được mã cây này, ưu tiên: giàn chung đang có sẵn đúng
+// mã cây → giàn chung chỉ định riêng mã cây (Cho phép xếp) → giàn chung nhận mọi mã → giàn gán riêng NV
+// đúng mã cây (đang là giàn làm việc của NV, xếp sau cùng). Cùng nhóm thì giàn trống nhiều hơn trước để
+// dùng ít giàn nhất. Trả về phần chưa xếp được (remaining > 0 = các giàn không đủ chỗ).
+function suggestPlacements(shelves: DestShelf[], plantTypeCode: string, total: number) {
+  const rank = (s: DestShelf) =>
+    s.assignedStaffName ? 3
+    : s.lots.some((l) => l.plantTypeCode === plantTypeCode) ? 0
+    : s.allowedCodes.length > 0 ? 1
+    : 2;
+  const candidates = shelves
+    .filter((s) => destShelfAccepts(s, plantTypeCode) && destShelfFree(s) > 0)
+    .sort((a, b) => rank(a) - rank(b) || destShelfFree(b) - destShelfFree(a));
+  const out: { shelf: DestShelf; quantity: number }[] = [];
+  let remaining = total;
+  for (const s of candidates) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, destShelfFree(s));
+    out.push({ shelf: s, quantity: take });
+    remaining -= take;
+  }
+  return { placements: out, remaining };
+}
 
 type IncomingRow = {
   transferId: string;
@@ -368,33 +404,68 @@ export function SendTab() {
   );
 }
 
+type PlacementLine = { id: number; shelfOption: ComboOption | null; quantity: string };
+
+let placementSeq = 0;
+const newPlacement = (shelfOption: ComboOption | null = null, quantity = ""): PlacementLine => ({ id: ++placementSeq, shelfOption, quantity });
+
+// Số thực nhận xếp ra 1 hoặc nhiều giàn — tổng các dòng = số lượng thực tế nhận (xem
+// confirmMotherStockReceipt). Chỉ liệt kê giàn nhận được đúng mã cây của phiếu.
 function IncomingRowForm({ row, destShelves, onDone }: { row: IncomingRow; destShelves: DestShelf[]; onDone: () => void }) {
-  const [shelfOption, setShelfOption] = useState<ComboOption | null>(null);
-  const [actualQuantity, setActualQuantity] = useState(String(row.sentQuantity));
+  const [lines, setLines] = useState<PlacementLine[]>(() => [newPlacement(null, String(row.sentQuantity))]);
   const [submitting, setSubmitting] = useState(false);
 
-  const shelfOptions = useMemo(() => destShelves.map((s) => ({ value: s.code, label: destShelfLabel(s) })), [destShelves]);
-  const qtyNum = Number(actualQuantity);
-  const shortfall = row.sentQuantity - (Number.isFinite(qtyNum) ? qtyNum : 0);
+  const plantTypeCode = row.plantTypeCode ?? "";
+  const eligibleShelves = useMemo(() => destShelves.filter((s) => destShelfAccepts(s, plantTypeCode)), [destShelves, plantTypeCode]);
+  const shelfByCode = useMemo(() => new Map(destShelves.map((s) => [s.code, s])), [destShelves]);
+  const totalQty = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+  const shortfall = row.sentQuantity - totalQty;
 
-  const submit = async () => {
-    const qty = Number(actualQuantity);
-    if (!Number.isFinite(qty) || qty < 0 || qty > row.sentQuantity) {
-      toast.error(`Số lượng thực nhận phải từ 0 đến ${row.sentQuantity.toLocaleString("vi-VN")}`);
+  const updateLine = (id: number, patch: Partial<PlacementLine>) =>
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+
+  const applySuggestion = () => {
+    const { placements, remaining } = suggestPlacements(eligibleShelves, plantTypeCode, row.sentQuantity);
+    if (placements.length === 0) {
+      toast.error(`Không còn giàn nào trống nhận được mã ${plantTypeCode} — liên hệ Admin cao nhất thêm giàn/tăng sức chứa`);
       return;
     }
-    if (qty > 0 && !shelfOption) { toast.error("Chưa chọn giàn đích"); return; }
+    setLines(placements.map((p) => newPlacement({ value: p.shelf.code, label: destShelfLabel(p.shelf) }, String(p.quantity))));
+    if (remaining > 0) {
+      toast.warning(`Các giàn còn trống chỉ xếp được ${(row.sentQuantity - remaining).toLocaleString("vi-VN")} cụm — còn thiếu chỗ cho ${remaining.toLocaleString("vi-VN")} cụm`);
+    } else {
+      toast.success(`Đã gợi ý ${placements.length} giàn — kiểm tra lại rồi bấm Xác nhận`);
+    }
+  };
+
+  const submit = async () => {
+    const placements: { toShelfCode: string; quantity: number }[] = [];
+    for (const [i, l] of lines.entries()) {
+      if (l.quantity.trim() === "" && !l.shelfOption) continue;
+      const qty = Number(l.quantity);
+      if (!Number.isInteger(qty) || qty < 0) { toast.error(`Dòng ${i + 1}: số cụm không hợp lệ`); return; }
+      if (qty === 0) continue;
+      if (!l.shelfOption) { toast.error(`Dòng ${i + 1}: chưa chọn giàn đích`); return; }
+      placements.push({ toShelfCode: l.shelfOption.value, quantity: qty });
+    }
+    const total = placements.reduce((s, p) => s + p.quantity, 0);
+    if (total > row.sentQuantity) {
+      toast.error(`Tổng thực nhận (${total.toLocaleString("vi-VN")}) vượt quá số đã gửi (${row.sentQuantity.toLocaleString("vi-VN")})`);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch(`/api/mother-warehouse-transfer/incoming/${row.transferId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toShelfCode: shelfOption?.value, actualQuantity: qty }),
+        body: JSON.stringify({ placements }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success(
-        qty > 0 ? `Đã nhận ${qty.toLocaleString("vi-VN")} cụm — lô mới ${json.createdLotCode}` : "Đã đóng phiếu — không nhận được cụm nào"
+        total > 0
+          ? `Đã nhận ${total.toLocaleString("vi-VN")} cụm — lô mới ${(json.createdLotCodes as string[]).join(", ")}`
+          : "Đã đóng phiếu — không nhận được cụm nào"
       );
       onDone();
     } finally {
@@ -404,45 +475,86 @@ function IncomingRowForm({ row, destShelves, onDone }: { row: IncomingRow; destS
 
   return (
     <div className="rounded-lg border border-divider bg-background p-3 space-y-3 mt-2">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label className="text-sm">Giàn đích (kho mình)</Label>
-          <Combobox
-            items={shelfOptions}
-            value={shelfOption}
-            isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
-            onValueChange={setShelfOption}
-          >
-            <ComboboxInputGroup className="w-full h-9">
-              <ComboboxInput placeholder="Gõ mã hoặc tên giàn…" />
-              <ComboboxTrigger />
-            </ComboboxInputGroup>
-            <ComboboxContent>
-              <ComboboxEmpty>Không tìm thấy giàn</ComboboxEmpty>
-              <ComboboxList>
-                {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-sm">Số lượng thực tế nhận (cụm)</Label>
-          <Input
-            type="number"
-            min={0}
-            max={row.sentQuantity}
-            value={actualQuantity}
-            onChange={(e) => setActualQuantity(e.target.value)}
-          />
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-text-secondary">Xếp số thực nhận lên 1 hoặc nhiều giàn của kho mình</p>
+        <Button type="button" size="sm" variant="outline" onClick={applySuggestion}>
+          <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Gợi ý giàn
+        </Button>
+      </div>
+      {lines.map((l, i) => {
+        const chosenElsewhere = new Set(lines.filter((o) => o.id !== l.id && o.shelfOption).map((o) => o.shelfOption!.value));
+        const options = eligibleShelves
+          .filter((s) => !chosenElsewhere.has(s.code))
+          .map((s) => ({ value: s.code, label: destShelfLabel(s) }));
+        const shelf = l.shelfOption ? shelfByCode.get(l.shelfOption.value) : undefined;
+        const free = shelf ? destShelfFree(shelf) : Infinity;
+        const qty = Number(l.quantity) || 0;
+        return (
+          <div key={l.id} className="grid gap-2 sm:grid-cols-[1fr_10rem_auto] items-start">
+            <div className="space-y-1">
+              <Label className="text-sm">Giàn đích {lines.length > 1 ? i + 1 : ""}</Label>
+              <Combobox
+                items={options}
+                value={l.shelfOption}
+                isItemEqualToValue={(a: ComboOption, b: ComboOption) => a.value === b.value}
+                onValueChange={(v) => updateLine(l.id, { shelfOption: v })}
+              >
+                <ComboboxInputGroup className="w-full h-9">
+                  <ComboboxInput placeholder="Gõ mã hoặc tên giàn…" />
+                  <ComboboxTrigger />
+                </ComboboxInputGroup>
+                <ComboboxContent>
+                  <ComboboxEmpty>Không có giàn nào nhận được mã {plantTypeCode}</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+              {shelf && (
+                <p className={`text-xs ${qty > free ? "text-destructive font-medium" : "text-text-muted"}`}>
+                  Còn trống {free === Infinity ? "không giới hạn" : `${free.toLocaleString("vi-VN")} cụm`}
+                  {qty > free && " — vượt chỗ trống, giảm số cụm hoặc thêm giàn khác"}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm">Số cụm</Label>
+              <Input type="number" min={0} className="h-9" value={l.quantity} onChange={(e) => updateLine(l.id, { quantity: e.target.value })} />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="sm:mt-6"
+              disabled={lines.length === 1}
+              onClick={() => setLines((prev) => prev.filter((o) => o.id !== l.id))}
+            >
+              <Trash2 className="w-4 h-4 text-destructive" />
+            </Button>
+          </div>
+        );
+      })}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => setLines((prev) => [...prev, newPlacement()])}>
+          <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm giàn
+        </Button>
+        <span className="text-sm text-text-secondary">
+          Tổng thực nhận <strong>{totalQty.toLocaleString("vi-VN")}</strong> / {row.sentQuantity.toLocaleString("vi-VN")} cụm đã gửi
+        </span>
       </div>
       {shortfall > 0 && (
         <p className="text-xs text-warning-foreground bg-warning-light rounded p-2">
           Chênh lệch {shortfall.toLocaleString("vi-VN")} cụm sẽ được ghi nhận là hao hụt vận chuyển, báo
-          cho NV đã gửi và Admin — không hoàn lại kho nguồn.
+          cho NV đã gửi và Admin — không hoàn lại kho nguồn. Nếu thực tế nhận đủ mà thiếu chỗ, bấm
+          &quot;Thêm giàn&quot; hoặc &quot;Gợi ý giàn&quot; để xếp phần còn lại.
         </p>
       )}
-      <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={submitting} onClick={submit}>
+      {shortfall < 0 && (
+        <p className="text-xs text-destructive bg-danger-light rounded p-2">
+          Tổng thực nhận vượt quá số đã gửi {(-shortfall).toLocaleString("vi-VN")} cụm.
+        </p>
+      )}
+      <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={submitting || shortfall < 0} onClick={submit}>
         {submitting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
         Xác nhận đã nhận
       </Button>
