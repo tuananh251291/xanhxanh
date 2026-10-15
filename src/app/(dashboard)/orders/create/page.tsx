@@ -22,14 +22,14 @@ export default async function OrdersPage() {
   // người quản lý đang thao tác hộ — nhúng thẳng vào từng khách để form khỏi phải tự tra thêm.
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
 
-  const [plantTypes, customersRaw, recentOrders, defaultHoldDaysStr] = await Promise.all([
+  const [plantTypes, customersRaw, recentOrders, defaultHoldDaysStr, salesUsers] = await Promise.all([
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     // Cùng 1 select cho cả 2 vai trò (khác nhau ở where) — luôn kèm holdDays của NV bán hàng phụ trách
     // (assignedTo), kể cả khi role là SALE (bằng đúng holdDays của chính họ), để form chỉ cần 1 nguồn duy
     // nhất thay vì phải phân biệt theo role.
     prisma.customer.findMany({
       where: isActingForSale ? { assignedToId: { not: null } } : { assignedToId: session?.user?.id ?? "" },
-      select: { id: true, code: true, name: true, customerGroup: true, assignedTo: { select: { holdDays: true } } },
+      select: { id: true, code: true, name: true, customerGroup: true, assignedToId: true, assignedTo: { select: { holdDays: true } } },
       orderBy: { name: "asc" },
     }),
     prisma.order.findMany({
@@ -42,12 +42,21 @@ export default async function OrdersPage() {
       },
     }),
     getSystemConfig("default_hold_days", "3"),
+    // Ô "NV bán hàng" (Mã NV - Tên, gõ tìm có gợi ý) chỉ hiện khi Quản lý kho thành phẩm tạo hộ — Sale tự
+    // tạo thì NV bán hàng luôn là chính mình, không cần chọn.
+    isActingForSale
+      ? prisma.user.findMany({
+          where: { role: "SALE", isActive: true, status: "APPROVED" },
+          select: { id: true, code: true, name: true },
+          orderBy: { code: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
   // Năng lực giữ đơn riêng từng NV Sale (Admin gõ tay ở /users) là NGOẠI LỆ — chỉ khi chưa cài đặt (null)
   // mới rơi về "Thời gian giữ đơn mặc định" chung ở /settings, khớp đúng logic ở POST /api/orders.
   const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
   const customers = customersRaw.map((c) => ({
-    id: c.id, code: c.code, name: c.name, customerGroup: c.customerGroup,
+    id: c.id, code: c.code, name: c.name, customerGroup: c.customerGroup, assignedToId: c.assignedToId,
     holdDays: c.assignedTo?.holdDays ?? defaultHoldDays,
   }));
 
@@ -64,7 +73,7 @@ export default async function OrdersPage() {
         </p>
       </div>
 
-      <OrderCheckForm plantTypes={plantTypes} customers={customers} />
+      <OrderCheckForm plantTypes={plantTypes} customers={customers} salesUsers={salesUsers} isActingForSale={isActingForSale} />
 
       {recentOrders.length > 0 && (
         <Card>

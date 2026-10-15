@@ -21,6 +21,10 @@ const createSchema = z.object({
   // sang 1 Kho thị trường — xem checkbox "Kho thị trường" ở order-check-form.tsx), validate ở dưới vì
   // zod .refine không hiển thị lỗi rõ theo từng field.
   customerId: z.string().optional(),
+  // Quản lý kho thành phẩm tạo hộ — NV bán hàng đã chọn ở ô "Mã NV bán hàng" (hoặc đọc từ cột Mã NV
+  // bán hàng trong file Excel). Chỉ để đối chiếu: phải đúng NV đang phụ trách khách (saleId vẫn lấy theo
+  // customer.assignedToId), tránh giữ đơn nhầm khách của NV khác.
+  saleUserId: z.string().optional(),
   marketWarehouseId: z.string().optional(),
   market: z.enum(["NOI_DIA", "DONG_NAM_A", "EU", "US", "AUS", "NHAT", "HAN_QUOC"], { message: "Cần chọn thị trường" }),
   // Bắt buộc — quyết định lô "ảo" nào (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts)
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { customerId, marketWarehouseId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
+  const { customerId, saleUserId, marketWarehouseId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
   const shipDate = new Date(expectedShipAt);
   if (Number.isNaN(shipDate.getTime())) {
     return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
@@ -103,6 +107,12 @@ export async function POST(req: NextRequest) {
     }
     if (!customer.assignedToId) {
       return NextResponse.json({ message: "Khách hàng chưa có NV bán hàng phụ trách — không tạo được đơn hộ" }, { status: 400 });
+    }
+    if (session.user.role === "QUAN_LY_KHO_THANH_PHAM") {
+      if (!saleUserId) return NextResponse.json({ message: "Cần chọn NV bán hàng" }, { status: 400 });
+      if (saleUserId !== customer.assignedToId) {
+        return NextResponse.json({ message: "Khách hàng này không do NV bán hàng đã chọn phụ trách" }, { status: 400 });
+      }
     }
   } else {
     marketWarehouse = await prisma.warehouse.findUnique({

@@ -112,23 +112,39 @@ const availabilityKey = (plantTypeId: string, stageCode: string) => `${plantType
 // holdDays theo TỪNG khách — với NV bán hàng là "Năng lực giữ đơn" của chính họ (giống nhau ở mọi khách);
 // với Quản lý kho thành phẩm tạo hộ (xem canActAsSale) là của ĐÚNG NV bán hàng đang phụ trách khách đó
 // (có thể khác nhau giữa các khách) — xem src/app/(dashboard)/orders/page.tsx.
-type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; holdDays: number | null };
+type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; assignedToId: string | null; holdDays: number | null };
 type MarketWarehouse = { id: string; code: string; name: string };
+type SalesUser = { id: string; code: string; name: string };
 
 export default function OrderCheckForm({
-  plantTypes, customers,
-}: { plantTypes: PlantType[]; customers: Customer[] }) {
+  plantTypes, customers, salesUsers, isActingForSale,
+}: { plantTypes: PlantType[]; customers: Customer[]; salesUsers: SalesUser[]; isActingForSale: boolean }) {
   const [rows, setRows] = useState<DemandRow[]>(() => Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
   // Nhãn "Mã sản phẩm - Tên cây" (VD "AL001 - Alocasia Red Secret") để gõ tìm theo cả mã lẫn tên.
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
   // Nhãn "Mã KH - Tên khách" để gõ tìm theo cả mã lẫn tên — với NV Sale chỉ liệt kê khách họ đang phụ
   // trách (khớp đúng phạm vi /customer-status); với Quản lý kho thành phẩm tạo hộ (canActAsSale) là mọi
   // khách đã có NV bán hàng phụ trách, xem src/app/(dashboard)/orders/page.tsx.
-  const customerOptions: ComboOption[] = customers.map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }));
+  // Quản lý kho thành phẩm tạo hộ: chọn NV bán hàng trước thì chỉ liệt kê khách NV đó đang phụ trách;
+  // chọn khách trước thì tự điền NV bán hàng phụ trách khách đó (xem onCustomerChange).
+  const [saleUserId, setSaleUserId] = useState("");
+  const salesUserOptions: ComboOption[] = salesUsers.map((u) => ({ value: u.id, label: `${u.code} - ${u.name}` }));
+  const customerOptions: ComboOption[] = customers
+    .filter((c) => !isActingForSale || !saleUserId || c.assignedToId === saleUserId)
+    .map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }));
   const [results, setResults] = useState<CheckResult[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [holding, setHolding] = useState(false);
   const [customerId, setCustomerId] = useState("");
+  const onCustomerChange = (id: string) => {
+    setCustomerId(id);
+    const assignedToId = customers.find((c) => c.id === id)?.assignedToId;
+    if (isActingForSale && assignedToId) setSaleUserId(assignedToId);
+  };
+  const onSaleUserChange = (id: string) => {
+    setSaleUserId(id);
+    if (id && customers.find((c) => c.id === customerId)?.assignedToId !== id) setCustomerId("");
+  };
   const selectedCustomer = customers.find((c) => c.id === customerId) ?? null;
   const holdDays = selectedCustomer?.holdDays ?? null;
   // Tích "Kho thị trường" — thay thế hẳn vai trò khách hàng, đơn gửi nội bộ sang 1 Kho thị trường (Đối
@@ -244,6 +260,9 @@ export default function OrderCheckForm({
   const submitHold = async (items: { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string }[]) => {
     if (sendToMarketWarehouse) {
       if (!marketWarehouseId) { toast.error("Cần chọn Kho thị trường"); return; }
+    } else if (isActingForSale && !saleUserId) {
+      toast.error("Cần chọn NV bán hàng");
+      return;
     } else if (!customerId) {
       toast.error("Cần chọn khách hàng");
       return;
@@ -259,6 +278,7 @@ export default function OrderCheckForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId: sendToMarketWarehouse ? undefined : customerId,
+          saleUserId: sendToMarketWarehouse || !isActingForSale ? undefined : saleUserId,
           marketWarehouseId: sendToMarketWarehouse ? marketWarehouseId : undefined,
           market, expectedShipAt, exportCode: exportCode || undefined, items,
         }),
@@ -274,6 +294,7 @@ export default function OrderCheckForm({
       setExcelItems([]);
       setExcelErrors([]);
       setCustomerId("");
+      setSaleUserId("");
       toggleMarketWarehouse(false);
       setMarket("");
       setExpectedShipAt("");
@@ -331,6 +352,13 @@ export default function OrderCheckForm({
         toast.error(`Chưa nhập được gì — file có ${json.errors.length} dòng lỗi, xem chi tiết bên dưới rồi sửa lại và tải lên lại`);
       } else {
         setExcelItems(json.items);
+        // Mã khách hàng/Mã NV bán hàng đọc từ file (đã validate khớp nhau ở server) — điền sẵn vào ô
+        // chọn bên dưới, vẫn đổi lại được trước khi bấm "Tạm giữ đơn hàng".
+        if (json.customerId) {
+          toggleMarketWarehouse(false);
+          setCustomerId(json.customerId);
+        }
+        if (json.saleUserId && isActingForSale) setSaleUserId(json.saleUserId);
         toast.success(`Đã đọc ${json.items.length} dòng từ file`);
       }
     } finally {
@@ -451,6 +479,9 @@ export default function OrderCheckForm({
             <p className="text-xs text-text-secondary">
               Số liệu trong file được giữ nguyên (không thay thế quy cách/làm tròn túi như Check) — tạm
               giữ đơn thẳng luôn, hệ thống vẫn tự kiểm tra tồn kho thực tế lúc bấm &quot;Tạm giữ đơn hàng&quot;.
+              {isActingForSale
+                ? " Điền Mã khách hàng + Mã NV bán hàng ở dòng dữ liệu đầu tiên (các dòng sau để trống hoặc ghi giống hệt)."
+                : " Có thể điền Mã khách hàng ở dòng dữ liệu đầu tiên để tự chọn sẵn khách."}
             </p>
             <div className="space-y-1 max-w-xs">
               <Label>Thời gian dự kiến xuất *</Label>
@@ -640,13 +671,37 @@ export default function OrderCheckForm({
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {isActingForSale && (
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>Mã NV bán hàng {!sendToMarketWarehouse && "*"}</Label>
+                  <Combobox
+                    items={salesUserOptions}
+                    value={salesUserOptions.find((o) => o.value === saleUserId) ?? null}
+                    isItemEqualToValue={(a, b) => a.value === b.value}
+                    onValueChange={(v) => onSaleUserChange(v?.value ?? "")}
+                    disabled={sendToMarketWarehouse}
+                  >
+                    <ComboboxInputGroup>
+                      <ComboboxInput placeholder="Gõ mã hoặc tên NV bán hàng…" />
+                      <ComboboxTrigger />
+                    </ComboboxInputGroup>
+                    <ComboboxContent>
+                      <ComboboxEmpty>Không tìm thấy NV bán hàng</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
+                  <p className="text-xs text-text-muted">Chọn NV trước thì danh sách khách chỉ còn khách NV đó phụ trách; chọn khách trước thì tự điền NV.</p>
+                </div>
+              )}
               <div className="space-y-1">
-                <Label>Khách hàng {!sendToMarketWarehouse && "*"}</Label>
+                <Label>Mã khách hàng {!sendToMarketWarehouse && "*"}</Label>
                 <Combobox
                   items={customerOptions}
                   value={customerOptions.find((o) => o.value === customerId) ?? null}
                   isItemEqualToValue={(a, b) => a.value === b.value}
-                  onValueChange={(v) => setCustomerId(v?.value ?? "")}
+                  onValueChange={(v) => onCustomerChange(v?.value ?? "")}
                   disabled={sendToMarketWarehouse}
                 >
                   <ComboboxInputGroup>
@@ -654,7 +709,7 @@ export default function OrderCheckForm({
                     <ComboboxTrigger />
                   </ComboboxInputGroup>
                   <ComboboxContent>
-                    <ComboboxEmpty>Không tìm thấy khách hàng bạn phụ trách</ComboboxEmpty>
+                    <ComboboxEmpty>{isActingForSale ? "Không tìm thấy khách hàng của NV bán hàng này" : "Không tìm thấy khách hàng bạn phụ trách"}</ComboboxEmpty>
                     <ComboboxList>
                       {(item: ComboOption) => <ComboboxItem key={item.value} value={item}>{item.label}</ComboboxItem>}
                     </ComboboxList>
