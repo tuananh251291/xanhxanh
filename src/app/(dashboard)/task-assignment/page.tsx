@@ -326,10 +326,15 @@ function DeXuatTaskRow({
         {canAssign && d.status === "PENDING" && (
           <KhoTpAssignCell endpoint={`/api/daily-tasks/${d.id}`} assignedTo={d.assignedTo} staffOptions={staffOptions} canAssign={canAssign} confirmedAt={d.assignmentConfirmedAt} />
         )}
-        {d.status !== "PENDING" ? (
-          <Badge variant="completed">{d._count.checkLines > 0 ? "Đã gửi phiếu cho Quản lý" : "Đã hoàn thành"}</Badge>
-        ) : hasPending ? (
-          <Badge variant="in-progress">Đã thực hiện · Chờ Admin duyệt</Badge>
+        {/* NV kiểm tra xong (gửi phiếu — hoặc phiếu luồng cũ đang chờ duyệt) là nhiệm vụ coi như Đã hoàn
+            thành, nút đổi thành "Đã kiểm tra xong" bị khoá — không cho thực hiện lần nữa. */}
+        {d.status !== "PENDING" || hasPending ? (
+          <>
+            <Badge variant="completed">Đã hoàn thành</Badge>
+            <Button size="sm" className="h-8" disabled>
+              <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Đã kiểm tra xong
+            </Button>
+          </>
         ) : hasRejected ? (
           <Link href="/contamination-proposals">
             <Badge variant="overdue">Bị từ chối · Sửa &amp; gửi lại</Badge>
