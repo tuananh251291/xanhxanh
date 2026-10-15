@@ -97,8 +97,9 @@ enum RoomType {
   // lý gửi khu sản xuất (RepackInstruction có ktpRoomId). Kho thành phẩm giờ chỉ gồm Phòng đạt tiêu chuẩn
   // + Phòng chờ xử lý — PHONG_THEO_DOI/PHONG_HAN_TUI chỉ còn giữ trong enum cho dữ liệu cũ (đã tắt).
   PHONG_CHO_XU_LY
-  // Phòng đợi xử lý — thuộc Kho sáng của KHU SẢN XUẤT (quản lý theo giàn kệ như Phòng ra rễ): nhận hàng từ
-  // Phiếu xử lý của Kho thành phẩm (Kho mô "Nhận bàn giao liên kho"), là kệ nguồn cho chỉ định xử lý và cũng
+  // Phòng đợi xử lý — thuộc Kho sáng của KHU SẢN XUẤT, KHÔNG có giàn kệ (lô gắn thẳng vào phòng, giống phòng
+  // nhiễm cá nhân): nhận hàng từ Phiếu xử lý của Kho thành phẩm (Kho mô "Nhận bàn giao liên kho"), là nguồn
+  // cho chỉ định xử lý và cũng
   // là nơi thành phẩm xử lý xong quay về, trước khi Kho mô bàn giao liên kho lại cho Kho thành phẩm.
   PHONG_DOI_XU_LY
   // Kho thị trường (WarehouseType.THI_TRUONG) — 3 phòng cố định tạo sẵn lúc Admin cấp cao tạo kho.
@@ -1778,7 +1779,7 @@ enum RepackInstructionStatus {
   // 3 trạng thái dưới CHỈ dùng cho Phiếu xử lý của Kho thành phẩm (ktpRoomId khác null):
   KTP_WAITING_HANDOVER // QLK vừa tạo phiếu — chờ Kho thành phẩm bấm "Bàn giao" (chưa trừ Phòng chờ xử lý)
   KTP_HANDED_OVER // Kho thành phẩm đã bàn giao (đã trừ Phòng chờ xử lý) — chờ Kho mô nhận vào Phòng đợi xử lý
-  WAITING_RETURN_HANDOVER // Kho mô đã xếp kết quả về giàn Phòng đợi xử lý — chờ Kho mô bàn giao lại Kho thành phẩm
+  WAITING_RETURN_HANDOVER // Kho mô đã xếp kết quả về Phòng đợi xử lý — chờ Kho mô bàn giao lại Kho thành phẩm
   CREATED // KY_THUAT vừa tạo, chưa gán NV cấy mô
   ASSIGNED // Kho mô đã chọn NV cấy mô, chờ NV xác nhận "Nhận bàn giao"
   IN_PROGRESS // NV đã xác nhận nhận — ĐÃ trừ inputQuantity khỏi lô nguồn, đang xử lý

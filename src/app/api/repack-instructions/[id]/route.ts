@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole, sumLotQuantity } from "@/types";
+import { isAdminRole } from "@/types";
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
 import { generateLotCode } from "@/lib/codes";
@@ -82,9 +82,9 @@ const patchSchema = z.union([
   // Phiếu xử lý Kho thành phẩm — luồng bàn giao liên kho 2 chiều:
   // 1. Kho thành phẩm "Bàn giao" phiếu đang chờ (trừ Phòng chờ xử lý) → Kho mô khu sản xuất nhận.
   z.object({ ktpHandover: z.literal(true) }),
-  // 2. Kho mô "Nhận" → cộng vào 1 giàn Phòng đợi xử lý (thành kệ/lô nguồn của chỉ định xử lý).
-  z.object({ khoMoReceive: z.object({ shelfId: z.string().min(1) }) }),
-  // 3. Xử lý xong, đã xếp về giàn Phòng đợi xử lý → Kho mô bàn giao liên kho lại cho Kho thành phẩm.
+  // 2. Kho mô "Nhận" → cộng vào Phòng đợi xử lý (không giàn kệ — thành lô nguồn của chỉ định xử lý).
+  z.object({ khoMoReceive: z.literal(true) }),
+  // 3. Xử lý xong, đã xếp về Phòng đợi xử lý → Kho mô bàn giao liên kho lại cho Kho thành phẩm.
   z.object({ returnToKtp: z.literal(true) }),
   // Kho thành phẩm xác nhận nhận lại — đạt vào Phòng đạt tiêu chuẩn, không đạt về Phòng chờ xử lý.
   z.object({
@@ -391,7 +391,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  // ---- Kho mô nhận Phiếu xử lý vào 1 giàn Phòng đợi xử lý — tạo lô nguồn, chỉ định về "Chờ gán NV" ----
+  // ---- Kho mô nhận Phiếu xử lý vào Phòng đợi xử lý (lô gắn thẳng vào phòng, không giàn kệ — giống phòng
+  // nhiễm cá nhân) — tạo lô nguồn, chỉ định về "Chờ gán NV" ----
   if ("khoMoReceive" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     const warehouseId = instruction.productionWarehouseId;
@@ -401,14 +402,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (role === "KHO_MO" && warehouseId !== session.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Phiếu không thuộc kho bạn làm việc" }, { status: 403 });
     }
-    const shelf = await prisma.shelf.findFirst({
-      where: { id: body.khoMoReceive.shelfId, warehouseId, isActive: true, room: { type: "PHONG_DOI_XU_LY" } },
-      select: { id: true, code: true, capacity: true, lots: { where: { status: "ACTIVE" }, select: { quantity: true } } },
-    });
-    if (!shelf) return NextResponse.json({ message: "Giàn không thuộc Phòng đợi xử lý của kho này" }, { status: 400 });
-    if (shelf.capacity !== null && sumLotQuantity(shelf.lots) + instruction.inputQuantity > shelf.capacity) {
-      return NextResponse.json({ message: `Giàn ${shelf.code} không đủ chỗ trống — chọn giàn khác` }, { status: 409 });
-    }
+    const room = await prisma.room.findFirst({ where: { warehouseId, type: "PHONG_DOI_XU_LY", isActive: true }, select: { id: true } });
+    if (!room) return NextResponse.json({ message: "Kho chưa có Phòng đợi xử lý — liên hệ Admin" }, { status: 400 });
     const staff = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
     const updated = await prisma.$transaction(async (tx) => {
       const locked = await tx.repackInstruction.updateMany({ where: { id, status: "KTP_HANDED_OVER" }, data: { status: "CREATED" } });
@@ -420,7 +415,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           plantTypeId: instruction.plantTypeId,
           stage: "THANH_PHAM",
           stageCode: instruction.inputStageCode,
-          shelfId: shelf.id,
+          roomId: room.id,
           quantity: instruction.inputQuantity,
           initialQuantity: instruction.inputQuantity,
           status: "ACTIVE",
@@ -430,7 +425,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       return tx.repackInstruction.update({
         where: { id },
-        data: { sourceShelfId: shelf.id, sourceLotId: lot.id, khoMoReceivedAt: now, khoMoReceivedById: session.user.id },
+        data: { sourceLotId: lot.id, khoMoReceivedAt: now, khoMoReceivedById: session.user.id },
       });
     }).catch((err) => {
       if (err instanceof InsufficientRoomStockError) return null;
@@ -440,7 +435,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  // ---- Kho mô bàn giao liên kho lại cho Kho thành phẩm: trừ lô kết quả trên giàn Phòng đợi xử lý ----
+  // ---- Kho mô bàn giao liên kho lại cho Kho thành phẩm: trừ lô kết quả trong Phòng đợi xử lý ----
   if ("returnToKtp" in body) {
     if (role !== "KHO_MO" && !isAdminRole(role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     if (role === "KHO_MO" && productionWarehouseIdOf(instruction) !== session.user.workplaceWarehouseId) {
@@ -448,7 +443,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (!instruction.ktpRoomId) return NextResponse.json({ message: "Chỉ định này không phải Phiếu xử lý của Kho thành phẩm" }, { status: 400 });
     if (instruction.status !== "WAITING_RETURN_HANDOVER" || !instruction.outputLot) {
-      return NextResponse.json({ message: "Cần sắp xếp kết quả về giàn Phòng đợi xử lý trước khi bàn giao lại Kho thành phẩm" }, { status: 400 });
+      return NextResponse.json({ message: "Cần xếp kết quả về Phòng đợi xử lý trước khi bàn giao lại Kho thành phẩm" }, { status: 400 });
     }
     const outputLot = instruction.outputLot;
     const total = (instruction.confirmedPassedQuantity ?? 0) + (instruction.confirmedFailedQuantity ?? 0);
@@ -462,7 +457,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (locked.count === 0) throw new InsufficientRoomStockError("Phiếu đã được bàn giao lại");
         const lot = await tx.lot.findUnique({ where: { id: outputLot.id }, select: { quantity: true } });
         if (!lot || lot.quantity < total) {
-          throw new InsufficientRoomStockError(`Lô ${outputLot.code} trên giàn chỉ còn ${lot?.quantity ?? 0}, cần ${total}`);
+          throw new InsufficientRoomStockError(`Lô ${outputLot.code} trong Phòng đợi xử lý chỉ còn ${lot?.quantity ?? 0}, cần ${total}`);
         }
         await tx.lot.update({ where: { id: outputLot.id }, data: { quantity: { decrement: total } } });
         return tx.repackInstruction.findUnique({ where: { id } });

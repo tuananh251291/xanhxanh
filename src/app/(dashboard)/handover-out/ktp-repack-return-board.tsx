@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import KtpRepackReturnButton from "./ktp-repack-return-button";
 
 // Tab "Bàn giao phiếu xử lý về Kho TP" — Phiếu xử lý Kho thành phẩm đã xử lý xong, Kho mô đã kiểm tra và xếp
-// kết quả về giàn Phòng đợi xử lý (WAITING_RETURN_HANDOVER): bấm Bàn giao → trừ lô trên giàn, chờ Kho thành
+// kết quả về Phòng đợi xử lý (WAITING_RETURN_HANDOVER): bấm Bàn giao → trừ lô trong phòng, chờ Kho thành
 // phẩm xác nhận nhận lại (xem PATCH /api/repack-instructions/[id] returnToKtp).
 export default async function KtpRepackReturnBoard({ warehouseId }: { warehouseId: string | null }) {
   if (!warehouseId) {
@@ -15,7 +15,6 @@ export default async function KtpRepackReturnBoard({ warehouseId }: { warehouseI
     select: {
       id: true, code: true, outputStageCode: true, confirmedPassedQuantity: true, confirmedFailedQuantity: true,
       plantType: { select: { code: true, name: true } },
-      actualOutputShelf: { select: { code: true } },
       assignedTo: { select: { name: true } },
       ktpRoom: { select: { warehouse: { select: { name: true } } } },
     },
@@ -39,7 +38,7 @@ export default async function KtpRepackReturnBoard({ warehouseId }: { warehouseI
                   {t.plantType.code} — {t.plantType.name} {t.outputStageCode} · <b>{(passed + failed).toLocaleString("vi-VN")} cây</b> ({passed.toLocaleString("vi-VN")} đạt / {failed.toLocaleString("vi-VN")} không đạt)
                 </p>
                 <p className="text-xs text-text-secondary">
-                  Giàn {t.actualOutputShelf?.code ?? "—"}{t.assignedTo ? ` · NV ${t.assignedTo.name}` : ""} → {t.ktpRoom?.warehouse.name ?? "Kho thành phẩm"}
+                  Phòng đợi xử lý{t.assignedTo ? ` · NV ${t.assignedTo.name}` : ""} → {t.ktpRoom?.warehouse.name ?? "Kho thành phẩm"}
                 </p>
               </div>
               <KtpRepackReturnButton id={t.id} code={t.code} />

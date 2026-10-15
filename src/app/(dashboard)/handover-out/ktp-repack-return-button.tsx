@@ -11,7 +11,7 @@ export default function KtpRepackReturnButton({ id, code }: { id: string; code: 
   const [submitting, setSubmitting] = useState(false);
 
   const handover = async () => {
-    if (!window.confirm(`Bàn giao kết quả phiếu ${code} về Kho thành phẩm? Số lượng sẽ được trừ khỏi giàn Phòng đợi xử lý.`)) return;
+    if (!window.confirm(`Bàn giao kết quả phiếu ${code} về Kho thành phẩm? Số lượng sẽ được trừ khỏi Phòng đợi xử lý.`)) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/repack-instructions/${id}`, {

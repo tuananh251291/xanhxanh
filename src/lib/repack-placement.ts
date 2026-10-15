@@ -24,34 +24,25 @@ type RepackInstructionForPlacement = {
 // đúng nguyên tắc TransferItem.unqualifiedQuantity đã dùng ở luồng bàn giao Phòng tối.
 export async function placeRepackOutput(
   tx: Prisma.TransactionClient,
-  params: {
-    repackInstruction: RepackInstructionForPlacement;
-    shelfCode: string;
-    warehouseId: string;
-    staffCode: string;
-    // Phiếu xử lý Kho thành phẩm xếp về giàn Phòng đợi xử lý (mọi giàn trong phòng đều được, kể cả trống).
-    roomType?: "PHONG_RA_RE" | "PHONG_DOI_XU_LY";
-  }
+  params: { repackInstruction: RepackInstructionForPlacement; shelfCode: string; warehouseId: string; staffCode: string }
 ) {
   const { repackInstruction, warehouseId, staffCode } = params;
-  const roomType = params.roomType ?? "PHONG_RA_RE";
-  const roomLabel = roomType === "PHONG_DOI_XU_LY" ? "Phòng đợi xử lý" : "Phòng ra rễ";
   const shelfCode = params.shelfCode.trim().toUpperCase();
   if (!shelfCode) throw new RepackPlacementError("Cần nhập mã kệ đích");
 
   const shelf = await tx.shelf.findFirst({
-    where: { code: shelfCode, warehouseId, isActive: true, room: { type: roomType } },
+    where: { code: shelfCode, warehouseId, isActive: true, room: { type: "PHONG_RA_RE" } },
     include: {
       lots: { where: { status: "ACTIVE" }, select: { id: true, quantity: true } },
     },
   });
   if (!shelf) {
-    throw new RepackPlacementError(`Không tìm thấy kệ ${shelfCode} đang hoạt động trong ${roomLabel} của kho này`);
+    throw new RepackPlacementError(`Không tìm thấy kệ ${shelfCode} đang hoạt động trong Phòng ra rễ của kho này`);
   }
   // Chỉ cho chọn kệ ĐÃ CÓ SẴN cây thành phẩm — trừ đúng kệ nguồn (luôn cho phép, kể cả khi vừa lấy hết
   // sạch hàng để xử lý nên tạm thời trống, vì đây là gợi ý mặc định "về đúng kệ gốc" — xem
   // [id]/place/route.ts). Tránh Kho mô gõ nhầm sang 1 kệ trống/kệ khác loại chưa từng chứa thành phẩm.
-  if (roomType === "PHONG_RA_RE" && shelf.id !== repackInstruction.sourceShelfId && shelf.lots.length === 0) {
+  if (shelf.id !== repackInstruction.sourceShelfId && shelf.lots.length === 0) {
     throw new RepackPlacementError(
       `Kệ ${shelf.code} đang trống — chỉ được chọn kệ đã có sẵn cây thành phẩm (Phòng ra rễ), hoặc để trống để dùng kệ gốc`
     );

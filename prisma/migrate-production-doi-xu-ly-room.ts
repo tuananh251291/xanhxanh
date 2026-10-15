@@ -1,6 +1,8 @@
-// Chạy 1 lần sau khi deploy schema có RoomType.PHONG_DOI_XU_LY (idempotent):
+// Chạy sau khi deploy schema có RoomType.PHONG_DOI_XU_LY (idempotent):
 //   npx tsx --env-file=.env prisma/migrate-production-doi-xu-ly-room.ts
-// Mỗi kho sản xuất đang hoạt động: tạo "Phòng đợi xử lý" (<mã kho>-DXL) + 1 giàn (<mã kho>-DXL-G01) nếu chưa có.
+// Mỗi kho sản xuất đang hoạt động: tạo "Phòng đợi xử lý" (<mã kho>-DXL) nếu chưa có. Phòng này KHÔNG có
+// giàn kệ (lô gắn thẳng vào phòng, giống phòng nhiễm cá nhân) — xoá các giàn đã lỡ tạo trong phòng (chỉ khi
+// giàn chưa từng có lô nào).
 import { prisma } from "../src/lib/prisma";
 
 async function main() {
@@ -16,10 +18,14 @@ async function main() {
     } else {
       console.log(`${w.code}: đã có ${room.code}`);
     }
-    const shelfCount = await prisma.shelf.count({ where: { roomId: room.id } });
-    if (shelfCount === 0) {
-      const shelf = await prisma.shelf.create({ data: { code: `${w.code}-DXL-G01`, name: "Giàn đợi xử lý 01", warehouseId: w.id, roomId: room.id } });
-      console.log(`  tạo giàn ${shelf.code}`);
+    const shelves = await prisma.shelf.findMany({ where: { roomId: room.id }, select: { id: true, code: true, _count: { select: { lots: true } } } });
+    for (const s of shelves) {
+      if (s._count.lots > 0) {
+        console.warn(`  giàn ${s.code} đã có lô — KHÔNG xoá, xử lý tay`);
+        continue;
+      }
+      await prisma.shelf.delete({ where: { id: s.id } });
+      console.log(`  xoá giàn ${s.code}`);
     }
   }
 }

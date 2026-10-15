@@ -19,7 +19,7 @@ type RepackForReview = {
   confirmedFailedQuantity: number | null;
   // null = Phiếu xử lý từ Kho thành phẩm — sau khi kiểm tra thì "Bàn giao lại Kho thành phẩm" thay vì xếp kệ.
   sourceShelf: { code: string; warehouseId: string } | null;
-  // Phiếu xử lý Kho thành phẩm xếp kết quả về giàn Phòng đợi xử lý (không phải Phòng ra rễ).
+  // Phiếu xử lý Kho thành phẩm xếp kết quả về Phòng đợi xử lý (không giàn kệ, không chọn kệ).
   isKtp?: boolean;
 };
 
@@ -42,7 +42,7 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
   // kệ gốc bất kể còn hàng hay không.
   useEffect(() => {
     if (!sourceShelf) return;
-    fetch(`/api/lots?roomType=${instruction.isKtp ? "PHONG_DOI_XU_LY" : "PHONG_RA_RE"}&stage=THANH_PHAM&status=ACTIVE&warehouseId=${sourceShelf.warehouseId}`)
+    fetch(`/api/lots?roomType=PHONG_RA_RE&stage=THANH_PHAM&status=ACTIVE&warehouseId=${sourceShelf.warehouseId}`)
       .then((r) => r.json())
       .then((data: LotWithShelf[]) => {
         const codes = new Set<string>();
@@ -57,7 +57,7 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
         );
       })
       .finally(() => setLoadingShelves(false));
-  }, [sourceShelf, instruction.isKtp]);
+  }, [sourceShelf]);
 
   const inspect = async () => {
     setSubmitting(true);
@@ -84,7 +84,7 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
         body: JSON.stringify({ shelfCode }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã sắp xếp lên kệ");
+      toast.success(instruction.isKtp ? "Đã xếp về Phòng đợi xử lý — bàn giao liên kho lại Kho thành phẩm" : "Đã sắp xếp lên kệ");
       router.refresh();
     } finally { setSubmitting(false); }
   };
@@ -108,8 +108,21 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
     );
   }
 
-  // Chỉ định luôn có kệ nguồn khi tới bước này (Phiếu xử lý Kho thành phẩm có kệ từ lúc Kho mô nhận vào
-  // Phòng đợi xử lý) — phòng hờ dữ liệu cũ thiếu kệ.
+  if (instruction.isKtp) {
+    return (
+      <div className="flex flex-wrap items-end gap-3">
+        <p className="text-sm text-text-secondary">
+          Đã kiểm tra: <b className="text-foreground">{instruction.confirmedPassedQuantity}</b> đạt /{" "}
+          <b className="text-foreground">{instruction.confirmedFailedQuantity}</b> không đạt
+        </p>
+        <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover" disabled={submitting} onClick={place}>
+          {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <PackageCheck className="w-3.5 h-3.5 mr-1.5" />}
+          Xếp về Phòng đợi xử lý
+        </Button>
+      </div>
+    );
+  }
+
   if (!sourceShelf) {
     return <p className="text-sm text-text-muted">Chỉ định chưa có kệ nguồn.</p>;
   }
@@ -121,7 +134,7 @@ export default function RepackReviewPanel({ instruction }: { instruction: Repack
         <b className="text-foreground">{instruction.confirmedFailedQuantity}</b> không đạt
       </p>
       <div className="space-y-1">
-        <Label className="text-xs">{instruction.isKtp ? "Giàn Phòng đợi xử lý" : "Kệ đích (chỉ kệ đã có sẵn cây thành phẩm)"}</Label>
+        <Label className="text-xs">Kệ đích (chỉ kệ đã có sẵn cây thành phẩm)</Label>
         <Select
           items={shelfOptions.map((s) => ({ value: s.code, label: s.label }))}
           value={shelfCode || null}

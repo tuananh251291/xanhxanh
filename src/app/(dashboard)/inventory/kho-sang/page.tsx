@@ -86,7 +86,7 @@ export default async function KhoSangPage({
     ? "PHONG_MAU_ME"
     : onlyRootingRoom
       ? "PHONG_RA_RE"
-      : { in: ["PHONG_MAU_ME", "PHONG_RA_RE", "PHONG_DOI_XU_LY"] };
+      : { in: ["PHONG_MAU_ME", "PHONG_RA_RE"] };
 
   // Chỉ tải danh sách phòng (nhẹ) — KHÔNG kèm shelves/lots nữa, vì có phòng tới 600+ kệ khiến trang tải
   // ~9 giây. Phòng mẫu mẹ giờ tự tải kệ theo trang qua GET /api/shelves/mother-room (xem MotherShelfTable).
@@ -151,8 +151,7 @@ export default async function KhoSangPage({
 
   // Phòng ra rễ (chỉ KHO_MO xem, KY_THUAT không có) vẫn hiển thị dạng thẻ theo kệ như cũ, ít kệ hơn nhiều
   // so với Phòng mẫu mẹ nên chưa cần phân trang — tải riêng, không dính vào query rooms ở trên nữa.
-  // Phòng đợi xử lý (hàng từ Phiếu xử lý Kho thành phẩm) hiển thị theo giàn giống Phòng ra rễ.
-  const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE" || r.type === "PHONG_DOI_XU_LY").map((r) => r.id);
+  const raReRoomIds = rooms.filter((r) => r.type === "PHONG_RA_RE").map((r) => r.id);
   // Tìm theo mã cây (RootingPlantSearch, ?plantTypeIds=) — lọc NGAY ở query: chỉ tải kệ có ít nhất 1 lô
   // khớp 1 trong các mã cây đó (bớt hẳn kệ khác trong danh sách thay vì hiện "Trống" gây rối), và trong 1
   // kệ có nhiều mã cây khác nhau (Phòng ra rễ không có plantTypeId cố định như Phòng mẫu mẹ) chỉ hiện
@@ -236,6 +235,23 @@ export default async function KhoSangPage({
   ]);
   const assignedCountByRoom = new Map(motherRoomIds.map((id, i) => [id, assignedCounts[i]]));
   const unassignedCountByRoom = new Map(motherRoomIds.map((id, i) => [id, unassignedCounts[i]]));
+
+  // Phòng đợi xử lý (hàng từ Phiếu xử lý Kho thành phẩm) — KHÔNG có giàn kệ, lô gắn thẳng vào phòng (giống
+  // phòng nhiễm cá nhân) nên hiện bảng lô riêng, không đi qua bảng kệ ở trên.
+  const doiXuLyRooms = onlyMotherRoom || onlyRootingRoom
+    ? []
+    : await prisma.room.findMany({
+        where: { type: "PHONG_DOI_XU_LY", isActive: true, ...(workplaceWarehouseId ? { warehouseId: workplaceWarehouseId } : {}) },
+        include: {
+          warehouse: { select: { name: true } },
+          lots: {
+            where: { status: "ACTIVE", quantity: { gt: 0 } },
+            select: { id: true, code: true, stageCode: true, quantity: true, enteredAt: true, plantType: { select: { code: true, name: true } } },
+            orderBy: { enteredAt: "asc" },
+          },
+        },
+        orderBy: [{ warehouse: { name: "asc" } }],
+      });
 
   return (
     <div className="space-y-6">
@@ -449,6 +465,41 @@ export default async function KhoSangPage({
                   </Card>
                 );
               })}
+            </div>
+          )}
+        </CollapsibleRoom>
+      ))}
+
+      {doiXuLyRooms.map((room) => (
+        <CollapsibleRoom key={room.id} title={`${room.warehouse.name} — ${room.name}`}>
+          {room.lots.length === 0 ? (
+            <p className="text-sm text-text-muted pl-2">Phòng đang trống</p>
+          ) : (
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-primary-light">
+                    <th className="text-left py-2 px-3 text-base text-primary-strong font-bold">Mã lô</th>
+                    <th className="text-left py-2 px-3 text-base text-primary-strong font-bold">Mã cây</th>
+                    <th className="text-left py-2 px-3 text-base text-primary-strong font-bold">Tên cây</th>
+                    <th className="text-left py-2 px-3 text-base text-primary-strong font-bold">Quy cách</th>
+                    <th className="text-right py-2 px-3 text-base text-primary-strong font-bold">Số lượng</th>
+                    <th className="text-left py-2 px-3 text-base text-primary-strong font-bold">Ngày nhập</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {room.lots.map((l) => (
+                    <tr key={l.id} className="border-b last:border-0 even:bg-primary-light/30">
+                      <td className="py-2 px-3 font-mono text-xs">{l.code}</td>
+                      <td className="py-2 px-3 font-mono">{l.plantType.code}</td>
+                      <td className="py-2 px-3">{l.plantType.name}</td>
+                      <td className="py-2 px-3"><Badge variant="secondary">{l.stageCode}</Badge></td>
+                      <td className="py-2 px-3 text-right font-medium tabular-nums">{l.quantity.toLocaleString("vi-VN")}</td>
+                      <td className="py-2 px-3 text-text-secondary">{format(l.enteredAt, "dd/MM/yyyy", { locale: vi })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CollapsibleRoom>

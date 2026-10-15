@@ -45,7 +45,7 @@ type RoomData = {
 // phòng Kho thị trường cũng chưa có nghiệp vụ/giàn kệ riêng (mới có khung sườn — xem comment ROLE_NAV
 // DOI_TAC_VAN_HANH ở src/types/index.ts).
 const NO_SHELF_ROOM_TYPES = new Set<RoomType>([
-  "PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG", "PHONG_TOI", "PHONG_NHIEM",
+  "PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_DOI_XU_LY", "PHONG_THEO_DOI", "PHONG_HAN_TUI", "PHONG_THI_TRUONG", "PHONG_TOI", "PHONG_NHIEM",
   "PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG",
 ]);
 // Kho sản xuất chỉ có đúng 4 loại phòng này — nhóm lại 2 tầng cho dễ nhìn: Phòng sáng (mẫu mẹ + ra rễ)
