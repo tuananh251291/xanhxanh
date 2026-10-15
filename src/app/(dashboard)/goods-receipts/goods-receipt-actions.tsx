@@ -12,8 +12,8 @@ type GoodsReceiptFormProps = React.ComponentProps<typeof GoodsReceiptForm>;
 // 2 nút hành động cạnh tiêu đề tab "Nhận hàng từ NCC" (/goods-receipts) — mở dialog thay vì chiếm chỗ cố
 // định trên trang.
 export default function GoodsReceiptActions({
-  rooms, plantTypes, suppliers, gardens,
-}: Pick<GoodsReceiptFormProps, "rooms" | "plantTypes" | "suppliers" | "gardens">) {
+  rooms, plantTypes, suppliers, gardens, productionWarehouses,
+}: Pick<GoodsReceiptFormProps, "rooms" | "plantTypes" | "suppliers" | "gardens" | "productionWarehouses">) {
   const [formOpen, setFormOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
 
@@ -24,7 +24,7 @@ export default function GoodsReceiptActions({
           <Plus className="w-4 h-4 mr-1.5" /> Tạo đơn nhập hàng
         </DialogTrigger>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-          <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} title="Tạo đơn nhập hàng" />
+          <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} productionWarehouses={productionWarehouses} title="Tạo đơn nhập hàng" />
         </DialogContent>
       </Dialog>
 

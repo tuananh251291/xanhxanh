@@ -18,6 +18,7 @@ import ReturnInspectionTable from "@/components/shared/return-inspection-table";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import TransferReceiveBoard from "./transfer-receive-board";
 import GoodsReceiptActions from "./goods-receipt-actions";
+import { goodsReceiptSourceLabel } from "@/lib/goods-receipt-source";
 import RepackReturnBoard from "./repack-return-board";
 
 const TAB_VALUES = ["ncc", "transfer", "repack", "planned"] as const;
@@ -41,11 +42,12 @@ export default async function GoodsReceiptsPage({
   const workplaceWarehouseId = session?.user?.workplaceWarehouseId ?? null;
   const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
 
-  const [allRooms, plantTypes, suppliers, gardens, recentReceipts, pendingInspections, pendingPlans, staffUsers] = await Promise.all([
+  const [allRooms, plantTypes, suppliers, gardens, productionWarehouses, recentReceipts, pendingInspections, pendingPlans, staffUsers] = await Promise.all([
     getFinishedQualifiedRooms(),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.goodsReceipt.findMany({
       where: { createdById: session?.user?.id ?? "", status: "CONFIRMED" },
       orderBy: { createdAt: "desc" },
@@ -54,6 +56,7 @@ export default async function GoodsReceiptsPage({
         id: true, code: true, notes: true, createdAt: true,
         supplier: { select: { code: true, name: true } },
         productionGarden: { select: { code: true, name: true } },
+        productionWarehouse: { select: { code: true, name: true } },
         items: { select: { quantityDelivered: true, quantityRejected: true, quantityPassed: true } },
       },
     }),
@@ -65,6 +68,7 @@ export default async function GoodsReceiptsPage({
         id: true, code: true, expectedDate: true, assignmentConfirmedAt: true,
         supplier: { select: { code: true, name: true } },
         productionGarden: { select: { code: true, name: true } },
+        productionWarehouse: { select: { code: true, name: true } },
         items: {
           select: {
             stageCode: true, quantityDelivered: true,
@@ -82,14 +86,9 @@ export default async function GoodsReceiptsPage({
   ]);
 
   const rooms = allRooms.filter((r) => r.warehouseId === workplaceWarehouseId);
-  // Tên nguồn hàng hiển thị — đúng 1 trong 2 luôn có giá trị (supplier hoặc productionGarden, xem
-  // GoodsReceipt.supplierId/productionGardenId).
-  const sourceLabel = (source: { supplier: { name: string; code: string } | null; productionGarden: { name: string; code: string } | null }) =>
-    source.supplier
-      ? `${source.supplier.name} (${source.supplier.code})`
-      : source.productionGarden
-        ? `${source.productionGarden.name} (${source.productionGarden.code}) — Khu SX nội bộ`
-        : "—";
+  // Tên nguồn hàng hiển thị — đúng 1 trong 3 luôn có giá trị (supplier/productionGarden/productionWarehouse,
+  // xem GoodsReceipt.supplierId/productionGardenId/productionWarehouseId).
+  const sourceLabel = (source: Parameters<typeof goodsReceiptSourceLabel>[0]) => goodsReceiptSourceLabel(source);
 
   return (
     <div className="space-y-6">
@@ -113,7 +112,7 @@ export default async function GoodsReceiptsPage({
         <TabsContent value="ncc" className="mt-4 space-y-6">
           {workplaceWarehouseId && (
             <div className="flex justify-end">
-              <GoodsReceiptActions rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
+              <GoodsReceiptActions rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} productionWarehouses={productionWarehouses} />
             </div>
           )}
 
@@ -210,7 +209,7 @@ export default async function GoodsReceiptsPage({
                 templateUrl="/api/goods-receipts/import"
                 uploadUrl="/api/goods-receipts/import"
               />
-              <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} />
+              <GoodsReceiptForm rooms={rooms} plantTypes={plantTypes} suppliers={suppliers} gardens={gardens} productionWarehouses={productionWarehouses} />
             </div>
           ) : (
             <Card><CardContent className="py-8 text-center text-text-muted">

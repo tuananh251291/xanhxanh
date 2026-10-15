@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import GoodsReceiptConfirmForm from "./goods-receipt-confirm-form";
+import { goodsReceiptSourceLabel } from "@/lib/goods-receipt-source";
 
 export default async function GoodsReceiptConfirmPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -15,6 +16,7 @@ export default async function GoodsReceiptConfirmPage({ params }: { params: Prom
       id: true, code: true, status: true,
       supplier: { select: { code: true, name: true } },
       productionGarden: { select: { code: true, name: true } },
+      productionWarehouse: { select: { code: true, name: true } },
       room: { select: { warehouseId: true } },
       items: {
         select: {
@@ -28,11 +30,7 @@ export default async function GoodsReceiptConfirmPage({ params }: { params: Prom
   if (receipt.room.warehouseId !== session?.user?.workplaceWarehouseId) redirect("/goods-receipts");
   if (receipt.status !== "PLANNED") redirect("/goods-receipts");
 
-  const supplierName = receipt.supplier
-    ? `${receipt.supplier.name} (${receipt.supplier.code})`
-    : receipt.productionGarden
-      ? `${receipt.productionGarden.name} (${receipt.productionGarden.code}) — Khu SX nội bộ`
-      : "—";
+  const supplierName = goodsReceiptSourceLabel(receipt);
 
   return (
     <GoodsReceiptConfirmForm

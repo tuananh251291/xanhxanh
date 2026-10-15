@@ -35,16 +35,18 @@ const createSchema = z.discriminatedUnion("status", [
   }),
   // Kế hoạch nhập kho — chưa có hàng thật, chỉ ước tính tổng số lượng mỗi SKU (chưa biết tỉ lệ đạt/không
   // đạt cho tới khi hàng về). Xem PATCH /api/goods-receipts/[id]/confirm để xác nhận số liệu thật. Nguồn
-  // hàng là ĐÚNG 1 trong 2: NCC ngoài (supplierId) hoặc khu sản xuất nội bộ (productionGardenId).
+  // hàng là ĐÚNG 1 trong 3: NCC ngoài (supplierId), Vườn sản xuất nội bộ (productionGardenId) hoặc 1 khu sản
+  // xuất (Warehouse SAN_XUAT — productionWarehouseId).
   z.object({
     status: z.literal("PLANNED"),
     supplierId: z.string().min(1).optional(),
     productionGardenId: z.string().min(1).optional(),
+    productionWarehouseId: z.string().min(1).optional(),
     roomId: z.string().min(1),
     notes: z.string().optional(),
     expectedDate: z.string().min(1, "Cần nhập ngày dự kiến nhập kho"),
     items: z.array(plannedItemSchema).min(1, "Cần ít nhất 1 dòng kế hoạch"),
-  }).refine((d) => !!d.supplierId !== !!d.productionGardenId, { message: "Chọn đúng 1 đơn vị cung cấp" }),
+  }).refine((d) => [d.supplierId, d.productionGardenId, d.productionWarehouseId].filter(Boolean).length === 1, { message: "Chọn đúng 1 đơn vị cung cấp" }),
 ]);
 
 // "Nhập hàng" — Kho thành phẩm ghi nhận 1 lần nhận hàng từ nhà cung cấp ngoài. Mỗi dòng tự chọn quy cách
@@ -96,6 +98,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Không tìm thấy khu sản xuất nội bộ" }, { status: 400 });
     }
   }
+  if (data.status === "PLANNED" && data.productionWarehouseId) {
+    const warehouse = await prisma.warehouse.findFirst({ where: { id: data.productionWarehouseId, type: "SAN_XUAT", isActive: true }, select: { id: true } });
+    if (!warehouse) return NextResponse.json({ message: "Không tìm thấy khu sản xuất" }, { status: 400 });
+  }
   // Chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) — khác
   // getFinishedQualifiedRooms dùng ở nơi khác (VD Xử lý cây) vốn không giới hạn theo kho.
   const validRooms = allRooms.filter((r) => r.warehouseId === session.user.workplaceWarehouseId);
@@ -127,6 +133,7 @@ export async function POST(req: NextRequest) {
         createPlannedGoodsReceipt(tx, {
           supplierId: data.supplierId,
           productionGardenId: data.productionGardenId,
+          productionWarehouseId: data.productionWarehouseId,
           roomId: data.roomId,
           createdById: session.user.id,
           notes: data.notes,

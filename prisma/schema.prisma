@@ -1066,22 +1066,26 @@ enum GoodsReceiptStatus {
 // POST /api/goods-receipts). status mặc định CONFIRMED (hành vi cũ, immediate-effect) — chỉ khác khi tạo
 // dưới dạng "Kế hoạch nhập kho" (status PLANNED, xem GoodsReceiptItem.plannedLotId).
 model GoodsReceipt {
-  id                 String            @id @default(cuid())
-  code               String            @unique
+  id                    String            @id @default(cuid())
+  code                  String            @unique
   // Đúng 1 trong 2: NCC ngoài (supplierId) hoặc khu sản xuất nội bộ (productionGardenId) — ràng buộc
   // kiểm ở application layer (POST /api/goods-receipts), không có CHECK constraint DB. supplierId luôn có
   // giá trị với phiếu CONFIRMED cũ tạo trước khi có productionGardenId (chưa có phiếu CONFIRMED nào chọn
   // khu SX — nhánh đó vẫn bắt buộc supplierId, xem createSchema).
-  supplierId         String?
-  supplier           Supplier?         @relation(fields: [supplierId], references: [id])
-  productionGardenId String?
-  productionGarden   ProductionGarden? @relation(fields: [productionGardenId], references: [id])
-  roomId             String
-  room               Room              @relation(fields: [roomId], references: [id])
-  createdById        String
-  createdBy          User              @relation("GoodsReceiptCreatedBy", fields: [createdById], references: [id])
-  notes              String?
-  createdAt          DateTime          @default(now())
+  supplierId            String?
+  supplier              Supplier?         @relation(fields: [supplierId], references: [id])
+  productionGardenId    String?
+  productionGarden      ProductionGarden? @relation(fields: [productionGardenId], references: [id])
+  // Nguồn thứ 3 (chỉ phiếu Dự kiến nhập — PLANNED): 1 khu sản xuất (Warehouse SAN_XUAT) — vẫn ĐÚNG 1 trong 3
+  // supplierId/productionGardenId/productionWarehouseId, kiểm ở POST /api/goods-receipts.
+  productionWarehouseId String?
+  productionWarehouse   Warehouse?        @relation("GoodsReceiptProductionWarehouse", fields: [productionWarehouseId], references: [id])
+  roomId                String
+  room                  Room              @relation(fields: [roomId], references: [id])
+  createdById           String
+  createdBy             User              @relation("GoodsReceiptCreatedBy", fields: [createdById], references: [id])
+  notes                 String?
+  createdAt             DateTime          @default(now())
 
   status        GoodsReceiptStatus @default(CONFIRMED)
   // Chỉ có giá trị khi status = PLANNED — ngày dự kiến hàng thật về, dùng tính khả dụng tương lai cho đơn
@@ -1204,6 +1208,8 @@ model Warehouse {
   repackInstructionsProduction RepackInstruction[]           @relation("RepackProductionWarehouse")
   gardenHandovers              GardenHandover[]              @relation("GardenHandoverWarehouse")
   finishedGoodsCheckLines      FinishedGoodsCheckLine[]      @relation("FinishedGoodsCheckLineWarehouse")
+
+  goodsReceiptsAsProductionSource GoodsReceipt[] @relation("GoodsReceiptProductionWarehouse")
 
   @@map("warehouses")
 }

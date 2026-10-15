@@ -14,6 +14,7 @@ import { QLK_WEEKLY_SLOTS, qlkSlotOf } from "@/lib/daily-task-weekly";
 import { startOfWeek } from "date-fns";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import ReturnInspectionTable from "@/components/shared/return-inspection-table";
+import { goodsReceiptSourceLabel } from "@/lib/goods-receipt-source";
 
 export default async function TaskAssignmentPage() {
   const session = await auth();
@@ -42,6 +43,7 @@ export default async function TaskAssignmentPage() {
         id: true, code: true, expectedDate: true, assignmentConfirmedAt: true,
         supplier: { select: { code: true, name: true } },
         productionGarden: { select: { code: true, name: true } },
+        productionWarehouse: { select: { code: true, name: true } },
         assignedTo: { select: { id: true, code: true, name: true } },
       },
     }),
@@ -141,7 +143,7 @@ export default async function TaskAssignmentPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground font-mono">{r.code}</p>
                   <p className="text-xs text-text-secondary">
-                    {r.supplier ? `${r.supplier.name} (${r.supplier.code})` : r.productionGarden ? `${r.productionGarden.name} (${r.productionGarden.code}) — Khu SX nội bộ` : "—"}
+                    {goodsReceiptSourceLabel(r)}
                     {r.expectedDate ? ` · Dự kiến ${r.expectedDate.toLocaleDateString("vi-VN")}` : ""}
                   </p>
                 </div>

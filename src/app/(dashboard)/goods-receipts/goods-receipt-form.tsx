@@ -43,12 +43,14 @@ const newRow = (): ItemRow => ({ key: `r${++rowKeySeq}`, plantTypeId: "", stageC
 // gộp chung 1 combobox, value mã hoá tiền tố "s:"/"g:" để tách lại lúc gửi (xem GoodsReceipt.supplierId/
 // productionGardenId, prisma/schema.prisma).
 export default function GoodsReceiptForm({
-  rooms, plantTypes, suppliers, gardens, title = "Dự kiến nhập hàng",
+  rooms, plantTypes, suppliers, gardens, productionWarehouses = [], title = "Dự kiến nhập hàng",
 }: {
   rooms: Room[];
   plantTypes: PlantType[];
   suppliers: Supplier[];
   gardens: ProductionGarden[];
+  // Các khu sản xuất (Warehouse SAN_XUAT) — chọn được làm đơn vị cung cấp (tiền tố "w:").
+  productionWarehouses?: ProductionGarden[];
   title?: string;
 }) {
   const [roomId, setRoomId] = useState("");
@@ -63,6 +65,7 @@ export default function GoodsReceiptForm({
   const sourceOptions: ComboOption[] = [
     ...suppliers.map((s) => ({ value: `s:${s.id}`, label: `${s.code} - ${s.name}` })),
     ...gardens.map((g) => ({ value: `g:${g.id}`, label: `${g.code} - ${g.name} — Khu SX nội bộ` })),
+    ...productionWarehouses.map((w) => ({ value: `w:${w.id}`, label: `${w.code} - ${w.name} — Khu sản xuất` })),
   ];
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
 
@@ -92,7 +95,7 @@ export default function GoodsReceiptForm({
     const [sourceType, sourceRealId] = sourceId.split(":");
     const body: Record<string, unknown> = {
       status: "PLANNED",
-      ...(sourceType === "g" ? { productionGardenId: sourceRealId } : { supplierId: sourceRealId }),
+      ...(sourceType === "g" ? { productionGardenId: sourceRealId } : sourceType === "w" ? { productionWarehouseId: sourceRealId } : { supplierId: sourceRealId }),
       roomId,
       expectedDate,
       notes: notes.trim() || undefined,
