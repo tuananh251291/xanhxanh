@@ -8,6 +8,7 @@ import { isSerializationFailure } from "@/lib/prisma-errors";
 import { getSystemConfig } from "@/lib/inventory";
 import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
+import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
 const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
@@ -79,8 +80,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { customerId, freeCustomerCode, saleUserId, marketWarehouseId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
-  const shipDate = new Date(expectedShipAt);
-  if (Number.isNaN(shipDate.getTime())) {
+  // Giờ xuất mặc định 9:00 — chỉ Quản lý kho thành phẩm/Admin được chọn giờ khác (xem normalizeExpectedShipAt).
+  const shipDate = normalizeExpectedShipAt(expectedShipAt, session.user.role);
+  if (!shipDate) {
     return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
   }
   if (!customerId && !marketWarehouseId && !freeCustomerCode) {

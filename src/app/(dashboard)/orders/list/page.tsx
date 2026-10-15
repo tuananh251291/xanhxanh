@@ -14,6 +14,7 @@ import { getOrderPackStatus } from "@/lib/order-pack-status";
 import ConfirmOrderButton from "./confirm-order-button";
 import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
+import ShipAtEditCell from "./ship-at-edit-cell";
 import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } from "@prisma/client";
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
@@ -34,6 +35,7 @@ function OrdersTable({
   showStatus,
   showActions,
   linkToDetailPage,
+  canEditShipAt,
 }: {
   title: string;
   description: string;
@@ -46,6 +48,8 @@ function OrdersTable({
   // true = "Xem chi tiết" dẫn sang trang riêng /orders/list/[id] thay vì mở popup (dùng cho "Đơn đã xác
   // nhận" — nội dung nhiều dòng loại cây/quy cách sau này sẽ dài, không hợp popup nữa).
   linkToDetailPage: boolean;
+  // Quản lý kho thành phẩm sửa được thời gian dự kiến xuất (mặc định 9:00 lúc tạo đơn).
+  canEditShipAt: boolean;
 }) {
   return (
     <Card>
@@ -62,7 +66,7 @@ function OrdersTable({
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Khách hàng</th>
                 {showQuantity && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Số lượng</th>}
                 {showHoldUntil && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày hết hạn tạm giữ</th>}
-                {showExpectedShipAt && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày dự kiến xuất</th>}
+                {showExpectedShipAt && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thời gian dự kiến xuất</th>}
                 {showStatus && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>}
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>
               </tr>
@@ -82,7 +86,9 @@ function OrdersTable({
                   )}
                   {showExpectedShipAt && (
                     <td className="px-4 py-3 text-sm text-text-secondary">
-                      {o.expectedShipAt ? format(o.expectedShipAt, "dd/MM/yyyy", { locale: vi }) : "—"}
+                      {canEditShipAt ? (
+                        <ShipAtEditCell orderId={o.id} expectedShipAt={o.expectedShipAt ? o.expectedShipAt.toISOString() : null} />
+                      ) : o.expectedShipAt ? format(o.expectedShipAt, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
                     </td>
                   )}
                   {showStatus && (
@@ -200,10 +206,11 @@ export default async function OrdersListPage() {
         orders={heldOrders}
         showHoldUntil
         showQuantity
-        showExpectedShipAt={false}
+        showExpectedShipAt
         showStatus={false}
         showActions
         linkToDetailPage={false}
+        canEditShipAt={isActingForSale}
       />
 
       <OrdersTable
@@ -216,6 +223,7 @@ export default async function OrdersListPage() {
         showStatus
         showActions={false}
         linkToDetailPage
+        canEditShipAt={isActingForSale}
       />
     </div>
   );

@@ -5,13 +5,43 @@ import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode, 
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
+import { canEditShipTime } from "@/lib/order-ship-time";
 
 const patchSchema = z.object({
-  action: z.enum(["confirm", "ship", "cancel", "assign", "ack"]),
+  action: z.enum(["confirm", "ship", "cancel", "assign", "ack", "reschedule"]),
+  // action="reschedule" — Quản lý kho thành phẩm sửa "Thời gian dự kiến xuất" (ngày + giờ) của đơn chưa xuất.
+  expectedShipAt: z.string().optional(),
   // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất
   // đơn này. null = bỏ gán.
   assignedToId: z.string().nullable().optional(),
 });
+
+// Quản lý kho thành phẩm (hoặc Admin) sửa "Thời gian dự kiến xuất" của đơn HELD/CONFIRMED — mặc định lúc tạo
+// đơn là 9:00 (xem normalizeExpectedShipAt). Chặn dời SỚM hơn ngày về của lô "dự kiến nhập" (PLANNED) mà đơn
+// đang giữ chỗ, vì lô đó chỉ được tính vào đơn khi về trước ngày xuất (xem getQualifiedLots).
+async function rescheduleOrder(orderId: string, user: { id: string; role: string | null }, expectedShipAt: string | undefined) {
+  if (!canEditShipTime(user.role as Parameters<typeof canEditShipTime>[0])) {
+    return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới sửa được thời gian dự kiến xuất" }, { status: 403 });
+  }
+  const shipAt = expectedShipAt ? new Date(expectedShipAt) : null;
+  if (!shipAt || Number.isNaN(shipAt.getTime())) return NextResponse.json({ message: "Thời gian không hợp lệ" }, { status: 400 });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { status: true, items: { select: { lot: { select: { status: true, expectedDate: true } } } } },
+  });
+  if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
+  if (order.status !== "HELD" && order.status !== "CONFIRMED") {
+    return NextResponse.json({ message: "Chỉ sửa được đơn chưa xuất kho" }, { status: 400 });
+  }
+  const latestPlanned = order.items
+    .filter((i) => i.lot.status === "PLANNED" && i.lot.expectedDate)
+    .reduce<Date | null>((max, i) => (!max || i.lot.expectedDate! > max ? i.lot.expectedDate! : max), null);
+  if (latestPlanned && shipAt < latestPlanned) {
+    return NextResponse.json({ message: `Đơn có hàng dự kiến về ngày ${latestPlanned.toLocaleDateString("vi-VN")} — không dời sớm hơn ngày này được` }, { status: 400 });
+  }
+  const updated = await prisma.order.update({ where: { id: orderId }, data: { expectedShipAt: shipAt }, select: { id: true, expectedShipAt: true } });
+  return NextResponse.json(updated);
+}
 
 // Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đơn này — chỉ có ý nghĩa với đơn
 // đã CONFIRMED (đang chờ xuất, xem trang "Sắp xếp đơn hàng").
@@ -357,6 +387,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (parsed.data.action === "cancel") return await cancelOrder(id, session.user);
     if (parsed.data.action === "assign") return await assignOrder(id, session.user, parsed.data.assignedToId);
     if (parsed.data.action === "ack") return await ackOrder(id, session.user);
+    if (parsed.data.action === "reschedule") return await rescheduleOrder(id, session.user, parsed.data.expectedShipAt);
     return await shipOrder(id, session.user);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";

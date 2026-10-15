@@ -22,6 +22,7 @@ import {
 import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert, Download, Upload, PenLine, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, FINISHED_SPEC_BAG_SIZE, type CustomerGroup } from "@/types";
+import ShipAtInput from "@/components/shared/ship-at-input";
 
 const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -417,10 +418,10 @@ export default function OrderCheckForm({
         <CardContent className="space-y-3">
           <div className="space-y-1 max-w-xs">
             <Label>Thời gian dự kiến xuất *</Label>
-            <Input
-              type="datetime-local"
+            <ShipAtInput
               value={expectedShipAt}
-              onChange={(e) => { setExpectedShipAt(e.target.value); setResults(null); }}
+              onChange={(v) => { setExpectedShipAt(v); setResults(null); }}
+              canEditTime={isActingForSale}
             />
             <p className="text-xs text-text-secondary">Quyết định lô hàng dự kiến (chưa về) nào được tính vào khả dụng.</p>
           </div>
@@ -519,7 +520,7 @@ export default function OrderCheckForm({
             </p>
             <div className="space-y-1 max-w-xs">
               <Label>Thời gian dự kiến xuất *</Label>
-              <Input type="datetime-local" value={expectedShipAt} onChange={(e) => setExpectedShipAt(e.target.value)} />
+              <ShipAtInput value={expectedShipAt} onChange={setExpectedShipAt} canEditTime={isActingForSale} />
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Link href="/api/orders/import-items" className="flex-1">

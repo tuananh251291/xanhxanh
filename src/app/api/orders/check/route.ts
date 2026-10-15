@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots, parseBagSize } from "@/lib/order-availability";
 import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
+import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực
 // tiếp từ Phòng ra rễ) — vẫn hợp lệ ở đây vì Sale chỉ bao giờ tham chiếu tồn kho trong Phòng đạt tiêu
@@ -151,8 +152,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const shipDate = new Date(parsed.data.expectedShipAt);
-  if (Number.isNaN(shipDate.getTime())) {
+  const shipDate = normalizeExpectedShipAt(parsed.data.expectedShipAt, session.user.role);
+  if (!shipDate) {
     return NextResponse.json({ message: "Ngày xuất dự kiến không hợp lệ" }, { status: 400 });
   }
 
