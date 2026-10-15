@@ -346,6 +346,10 @@ enum AlertType {
   // Nhắc Quản lý kho TP đến hạn gửi báo cáo đối chiếu tồn kho cuối tháng (4 ngày trước hạn) — 1 lần/kho/tháng,
   // relatedId = "<warehouseId>:<năm>-<tháng>" để không gửi lặp (xem ensureStockCountReminder).
   STOCK_COUNT_DUE
+  // NV Trợ lý tải Excel phân công Nhân viên quản lý (Cài đặt Sale) — chờ Admin cấp cao duyệt (targetRole
+  // SUPER_ADMIN); kết quả duyệt/từ chối báo lại đúng người gửi (userId). Xem SalesManagerImportRequest.
+  SALES_MANAGER_IMPORT_PENDING
+  SALES_MANAGER_IMPORT_DECIDED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -587,6 +591,8 @@ model User {
   assistantTasksCreated                AssistantTask[]              @relation("AssistantTaskCreatedBy")
   stockCountReportsCreated             StockCountReport[]           @relation("StockCountReportCreatedBy")
   stockCountReportsDecided             StockCountReport[]           @relation("StockCountReportDecidedBy")
+  salesManagerImportsCreated           SalesManagerImportRequest[]  @relation("SalesManagerImportCreatedBy")
+  salesManagerImportsDecided           SalesManagerImportRequest[]  @relation("SalesManagerImportDecidedBy")
 
   @@map("users")
 }
@@ -3877,4 +3883,32 @@ model StockCountItem {
 
   @@unique([reportId, roomId, plantTypeId, stageCode])
   @@map("stock_count_items")
+}
+
+enum SalesManagerImportStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Yêu cầu nhập Excel phân công Nhân viên quản lý (Cài đặt Sale → Nhân viên quản lý) do NV Trợ lý tải lên —
+// chỉ áp vào SalesManagerAssignment khi Admin cấp cao duyệt (Admin cấp cao tự tải lên thì áp ngay, không qua
+// bảng này). rows lưu NGUYÊN mã trong file [{managerCode, salesCode, marketCode}], lúc duyệt kiểm tra lại
+// (NV/thị trường có thể đã đổi trong lúc chờ duyệt) — xem src/lib/sales-manager-import.ts.
+model SalesManagerImportRequest {
+  id          String                   @id @default(cuid())
+  fileName    String
+  rows        Json
+  rowCount    Int
+  status      SalesManagerImportStatus @default(PENDING)
+  createdById String
+  createdBy   User                     @relation("SalesManagerImportCreatedBy", fields: [createdById], references: [id])
+  decidedById String?
+  decidedBy   User?                    @relation("SalesManagerImportDecidedBy", fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  // Lý do từ chối (Admin cấp cao nhập).
+  note        String?                  @db.Text
+  createdAt   DateTime                 @default(now())
+
+  @@map("sales_manager_import_requests")
 }

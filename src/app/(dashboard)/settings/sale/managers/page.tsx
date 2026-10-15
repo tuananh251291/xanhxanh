@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Flag } from "lucide-react";
 import { canManageSaleCustomers } from "@/types";
 import SaleSettingsTabs from "../sale-settings-tabs";
-import ManagersBoard from "./managers-board";
+import ManagersSection from "./managers-section";
 
 export default async function SaleManagersPage() {
   const session = await auth();
@@ -19,7 +19,7 @@ export default async function SaleManagersPage() {
         <p className="text-text-secondary text-sm mt-1">Danh sách khách hàng, thị trường và phân công nhân viên quản lý cho đội bán hàng.</p>
       </div>
       <SaleSettingsTabs active="/settings/sale/managers" showMarkets={role === "SUPER_ADMIN"} />
-      <ManagersBoard />
+      <ManagersSection isSuperAdmin={role === "SUPER_ADMIN"} />
     </div>
   );
 }

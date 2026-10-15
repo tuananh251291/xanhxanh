@@ -464,6 +464,8 @@ export const ALERT_TYPE_LABELS = {
   STOCK_COUNT_RECHECK_REQUESTED: "Yêu cầu kiểm tra lại tồn kho",
   STOCK_COUNT_APPLIED: "Đã áp số liệu đối chiếu tồn kho",
   STOCK_COUNT_DUE: "Đến hạn đối chiếu tồn kho cuối tháng",
+  SALES_MANAGER_IMPORT_PENDING: "Phân công NV quản lý chờ duyệt",
+  SALES_MANAGER_IMPORT_DECIDED: "Kết quả duyệt phân công NV quản lý",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -482,6 +484,8 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   STOCK_COUNT_RECHECK_REQUESTED: "/stock-counts",
   STOCK_COUNT_APPLIED: "/stock-counts",
   STOCK_COUNT_DUE: "/stock-counts",
+  SALES_MANAGER_IMPORT_PENDING: "/settings/sale/managers",
+  SALES_MANAGER_IMPORT_DECIDED: "/settings/sale/managers",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
