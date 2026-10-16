@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { getCurrentWeekSlot, toStoredWeekStart } from "@/lib/week-rotation";
+import { toStoredWeekStart } from "@/lib/week-rotation";
+import { getRootingDueSlot, isRootingDueScheduleStarted } from "@/lib/rooting-week-group";
 import { getRotationEpochResolver, resolveRotationEpoch } from "@/lib/rotation-epoch";
 
 export type RootingHandoffTaskGroup = {
@@ -21,7 +22,7 @@ function shelfCodesFromNotes(notes: string | null): string[] {
 }
 
 // Việc tuần "Bàn giao thành phẩm" của Kho mô: mỗi Nhóm tuần ra rễ ĐẾN HẠN trong tuần [weekStart, weekEnd]
-// (rotationOrder khớp khe tuần đó theo lịch xoay vòng, giống isDue ở summarizeRootingWeekGroups) là 1 việc
+// (rotationOrder khớp getRootingDueSlot của tuần đó, giống isDue ở summarizeRootingWeekGroups) là 1 việc
 // cần làm, xong khi Kho mô đã tạo phiếu bàn giao (không bị từ chối) trong tuần đó cho kệ thuộc Nhóm. Trước
 // đây đếm theo số phiếu tạo trong tuần — Kho mô không tạo phiếu nào thì 0/0 = 100% "hoàn thành" dù Nhóm đến
 // hạn vẫn còn nguyên cây trên giàn (Bát Tràng tuần 05/10/2026).
@@ -79,8 +80,8 @@ export async function getRootingHandoffTaskGroups(
     const epoch = resolveRotationEpoch(epochResolver, room.warehouseId);
     // Chưa cấu hình "Tuần khởi đầu" hoặc tuần còn trước mốc đó — lịch xoay vòng chưa chạy, không có Nhóm nào
     // đến hạn (cùng quy tắc với summarizeRootingWeekGroups).
-    if (!epoch || weekEnd.getTime() < epoch.getTime()) continue;
-    const slot = getCurrentWeekSlot(totalSlots, weekStart, epoch);
+    if (!epoch || !isRootingDueScheduleStarted(weekEnd, epoch)) continue;
+    const slot = getRootingDueSlot(totalSlots, weekStart, epoch);
 
     const handedShelfIds = new Set<string>();
     const shelfIdByCode = new Map(room.shelves.map((s) => [s.code, s.id]));

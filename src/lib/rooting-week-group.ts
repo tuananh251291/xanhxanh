@@ -8,8 +8,8 @@ import { addDays, addWeeks, startOfWeek } from "date-fns";
 
 // Hạn chuyển Kho thành phẩm (Lot.expectedMoveAt) của lô cây ra rễ trên giàn Phòng ra rễ — theo lịch Nhóm
 // tuần ra rễ thay vì "lên kệ + số tuần ra rễ": Kho mô bàn giao CẢ Nhóm đúng tuần Nhóm tới lượt (xem
-// summarizeRootingWeekGroups), nên hạn của lô = CHỦ NHẬT của lượt đầu tiên SAU tuần lô lên kệ (lô lên kệ
-// đúng tuần Nhóm đang tới lượt thì chờ trọn 1 vòng N tuần). Cả tuần tới lượt hiện "Đến hạn", hết Chủ nhật
+// summarizeRootingWeekGroups, getRootingDueSlot), nên hạn của lô = CHỦ NHẬT của lượt đầu tiên SAU tuần lô
+// lên kệ (lô lên kệ đúng tuần Nhóm nhận cây thì bàn giao sau N−1 tuần, VD N=4 → 3 tuần). Cả tuần tới lượt hiện "Đến hạn", hết Chủ nhật
 // mà lô còn trên giàn mới "Quá hạn" (lotDueStatus). Không bắt buộc đủ PlantType.rootingWeeks — phần không đạt
 // sau đánh giá chất lượng lùi sang Nhóm kế tiếp để xuất ngay tuần sau (xem PATCH
 // /api/rooting-quality-evaluations/[id]). Giàn chưa thuộc Nhóm hoặc kho chưa cấu hình Tuần khởi đầu: giữ
@@ -24,9 +24,25 @@ export function computeRootingExpectedMoveAt(
   if (rotationOrder == null || !epochMonday || totalSlots <= 0) {
     return addWeeks(startOfWeek(enteredAt, { weekStartsOn: 1 }), rootingWeeks);
   }
-  const enteredSlot = getCurrentWeekSlot(totalSlots, enteredAt, epochMonday);
-  const weeksUntilDue = ((rotationOrder - enteredSlot + totalSlots) % totalSlots) || totalSlots;
+  const enteredDueSlot = getRootingDueSlot(totalSlots, enteredAt, epochMonday);
+  const weeksUntilDue = ((rotationOrder - enteredDueSlot + totalSlots) % totalSlots) || totalSlots;
   return addDays(startOfWeek(addWeeks(enteredAt, weeksUntilDue), { weekStartsOn: 1 }), 6);
+}
+
+// Nhóm tuần ra rễ ĐẾN HẠN BÀN GIAO trong tuần chứa `date`. Cây lên giàn tuần W vào Nhóm có khe
+// getCurrentWeekSlot(W) (xem resolveRaReGroupAt ở shelf-assignment.ts — Nhóm vừa bàn giao xong tuần W−1,
+// giàn đã trống) và bàn giao tuần W+3 = tuần cấy + 4 (cấy tuần W−1 → Phòng tối 1 tuần → lên giàn tuần W →
+// 3 tuần ở Phòng ra rễ). VD Bát Tràng: cấy 28/09–03/10 → lên giàn tuần 05/10 → bàn giao tuần 26/10. Nên
+// Nhóm đến hạn tuần X là Nhóm có khe của tuần X+1 — mọi nơi tính "đến hạn"/"đạt xuất" của Nhóm tuần ra rễ
+// phải dùng hàm này (KHÔNG dùng getCurrentWeekSlot trực tiếp — đó là khe XẾP GIÀN).
+export function getRootingDueSlot(totalSlots: number, date: Date, epochMonday: Date): number {
+  return getCurrentWeekSlot(totalSlots, addWeeks(date, 1), epochMonday);
+}
+
+// Lịch bàn giao đã chạy tại tuần chứa `date` chưa — lượt bàn giao đầu tiên là tuần TRƯỚC tuần khởi đầu
+// (epochMonday là tuần Nhóm 1 bắt đầu nhận cây, Nhóm đến hạn tuần đó tính theo khe tuần sau).
+export function isRootingDueScheduleStarted(date: Date, epochMonday: Date): boolean {
+  return addWeeks(date, 1).getTime() >= epochMonday.getTime();
 }
 
 export { isoWeekStringToMonday, getCurrentWeekSlot } from "@/lib/week-rotation";
@@ -62,7 +78,7 @@ export type RootingWeekGroupStatus = {
 // "Đạt xuất" (isDue) tính THUẦN theo lịch xoay vòng — KHÔNG còn dựa vào Lot.expectedMoveAt/ngày nhập lô
 // của từng lô nữa (đổi theo yêu cầu: đã có Nhóm tuần ra rễ gắn với tuần thật cụ thể qua "Tuần khởi đầu
 // của Nhóm tuần ra rễ 1", không cần theo dõi ngày lô riêng lẻ). Một Nhóm được coi là "đạt xuất" khi
-// rotationOrder của Nhóm khớp với getCurrentWeekSlot(totalSlots, ..., epochMonday) — totalSlots = tổng số
+// rotationOrder của Nhóm khớp với getRootingDueSlot(totalSlots, ..., epochMonday) — totalSlots = tổng số
 // Nhóm xoay vòng RA_RE đang cấu hình (giống hệt N dùng để chọn "khe tuần hiện tại" lúc xếp kệ lô mới, xem
 // src/lib/shelf-assignment.ts, để 2 nơi luôn đồng bộ cùng 1 lịch). Nhóm chưa có lô nào (rỗng) vẫn không
 // được coi là "đạt xuất" dù đúng lịch — tránh hiện thẻ cảnh báo trống không có gì để bàn giao.
@@ -85,8 +101,8 @@ export function summarizeRootingWeekGroups(
   // ngược" ra 1 khe hợp lệ cho tuần trước epoch (VD epoch tuần 31, N=4 thì tuần 30 bị tính thành khe 4),
   // dù lịch xoay vòng thật sự chưa bắt đầu — không có ý nghĩa gì, dễ khiến Nhóm cuối chu kỳ hiện "đạt
   // xuất" nhầm ngay trước khi lịch khởi động (xem lỗi tương tự đã sửa ở summarizeMotherWeekGroups).
-  const currentSlot = totalSlots > 0 && epochMonday && now.getTime() >= epochMonday.getTime()
-    ? getCurrentWeekSlot(totalSlots, now, epochMonday)
+  const currentSlot = totalSlots > 0 && epochMonday && isRootingDueScheduleStarted(now, epochMonday)
+    ? getRootingDueSlot(totalSlots, now, epochMonday)
     : null;
 
   const byGroup = new Map<string, RootingWeekGroupStatus>();

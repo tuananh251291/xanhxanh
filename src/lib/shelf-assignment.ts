@@ -133,10 +133,10 @@ export async function planShelfAssignments(
   });
   // Tuần khởi đầu Nhóm tuần ra rễ của ĐÚNG kho đang xếp (giá trị riêng của kho, không có thì giá trị chung).
   const epochMonday = raReGroups.length > 0 ? ((await getRootingRotationEpoch(warehouseId)) ?? null) : null;
-  // Nhóm tuần ra rễ của tuần atDate (Nhóm có lượt xuất đúng tuần đó). Cây lên giàn tuần W được xếp vào Nhóm
-  // có lượt xuất CHÍNH tuần W — Nhóm đó vừa bàn giao/dọn trống đầu tuần, lượt xuất kế tiếp là W+N (N=4): cây
-  // ở kho 4 tuần. Tính theo tuần lên giàn THỰC TẾ (lúc Kho mô xếp), không theo ngày vào Phòng tối. VD Bát
-  // Tràng: cấy 05–11/10 → lên giàn 12–18/10 (tuần 42) → Nhóm 2 (A01/A02) có lượt xuất tuần 42. Trước đây
+  // Nhóm tuần ra rễ NHẬN CÂY của tuần atDate (khe getCurrentWeekSlot của tuần đó). Cây lên giàn tuần W được
+  // xếp vào Nhóm vừa bàn giao xong tuần W−1 (giàn đã trống), lượt bàn giao kế tiếp là W+N−1 (N=4): cây ở kho
+  // 3 tuần, bàn giao đúng tuần cấy + 4 — xem getRootingDueSlot ở rooting-week-group.ts. Tính theo tuần lên giàn THỰC TẾ (lúc Kho mô xếp), không theo ngày vào Phòng tối. VD Bát
+  // Tràng: cấy 05–11/10 → lên giàn 12–18/10 (tuần 42) → Nhóm 2 (A01/A02) → bàn giao tuần 02/11. Trước đây
   // (5bc774e) chọn Nhóm xuất tuần W−1 (Nhóm 1, A03/A04) — lệch 1 tuần so với cách xoay vòng thực tế ở kho
   // (Nhóm 3 lên giàn tuần 39, Nhóm 4 tuần 40, Nhóm 1 tuần 41, Nhóm 2 tuần 42), xếp lẫn vào lứa vừa lên tuần trước.
   function resolveRaReGroupAt(atDate: Date): { id: string; name: string; rotationOrder: number | null } | "BEFORE_EPOCH" | undefined {

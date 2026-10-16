@@ -20,15 +20,13 @@ export function openRootingEvalWeeks(now: Date = new Date()): Date[] {
 }
 
 // Nhãn hiển thị của 1 đánh giá: "Nhóm tuần ra rễ {tên}" + tuần cây VÀO Phòng ra rễ của đúng lứa đang được
-// đánh giá. Cây lên giàn tuần W được xếp vào Nhóm có lượt xuất chính tuần W (xem resolveRaReGroupAt ở
-// shelf-assignment.ts), nên lượt xuất kế tiếp là W+N (N = tổng số Nhóm RA_RE, cùng N dùng ở
-// ensureWeeklyRootingQualityEvaluation) — lứa được đánh giá cho tuần xuất weekStart là lứa vào phòng tuần
-// weekStart − N. Không phụ thuộc mốc "Tuần khởi đầu Nhóm 1" của từng kho (chỉ dùng độ dài chu kỳ).
+// đánh giá. Cây lên giàn tuần W bàn giao tuần W+N−1 (N = tổng số Nhóm RA_RE, xem getRootingDueSlot ở
+// rooting-week-group.ts) — lứa được đánh giá cho tuần xuất weekStart là lứa vào phòng tuần weekStart − (N−1). Không phụ thuộc mốc "Tuần khởi đầu Nhóm 1" của từng kho (chỉ dùng độ dài chu kỳ).
 export function describeRootingEvaluationGroup(groupName: string, weekStart: Date, totalSlots: number) {
   const name = groupName.trim();
   const label = /^nhóm/i.test(name) ? name : `Nhóm tuần ra rễ ${name}`;
   if (totalSlots <= 0) return { label, entryWeek: null };
-  const entryMonday = subWeeks(weekStart, totalSlots);
+  const entryMonday = subWeeks(weekStart, totalSlots - 1);
   return { label, entryWeek: `${format(entryMonday, "dd/MM")} – ${format(addDays(entryMonday, 6), "dd/MM/yyyy")}` };
 }
 
