@@ -240,7 +240,8 @@ export async function POST(req: NextRequest) {
 
         return created;
       },
-      { isolationLevel: "Serializable" }
+      // Đơn nhiều dòng (VD tạo bằng Excel) mỗi dòng truy vấn tồn riêng — vượt giới hạn 5s mặc định của Prisma.
+      { isolationLevel: "Serializable", timeout: 30000, maxWait: 10000 }
     );
 
     return NextResponse.json(order, { status: 201 });

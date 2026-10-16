@@ -201,7 +201,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     }
 
     await tx.order.update({ where: { id: order.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 
   if (processingRequestCount > 0) {
     await createAlert({
@@ -341,7 +341,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
           },
         });
       }
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     if (order.assignedToId && order.assignedById) {
       await createAlert({

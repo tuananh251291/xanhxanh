@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         actualSurplusQuantity,
       },
     });
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 
   if (actualOutputQuantity < request.neededQuantity) {
     await createAlert({
