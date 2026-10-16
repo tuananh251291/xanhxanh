@@ -5,6 +5,8 @@ const { auth } = NextAuth(authConfig);
 
 export default auth;
 
+// Có cả /api — để chặn tài khoản bên ngoài Dự án hoa lan gọi API nội bộ (xem authorized() ở
+// src/lib/auth.config.ts). Người dùng nội bộ: /api luôn đi qua, route tự check quyền như trước.
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"],
 };

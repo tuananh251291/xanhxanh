@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import type { UserRole, UserStatus } from "@prisma/client";
+import { ORCHID_EXTERNAL_HOME } from "@/types";
 
 // Edge-safe config — không import Prisma, chỉ dùng JWT
 // KHÔNG đưa User.avatar (data URL base64 ảnh, có thể tới ~1.5MB) vào token/session — JWT strategy mã hoá
@@ -18,6 +19,25 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
+      const path = nextUrl.pathname;
+
+      // Tài khoản bên ngoài Dự án hoa lan (Khách hàng lan / Điểm bán lẻ lan) — CHỈ được vào đúng khu riêng
+      // của mình. Nhiều API nội bộ cũ chỉ check "đã đăng nhập" (VD GET /api/suppliers) nên phải chặn tập
+      // trung ở đây thay vì trông vào từng route (matcher của proxy.ts có cả /api vì lý do này).
+      const role = (auth?.user as { role?: UserRole | null } | undefined)?.role ?? null;
+      const externalHome = role ? ORCHID_EXTERNAL_HOME[role] : undefined;
+      if (isLoggedIn && externalHome) {
+        const apiPrefix = role === "KHACH_HANG_LAN" ? "/api/orchid/shop" : "/api/orchid/point";
+        if (path.startsWith("/api/")) {
+          const allowed = path.startsWith("/api/auth") || path.startsWith("/api/account") || path.startsWith(apiPrefix);
+          return allowed ? true : Response.json({ message: "Không có quyền" }, { status: 403 });
+        }
+        const allowedPage = path === externalHome || path.startsWith(externalHome + "/") || path.startsWith("/account");
+        if (!allowedPage) return Response.redirect(new URL(externalHome, nextUrl));
+        return true;
+      }
+      // API tự xử lý xác thực riêng (trả JSON 401, không redirect về /login) — proxy chỉ chặn tài khoản ngoài.
+      if (path.startsWith("/api/")) return true;
       const isPublicPage =
         nextUrl.pathname.startsWith("/login") || nextUrl.pathname.startsWith("/register");
 

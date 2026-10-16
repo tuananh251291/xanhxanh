@@ -231,7 +231,7 @@ export default async function UsersPage({
                           probationStartDate={user.probationStartDate}
                           canEditEmployment={canEditEmployment}
                           editUser={
-                            canApprove && user.role && user.role !== "SUPER_ADMIN"
+                            canApprove && user.role && user.role !== "SUPER_ADMIN" && user.role !== "KHACH_HANG_LAN" && user.role !== "DIEM_BAN_LAN"
                               ? {
                                   id: user.id,
                                   name: user.name,

@@ -9,7 +9,7 @@ import {
   PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
   LogOut, Bell, ChevronLeft, ChevronRight, UserCircle, Menu, Flag, Boxes, Send, Layers, UploadCloud,
   Recycle, Truck, ArrowLeftRight, PackagePlus, TrendingUp, CalendarPlus, ShieldPlus, DollarSign, RefreshCw, Gauge,
-  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert, CalendarX, BookOpen, History, GraduationCap, Tags, Fingerprint, CalendarCheck, ListChecks,
+  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert, CalendarX, BookOpen, History, GraduationCap, Tags, Fingerprint, CalendarCheck, ListChecks, Flower2, Wallet, Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { ROLE_LABELS, type UserRole } from "@/types";
+import { ROLE_LABELS, isOrchidExternalRole, type UserRole } from "@/types";
 import { useState } from "react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -25,7 +25,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Settings, ClipboardList, ClipboardCheck, Sun, Moon, PenLine, PackageCheck,
   PackageOpen, Package, AlertTriangle, ShoppingCart, ShoppingBag, Sprout,
   UserCircle, Flag, Boxes, Send, Layers, UploadCloud, Recycle, Truck, ArrowLeftRight, PackagePlus, TrendingUp, CalendarPlus, ShieldPlus, DollarSign, RefreshCw, Gauge,
-  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert, CalendarX, BookOpen, History, GraduationCap, Tags, Fingerprint, CalendarCheck, ListChecks,
+  Handshake, Search, Camera, Images, Factory, Database, ShieldAlert, CalendarX, BookOpen, History, GraduationCap, Tags, Fingerprint, CalendarCheck, ListChecks, Flower2, Wallet, Store,
 };
 
 interface SidebarProps {
@@ -101,14 +101,15 @@ function SidebarNav({ navItems, collapsed, onNavigate }: {
   );
 }
 
-function SidebarFooter({ collapsed, alertCount, onNavigate }: {
+function SidebarFooter({ collapsed, alertCount, onNavigate, showAlerts }: {
   collapsed: boolean;
   alertCount: number;
   onNavigate?: () => void;
+  showAlerts: boolean;
 }) {
   return (
     <div className="p-2 border-t border-sidebar-border space-y-1">
-      <Link
+      {showAlerts && <Link
         href="/alerts"
         onClick={onNavigate}
         className="flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm text-text-secondary hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
@@ -122,7 +123,7 @@ function SidebarFooter({ collapsed, alertCount, onNavigate }: {
           )}
         </div>
         {!collapsed && <span>Thông báo</span>}
-      </Link>
+      </Link>}
       <button
         onClick={() => signOut({ callbackUrl: "/login" })}
         className="flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm text-text-secondary hover:bg-sidebar-accent hover:text-destructive transition-colors w-full"
@@ -137,6 +138,8 @@ function SidebarFooter({ collapsed, alertCount, onNavigate }: {
 export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Tài khoản bên ngoài Dự án hoa lan không dùng trang Thông báo nội bộ (proxy cũng chặn /alerts).
+  const showAlerts = !isOrchidExternalRole(user.role);
 
   return (
     <>
@@ -144,7 +147,7 @@ export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps
       <div className="print:hidden md:hidden sticky top-0 z-40 flex items-center justify-between gap-2 h-14 px-3 bg-card text-foreground border-b border-border">
         <SidebarBrand collapsed={false} />
         <div className="flex items-center gap-1 shrink-0">
-          <Link
+          {showAlerts && <Link
             href="/alerts"
             className="relative flex items-center justify-center h-11 w-11 rounded-lg text-text-secondary hover:bg-primary-light hover:text-primary-strong"
             aria-label="Thông báo"
@@ -155,7 +158,7 @@ export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps
                 {alertCount > 9 ? "9+" : alertCount}
               </Badge>
             )}
-          </Link>
+          </Link>}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger
               render={
@@ -179,7 +182,7 @@ export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps
               </div>
               <SidebarUser user={user} />
               <SidebarNav navItems={navItems} collapsed={false} onNavigate={() => setMobileOpen(false)} />
-              <SidebarFooter collapsed={false} alertCount={alertCount} onNavigate={() => setMobileOpen(false)} />
+              <SidebarFooter collapsed={false} alertCount={alertCount} onNavigate={() => setMobileOpen(false)} showAlerts={showAlerts} />
             </SheetContent>
           </Sheet>
         </div>
@@ -206,7 +209,7 @@ export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps
 
         <SidebarNav navItems={navItems} collapsed={collapsed} />
 
-        <SidebarFooter collapsed={collapsed} alertCount={alertCount} />
+        <SidebarFooter collapsed={collapsed} alertCount={alertCount} showAlerts={showAlerts} />
       </div>
     </>
   );

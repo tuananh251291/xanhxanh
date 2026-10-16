@@ -20,6 +20,8 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   NHAN_VIEN_QUAN_LY_VUON: "NV Quản lý vườn",
   DOI_TAC_VAN_HANH: "Đối tác vận hành",
   KE_TOAN: "NV Kế toán",
+  KHACH_HANG_LAN: "Khách hàng lan",
+  DIEM_BAN_LAN: "Điểm bán lẻ lan",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -40,6 +42,8 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
   DOI_TAC_VAN_HANH: "bg-sky-100 text-sky-800",
   KE_TOAN: "bg-info-light text-info-foreground",
+  KHACH_HANG_LAN: "bg-violet-light text-violet-foreground",
+  DIEM_BAN_LAN: "bg-achievement text-achievement-foreground",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — hệ thống tự tính mỗi tháng (xem src/lib/inspection-lane.ts),
@@ -694,6 +698,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   SUPER_ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Quản lý người dùng", icon: "Users" },
+    { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
@@ -840,6 +845,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // NV Trợ lý — kiểm tra/ghi nhận lỗi vi phạm NV cấy mô giống Kho mô (cùng phạm vi kho làm việc) + Theo dõi công việc.
   TRO_LY: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
@@ -960,4 +966,43 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
+  // Dự án hoa lan — tài khoản bên ngoài, KHÔNG có "/dashboard" (proxy.ts chuyển thẳng /dashboard về trang
+  // chủ riêng, xem ORCHID_EXTERNAL_HOME) và không vào được bất kỳ trang nội bộ nào khác.
+  KHACH_HANG_LAN: [
+    { href: "/orchid-shop", label: "Sản phẩm", icon: "Flower2" },
+    { href: "/orchid-shop/cart", label: "Giỏ hàng", icon: "ShoppingCart" },
+    { href: "/orchid-shop/orders", label: "Đơn hàng của tôi", icon: "ClipboardList" },
+    { href: "/orchid-shop/debt", label: "Công nợ & lịch sử mua", icon: "Wallet" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  DIEM_BAN_LAN: [
+    { href: "/orchid-point", label: "Tổng quan điểm bán", icon: "Store" },
+    { href: "/orchid-point/receive", label: "Nhận hàng", icon: "PackageCheck" },
+    { href: "/orchid-point/sales", label: "Bán hàng & doanh thu", icon: "DollarSign" },
+    { href: "/orchid-point/damage", label: "Báo cây hỏng", icon: "AlertTriangle" },
+    { href: "/orchid-point/stock", label: "Báo số cây còn", icon: "Boxes" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
 };
+
+// ============================================================
+// DỰ ÁN HOA LAN
+// ============================================================
+
+// Tài khoản bên ngoài của Dự án hoa lan — chỉ được vào đúng khu riêng (xem proxy guard ở
+// src/lib/auth.config.ts), mọi trang/API nội bộ khác đều bị chặn kể cả khi API đó chỉ check "đã đăng nhập".
+export const ORCHID_EXTERNAL_HOME: Partial<Record<UserRole, string>> = {
+  KHACH_HANG_LAN: "/orchid-shop",
+  DIEM_BAN_LAN: "/orchid-point",
+};
+export function isOrchidExternalRole(role: UserRole | null | undefined): boolean {
+  return role === "KHACH_HANG_LAN" || role === "DIEM_BAN_LAN";
+}
+// Admin cấp cao: toàn quyền. NV Trợ lý: vận hành (khách, đơn, nhập/xuất, tồn, thanh toán, công nợ, hoá đơn,
+// điểm bán) — KHÔNG có Chi phí/Báo cáo/Cấu hình (xem canManageOrchidAdminOnly).
+export function canAccessOrchidAdmin(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN" || role === "TRO_LY";
+}
+export function canManageOrchidAdminOnly(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN";
+}

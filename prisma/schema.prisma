@@ -54,6 +54,11 @@ enum UserRole {
   // NV Kế toán — tạo 14/10/2026, CHƯA có nhiệm vụ/trang nghiệp vụ riêng (menu tối thiểu, xem
   // ROLE_NAV.KE_TOAN ở src/types/index.ts) — bổ sung quyền khi có yêu cầu cụ thể.
   KE_TOAN
+  // Dự án hoa lan — 2 loại tài khoản BÊN NGOÀI (khác hẳn khách mua cây mô / Customer). Chỉ thấy đúng
+  // khu /orchid-shop (khách) hoặc /orchid-point (điểm bán lẻ) — proxy.ts chặn mọi trang/API khác (xem
+  // isOrchidExternalRole, src/types/index.ts). Tài khoản do Admin cấp cao/NV Trợ lý tạo ở Dự án hoa lan.
+  KHACH_HANG_LAN
+  DIEM_BAN_LAN
 }
 
 enum WarehouseType {
@@ -617,6 +622,8 @@ model User {
   repackKtpConfirmedBy                  RepackInstruction[]               @relation("RepackKtpConfirmedBy")
   gardenHandoversConfirmed              GardenHandover[]                  @relation("GardenHandoverConfirmedBy")
   finishedGoodsCheckLines               FinishedGoodsCheckLine[]          @relation("FinishedGoodsCheckLineCreatedBy")
+  orchidCustomer                        OrchidCustomer?
+  orchidRetailPoint                     OrchidRetailPoint?
 
   @@map("users")
 }
@@ -4038,4 +4045,544 @@ model SalesManagerImportRequest {
   createdAt   DateTime                 @default(now())
 
   @@map("sales_manager_import_requests")
+}
+
+// ============================================================
+// DỰ ÁN HOA LAN — module kinh doanh hoa lan, TÁCH RIÊNG HOÀN TOÀN khỏi nghiệp vụ cây mô (không dùng chung
+// Lot/Order/Customer/Supplier/Warehouse của cây mô). Quản trị: SUPER_ADMIN (toàn quyền) + TRO_LY (vận hành
+// — không có Chi phí/Báo cáo/Cấu hình), xem src/lib/orchid/permissions.ts. Tài khoản bên ngoài:
+// KHACH_HANG_LAN (gắn OrchidCustomer.userId) và DIEM_BAN_LAN (gắn OrchidRetailPoint.userId).
+// Tiền lưu VND (Float, làm tròn đồng khi hiển thị).
+// ============================================================
+
+enum OrchidOrderStatus {
+  DRAFT // NV tạo, chưa chốt
+  PENDING_APPROVAL // Khách tự đặt — chờ Trợ lý duyệt
+  WAITING_CUSTOMER // Trợ lý đã đổi số lượng/giá — chờ khách xác nhận lại
+  CONFIRMED // Đã chốt, giữ tồn (chưa trừ lô)
+  PREPARING // Đã xuất lô (phiếu xuất) — trừ OrchidLot.quantityRemaining theo OrchidOrderAllocation
+  SHIPPED // Đã giao — phát sinh công nợ khách (dueDate = shippedAt + paymentTermDays)
+  COMPLETED
+  CANCELLED
+  RETURNED
+  PARTIALLY_RETURNED
+}
+
+enum OrchidInvoiceStatus {
+  NOT_ISSUED
+  PENDING
+  ISSUED
+  SENT
+}
+
+enum OrchidPaymentMethod {
+  CASH
+  BANK_TRANSFER
+}
+
+enum OrchidExpenseGroup {
+  MUA_HANG
+  VAN_HANH
+  BAN_HANG
+  KHAC
+}
+
+enum OrchidRetailPointStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+enum OrchidTransferType {
+  TO_POINT // Kho trung tâm → Điểm bán (trừ lô FIFO lúc tạo)
+  FROM_POINT // Điểm bán → Kho trung tâm (tạo lô mới lúc nhận về)
+}
+
+enum OrchidTransferStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+enum OrchidDamageReason {
+  VAN_CHUYEN
+  BENH
+  KHACH_TRA
+  KHONG_XAC_DINH
+  KHAC
+}
+
+// Tài khoản nhận/chi tiền — tiền mặt (quỹ) hoặc tài khoản ngân hàng, có thể nhiều tài khoản.
+model OrchidPaymentAccount {
+  id            String              @id @default(cuid())
+  name          String
+  type          OrchidPaymentMethod
+  bankName      String?
+  accountNumber String?
+  accountHolder String?
+  note          String?
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+
+  customerPayments OrchidCustomerPayment[]
+  supplierPayments OrchidSupplierPayment[]
+  expenses         OrchidExpense[]
+  retailPayments   OrchidRetailPayment[]
+
+  @@map("orchid_payment_accounts")
+}
+
+model OrchidSupplier {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  contactName     String?
+  phone           String?
+  address         String?
+  // Số ngày được nợ mặc định — gợi ý hạn thanh toán khi tạo phiếu nhập.
+  paymentTermDays Int      @default(0)
+  note            String?  @db.Text
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  products OrchidProduct[]
+  lots     OrchidLot[]
+  receipts OrchidGoodsReceipt[]
+  payments OrchidSupplierPayment[]
+
+  @@map("orchid_suppliers")
+}
+
+model OrchidWarehouse {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  lots     OrchidLot[]
+  receipts OrchidGoodsReceipt[]
+
+  @@map("orchid_warehouses")
+}
+
+model OrchidProduct {
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  imageUrls      String[]
+  youtubeUrl     String?
+  description    String?         @db.Text
+  unit           String          @default("cây")
+  supplierId     String?
+  supplier       OrchidSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  note           String?         @db.Text
+  // Khách hàng lan có thấy sản phẩm này trong danh mục không / có thấy số tồn không.
+  showToCustomer Boolean         @default(true)
+  showStock      Boolean         @default(true)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  priceTiers     OrchidPriceTier[]
+  customerPrices OrchidCustomerPrice[]
+  lots           OrchidLot[]
+  orderItems     OrchidOrderItem[]
+  transferItems  OrchidTransferItem[]
+
+  @@map("orchid_products")
+}
+
+// Giá bán theo mốc số lượng — áp dụng mốc có minQuantity lớn nhất <= số lượng đặt. Giá riêng của khách
+// (OrchidCustomerPrice) luôn ưu tiên hơn, xem resolveOrchidPrice (src/lib/orchid/pricing.ts).
+model OrchidPriceTier {
+  id          String        @id @default(cuid())
+  productId   String
+  product     OrchidProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minQuantity Int
+  price       Float
+
+  @@unique([productId, minQuantity])
+  @@map("orchid_price_tiers")
+}
+
+model OrchidCustomerPrice {
+  id         String         @id @default(cuid())
+  customerId String
+  customer   OrchidCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId  String
+  product    OrchidProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price      Float
+  note       String?
+
+  @@unique([customerId, productId])
+  @@map("orchid_customer_prices")
+}
+
+model OrchidCustomer {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  userId          String?  @unique
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Hạn mức công nợ (null = không giới hạn) + số ngày được nợ tính từ ngày giao.
+  creditLimit     Float?
+  paymentTermDays Int      @default(0)
+  // Thông tin xuất hoá đơn mặc định (sao chép vào đơn lúc tạo, sửa được trên từng đơn).
+  companyName     String?
+  taxCode         String?
+  invoiceAddress  String?
+  invoiceEmail    String?
+  note            String?  @db.Text
+  isActive        Boolean  @default(true)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  prices   OrchidCustomerPrice[]
+  orders   OrchidOrder[]
+  payments OrchidCustomerPayment[]
+
+  @@map("orchid_customers")
+}
+
+// Phiếu nhập — mỗi dòng nhập sinh 1 lô (OrchidLot). totalAmount = Σ quantityIn × unitCost + otherCost,
+// là số phải trả NCC (công nợ NCC = Σ totalAmount − Σ OrchidSupplierPayment).
+model OrchidGoodsReceipt {
+  id            String          @id @default(cuid())
+  code          String          @unique
+  supplierId    String?
+  supplier      OrchidSupplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  warehouseId   String
+  warehouse     OrchidWarehouse @relation(fields: [warehouseId], references: [id])
+  receiptDate   DateTime
+  otherCost     Float           @default(0)
+  totalAmount   Float           @default(0)
+  dueDate       DateTime?
+  note          String?         @db.Text
+  createdById   String
+  createdByName String
+  createdAt     DateTime        @default(now())
+
+  lots     OrchidLot[]
+  payments OrchidSupplierPayment[]
+
+  @@map("orchid_goods_receipts")
+}
+
+model OrchidLot {
+  id                String              @id @default(cuid())
+  code              String              @unique
+  productId         String
+  product           OrchidProduct       @relation(fields: [productId], references: [id])
+  supplierId        String?
+  supplier          OrchidSupplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  warehouseId       String
+  warehouse         OrchidWarehouse     @relation(fields: [warehouseId], references: [id])
+  receiptId         String?
+  receipt           OrchidGoodsReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  receivedDate      DateTime
+  quantityIn        Int
+  quantityRemaining Int
+  unitCost          Float               @default(0)
+  // RECEIPT (phiếu nhập) | POINT_RETURN (điểm bán trả về kho)
+  source            String              @default("RECEIPT")
+  note              String?             @db.Text
+  createdAt         DateTime            @default(now())
+
+  allocations   OrchidOrderAllocation[]
+  transferItems OrchidTransferItem[]
+
+  @@index([productId, quantityRemaining])
+  @@map("orchid_lots")
+}
+
+model OrchidOrder {
+  id                 String              @id @default(cuid())
+  code               String              @unique
+  customerId         String
+  customer           OrchidCustomer      @relation(fields: [customerId], references: [id])
+  status             OrchidOrderStatus   @default(DRAFT)
+  // STAFF (Admin/Trợ lý tạo) | CUSTOMER (khách tự đặt)
+  source             String              @default("STAFF")
+  createdById        String?
+  createdByName      String?
+  shippingAddress    String?
+  phone              String?
+  note               String?             @db.Text
+  // Ghi chú nội bộ (khách không thấy).
+  internalNote       String?             @db.Text
+  // Lời nhắn của Trợ lý khi gửi lại khách xác nhận / phản hồi của khách.
+  staffMessage       String?             @db.Text
+  customerMessage    String?             @db.Text
+  needInvoice        Boolean             @default(false)
+  vatRate            Float               @default(0)
+  subtotal           Float               @default(0)
+  vatAmount          Float               @default(0)
+  total              Float               @default(0)
+  // Giá trị hàng khách trả lại (đã gồm VAT) — công nợ của đơn = total − returnedAmount.
+  returnedAmount     Float               @default(0)
+  returnedAt         DateTime?
+  confirmedAt        DateTime?
+  preparedAt         DateTime?
+  shippedAt          DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  dueDate            DateTime?
+  invoiceStatus      OrchidInvoiceStatus @default(NOT_ISSUED)
+  invoiceCompanyName String?
+  invoiceTaxCode     String?
+  invoiceAddress     String?
+  invoiceEmail       String?
+  invoiceNumber      String?
+  invoiceDate        DateTime?
+  invoiceHandlerName String?
+  invoiceNote        String?             @db.Text
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  items    OrchidOrderItem[]
+  payments OrchidCustomerPayment[]
+
+  @@index([customerId, status])
+  @@map("orchid_orders")
+}
+
+model OrchidOrderItem {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             OrchidOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String
+  product           OrchidProduct @relation(fields: [productId], references: [id])
+  // Số lượng khách đặt ban đầu — quantity là số đang áp dụng sau khi Trợ lý điều chỉnh.
+  requestedQuantity Int
+  quantity          Int
+  unitPrice         Float
+  amount            Float
+  returnedQuantity  Int           @default(0)
+
+  allocations OrchidOrderAllocation[]
+
+  @@map("orchid_order_items")
+}
+
+// Xuất từ lô nào, bao nhiêu (FIFO theo ngày nhập lúc chuyển đơn sang PREPARING).
+model OrchidOrderAllocation {
+  id               String          @id @default(cuid())
+  orderItemId      String
+  orderItem        OrchidOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  lotId            String
+  lot              OrchidLot       @relation(fields: [lotId], references: [id])
+  quantity         Int
+  returnedQuantity Int             @default(0)
+  createdAt        DateTime        @default(now())
+
+  @@map("orchid_order_allocations")
+}
+
+model OrchidCustomerPayment {
+  id            String                @id @default(cuid())
+  code          String                @unique
+  customerId    String
+  customer      OrchidCustomer        @relation(fields: [customerId], references: [id])
+  orderId       String?
+  order         OrchidOrder?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  paymentDate   DateTime
+  amount        Float
+  method        OrchidPaymentMethod
+  accountId     String?
+  account       OrchidPaymentAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  note          String?
+  createdById   String
+  createdByName String
+  createdAt     DateTime              @default(now())
+
+  @@map("orchid_customer_payments")
+}
+
+model OrchidSupplierPayment {
+  id            String                @id @default(cuid())
+  code          String                @unique
+  supplierId    String
+  supplier      OrchidSupplier        @relation(fields: [supplierId], references: [id])
+  receiptId     String?
+  receipt       OrchidGoodsReceipt?   @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  paymentDate   DateTime
+  amount        Float
+  method        OrchidPaymentMethod
+  accountId     String?
+  account       OrchidPaymentAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  note          String?
+  createdById   String
+  createdByName String
+  createdAt     DateTime              @default(now())
+
+  @@map("orchid_supplier_payments")
+}
+
+model OrchidExpenseCategory {
+  id        String             @id @default(cuid())
+  group     OrchidExpenseGroup
+  name      String
+  sortOrder Int                @default(0)
+  isActive  Boolean            @default(true)
+
+  expenses OrchidExpense[]
+
+  @@unique([group, name])
+  @@map("orchid_expense_categories")
+}
+
+model OrchidExpense {
+  id            String                @id @default(cuid())
+  code          String                @unique
+  expenseDate   DateTime
+  categoryId    String
+  category      OrchidExpenseCategory @relation(fields: [categoryId], references: [id])
+  amount        Float
+  recipient     String?
+  method        OrchidPaymentMethod
+  // Nguồn chi — quỹ tiền mặt / tài khoản ngân hàng nào.
+  accountId     String?
+  account       OrchidPaymentAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  content       String?               @db.Text
+  createdById   String
+  createdByName String
+  createdAt     DateTime              @default(now())
+
+  @@map("orchid_expenses")
+}
+
+// Điểm bán lẻ — chỉ theo dõi TỔNG số cây (không theo sản phẩm/lô): Nhận = Bán + Hỏng + Tồn (+ trả về kho).
+model OrchidRetailPoint {
+  id          String                  @id @default(cuid())
+  code        String                  @unique
+  name        String
+  address     String?
+  managerName String?
+  phone       String?
+  startDate   DateTime?
+  status      OrchidRetailPointStatus @default(ACTIVE)
+  userId      String?                 @unique
+  user        User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  note        String?                 @db.Text
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  transfers    OrchidTransfer[]
+  sales        OrchidRetailSale[]
+  damages      OrchidRetailDamage[]
+  stockReports OrchidRetailStockReport[]
+  payments     OrchidRetailPayment[]
+
+  @@map("orchid_retail_points")
+}
+
+model OrchidTransfer {
+  id               String               @id @default(cuid())
+  code             String               @unique
+  type             OrchidTransferType
+  pointId          String
+  point            OrchidRetailPoint    @relation(fields: [pointId], references: [id])
+  transferDate     DateTime
+  quantity         Int
+  deliveredBy      String?
+  receivedBy       String?
+  status           OrchidTransferStatus @default(PENDING)
+  receivedQuantity Int?
+  receivedAt       DateTime?
+  // FROM_POINT: kho nhận về (lô mới tạo vào kho này).
+  warehouseId      String?
+  note             String?              @db.Text
+  createdById      String
+  createdByName    String
+  createdAt        DateTime             @default(now())
+
+  items OrchidTransferItem[]
+
+  @@map("orchid_transfers")
+}
+
+model OrchidTransferItem {
+  id         String         @id @default(cuid())
+  transferId String
+  transfer   OrchidTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productId  String
+  product    OrchidProduct  @relation(fields: [productId], references: [id])
+  lotId      String?
+  lot        OrchidLot?     @relation(fields: [lotId], references: [id])
+  quantity   Int
+
+  @@map("orchid_transfer_items")
+}
+
+model OrchidRetailSale {
+  id            String            @id @default(cuid())
+  pointId       String
+  point         OrchidRetailPoint @relation(fields: [pointId], references: [id])
+  saleDate      DateTime
+  quantity      Int
+  revenue       Float
+  invoiceNumber String?
+  note          String?
+  createdById   String
+  createdByName String
+  createdAt     DateTime          @default(now())
+
+  @@map("orchid_retail_sales")
+}
+
+model OrchidRetailDamage {
+  id            String             @id @default(cuid())
+  pointId       String
+  point         OrchidRetailPoint  @relation(fields: [pointId], references: [id])
+  damageDate    DateTime
+  quantity      Int
+  reason        OrchidDamageReason
+  photoUrls     String[]
+  note          String?
+  createdById   String
+  createdByName String
+  createdAt     DateTime           @default(now())
+
+  @@map("orchid_retail_damages")
+}
+
+// Điểm bán tự báo số cây còn thực tế — so với tồn sổ sách (Nhận − Bán − Hỏng − Trả về), lệch thì cảnh báo.
+model OrchidRetailStockReport {
+  id                String            @id @default(cuid())
+  pointId           String
+  point             OrchidRetailPoint @relation(fields: [pointId], references: [id])
+  reportDate        DateTime
+  remainingQuantity Int
+  note              String?
+  createdById       String
+  createdByName     String
+  createdAt         DateTime          @default(now())
+
+  @@map("orchid_retail_stock_reports")
+}
+
+// Điểm bán nộp tiền doanh thu về — công nợ điểm = Σ doanh thu − Σ đã nộp.
+model OrchidRetailPayment {
+  id            String                @id @default(cuid())
+  pointId       String
+  point         OrchidRetailPoint     @relation(fields: [pointId], references: [id])
+  paymentDate   DateTime
+  amount        Float
+  method        OrchidPaymentMethod
+  accountId     String?
+  account       OrchidPaymentAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  note          String?
+  createdById   String
+  createdByName String
+  createdAt     DateTime              @default(now())
+
+  @@map("orchid_retail_payments")
 }

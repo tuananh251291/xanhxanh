@@ -11,6 +11,12 @@ const nextConfig: NextConfig = {
   // chung vào server code, báo lỗi "Cannot find module ... pdf.worker.mjs". Để nguyên là package
   // ngoài (không bundle) thì chạy đúng như package gốc, không bị lỗi này.
   serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  // proxy.ts giờ chạy cả trên /api (chặn tài khoản Dự án hoa lan, xem src/lib/auth.config.ts) — Next.js
+  // buffer body request đi qua proxy, mặc định chỉ 10MB (vượt thì body bị CẮT). Nâng lên để upload ảnh/Excel
+  // lớn (nhiều ảnh nén trong 1 request) không bị hỏng.
+  experimental: {
+    proxyClientMaxBodySize: "50mb",
+  },
   // Header bảo mật cơ bản áp cho MỌI response — không dùng frame-ancestors/CSP quá chặt vì có thể chặn
   // nhầm asset của Next.js (script inline lúc hydrate, font Google) nếu không tính kỹ; ưu tiên các header
   // rẻ-mà-chắc-chắn-an-toàn trước (không phá UI), CSP để riêng có ghi chú rõ từng nguồn cho phép.
