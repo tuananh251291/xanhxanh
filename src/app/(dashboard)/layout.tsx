@@ -94,12 +94,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // menu cho tới khi Admin chủ động tắt qua ma trận phân quyền, thay vì phải bật thủ công mới hiện.
   const roleNavItems = ROLE_NAV[role] ?? [];
   let navItems = roleNavItems;
+  let disabledHrefs = new Set<string>();
   if (!isAdminRole(role)) {
     const disabled = await prisma.rolePermission.findMany({
       where: { role, enabled: false },
       select: { href: true },
     });
-    const disabledHrefs = new Set(disabled.map((p) => p.href));
+    disabledHrefs = new Set(disabled.map((p) => p.href));
     navItems = roleNavItems.filter((item) => item.href === "/dashboard" || item.href === "/account" || !disabledHrefs.has(item.href));
   }
   // "Lộ trình đào tạo"/"Đánh giá thử việc" chỉ hiện cho NV cấy mô ĐANG thử việc (employmentType =
@@ -113,12 +114,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // đây thay vì lọc bớt. "Tồn kho Kho thị trường" KHÔNG có mục riêng nữa — đã gộp hiển thị (số liệu vẫn
   // tách riêng) vào section cuối trang "/inventory/dat-tieu-chuan" (mục "Xem tồn đạt tiêu chuẩn" có sẵn
   // trong ROLE_NAV.SALE), trang /inventory/thi-truong vẫn còn hoạt động nếu có ai truy cập thẳng URL.
+  // Vẫn lọc theo ma trận phân quyền như các mục khác (Admin tắt được cả 3 mục này cho NV bán hàng).
   if (role === "SALE" && currentUser?.isRetailManager) {
     navItems = [
       ...navItems,
-      { href: "/reject-classification", label: "Duyệt hàng không đạt", icon: "ClipboardCheck" },
-      { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
-      { href: "/reports/partner", label: "Báo cáo Kho thị trường", icon: "BarChart3" },
+      ...[
+        { href: "/reject-classification", label: "Duyệt hàng không đạt", icon: "ClipboardCheck" },
+        { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
+        { href: "/reports/partner", label: "Báo cáo Kho thị trường", icon: "BarChart3" },
+      ].filter((item) => !disabledHrefs.has(item.href)),
     ];
   }
 

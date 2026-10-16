@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShoppingCart, ClipboardList, PackageOpen, ChevronRight } from "lucide-react";
 import { isAdminRole } from "@/types";
+import { isPageAllowed } from "@/lib/permissions";
 
 // Hub liên kết nhẹ (giống /inventory) gộp các mục menu đơn hàng trước đây tách riêng (Tạo đơn hàng/
 // Kiểm tra đáp ứng, Danh sách đơn hàng, Sắp xếp đơn hàng) thành 1 mục "Xử lý đơn hàng" — không đụng gì
@@ -13,6 +14,7 @@ export default async function OrdersHubPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (role !== "SALE" && role !== "QUAN_LY_KHO_THANH_PHAM" && !isAdminRole(role)) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/orders"))) redirect("/dashboard");
 
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
 
