@@ -21,7 +21,7 @@ type Lot = { id: string; plantTypeId: string; stageCode: string; quantity: numbe
 type RowValue = { huy: string; trong: string; huyPhotos: string[]; trongPhotos: string[] };
 
 export default function DeXuatExecuteForm({
-  taskId, taskCode, taskTitle, deadlineLabel, rooms, gardens, initialRoomId, plantCategoryCodes, isMarketPartner,
+  taskId, taskCode, taskTitle, deadlineLabel, rooms, gardens, initialRoomId, plantCategoryCodes, isMarketPartner, roomLocked = false,
 }: {
   taskId: string;
   taskCode: string;
@@ -30,6 +30,8 @@ export default function DeXuatExecuteForm({
   rooms: Room[];
   gardens: Garden[];
   initialRoomId: string | null;
+  // Việc đã gắn sẵn 1 phòng (Đối tác vận hành: 3 việc/tuần, mỗi việc 1 phòng) — không hiện ô chọn phòng.
+  roomLocked?: boolean;
   // Rỗng = không giới hạn (việc "kho thị trường", đã giới hạn sẵn bằng roomId/initialRoomId thay vào đó).
   plantCategoryCodes: string[];
   // Chỉ Đối tác vận hành mới bắt buộc/hiện ô đính ảnh bằng chứng — xem POST /api/contamination-proposals
@@ -223,6 +225,7 @@ export default function DeXuatExecuteForm({
         </div>
       )}
 
+      {!roomLocked && (
       <Card>
         <CardHeader><CardTitle className="text-base">Chọn phòng</CardTitle></CardHeader>
         <CardContent className="space-y-1">
@@ -240,10 +243,15 @@ export default function DeXuatExecuteForm({
           </Select>
         </CardContent>
       </Card>
+      )}
 
       {roomId && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Tồn kho trong phòng — nhập số lượng đề xuất</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {roomLocked ? `Tồn kho ${rooms.find((r) => r.id === roomId)?.name ?? "trong phòng"}` : "Tồn kho trong phòng"} — nhập số lượng đề xuất
+            </CardTitle>
+          </CardHeader>
           <CardContent className="space-y-4">
             {isMarketPartner && (
               <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3">

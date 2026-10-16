@@ -161,11 +161,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (dailyTaskId) {
-    const task = await prisma.dailyTask.findUnique({ where: { id: dailyTaskId }, select: { type: true, status: true, assignedToId: true } });
+    const task = await prisma.dailyTask.findUnique({ where: { id: dailyTaskId }, select: { type: true, status: true, assignedToId: true, roomId: true } });
     const canUseTask = task?.type === "DE_XUAT_TRONG_HUY" && task.status === "PENDING" && (
       task.assignedToId === session!.user.id || session!.user.role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(session!.user.role)
     );
     if (!canUseTask) return NextResponse.json({ message: "Nhiệm vụ không hợp lệ" }, { status: 400 });
+    // Việc đã gắn sẵn 1 phòng (Đối tác vận hành — mỗi việc tuần ứng với 1 phòng) chỉ đề xuất được từ đúng phòng đó.
+    if (task.roomId && roomId && task.roomId !== roomId) {
+      return NextResponse.json({ message: "Nhiệm vụ này chỉ kiểm tra đúng phòng đã giao" }, { status: 400 });
+    }
     // Mỗi nhiệm vụ chỉ được "Thực hiện" 1 lần — đã gửi đề xuất rồi thì chờ Admin duyệt (phiếu bị từ chối
     // sửa qua "Sửa & gửi lại", không tạo phiếu mới). Ngoại lệ duy nhất: các dòng tiếp theo của CHÍNH lần
     // gửi đó (form gửi từng dòng 1, kèm batchCode = mã dòng đầu tiên của lần gửi).

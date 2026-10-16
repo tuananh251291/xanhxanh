@@ -68,6 +68,7 @@ export default async function DeXuatExecutePage({ params }: { params: Promise<{ 
       rooms={rooms}
       gardens={gardens}
       initialRoomId={defaultRoomId}
+      roomLocked={isMarketPartner && !!task.roomId && rooms.some((r) => r.id === task.roomId)}
       plantCategoryCodes={task.plantCategoryCodes}
       isMarketPartner={isMarketPartner}
     />
