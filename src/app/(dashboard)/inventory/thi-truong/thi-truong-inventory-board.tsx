@@ -115,7 +115,10 @@ export default function ThiTruongInventoryBoard({
         const Icon = ROOM_ICONS[room.type] ?? Package;
         const aggMap = new Map<string, { code: string; name: string; stageCode: string; quantity: number }>();
         for (const lot of room.lots) {
-          if (q && !lot.plantType.code.toLowerCase().includes(q) && !lot.plantType.name.toLowerCase().includes(q)) continue;
+          // Chọn 1 gợi ý thì Combobox điền nguyên nhãn "Tên (Mã)" vào ô — phải khớp cả dạng đó, không chỉ
+          // mã hoặc tên riêng lẻ (trước đây chọn gợi ý xong là bảng trống).
+          const label = `${lot.plantType.name} (${lot.plantType.code})`.toLowerCase();
+          if (q && !lot.plantType.code.toLowerCase().includes(q) && !lot.plantType.name.toLowerCase().includes(q) && !label.includes(q)) continue;
           const key = `${lot.plantTypeId}:${lot.stageCode}`;
           const existing = aggMap.get(key) ?? { code: lot.plantType.code, name: lot.plantType.name, stageCode: lot.stageCode, quantity: 0 };
           existing.quantity += lot.quantity;
