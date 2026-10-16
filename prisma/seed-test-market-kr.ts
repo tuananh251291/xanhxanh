@@ -3,6 +3,8 @@
 // Mọi lô tạo ra có mã bắt đầu bằng "TEST", phiếu gửi có ghi chú bắt đầu bằng "[TEST]" để nhận biết và xoá sạch:
 //   npx tsx --env-file=.env prisma/seed-test-market-kr.ts          → tạo (chạy lại = xoá cũ rồi tạo lại)
 //   npx tsx --env-file=.env prisma/seed-test-market-kr.ts --clean  → chỉ xoá
+//   npx tsx --env-file=.env prisma/seed-test-market-kr.ts --add-order → chỉ thêm 1 đơn hàng đã xuất kho sang
+//     TT-C đang chờ Đối tác phân loại/xác nhận (không reset lô/phiếu TEST đang test dở)
 // Chỉ xoá được lô TEST chưa phát sinh liên kết (đơn/xuất/kiểm tra...) — lô đã dùng trong test sẽ được liệt
 // kê để xử lý tay, không xoá cưỡng bức.
 import { prisma } from "../src/lib/prisma";
@@ -18,6 +20,13 @@ const TRANSFER_TAG = "[TEST]";
 const TRANSFER_ROWS: [number, string, number][] = [
   [0, "T01", 50], [2, "T05", 40], [7, "T10", 30],
 ];
+// Đơn hàng giả đã xuất kho sang TT-C — cùng nguyên tắc trùng combo như TRANSFER_ROWS.
+const ORDER_ROWS: [number, string, number][] = [
+  [4, "T01", 60], [0, "T01", 25],
+];
+// Mã đơn/phiếu riêng tiền tố TEST — generateOrderCode/generateTransferCode chỉ tìm theo tiền tố DHKT-/BG-
+// nên không chiếm số thứ tự của dãy mã thật.
+const ORDER_CODE_PREFIX = "TEST-DH-KR-";
 
 // [mã cây, quy cách, số lượng] — chọn theo vị trí trong danh sách loại cây active để không phụ thuộc mã cụ thể.
 const SPD_ROWS: [number, string, number][] = [
@@ -52,6 +61,16 @@ async function clean() {
     });
   }
   if (transfers.length) console.log(`Đã xoá ${transfers.length} phiếu gửi TEST: ${transfers.map((t) => t.code).join(", ")}`);
+
+  const orders = await prisma.order.findMany({ where: { code: { startsWith: ORDER_CODE_PREFIX } }, select: { id: true, code: true } });
+  for (const o of orders) {
+    await prisma.$transaction(async (tx) => {
+      await tx.alert.deleteMany({ where: { relatedId: o.id } });
+      await tx.orderItem.deleteMany({ where: { orderId: o.id } });
+      await tx.order.delete({ where: { id: o.id } });
+    });
+  }
+  if (orders.length) console.log(`Đã xoá ${orders.length} đơn hàng TEST: ${orders.map((o) => o.code).join(", ")}`);
 
   const lots = await prisma.lot.findMany({
     where: { code: { startsWith: TEST_PREFIX } },
@@ -115,6 +134,111 @@ async function seed() {
   console.log(`Đã tạo ${count} lô TEST ở ${warehouse.name} (${WAREHOUSE_CODE}).`);
 
   await seedPendingTransfer(warehouse.id, plantTypes);
+  await seedShippedOrder();
+}
+
+async function loadContext() {
+  const warehouse = await prisma.warehouse.findUnique({ where: { code: WAREHOUSE_CODE }, select: { id: true } });
+  if (!warehouse) throw new Error(`Không tìm thấy kho ${WAREHOUSE_CODE}`);
+  const plantTypes = await prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true }, orderBy: { code: "asc" }, take: 12 });
+  const sourceRoom = await prisma.room.findFirst({
+    where: { type: "PHONG_DAT_TIEU_CHUAN", isActive: true, warehouse: { type: "THANH_PHAM", isActive: true } },
+    select: { id: true, warehouseId: true, warehouse: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!sourceRoom) throw new Error("Không tìm thấy Phòng đạt tiêu chuẩn của Kho thành phẩm nào");
+  const shipper = await prisma.user.findFirst({ where: { role: "QUAN_LY_KHO_THANH_PHAM", isActive: true }, select: { id: true, name: true } });
+  const admin = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN", isActive: true }, select: { id: true, name: true } });
+  if (!admin) throw new Error("Không tìm thấy Admin cấp cao");
+  return { warehouseId: warehouse.id, plantTypes, sourceRoom, shipper: shipper ?? admin, admin };
+}
+
+// Giống shipOrder (PATCH /api/orders/[id] action=ship) với đơn có marketWarehouseId: đơn SHIPPED, tồn thực
+// lô nguồn đã trừ NGAY lúc xuất (lô nguồn TEST về 0, status TRANSFERRED — không hiện ở trang tồn), tự tạo
+// phiếu Transfer gắn orderId chờ Đối tác xác nhận (lúc xác nhận route KHÔNG trừ lô nguồn lần nữa).
+// saleId = Admin cấp cao để không cộng vào doanh số/KPI của NV Sale thật.
+async function seedShippedOrder() {
+  const { warehouseId, plantTypes, sourceRoom, shipper, admin } = await loadContext();
+  const last = await prisma.order.findFirst({ where: { code: { startsWith: ORDER_CODE_PREFIX } }, orderBy: { code: "desc" }, select: { code: true } });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  const orderCode = `${ORDER_CODE_PREFIX}${String(seq).padStart(4, "0")}`;
+  const now = new Date();
+  const confirmedAt = new Date(now.getTime() - 2 * 86_400_000);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const lots: { id: string; initialQuantity: number }[] = [];
+    for (const [idx, stageCode, quantity] of ORDER_ROWS) {
+      const pt = plantTypes[idx];
+      lots.push(await tx.lot.create({
+        data: {
+          code: `${TEST_PREFIX}${pt.code}KR-DH${seq}`,
+          plantTypeId: pt.id,
+          stage: "THANH_PHAM",
+          stageCode,
+          roomId: sourceRoom.id,
+          quantity: 0,
+          initialQuantity: quantity,
+          status: "TRANSFERRED",
+        },
+      }));
+    }
+    const order = await tx.order.create({
+      data: {
+        code: orderCode,
+        saleId: admin.id,
+        customerCode: "TEST-KR",
+        market: "HAN_QUOC",
+        marketWarehouseId: warehouseId,
+        status: "SHIPPED",
+        expectedShipAt: now,
+        confirmedAt,
+        shippedAt: now,
+        assignedToId: shipper.id,
+        notes: `${TRANSFER_TAG} Đơn giả lập để test nhận hàng Kho thị trường Hàn Quốc`,
+        items: {
+          create: ORDER_ROWS.map(([, , quantity], i) => ({
+            lotId: lots[i].id,
+            quantity,
+            neededQuantity: quantity,
+            pickedQuantity1: quantity,
+          })),
+        },
+      },
+      select: { id: true, code: true },
+    });
+    const transfer = await tx.transfer.create({
+      data: {
+        code: `TEST-BG-KR-${String(seq).padStart(4, "0")}`,
+        fromWarehouseId: sourceRoom.warehouseId,
+        fromRoomId: sourceRoom.id,
+        toWarehouseId: warehouseId,
+        fromUserId: shipper.id,
+        orderId: order.id,
+        notes: `${TRANSFER_TAG} Tự động tạo khi xuất đơn hàng ${order.code}`,
+        items: { create: lots.map((l) => ({ lotId: l.id, quantity: l.initialQuantity })) },
+      },
+      select: { id: true, code: true },
+    });
+    return { order, transfer, total: lots.reduce((sum, l) => sum + l.initialQuantity, 0), lines: lots.length };
+  });
+
+  const partners = await prisma.user.findMany({
+    where: { role: "DOI_TAC_VAN_HANH", workplaceWarehouseId: warehouseId, isActive: true },
+    select: { id: true, name: true },
+  });
+  if (partners.length) {
+    await prisma.alert.createMany({
+      data: partners.map((u) => ({
+        type: "LOT_READY_TRANSFER" as const,
+        userId: u.id,
+        title: "Có phiếu gửi hàng từ Kho thành phẩm chờ nhận",
+        message: `${shipper.name} đã xuất đơn hàng ${result.order.code} — phiếu ${result.transfer.code}, ${result.lines} lô, chờ xác nhận nhận hàng`,
+        relatedId: result.transfer.id,
+        relatedType: "Transfer",
+      })),
+    });
+  }
+  console.log(`Đã tạo đơn ${result.order.code} (SHIPPED, ${result.lines} dòng, ${result.total} cây) + phiếu ${result.transfer.code} chờ Đối tác xác nhận. Đã báo: ${partners.map((u) => u.name).join(", ") || "(không có)"}`);
 }
 
 // Lô nguồn ở Kho TP để status TRANSFERRED (hàng đã rời kho) — không hiện ở bất kỳ trang tồn ACTIVE nào, nên
@@ -183,6 +307,10 @@ async function seedPendingTransfer(toWarehouseId: string, plantTypes: { id: stri
 }
 
 (async () => {
+  if (process.argv.includes("--add-order")) {
+    await seedShippedOrder();
+    process.exit(0);
+  }
   await clean();
   if (!process.argv.includes("--clean")) await seed();
   process.exit(0);
