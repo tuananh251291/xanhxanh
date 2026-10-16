@@ -4,10 +4,12 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, ShieldAlert, Pencil, Check, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Plus, ShieldAlert, Pencil, Check, X, Camera } from "lucide-react";
 import { toast } from "sonner";
 
-type ViolationType = { id: string; label: string; points: number; groupName: string | null; createdAt: string };
+type ViolationType = { id: string; label: string; points: number; groupName: string | null; requiresPhoto: boolean; createdAt: string };
 
 const UNGROUPED_LABEL = "Chưa phân nhóm";
 const GROUP_SUGGESTIONS_ID = "violation-group-suggestions";
@@ -31,10 +33,12 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
   const [newLabel, setNewLabel] = useState("");
   const [newPoints, setNewPoints] = useState("5");
   const [newGroupName, setNewGroupName] = useState("");
+  const [newRequiresPhoto, setNewRequiresPhoto] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPoints, setEditPoints] = useState("");
   const [editGroupName, setEditGroupName] = useState("");
+  const [editRequiresPhoto, setEditRequiresPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,7 +66,7 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
       const res = await fetch("/api/violation-types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: newLabel.trim(), points: Number(newPoints) || 5, groupName: newGroupName.trim() }),
+        body: JSON.stringify({ label: newLabel.trim(), points: Number(newPoints) || 5, groupName: newGroupName.trim(), requiresPhoto: newRequiresPhoto }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
@@ -70,6 +74,7 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
       setNewLabel("");
       setNewPoints("5");
       setNewGroupName("");
+      setNewRequiresPhoto(false);
       load();
     } finally {
       setAdding(false);
@@ -80,6 +85,7 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
     setEditingId(t.id);
     setEditPoints(String(t.points));
     setEditGroupName(t.groupName ?? "");
+    setEditRequiresPhoto(t.requiresPhoto);
   };
 
   const saveEdit = async (id: string) => {
@@ -88,7 +94,7 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
       const res = await fetch(`/api/violation-types/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ points: Number(editPoints) || 0, groupName: editGroupName.trim() }),
+        body: JSON.stringify({ points: Number(editPoints) || 0, groupName: editGroupName.trim(), requiresPhoto: editRequiresPhoto }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       toast.success("Đã cập nhật loại lỗi");
@@ -138,6 +144,10 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
                 onChange={(e) => setNewPoints(e.target.value)}
                 className="w-24"
               />
+              <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer whitespace-nowrap">
+                <Checkbox checked={newRequiresPhoto} onCheckedChange={(v) => setNewRequiresPhoto(!!v)} />
+                Bắt buộc ảnh
+              </label>
               <Button onClick={addType} disabled={adding || !newLabel.trim()} className="bg-primary hover:bg-primary-hover shrink-0">
                 {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
                 Thêm
@@ -161,6 +171,10 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
                         <span className="text-foreground flex-1">{t.label}</span>
                         {editingId === t.id ? (
                           <>
+                            <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer whitespace-nowrap">
+                              <Checkbox checked={editRequiresPhoto} onCheckedChange={(v) => setEditRequiresPhoto(!!v)} />
+                              Bắt buộc ảnh
+                            </label>
                             <Input
                               placeholder="Nhóm lỗi"
                               list={GROUP_SUGGESTIONS_ID}
@@ -182,6 +196,9 @@ export default function ViolationTypesBoard({ canCreate }: { canCreate: boolean 
                           </>
                         ) : (
                           <>
+                            {t.requiresPhoto && (
+                              <Badge variant="info" className="whitespace-nowrap"><Camera className="w-3 h-3 mr-1" />Bắt buộc ảnh</Badge>
+                            )}
                             <span className="text-xs text-text-muted whitespace-nowrap">−{t.points} điểm</span>
                             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(t)}>
                               <Pencil className="w-3.5 h-3.5 text-text-muted" />

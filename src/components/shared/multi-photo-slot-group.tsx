@@ -16,13 +16,15 @@ import CameraCaptureDialog from "@/components/shared/camera-capture-dialog";
 // ảnh chụp trực tiếp từ điện thoại — CameraCaptureDialog tự chặn hẳn thiết bị không phải điện thoại và
 // không đi qua bất kỳ hộp thoại hệ điều hành nào để "trốn" ra ngoài chọn file.
 export default function MultiPhotoSlotGroup({
-  urls, editable, uploading, onAdd, onRemove,
+  urls, editable, uploading, onAdd, onRemove, maxCount,
 }: {
   urls: string[];
   editable: boolean;
   uploading: boolean;
   onAdd: (file: File) => void;
   onRemove: (url: string) => void;
+  // Đủ số ảnh tối đa thì ẩn nút chụp thêm (không truyền = không giới hạn).
+  maxCount?: number;
 }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   return (
@@ -43,7 +45,7 @@ export default function MultiPhotoSlotGroup({
           )}
         </div>
       ))}
-      {editable && (
+      {editable && (maxCount === undefined || urls.length < maxCount) && (
         <>
           <Button
             type="button"

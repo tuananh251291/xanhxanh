@@ -8,9 +8,10 @@ const patchSchema = z.object({
   points: z.number().int().min(0).max(100).optional(),
   // Nhóm lỗi — nhập tự do, "" = gỡ khỏi nhóm (coi như "Chưa phân nhóm"). Xem ViolationType.groupName.
   groupName: z.string().trim().max(100).optional(),
+  requiresPhoto: z.boolean().optional(),
 });
 
-// Sửa điểm trừ CƠ BẢN và/hoặc nhóm lỗi của 1 loại lỗi vi phạm đã có — cùng quyền tạo mới (Admin/Admin
+// Sửa điểm trừ CƠ BẢN, nhóm lỗi và/hoặc cờ bắt buộc ảnh của 1 loại lỗi vi phạm đã có — cùng quyền tạo mới (Admin/Admin
 // cấp cao/Kho mô). Không đổi label ở đây (đổi tên coi như loại lỗi khác — dùng "Thêm" tạo mới nếu cần
 // đổi tên).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  if (parsed.data.points === undefined && parsed.data.groupName === undefined) {
+  if (parsed.data.points === undefined && parsed.data.groupName === undefined && parsed.data.requiresPhoto === undefined) {
     return NextResponse.json({ message: "Không có gì để cập nhật" }, { status: 400 });
   }
 
@@ -33,6 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: {
       ...(parsed.data.points !== undefined ? { points: parsed.data.points } : {}),
       ...(parsed.data.groupName !== undefined ? { groupName: parsed.data.groupName || null } : {}),
+      ...(parsed.data.requiresPhoto !== undefined ? { requiresPhoto: parsed.data.requiresPhoto } : {}),
     },
   });
   return NextResponse.json(type);

@@ -16,7 +16,7 @@ import ViolationPhotoPicker from "@/components/shared/violation-photo-picker";
 
 type Staff = { id: string; code: string; name: string; role: string };
 type ComboOption = { value: string; label: string };
-type ViolationType = { id: string; label: string; points: number; groupName: string | null };
+type ViolationType = { id: string; label: string; points: number; groupName: string | null; requiresPhoto: boolean };
 type BehaviorType = { id: string; label: string; points: number };
 
 const UNGROUPED = "Chưa phân nhóm";
@@ -61,6 +61,9 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
     [violationTypes, groupName]
   );
   const selectedViolationType = violationTypes.find((t) => t.id === violationTypeId) ?? null;
+  // Ghi lùi kỳ cũ không đính kèm ảnh được (server chặn) nên cũng không bắt buộc ảnh — khớp /api/violation-records.
+  const isCurrentPeriod = periodMonth === format(new Date(), "yyyy-MM");
+  const photoRequired = !!selectedViolationType?.requiresPhoto && isCurrentPeriod;
 
   const selectBehavior = (opt: ComboOption | null) => {
     setBehaviorOption(opt);
@@ -86,6 +89,10 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
   const submitViolation = async () => {
     if (!staffOption || !violationTypeId) {
       toast.error("Cần chọn NV cấy mô và tên lỗi");
+      return;
+    }
+    if (photoRequired && photos.length === 0) {
+      toast.error(`Lỗi "${selectedViolationType!.label}" bắt buộc chụp ảnh bằng chứng`);
       return;
     }
     setSubmitting(true);
@@ -199,13 +206,15 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
                 <div className="space-y-1 w-64">
                   <Label className="text-xs">Tên lỗi</Label>
                   <Select
-                    items={typesInGroup.map((t) => ({ value: t.id, label: t.label }))}
+                    items={typesInGroup.map((t) => ({ value: t.id, label: t.requiresPhoto ? `${t.label} (bắt buộc ảnh)` : t.label }))}
                     value={violationTypeId}
                     onValueChange={(v) => setViolationTypeId((v as string) ?? "")}
                   >
                     <SelectTrigger className="h-9"><SelectValue placeholder={groupName ? "Chọn tên lỗi" : "Chọn nhóm lỗi trước"} /></SelectTrigger>
                     <SelectContent>
-                      {typesInGroup.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+                      {typesInGroup.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.requiresPhoto ? `${t.label} (bắt buộc ảnh)` : t.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -217,8 +226,8 @@ export default function RecordViolationRecoveryBoard({ canRecordPositive }: { ca
                   </p>
                 )}
                 <div className="w-full space-y-1">
-                  <Label className="text-xs">Hình ảnh</Label>
-                  <ViolationPhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} />
+                  <Label className="text-xs">Hình ảnh{photoRequired && <span className="text-destructive"> *</span>}</Label>
+                  <ViolationPhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} required={photoRequired} />
                 </div>
                 <Button onClick={submitViolation} disabled={submitting} className="bg-destructive hover:bg-destructive/90 text-black">
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Send className="w-4 h-4 mr-1.5" />}

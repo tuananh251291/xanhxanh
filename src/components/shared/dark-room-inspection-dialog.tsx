@@ -21,7 +21,7 @@ import { DARK_ROOM_CHECK_VIOLATION_GROUPS } from "@/types";
 import ViolationPhotoPicker from "@/components/shared/violation-photo-picker";
 
 type Staff = { id: string; code: string; name: string; role: string };
-type ViolationType = { id: string; label: string; groupName: string | null };
+type ViolationType = { id: string; label: string; groupName: string | null; requiresPhoto: boolean };
 type ComboOption = { value: string; label: string };
 
 const ALLOWED_GROUPS: readonly string[] = DARK_ROOM_CHECK_VIOLATION_GROUPS;
@@ -68,6 +68,9 @@ export default function DarkRoomInspectionDialog({
     })).filter((g) => g.items.length > 0);
   }, [violationTypes]);
 
+  // Có lỗi nào đang chọn bắt buộc kèm ảnh (ViolationType.requiresPhoto) — server cũng chặn lại.
+  const photoRequired = !!staffOption && violationTypes.some((t) => t.requiresPhoto && selectedTypeIds.includes(t.id));
+
   const resetForm = () => {
     setStaffOption(null);
     setSelectedTypeIds([]);
@@ -79,6 +82,10 @@ export default function DarkRoomInspectionDialog({
   };
 
   const submit = async () => {
+    if (photoRequired && photos.length === 0) {
+      toast.error("Có lỗi bắt buộc chụp ảnh bằng chứng — chụp ít nhất 1 ảnh");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/dark-room-inspection", {
@@ -157,7 +164,8 @@ export default function DarkRoomInspectionDialog({
                         {g.items.map((t) => (
                           <label key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
                             <Checkbox checked={selectedTypeIds.includes(t.id)} onCheckedChange={() => toggleType(t.id)} />
-                            <span>{t.label}</span>
+                            <span className="flex-1">{t.label}</span>
+                            {t.requiresPhoto && <span className="text-xs text-text-muted whitespace-nowrap">Bắt buộc ảnh</span>}
                           </label>
                         ))}
                       </div>
@@ -170,8 +178,8 @@ export default function DarkRoomInspectionDialog({
 
           {staffOption && selectedTypeIds.length > 0 && (
             <div className="space-y-1">
-              <Label className="text-sm">Hình ảnh</Label>
-              <ViolationPhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} />
+              <Label className="text-sm">Hình ảnh{photoRequired && <span className="text-destructive"> *</span>}</Label>
+              <ViolationPhotoPicker photos={photos} onChange={setPhotos} disabled={submitting} required={photoRequired} />
             </div>
           )}
 

@@ -799,6 +799,10 @@ model ViolationType {
   // computePayrollForPeriod (src/lib/payroll-calculation.ts).
   disqualifiesComplianceKpi Boolean  @default(false)
   disqualifiesProductionKpi Boolean  @default(false)
+  // Bắt buộc kèm ít nhất 1 ảnh bằng chứng khi Kho mô/Trợ lý ghi nhận lỗi này (Admin bật/tắt ở trang Danh
+  // sách lỗi vi phạm) — false = ảnh tuỳ chọn. Server chặn lại ở /api/violation-records và
+  // /api/dark-room-inspection, trừ khi ghi lùi kỳ cũ (ghi lùi không được đính kèm ảnh).
+  requiresPhoto             Boolean  @default(false)
 
   records ViolationRecord[]
 
@@ -842,7 +846,7 @@ model ViolationRecord {
   // thứ 2+ của CÙNG loại lỗi, CÙNG NV, trong CÙNG kỳ lương — xem payroll-calculation.ts). Không tính lại
   // sống mỗi lần xem lương, để sửa điểm cơ bản của 1 loại lỗi sau này không làm trôi số liệu lương cũ.
   pointsApplied     Int
-  // Ảnh bằng chứng Kho mô/Trợ lý chụp lúc ghi lỗi (tuỳ chọn, 1 ảnh, đã đóng dấu giờ chụp) — public URL
+  // Ảnh bằng chứng Kho mô/Trợ lý chụp lúc ghi lỗi (tối đa 3 ảnh, bắt buộc nếu ViolationType.requiresPhoto, đã đóng dấu giờ chụp) — public URL
   // bucket "violation-photos". Chỉ giữ 14 ngày: cron hằng ngày xoá hẳn file + làm rỗng mảng này (giữ bản ghi
   // vi phạm), xem cleanupExpiredViolationPhotos (src/lib/violation-photo-storage.ts).
   photoUrls         String[]                 @default([])

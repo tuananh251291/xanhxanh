@@ -9,7 +9,7 @@ export const VIOLATION_PHOTO_COMPRESS_OPTIONS = {
   dimensionSteps: [1280, 1024, 800] as const,
 };
 
-export const MAX_VIOLATION_PHOTOS = 1;
+export const MAX_VIOLATION_PHOTOS = 3;
 
 // ~1MB nhị phân (base64 dài hơn ~33% bản gốc) — chặn ảnh chưa nén gửi thẳng lên API.
 export const MAX_VIOLATION_PHOTO_DATA_URL_LENGTH = 1_400_000;

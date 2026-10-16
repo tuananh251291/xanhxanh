@@ -11,6 +11,8 @@ const createSchema = z.object({
   points: z.number().int().min(0).max(100).optional(),
   // Nhóm lỗi — chỉ để gộp hiển thị, nhập tự do (xem ViolationType.groupName). "" coi như không chọn.
   groupName: z.string().trim().max(100).optional(),
+  // Bắt buộc kèm ảnh khi ghi nhận lỗi này — xem ViolationType.requiresPhoto.
+  requiresPhoto: z.boolean().optional(),
 });
 
 // Danh mục loại lỗi vi phạm dùng khi ghi nhận "Kiểm tra kho cá nhân" — chỉ Admin/Admin cấp cao soạn được
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest) {
       label: parsed.data.label,
       points: parsed.data.points ?? 5,
       groupName: parsed.data.groupName || null,
+      requiresPhoto: parsed.data.requiresPhoto ?? false,
       createdById: session!.user!.id,
     },
   });

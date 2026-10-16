@@ -15,7 +15,7 @@ const schema = z.object({
   // ghi kiểm tra gắn với 1 NV cụ thể.
   staffId: z.string().min(1).optional(),
   violationTypeIds: z.array(z.string().min(1)),
-  // Ảnh bằng chứng (tuỳ chọn) — data URL đã nén + đóng dấu giờ chụp ở client.
+  // Ảnh bằng chứng (tối đa 3, bắt buộc nếu có loại lỗi requiresPhoto) — data URL đã nén + đóng dấu giờ chụp ở client.
   photos: z.array(z.string().max(MAX_VIOLATION_PHOTO_DATA_URL_LENGTH)).max(MAX_VIOLATION_PHOTOS).optional(),
 });
 
@@ -60,6 +60,15 @@ export async function POST(req: NextRequest) {
     });
     if (validCount !== violationTypeIds.length) {
       return NextResponse.json({ message: "Có loại lỗi vi phạm không hợp lệ" }, { status: 400 });
+    }
+    if (photos.length === 0) {
+      const needPhoto = await prisma.violationType.findFirst({
+        where: { id: { in: violationTypeIds }, requiresPhoto: true },
+        select: { label: true },
+      });
+      if (needPhoto) {
+        return NextResponse.json({ message: `Lỗi "${needPhoto.label}" bắt buộc chụp ảnh bằng chứng` }, { status: 400 });
+      }
     }
   }
 

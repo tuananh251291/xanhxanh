@@ -15,7 +15,7 @@ const createSchema = z.object({
   // Kỳ lương áp dụng (tuỳ chọn, "yyyy-MM") — dùng khi ghi bù/ghi lùi cho 1 kỳ trước, xem
   // record-violation-recovery-board.tsx. Không truyền = ghi ngay lúc này (hành vi cũ, giữ nguyên).
   periodMonth: z.string().regex(/^\d{4}-\d{2}$/, "Kỳ phải theo dạng yyyy-MM").optional(),
-  // Ảnh bằng chứng (tuỳ chọn) — data URL đã nén + đóng dấu giờ chụp ở client, tải lên lúc ghi nhận.
+  // Ảnh bằng chứng (tối đa 3, bắt buộc nếu loại lỗi requiresPhoto) — data URL đã nén + đóng dấu giờ chụp ở client, tải lên lúc ghi nhận.
   photos: z.array(z.string().max(MAX_VIOLATION_PHOTO_DATA_URL_LENGTH)).max(MAX_VIOLATION_PHOTOS).optional(),
 });
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const [staff, violationType] = await Promise.all([
     prisma.user.findUnique({ where: { id: staffId }, select: { id: true, role: true, name: true } }),
-    prisma.violationType.findUnique({ where: { id: violationTypeId }, select: { id: true, isActive: true, label: true, points: true } }),
+    prisma.violationType.findUnique({ where: { id: violationTypeId }, select: { id: true, isActive: true, label: true, points: true, requiresPhoto: true } }),
   ]);
   if (!staff || staff.role !== "CAY_MO") {
     return NextResponse.json({ message: "Không tìm thấy NV cấy mô" }, { status: 400 });
@@ -60,6 +60,10 @@ export async function POST(req: NextRequest) {
   // Ảnh chỉ giữ 14 ngày tính từ createdAt — ghi lùi về đầu kỳ cũ thì ảnh sẽ bị xoá ngay đêm đó, nên chặn.
   if (isBackdated && photos.length > 0) {
     return NextResponse.json({ message: "Chỉ đính kèm hình ảnh khi ghi lỗi cho kỳ hiện tại" }, { status: 400 });
+  }
+  // Ghi lùi kỳ cũ không đính kèm ảnh được (xem trên) nên bỏ qua yêu cầu bắt buộc ảnh trong trường hợp đó.
+  if (!isBackdated && violationType.requiresPhoto && photos.length === 0) {
+    return NextResponse.json({ message: `Lỗi "${violationType.label}" bắt buộc chụp ảnh bằng chứng` }, { status: 400 });
   }
 
   const pointsApplied = await computeViolationPointsApplied(staffId, violationTypeId, violationType.points, now);
