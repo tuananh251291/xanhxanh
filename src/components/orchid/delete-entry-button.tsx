@@ -4,7 +4,7 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrchidAction } from "@/components/orchid/ui";
 
-// Xoá dòng bán/hỏng/báo tồn nhập nhầm (chỉ Admin cấp cao/NV Trợ lý).
+// Xoá dòng bán/hỏng/báo tồn nhập nhầm (chỉ Admin hoa lan/Trợ lý hoa lan).
 export default function DeleteEntryButton({ id, kind }: { id: string; kind: "sale" | "damage" | "stock" }) {
   const { run, pending } = useOrchidAction();
   return (

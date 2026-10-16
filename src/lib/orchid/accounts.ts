@@ -3,8 +3,8 @@ import type { Prisma, UserRole } from "@prisma/client";
 import { generateUserCode } from "@/lib/codes";
 import { OrchidError } from "@/lib/orchid/server";
 
-// Tạo/cập nhật tài khoản đăng nhập cho Khách hàng lan / Điểm bán lẻ lan. Tài khoản tạo bởi Admin cấp cao/NV
-// Trợ lý nên duyệt sẵn (APPROVED), không qua hàng chờ duyệt tài khoản nhân viên.
+// Tạo/cập nhật tài khoản đăng nhập cho Khách hàng lan / Điểm bán lẻ lan. Tài khoản tạo bởi Admin hoa lan/
+// Trợ lý hoa lan nên duyệt sẵn (APPROVED), không qua hàng chờ duyệt tài khoản nhân viên.
 export async function upsertOrchidLogin(
   tx: Prisma.TransactionClient,
   params: { userId: string | null; role: Extract<UserRole, "KHACH_HANG_LAN" | "DIEM_BAN_LAN">; name: string; email?: string | null; password?: string | null; isActive?: boolean }

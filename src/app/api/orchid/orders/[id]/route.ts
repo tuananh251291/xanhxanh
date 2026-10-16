@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = actionSchema.safeParse(await req.json());
   if (!parsed.success) return badRequest(parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ");
   const body = parsed.data;
-  const isSuperAdmin = guard.user.role === "SUPER_ADMIN";
+  const isOrchidAdmin = guard.user.role === "ADMIN_HOA_LAN";
 
   return handleOrchidError(async () => {
     await prisma.$transaction(async (tx) => {
@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           break;
         }
         case "confirm":
-          await confirmOrchidOrder(tx, id, { allowedFrom: ["DRAFT", "PENDING_APPROVAL", "WAITING_CUSTOMER"], bypassCreditLimit: isSuperAdmin });
+          await confirmOrchidOrder(tx, id, { allowedFrom: ["DRAFT", "PENDING_APPROVAL", "WAITING_CUSTOMER"], bypassCreditLimit: isOrchidAdmin });
           break;
         case "send_to_customer":
           if (!["DRAFT", "PENDING_APPROVAL"].includes(order.status)) throw new OrchidError("Chỉ gửi lại khách xác nhận khi đơn đang chờ duyệt/nháp");

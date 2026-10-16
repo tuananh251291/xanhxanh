@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOrchidSuperAdmin, badRequest } from "@/lib/orchid/server";
 
-// Xoá phiếu thu/chi ghi nhầm — chỉ Admin cấp cao (giữ dấu vết sổ công nợ). ?kind=customer|supplier|point
+// Xoá phiếu thu/chi ghi nhầm — chỉ Admin hoa lan (giữ dấu vết sổ công nợ). ?kind=customer|supplier|point
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireOrchidSuperAdmin();
   if ("error" in guard) return guard.error;

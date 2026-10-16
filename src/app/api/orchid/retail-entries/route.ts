@@ -5,7 +5,7 @@ import { requireOrchidStaff, badRequest, handleOrchidError } from "@/lib/orchid/
 import { orchidPointEntrySchema } from "@/lib/orchid/schemas";
 import { createOrchidPointEntry } from "@/lib/orchid/retail";
 
-// Admin cấp cao/NV Trợ lý nhập hộ bán hàng / cây hỏng / báo tồn cho 1 điểm bán.
+// Admin hoa lan/Trợ lý hoa lan nhập hộ bán hàng / cây hỏng / báo tồn cho 1 điểm bán.
 export async function POST(req: NextRequest) {
   const guard = await requireOrchidStaff();
   if ("error" in guard) return guard.error;

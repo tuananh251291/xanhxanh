@@ -60,7 +60,7 @@ function assertStatus(current: OrchidOrderStatus, allowed: OrchidOrderStatus[], 
   }
 }
 
-// Chốt đơn → CONFIRMED: kiểm tra đủ tồn khả dụng + hạn mức công nợ (Admin cấp cao được bỏ qua hạn mức).
+// Chốt đơn → CONFIRMED: kiểm tra đủ tồn khả dụng + hạn mức công nợ (Admin hoa lan được bỏ qua hạn mức).
 export async function confirmOrchidOrder(tx: Tx, orderId: string, opts: { allowedFrom: OrchidOrderStatus[]; bypassCreditLimit?: boolean }) {
   const order = await tx.orchidOrder.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, customer: true } });
   assertStatus(order.status, opts.allowedFrom, "xác nhận");

@@ -20,6 +20,8 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   NHAN_VIEN_QUAN_LY_VUON: "NV Quản lý vườn",
   DOI_TAC_VAN_HANH: "Đối tác vận hành",
   KE_TOAN: "NV Kế toán",
+  ADMIN_HOA_LAN: "Admin hoa lan",
+  TRO_LY_HOA_LAN: "Trợ lý hoa lan",
   KHACH_HANG_LAN: "Khách hàng lan",
   DIEM_BAN_LAN: "Điểm bán lẻ lan",
 };
@@ -42,6 +44,8 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
   DOI_TAC_VAN_HANH: "bg-sky-100 text-sky-800",
   KE_TOAN: "bg-info-light text-info-foreground",
+  ADMIN_HOA_LAN: "bg-primary-light text-primary-strong",
+  TRO_LY_HOA_LAN: "bg-secondary text-secondary-foreground",
   KHACH_HANG_LAN: "bg-violet-light text-violet-foreground",
   DIEM_BAN_LAN: "bg-achievement text-achievement-foreground",
 };
@@ -170,9 +174,9 @@ export function canEditSaleMarkets(role: UserRole | null | undefined): boolean {
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
   "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
   "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
-  "DOI_TAC_VAN_HANH", "KE_TOAN",
+  "DOI_TAC_VAN_HANH", "KE_TOAN", "ADMIN_HOA_LAN", "TRO_LY_HOA_LAN",
 ];
-export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN" && r !== "ADMIN_KY_THUAT");
+export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN" && r !== "ADMIN_KY_THUAT" && r !== "ADMIN_HOA_LAN");
 
 export function creatableRolesFor(actorRole: UserRole | null | undefined): UserRole[] {
   if (isAdminRole(actorRole)) return ALL_ASSIGNABLE_ROLES;
@@ -698,7 +702,6 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   SUPER_ADMIN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/users", label: "Quản lý người dùng", icon: "Users" },
-    { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
@@ -845,7 +848,6 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // NV Trợ lý — kiểm tra/ghi nhận lỗi vi phạm NV cấy mô giống Kho mô (cùng phạm vi kho làm việc) + Theo dõi công việc.
   TRO_LY: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
-    { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/violation-report", label: "Báo cáo vi phạm", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
@@ -966,8 +968,16 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
-  // Dự án hoa lan — tài khoản bên ngoài, KHÔNG có "/dashboard" (proxy.ts chuyển thẳng /dashboard về trang
-  // chủ riêng, xem ORCHID_EXTERNAL_HOME) và không vào được bất kỳ trang nội bộ nào khác.
+  // Dự án hoa lan — mọi role hoa lan KHÔNG có "/dashboard" (proxy.ts chuyển thẳng /dashboard về trang chủ
+  // riêng, xem ORCHID_SCOPED_HOME) và không vào được bất kỳ trang nội bộ nào khác.
+  ADMIN_HOA_LAN: [
+    { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
+  TRO_LY_HOA_LAN: [
+    { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
   KHACH_HANG_LAN: [
     { href: "/orchid-shop", label: "Sản phẩm", icon: "Flower2" },
     { href: "/orchid-shop/cart", label: "Giỏ hàng", icon: "ShoppingCart" },
@@ -989,20 +999,23 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
 // DỰ ÁN HOA LAN
 // ============================================================
 
-// Tài khoản bên ngoài của Dự án hoa lan — chỉ được vào đúng khu riêng (xem proxy guard ở
-// src/lib/auth.config.ts), mọi trang/API nội bộ khác đều bị chặn kể cả khi API đó chỉ check "đã đăng nhập".
-export const ORCHID_EXTERNAL_HOME: Partial<Record<UserRole, string>> = {
-  KHACH_HANG_LAN: "/orchid-shop",
-  DIEM_BAN_LAN: "/orchid-point",
+// Mọi role của Dự án hoa lan chỉ được vào đúng khu riêng (xem proxy guard ở src/lib/auth.config.ts) — mọi
+// trang/API nội bộ khác đều bị chặn kể cả khi API đó chỉ check "đã đăng nhập". apiPrefix = API được gọi.
+export const ORCHID_SCOPED_HOME: Partial<Record<UserRole, { home: string; apiPrefix: string }>> = {
+  ADMIN_HOA_LAN: { home: "/orchid", apiPrefix: "/api/orchid" },
+  TRO_LY_HOA_LAN: { home: "/orchid", apiPrefix: "/api/orchid" },
+  KHACH_HANG_LAN: { home: "/orchid-shop", apiPrefix: "/api/orchid/shop" },
+  DIEM_BAN_LAN: { home: "/orchid-point", apiPrefix: "/api/orchid/point" },
 };
-export function isOrchidExternalRole(role: UserRole | null | undefined): boolean {
-  return role === "KHACH_HANG_LAN" || role === "DIEM_BAN_LAN";
+export function isOrchidScopedRole(role: UserRole | null | undefined): boolean {
+  return !!role && !!ORCHID_SCOPED_HOME[role];
 }
-// Admin cấp cao: toàn quyền. NV Trợ lý: vận hành (khách, đơn, nhập/xuất, tồn, thanh toán, công nợ, hoá đơn,
-// điểm bán) — KHÔNG có Chi phí/Báo cáo/Cấu hình (xem canManageOrchidAdminOnly).
+// Admin hoa lan: toàn quyền module. Trợ lý hoa lan: vận hành (khách, đơn, nhập/xuất, tồn, thanh toán, công
+// nợ, hoá đơn, điểm bán) — KHÔNG có Chi phí/Báo cáo/Cấu hình (xem canManageOrchidAdminOnly). Admin cấp cao/NV
+// Trợ lý của hệ thống cây mô KHÔNG có quyền vào Dự án hoa lan.
 export function canAccessOrchidAdmin(role: UserRole | null | undefined): boolean {
-  return role === "SUPER_ADMIN" || role === "TRO_LY";
+  return role === "ADMIN_HOA_LAN" || role === "TRO_LY_HOA_LAN";
 }
 export function canManageOrchidAdminOnly(role: UserRole | null | undefined): boolean {
-  return role === "SUPER_ADMIN";
+  return role === "ADMIN_HOA_LAN";
 }

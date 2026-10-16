@@ -23,17 +23,17 @@ function forbidden(message = "Không có quyền") {
   return { error: NextResponse.json({ message }, { status: 403 }) } as const;
 }
 
-// Admin cấp cao + NV Trợ lý.
+// Admin hoa lan + Trợ lý hoa lan.
 export async function requireOrchidStaff() {
   const user = await currentUser();
   if (!user || !canAccessOrchidAdmin(user.role as never)) return forbidden();
   return { user } as const;
 }
 
-// Chỉ Admin cấp cao (Chi phí, Báo cáo, Cấu hình hệ thống).
+// Chỉ Admin hoa lan (Chi phí, Báo cáo, Cấu hình hệ thống).
 export async function requireOrchidSuperAdmin() {
   const user = await currentUser();
-  if (!user || !canManageOrchidAdminOnly(user.role as never)) return forbidden("Chỉ Admin cấp cao mới có quyền này");
+  if (!user || !canManageOrchidAdminOnly(user.role as never)) return forbidden("Chỉ Admin hoa lan mới có quyền này");
   return { user } as const;
 }
 

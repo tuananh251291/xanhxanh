@@ -52,7 +52,7 @@ export default async function OrchidDashboardPage() {
       prisma.orchidRetailPoint.findMany({ where: { status: { not: "CLOSED" } }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
       getOrchidPointSummaries(prisma),
       prisma.orchidOrder.groupBy({ by: ["status"], where: { status: { in: ["PENDING_APPROVAL", "WAITING_CUSTOMER", "CONFIRMED", "PREPARING"] } }, _count: true }),
-      user.isSuperAdmin
+      user.isOrchidAdmin
         ? prisma.orchidExpense.findMany({ where: { expenseDate: { gte: month.start, lt: month.end } }, select: { amount: true, category: { select: { group: true, name: true } } } })
         : Promise.resolve([]),
     ]);
@@ -165,7 +165,7 @@ export default async function OrchidDashboardPage() {
         </Card>
       </section>
 
-      {user.isSuperAdmin && (
+      {user.isOrchidAdmin && (
         <section className="space-y-3">
           <SectionTitle>Chi phí tháng {month.label}</SectionTitle>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">

@@ -4,7 +4,7 @@ import { requireOrchidStaff, badRequest, handleOrchidError, ORCHID_CODE, withCod
 import { orchidOrderSchema } from "@/lib/orchid/schemas";
 import { priceOrchidLines, replaceOrchidOrderItems, confirmOrchidOrder } from "@/lib/orchid/orders";
 
-// Admin cấp cao/NV Trợ lý tạo đơn cho khách — lưu nháp hoặc chốt luôn (confirm = true).
+// Admin hoa lan/Trợ lý hoa lan tạo đơn cho khách — lưu nháp hoặc chốt luôn (confirm = true).
 export async function POST(req: NextRequest) {
   const guard = await requireOrchidStaff();
   if ("error" in guard) return guard.error;
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         });
         const lines = await priceOrchidLines(tx, d.customerId, items);
         await replaceOrchidOrderItems(tx, created.id, lines, d.vatRate, true);
-        if (confirm) await confirmOrchidOrder(tx, created.id, { allowedFrom: ["DRAFT"], bypassCreditLimit: guard.user.role === "SUPER_ADMIN" });
+        if (confirm) await confirmOrchidOrder(tx, created.id, { allowedFrom: ["DRAFT"], bypassCreditLimit: guard.user.role === "ADMIN_HOA_LAN" });
         return created;
       })
     );

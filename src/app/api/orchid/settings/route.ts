@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireOrchidSuperAdmin, badRequest, handleOrchidError } from "@/lib/orchid/server";
 import { orchidAccountSettingSchema, orchidWarehouseSettingSchema, orchidCategorySettingSchema } from "@/lib/orchid/schemas";
 
-// Cấu hình Dự án hoa lan (chỉ Admin cấp cao): tài khoản nhận/chi tiền, kho, loại chi phí.
+// Cấu hình Dự án hoa lan (chỉ Admin hoa lan): tài khoản nhận/chi tiền, kho, loại chi phí.
 // POST ?kind=account|warehouse|category tạo mới; PATCH /api/orchid/settings/[id]?kind=... sửa.
 export async function POST(req: NextRequest) {
   const guard = await requireOrchidSuperAdmin();

@@ -22,6 +22,8 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   NHAN_VIEN_QUAN_LY_VUON: { prefix: "NVQLV", pad: 2 },
   DOI_TAC_VAN_HANH: { prefix: "DTVH", pad: 2 },
   KE_TOAN: { prefix: "NVKTO", pad: 2 },
+  ADMIN_HOA_LAN: { prefix: "ADHL", pad: 2 },
+  TRO_LY_HOA_LAN: { prefix: "TLHL", pad: 2 },
   KHACH_HANG_LAN: { prefix: "KHL", pad: 3 },
   DIEM_BAN_LAN: { prefix: "DBL", pad: 2 },
 };

@@ -6,7 +6,7 @@ import type { orchidPointEntrySchema, orchidTransferSchema } from "@/lib/orchid/
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string; name: string };
 
-// Bán / hỏng / báo tồn tại điểm bán — dùng chung cho tài khoản điểm bán và Admin cấp cao/NV Trợ lý nhập hộ.
+// Bán / hỏng / báo tồn tại điểm bán — dùng chung cho tài khoản điểm bán và Admin hoa lan/Trợ lý hoa lan nhập hộ.
 export async function createOrchidPointEntry(tx: Tx, pointId: string, entry: z.infer<typeof orchidPointEntrySchema>, actor: Actor) {
   const base = { pointId, createdById: actor.id, createdByName: actor.name };
   if (entry.kind === "sale") {

@@ -36,7 +36,7 @@ export default async function OrchidDebtsPage({ searchParams }: { searchParams: 
       </div>
       {tab === "customers" && <CustomerDebts accounts={accounts} overdueOnly={sp.overdue === "1"} />}
       {tab === "suppliers" && <SupplierDebts accounts={accounts} supplierId={sp.supplierId} />}
-      {tab === "payments" && <RecentPayments canDelete={user.isSuperAdmin} />}
+      {tab === "payments" && <RecentPayments canDelete={user.isOrchidAdmin} />}
     </div>
   );
 }

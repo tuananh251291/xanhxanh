@@ -4,7 +4,7 @@ import { requireOrchidStaff, badRequest, handleOrchidError, ORCHID_CODE, withCod
 import { orchidCustomerSchema } from "@/lib/orchid/schemas";
 import { upsertOrchidLogin } from "@/lib/orchid/accounts";
 
-// Admin cấp cao/NV Trợ lý tạo khách hàng lan — kèm tài khoản đăng nhập (role KHACH_HANG_LAN) nếu nhập email.
+// Admin hoa lan/Trợ lý hoa lan tạo khách hàng lan — kèm tài khoản đăng nhập (role KHACH_HANG_LAN) nếu nhập email.
 export async function POST(req: NextRequest) {
   const guard = await requireOrchidStaff();
   if ("error" in guard) return guard.error;

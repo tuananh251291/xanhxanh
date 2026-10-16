@@ -54,9 +54,14 @@ enum UserRole {
   // NV Kế toán — tạo 14/10/2026, CHƯA có nhiệm vụ/trang nghiệp vụ riêng (menu tối thiểu, xem
   // ROLE_NAV.KE_TOAN ở src/types/index.ts) — bổ sung quyền khi có yêu cầu cụ thể.
   KE_TOAN
+  // Dự án hoa lan — 2 tài khoản quản trị riêng (KHÔNG dùng SUPER_ADMIN/TRO_LY): Admin hoa lan toàn quyền
+  // module, Trợ lý hoa lan vận hành (không có Chi phí/Báo cáo/Cấu hình). Chỉ vào được khu /orchid — proxy.ts
+  // chặn mọi trang/API nội bộ khác (xem ORCHID_SCOPED_HOME, src/types/index.ts). Tạo ở Quản lý người dùng.
+  ADMIN_HOA_LAN
+  TRO_LY_HOA_LAN
   // Dự án hoa lan — 2 loại tài khoản BÊN NGOÀI (khác hẳn khách mua cây mô / Customer). Chỉ thấy đúng
   // khu /orchid-shop (khách) hoặc /orchid-point (điểm bán lẻ) — proxy.ts chặn mọi trang/API khác (xem
-  // isOrchidExternalRole, src/types/index.ts). Tài khoản do Admin cấp cao/NV Trợ lý tạo ở Dự án hoa lan.
+  // ORCHID_SCOPED_HOME, src/types/index.ts). Tài khoản do Admin/Trợ lý hoa lan tạo ở Dự án hoa lan.
   KHACH_HANG_LAN
   DIEM_BAN_LAN
 }
@@ -4049,8 +4054,8 @@ model SalesManagerImportRequest {
 
 // ============================================================
 // DỰ ÁN HOA LAN — module kinh doanh hoa lan, TÁCH RIÊNG HOÀN TOÀN khỏi nghiệp vụ cây mô (không dùng chung
-// Lot/Order/Customer/Supplier/Warehouse của cây mô). Quản trị: SUPER_ADMIN (toàn quyền) + TRO_LY (vận hành
-// — không có Chi phí/Báo cáo/Cấu hình), xem src/lib/orchid/permissions.ts. Tài khoản bên ngoài:
+// Lot/Order/Customer/Supplier/Warehouse của cây mô). Quản trị: ADMIN_HOA_LAN (toàn quyền) + TRO_LY_HOA_LAN
+// (vận hành — không có Chi phí/Báo cáo/Cấu hình), xem canAccessOrchidAdmin ở src/types/index.ts. Tài khoản bên ngoài:
 // KHACH_HANG_LAN (gắn OrchidCustomer.userId) và DIEM_BAN_LAN (gắn OrchidRetailPoint.userId).
 // Tiền lưu VND (Float, làm tròn đồng khi hiển thị).
 // ============================================================

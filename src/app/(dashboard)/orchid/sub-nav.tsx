@@ -21,7 +21,7 @@ const ITEMS: { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/orchid/settings", label: "Cấu hình", adminOnly: true },
 ];
 
-export default function OrchidSubNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+export default function OrchidSubNav({ isOrchidAdmin }: { isOrchidAdmin: boolean }) {
   const pathname = usePathname();
   return (
     <div className="print:hidden space-y-3">
@@ -30,7 +30,7 @@ export default function OrchidSubNav({ isSuperAdmin }: { isSuperAdmin: boolean }
         <span className="font-bold">Dự án hoa lan</span>
       </div>
       <nav className="flex gap-1 overflow-x-auto pb-1 border-b border-divider">
-        {ITEMS.filter((i) => !i.adminOnly || isSuperAdmin).map((item) => {
+        {ITEMS.filter((i) => !i.adminOnly || isOrchidAdmin).map((item) => {
           const active = item.href === "/orchid" ? pathname === "/orchid" : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link

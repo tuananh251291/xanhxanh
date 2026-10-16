@@ -3,13 +3,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canAccessOrchidAdmin, canManageOrchidAdminOnly, type UserRole } from "@/types";
 
-// Chặn trang quản trị Dự án hoa lan — adminOnly = chỉ Admin cấp cao (Chi phí/Báo cáo/Cấu hình).
+// Chặn trang quản trị Dự án hoa lan — adminOnly = chỉ Admin hoa lan (Chi phí/Báo cáo/Cấu hình).
 export async function requireOrchidStaffPage(adminOnly = false) {
   const session = await auth();
   const role = (session?.user?.role ?? null) as UserRole | null;
   if (!session?.user || !canAccessOrchidAdmin(role)) redirect("/dashboard");
   if (adminOnly && !canManageOrchidAdminOnly(role)) redirect("/orchid");
-  return { id: session.user.id, name: session.user.name ?? "", role: role!, isSuperAdmin: role === "SUPER_ADMIN" };
+  return { id: session.user.id, name: session.user.name ?? "", role: role!, isOrchidAdmin: role === "ADMIN_HOA_LAN" };
 }
 
 export async function requireOrchidCustomerPage() {

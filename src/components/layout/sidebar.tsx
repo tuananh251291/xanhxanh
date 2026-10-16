@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { ROLE_LABELS, isOrchidExternalRole, type UserRole } from "@/types";
+import { ROLE_LABELS, isOrchidScopedRole, type UserRole } from "@/types";
 import { useState } from "react";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -138,8 +138,8 @@ function SidebarFooter({ collapsed, alertCount, onNavigate, showAlerts }: {
 export default function Sidebar({ user, navItems, alertCount = 0 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  // Tài khoản bên ngoài Dự án hoa lan không dùng trang Thông báo nội bộ (proxy cũng chặn /alerts).
-  const showAlerts = !isOrchidExternalRole(user.role);
+  // Tài khoản Dự án hoa lan không dùng trang Thông báo nội bộ (proxy cũng chặn /alerts).
+  const showAlerts = !isOrchidScopedRole(user.role);
 
   return (
     <>
