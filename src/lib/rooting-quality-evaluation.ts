@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { isAdminRole } from "@/types";
+import type { UserRole } from "@prisma/client";
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { generateRootingQualityEvaluationCode } from "@/lib/codes";
 import { toStoredWeekStart } from "@/lib/week-rotation";
@@ -299,4 +301,51 @@ export function pendingRootingEvaluationMessage(pending: PendingRootingEvaluatio
   const groups = [...new Set(pending.map((p) => p.groupName))].join(", ");
   const assignees = [...new Set(pending.map((p) => p.assignedToName))].join(", ");
   return `Nhóm tuần ra rễ ${groups} chưa được NV Kỹ thuật (${assignees}) đánh giá chất lượng — chưa thể bàn giao cho tới khi đánh giá xong`;
+}
+
+// Danh sách đánh giá theo đúng phạm vi xem của từng vai trò — dùng chung cho GET
+// /api/rooting-quality-evaluations (màn hình) và /export (file Excel), để 2 nơi luôn ra cùng 1 tập dữ liệu.
+// KY_THUAT chỉ thấy việc giao cho MÌNH; KHO_MO chỉ đúng kho đang làm việc; Quản lý kho TP chỉ đánh giá đã
+// HOÀN THÀNH của mọi khu sản xuất; Admin thấy tất cả. null = vai trò không có quyền xem.
+// weekStart (tuỳ chọn) = lọc đúng 1 "Tuần giao Kho TP".
+export async function listRootingEvaluationsForViewer(
+  viewer: { id: string; role: UserRole | null | undefined; workplaceWarehouseId?: string | null },
+  opts: { status?: string | null; weekStart?: Date | null } = {}
+) {
+  const where: Record<string, unknown> = opts.status ? { status: opts.status } : {};
+  if (opts.weekStart) where.weekStart = opts.weekStart;
+  if (viewer.role === "KY_THUAT") {
+    where.assignedToId = viewer.id;
+  } else if (viewer.role === "KHO_MO") {
+    if (!viewer.workplaceWarehouseId) return [];
+    where.warehouseId = viewer.workplaceWarehouseId;
+  } else if (viewer.role === "QUAN_LY_KHO_THANH_PHAM") {
+    where.status = "COMPLETED";
+  } else if (!isAdminRole(viewer.role)) {
+    return null;
+  }
+
+  const evaluations = await prisma.rootingQualityEvaluation.findMany({
+    where,
+    select: {
+      id: true, code: true, status: true, weekStart: true, reason: true, completedAt: true, createdAt: true, roomId: true, rotationGroupId: true,
+      warehouse: { select: { code: true, name: true } },
+      room: { select: { name: true } },
+      rotationGroup: { select: { name: true } },
+      assignedTo: { select: { name: true, code: true } },
+      items: {
+        select: { stageCode: true, totalQuantity: true, passedQuantity: true, failedQuantity: true, plantType: { select: { code: true, name: true } } },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    // Lọc theo 1 tuần thì không cần giới hạn (số đánh giá/tuần nhỏ); xem tất cả thì giữ 200 bản gần nhất.
+    ...(opts.weekStart ? {} : { take: 200 }),
+  });
+
+  const [totalSlots, shelfRanges] = await Promise.all([countRootingRotationSlots(), loadRootingGroupShelfRanges(evaluations)]);
+  return evaluations.map(({ roomId, rotationGroupId, ...e }) => ({
+    ...e,
+    ...describeRootingEvaluationGroup(e.rotationGroup.name, e.weekStart, totalSlots),
+    shelfRange: shelfRanges.get(`${roomId}|${rotationGroupId}`) ?? null,
+  }));
 }

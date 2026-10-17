@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { format, addDays, getISOWeek } from "date-fns";
 
 type Item = {
@@ -29,6 +31,12 @@ type Evaluation = {
 
 const num = (n: number) => n.toLocaleString("vi-VN");
 
+const ALL_WEEKS = "ALL";
+const weekOptionLabel = (iso: string) => {
+  const d = new Date(iso);
+  return `Tuần ${getISOWeek(d)} (${format(d, "dd/MM")} – ${format(addDays(d, 6), "dd/MM/yyyy")})`;
+};
+
 const itemPct = (it: Item) => (it.totalQuantity > 0 ? Math.round((it.passedQuantity / it.totalQuantity) * 1000) / 10 : 0);
 
 // Chi tiết theo cây dạng lưới 3 cột "Đạt / Tổng - % đạt", loại cây % đạt thấp nhất lên đầu.
@@ -37,6 +45,14 @@ export default function RootingQualityEvaluationReportBoard() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Lọc theo "Tuần giao Kho TP" — danh sách tuần lấy từ chính các đánh giá đang có, mới nhất lên đầu.
+  const [week, setWeek] = useState<string>(ALL_WEEKS);
+  const weekOptions = useMemo(
+    () => [...new Set(evaluations.map((e) => e.weekStart))].sort((a, b) => (a < b ? 1 : -1)),
+    [evaluations]
+  );
+  const shown = week === ALL_WEEKS ? evaluations : evaluations.filter((e) => e.weekStart === week);
+  const exportHref = `/api/rooting-quality-evaluations/export${week === ALL_WEEKS ? "" : `?week=${encodeURIComponent(week)}`}`;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,7 +73,25 @@ export default function RootingQualityEvaluationReportBoard() {
   return (
     <Card>
       <CardContent className="p-0">
-        <div className="px-4 pt-4 pb-1 text-sm text-text-muted">{evaluations.length} đánh giá đã hoàn thành</div>
+        <div className="px-4 pt-4 pb-2 flex flex-wrap items-center gap-3">
+          <Select
+            items={[{ value: ALL_WEEKS, label: "Tất cả tuần" }, ...weekOptions.map((w) => ({ value: w, label: weekOptionLabel(w) }))]}
+            value={week}
+            onValueChange={(v) => { setWeek((v as string) ?? ALL_WEEKS); setExpanded(null); }}
+          >
+            <SelectTrigger className="h-9 w-full sm:w-72"><SelectValue placeholder="Chọn tuần giao Kho TP" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_WEEKS}>Tất cả tuần</SelectItem>
+              {weekOptions.map((w) => <SelectItem key={w} value={w}>{weekOptionLabel(w)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <a href={exportHref} download>
+            <Button variant="outline" size="sm" className="h-9" disabled={shown.length === 0}>
+              <Download className="w-4 h-4 mr-1.5" /> Xuất Excel
+            </Button>
+          </a>
+          <span className="text-sm text-text-muted">{shown.length} đánh giá đã hoàn thành</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -74,9 +108,9 @@ export default function RootingQualityEvaluationReportBoard() {
               </tr>
             </thead>
             <tbody>
-              {evaluations.length === 0 ? (
+              {shown.length === 0 ? (
                 <tr><td colSpan={colCount} className="px-3 py-6 text-center text-text-muted">Chưa có đánh giá nào hoàn thành</td></tr>
-              ) : evaluations.map((e) => {
+              ) : shown.map((e) => {
                 const isOpen = expanded === e.id;
                 const total = e.items.reduce((s, i) => s + i.totalQuantity, 0);
                 const passed = e.items.reduce((s, i) => s + i.passedQuantity, 0);
