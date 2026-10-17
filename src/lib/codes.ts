@@ -451,3 +451,16 @@ export async function generateOperationErrorTicketCode(client: Prisma.Transactio
   const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
+
+// Mã phiếu luân chuyển nội bộ (Kho thành phẩm, Phòng đạt tiêu chuẩn ⇄ Phòng chờ xử lý) = "LC-" + "YYYYMM"
+// + số thứ tự 4 chữ số trong tháng — cùng công thức các mã theo tháng khác trong file này.
+export async function generateRoomMoveCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `LC-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.roomMove.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}

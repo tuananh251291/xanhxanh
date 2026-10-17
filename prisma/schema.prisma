@@ -552,6 +552,7 @@ model User {
   transferInspectionsPerformed          TransferInspection[]              @relation("TransferInspectedBy")
   materialIntakes                       MaterialIntake[]
   processingTickets                     ProcessingTicket[]
+  roomMoves                             RoomMove[]
   orderProcessingRequestsCompleted      OrderProcessingRequest[]
   processingMediumOrdersCompleted       ProcessingMediumOrder[]
   goodsReceipts                         GoodsReceipt[]                    @relation("GoodsReceiptCreatedBy")
@@ -923,6 +924,7 @@ model PlantType {
   contaminationProposals           ContaminationProposal[]
   contaminationStaffBalances       ContaminationStaffBalance[]
   processingTickets                ProcessingTicket[]
+  roomMoveItems                    RoomMoveItem[]
   orderProcessingRequests          OrderProcessingRequest[]
   goodsReceiptItems                GoodsReceiptItem[]
   repackInstructions               RepackInstruction[]
@@ -1277,6 +1279,8 @@ model Room {
   transfersToRoom                 Transfer[]                 @relation("TransferToRoom")
   roomAccess                      RoomAccess[]
   processingTickets               ProcessingTicket[]
+  roomMovesFrom                   RoomMove[]                 @relation("RoomMoveFrom")
+  roomMovesTo                     RoomMove[]                 @relation("RoomMoveTo")
   orderProcessingRequests         OrderProcessingRequest[]
   orderProcessingRequestsAsTarget OrderProcessingRequest[]   @relation("OrderProcessingRequestTarget")
   goodsReceipts                   GoodsReceipt[]
@@ -3091,6 +3095,39 @@ model ProcessingTicket {
   inputLots ProcessingTicketInputLot[]
 
   @@map("processing_tickets")
+}
+
+// "Luân chuyển nội bộ" của Quản lý kho thành phẩm — chuyển cây qua lại giữa Phòng đạt tiêu chuẩn và Phòng
+// chờ xử lý trong CÙNG 1 kho (xem POST /api/room-moves). Tồn đổi ngay lúc tạo (trừ FIFO phòng nguồn, cộng
+// dồn vào lô ACTIVE cùng mã cây + quy cách ở phòng đích) — bản ghi này chỉ để tra cứu lịch sử.
+model RoomMove {
+  id          String         @id @default(cuid())
+  code        String         @unique
+  warehouseId String
+  fromRoomId  String
+  fromRoom    Room           @relation("RoomMoveFrom", fields: [fromRoomId], references: [id])
+  toRoomId    String
+  toRoom      Room           @relation("RoomMoveTo", fields: [toRoomId], references: [id])
+  notes       String?
+  createdById String
+  createdBy   User           @relation(fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+  items       RoomMoveItem[]
+
+  @@index([warehouseId, createdAt])
+  @@map("room_moves")
+}
+
+model RoomMoveItem {
+  id          String    @id @default(cuid())
+  roomMoveId  String
+  roomMove    RoomMove  @relation(fields: [roomMoveId], references: [id])
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+  quantity    Int
+
+  @@map("room_move_items")
 }
 
 // Ghi lại đã trừ từ (các) lô đầu vào nào, bao nhiêu — audit trail cho việc phân bổ FIFO khi 1 phiếu
