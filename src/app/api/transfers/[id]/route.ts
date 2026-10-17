@@ -5,7 +5,7 @@ import { SURPLUS_TRANSFER_TAG, sumLotQuantity, isAdminRole, isKhoThanhPhamRole }
 import { planShelfAssignments, planSurplusPlacement, ShelfAssignError } from "@/lib/shelf-assignment";
 import { commitShelfPlacements } from "@/lib/dark-room-shelf-commit";
 import { generateLotCode, generateRejectClassificationCode } from "@/lib/codes";
-import { createAlert } from "@/lib/inventory";
+import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
 import { QUALITY_DEFECT_COUNT, sumDefects } from "@/lib/quality-defects";
@@ -36,6 +36,9 @@ const confirmSchema = z.object({
   // Ghi chú của Đối tác vận hành lúc nhận hàng (VD lý do hao hụt) — nối thêm vào Transfer.notes gốc,
   // không đè mất ghi chú của bên gửi.
   receiveNotes: z.string().optional(),
+  // Góp ý của NV Kho thành phẩm lúc nhận thành phẩm từ Phòng ra rễ (không bắt buộc) — lưu
+  // Transfer.receiveFeedback + báo NV Kho mô/NV Kỹ thuật khu sản xuất nguồn.
+  receiveFeedback: z.string().trim().max(2000).optional(),
   notes: z.string().optional(),
   // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách phiếu bàn giao
   // thành phẩm này. null = bỏ gán.
@@ -147,6 +150,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { action, shelfAssignments, qualityChecks } = parsed.data;
+  const receiveFeedback = parsed.data.receiveFeedback || null;
   let { finishedSplit } = parsed.data;
 
   // Kho mô hoàn lại phiếu MM dư (VD NV cấy mô gửi sai số) — phiếu chưa xếp kệ gì nên huỷ hẳn: xoá phiếu + lô
@@ -384,7 +388,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           }
         }
         await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
-        await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+        await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date(), receiveFeedback } });
         if (qualityChecks) {
           await tx.transferQualityCheck.createMany({
             data: qualityChecks.map((c) => ({
@@ -406,6 +410,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { status: "READ", readAt: new Date() },
         });
       }, RECEIVE_TX_OPTIONS);
+
+      if (receiveFeedback) {
+        const totalQuantity = transfer.items.reduce((sum, i) => sum + i.quantity, 0);
+        const defectQuantity = (qualityChecks ?? []).reduce((sum, c) => sum + sumDefects(c.defectQuantities), 0);
+        const message = `${session.user.name} (Kho thành phẩm) góp ý phiếu ${transfer.code} — ${defectQuantity.toLocaleString("vi-VN")}/${totalQuantity.toLocaleString("vi-VN")} cây có lỗi: "${receiveFeedback}"`;
+        const warehouseId = transfer.fromRoom?.warehouseId ?? transfer.fromWarehouseId;
+        for (const role of ["KHO_MO", "KY_THUAT"] as const) {
+          await createAlertForWarehouseStaff({
+            role,
+            warehouseId,
+            type: "TRANSFER_RECEIVE_FEEDBACK",
+            title: "Góp ý của Kho thành phẩm khi nhận hàng",
+            message,
+            relatedId: transfer.id,
+            relatedType: "Transfer",
+          });
+        }
+      }
 
       await notifyAssignmentCompleted(
         transfer.assignedToId,

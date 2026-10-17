@@ -542,6 +542,7 @@ export const ALERT_TYPE_LABELS = {
   STOCK_COUNT_DUE: "Đến hạn đối chiếu tồn kho cuối tháng",
   SALES_MANAGER_IMPORT_PENDING: "Phân công NV quản lý chờ duyệt",
   SALES_MANAGER_IMPORT_DECIDED: "Kết quả duyệt phân công NV quản lý",
+  TRANSFER_RECEIVE_FEEDBACK: "Góp ý của Kho thành phẩm khi nhận hàng",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm

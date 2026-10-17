@@ -71,7 +71,12 @@ export default async function TransferFinishedListPage() {
                       <td className="px-4 py-3 text-foreground">{t.fromUser.name}</td>
                       <td className="px-4 py-3 text-text-secondary">{format(t.transferredAt, "dd/MM/yyyy HH:mm", { locale: vi })}</td>
                       <td className="px-4 py-3 text-right font-medium">{t.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")}</td>
-                      <td className="px-4 py-3"><Badge className={STATUS_LABELS[t.status].color}>{STATUS_LABELS[t.status].label}</Badge></td>
+                      <td className="px-4 py-3">
+                        <Badge className={STATUS_LABELS[t.status].color}>{STATUS_LABELS[t.status].label}</Badge>
+                        {t.receiveFeedback && (
+                          <Badge variant="info" className="ml-1.5">Có góp ý Kho TP</Badge>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <Link href={`/transfers/finished/${t.id}`}>
                           <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">

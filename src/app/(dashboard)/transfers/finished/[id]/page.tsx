@@ -85,6 +85,13 @@ export default async function TransferFinishedDetailPage({ params }: { params: P
         </table>
         </div>
 
+        {transfer.receiveFeedback && (
+          <div className="mt-4 rounded-lg border border-divider bg-info-light px-4 py-3 text-sm">
+            <p className="font-medium text-info-foreground">Góp ý của Kho thành phẩm khi nhận hàng</p>
+            <p className="text-foreground whitespace-pre-line mt-1">{transfer.receiveFeedback}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-6 mt-10 pt-4 text-sm text-center sm:grid-cols-2">
           <div>
             <p className="font-medium">NGƯỜI GIAO (KHO MÔ)</p>

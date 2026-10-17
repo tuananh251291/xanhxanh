@@ -378,6 +378,9 @@ enum AlertType {
   // SUPER_ADMIN); kết quả duyệt/từ chối báo lại đúng người gửi (userId). Xem SalesManagerImportRequest.
   SALES_MANAGER_IMPORT_PENDING
   SALES_MANAGER_IMPORT_DECIDED
+  // Kho thành phẩm góp ý lúc nhận bàn giao thành phẩm từ Phòng ra rễ (Transfer.receiveFeedback) — gửi NV
+  // Kho mô + NV Kỹ thuật của đúng khu sản xuất gửi phiếu.
+  TRANSFER_RECEIVE_FEEDBACK
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -2752,6 +2755,9 @@ model Transfer {
   toUser          User?          @relation("TransferTo", fields: [toUserId], references: [id])
   status          TransferStatus @default(PENDING)
   notes           String?
+  // Góp ý của NV Kho thành phẩm lúc nhận bàn giao thành phẩm từ Phòng ra rễ (không bắt buộc) — gửi về NV
+  // Kho mô + NV Kỹ thuật khu sản xuất nguồn (alert TRANSFER_RECEIVE_FEEDBACK), xem PATCH /api/transfers/[id].
+  receiveFeedback String?
   transferredAt   DateTime       @default(now())
   confirmedAt     DateTime?
   createdAt       DateTime       @default(now())

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { PackageCheck, Loader2, Check, X, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { PackageCheck, Loader2, Check, X, ChevronDown, ChevronUp, AlertTriangle, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -60,6 +60,8 @@ export default function TransferReceiveBoard() {
   // cách (xem src/lib/quality-defects.ts); tổng lỗi → Phòng chờ xử lý, còn lại → Phòng đạt tiêu chuẩn (server
   // tự chia, xem qualityChecks ở PATCH /api/transfers/[id]). key = transferId:plantTypeId:stageCode.
   const [defectInputs, setDefectInputs] = useState<Record<string, number[]>>({});
+  // Góp ý gửi NV Kho mô + NV Kỹ thuật khu sản xuất nguồn (không bắt buộc) — key = transferId.
+  const [feedbackInputs, setFeedbackInputs] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -89,7 +91,8 @@ export default function TransferReceiveBoard() {
     items: TransferItem[],
     mode: "auto" | "manual" | "noShelf" | "split",
     isSurplus: boolean,
-    qualityChecks?: { plantTypeId: string; stageCode: string; defectQuantities: number[] }[]
+    qualityChecks?: { plantTypeId: string; stageCode: string; defectQuantities: number[] }[],
+    receiveFeedback?: string
   ) => {
     const assignments = mode === "manual"
       ? items.map((item) => ({ lotId: item.lotId, shelfId: shelfMap[item.lotId] ?? "" }))
@@ -102,7 +105,7 @@ export default function TransferReceiveBoard() {
         body: JSON.stringify({
           action: "confirm",
           shelfAssignments: assignments,
-          ...(mode === "split" ? { qualityChecks } : {}),
+          ...(mode === "split" ? { qualityChecks, ...(receiveFeedback?.trim() ? { receiveFeedback: receiveFeedback.trim() } : {}) } : {}),
         }),
       });
       // Server lỗi 500 (VD transaction quá hạn) trả về body không phải JSON — không được để res.json() ném
@@ -117,7 +120,7 @@ export default function TransferReceiveBoard() {
         );
         toast.success(isSurplus ? "Đã xếp MM dư vào Kho quá hạn" : "Đã xếp kệ tự động", { description: lines.join(" · ") });
       } else {
-        toast.success("Đã xác nhận nhận hàng");
+        toast.success(receiveFeedback?.trim() ? "Đã xác nhận nhận hàng và gửi góp ý cho Kho mô / NV Kỹ thuật" : "Đã xác nhận nhận hàng");
       }
       setExpanded(null);
       loadData();
@@ -228,7 +231,7 @@ export default function TransferReceiveBoard() {
                       if (!datRoom || !choXuLyRoom) return;
                       confirm(t.id, t.items, "split", false, groups.map((g) => ({
                         plantTypeId: g.plantTypeId, stageCode: g.stageCode, defectQuantities: getDefects(g),
-                      })));
+                      })), feedbackInputs[t.id]);
                     };
 
                     const isExpanded = expanded === t.id;
@@ -337,6 +340,22 @@ export default function TransferReceiveBoard() {
                                         <AlertTriangle className="w-4 h-4" /> Tổng lỗi vượt quá số lượng theo phiếu ở dòng tô đỏ — vui lòng kiểm tra lại.
                                       </p>
                                     )}
+                                    <div className="space-y-1">
+                                      <label htmlFor={`feedback-${t.id}`} className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                                        <MessageSquare className="w-4 h-4 text-primary-strong" /> Góp ý cho Kho mô / NV Kỹ thuật
+                                        <span className="text-xs font-normal text-text-muted">(không bắt buộc)</span>
+                                      </label>
+                                      <textarea
+                                        id={`feedback-${t.id}`}
+                                        value={feedbackInputs[t.id] ?? ""}
+                                        onChange={(e) => setFeedbackInputs((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                                        maxLength={2000}
+                                        rows={3}
+                                        placeholder="VD: nhiều túi rễ ngắn, lá vàng ở AL003 — đề nghị kiểm tra lại trước khi bàn giao..."
+                                        className="w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                      />
+                                      <p className="text-xs text-text-muted">Có nội dung thì khi xác nhận, hệ thống gửi thông báo cho NV Kho mô và NV Kỹ thuật của {t.fromWarehouse?.name ?? "khu sản xuất"}.</p>
+                                    </div>
                                   </>
                                 ) : isToFinishedWarehouse ? (
                                   <p className="text-xs text-text-secondary bg-info-light rounded p-2">
