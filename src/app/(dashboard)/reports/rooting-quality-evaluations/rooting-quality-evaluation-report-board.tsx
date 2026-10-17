@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { format, addDays, getISOWeek } from "date-fns";
-import { vi } from "date-fns/locale";
 
 type Item = {
   stageCode: string;
@@ -19,7 +17,6 @@ type Evaluation = {
   code: string;
   weekStart: string;
   reason: string | null;
-  completedAt: string | null;
   warehouse: { code: string; name: string };
   room: { name: string };
   rotationGroup: { name: string };
@@ -34,10 +31,9 @@ const num = (n: number) => n.toLocaleString("vi-VN");
 
 const itemPct = (it: Item) => (it.totalQuantity > 0 ? Math.round((it.passedQuantity / it.totalQuantity) * 1000) / 10 : 0);
 
-// deliveryView — giao diện "Dự kiến hàng ra rễ về Kho TP" (Kho mô/Quản lý kho TP): ẩn cột Hoàn thành, chi
-// tiết theo cây dạng lưới 3 cột "Đạt / Tổng - % đạt", loại cây % đạt thấp nhất lên đầu.
-export default function RootingQualityEvaluationReportBoard({ deliveryView = false }: { deliveryView?: boolean }) {
-  const colCount = deliveryView ? 9 : 10;
+// Chi tiết theo cây dạng lưới 3 cột "Đạt / Tổng - % đạt", loại cây % đạt thấp nhất lên đầu.
+export default function RootingQualityEvaluationReportBoard() {
+  const colCount = 9;
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -71,7 +67,6 @@ export default function RootingQualityEvaluationReportBoard({ deliveryView = fal
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Cơ sở</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tuần giao Kho TP</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">NV Kỹ thuật</th>
-                {!deliveryView && <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Hoàn thành</th>}
                 <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tổng</th>
                 <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Đạt</th>
                 <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Không đạt</th>
@@ -109,11 +104,6 @@ export default function RootingQualityEvaluationReportBoard({ deliveryView = fal
                         <p className="text-xs">{format(weekStart, "dd/MM")} – {format(addDays(weekStart, 6), "dd/MM/yyyy")}</p>
                       </td>
                       <td className="px-4 py-3 text-foreground">{e.assignedTo.name}</td>
-                      {!deliveryView && (
-                        <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
-                          {e.completedAt ? format(new Date(e.completedAt), "dd/MM/yyyy HH:mm", { locale: vi }) : "—"}
-                        </td>
-                      )}
                       <td className="px-4 py-3 text-right tabular-nums">{num(total)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-success-foreground font-medium">{num(passed)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-destructive font-medium">{num(failed)}</td>
@@ -127,8 +117,7 @@ export default function RootingQualityEvaluationReportBoard({ deliveryView = fal
                               <span className="font-medium">Lý do:</span> {e.reason}
                             </p>
                           )}
-                          {deliveryView ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               {[...e.items]
                                 .sort((a, b) => itemPct(a) - itemPct(b) || a.plantType.code.localeCompare(b.plantType.code))
                                 .map((it, i) => (
@@ -143,16 +132,7 @@ export default function RootingQualityEvaluationReportBoard({ deliveryView = fal
                                     </p>
                                   </div>
                                 ))}
-                            </div>
-                          ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {e.items.map((it, i) => (
-                              <Badge key={i} className="bg-info-light text-info-foreground">
-                                {it.plantType.code} ({it.stageCode}): {num(it.totalQuantity)} — đạt {num(it.passedQuantity)} / không đạt {num(it.failedQuantity)}
-                              </Badge>
-                            ))}
                           </div>
-                          )}
                         </td>
                       </tr>
                     )}

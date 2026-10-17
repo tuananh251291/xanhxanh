@@ -11,7 +11,7 @@ export default async function RootingQualityEvaluationsReportPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!isAdminRole(role) && role !== "KY_THUAT" && role !== "KHO_MO" && role !== "QUAN_LY_KHO_THANH_PHAM") redirect("/dashboard");
-  // Kho mô/Quản lý kho TP xem dưới dạng "Dự kiến hàng ra rễ về Kho TP" (tên menu riêng, bố cục gọn hơn).
+  // Kho mô/Quản lý kho TP xem dưới tên "Dự kiến hàng ra rễ về Kho TP" (khớp tên menu riêng của 2 vai trò này).
   const deliveryView = role === "QUAN_LY_KHO_THANH_PHAM" || role === "KHO_MO";
 
   return (
@@ -25,7 +25,7 @@ export default async function RootingQualityEvaluationsReportPage() {
           Tỉ lệ đạt/không đạt cây ra rễ hàng tuần do NV kỹ thuật đánh giá trước khi Kho mô bàn giao sang Kho thành phẩm, kèm lý do giải thích. Số đạt là lượng hàng từ khu sản xuất sẽ gửi đến Kho Thành Phẩm trong tuần giao tương ứng.
         </p>
       </div>
-      <RootingQualityEvaluationReportBoard deliveryView={deliveryView} />
+      <RootingQualityEvaluationReportBoard />
     </div>
   );
 }
