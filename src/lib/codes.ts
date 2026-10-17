@@ -254,19 +254,6 @@ export async function generateCustomerCode(client: Prisma.TransactionClient | ty
   return `${prefix}${String(seq).padStart(5, "0")}`;
 }
 
-// client tuỳ chọn — truyền tx khi gọi trong 1 transaction (VD POST /api/processing-tickets) để tính mã
-// kế tiếp dựa trên đúng state đang thấy trong transaction đó, mặc định dùng prisma singleton.
-export async function generateProcessingTicketCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
-  const today = new Date();
-  const prefix = `XL-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const last = await client.processingTicket.findFirst({
-    where: { code: { startsWith: prefix } },
-    orderBy: { code: "desc" },
-  });
-  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
-  return `${prefix}-${String(seq).padStart(4, "0")}`;
-}
-
 // Mã việc hàn túi = "HT" + năm tháng tạo "YYYYMM" + số thứ tự 4 chữ số trong tháng — giống hệt công thức
 // generateProcessingTicketCode. client tuỳ chọn — truyền tx khi gọi trong 1 transaction (POST
 // /api/sealing-tasks) để tính mã kế tiếp dựa trên đúng state đang thấy trong transaction đó.
