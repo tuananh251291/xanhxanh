@@ -132,6 +132,11 @@ export default function DeXuatExecuteForm({
       // Hủy + trồng/chuyển phòng đều trừ khỏi CÙNG lô này nên tổng không được vượt tồn.
       if (r.huy + r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: tổng hủy + ${isMarketPartner ? "trồng" : "chuyển"} vượt quá tồn kho`); return; }
       if (needsPotSpec && r.trong > 0 && !r.potStageCode) { toast.error(`${r.lot.plantType.code}: chọn quy cách chậu cho phần đề xuất trồng`); return; }
+      // Trồng lại trong Phòng cây trồng = đổi sang chậu khác (trừ quy cách cũ, cộng quy cách mới lúc duyệt) —
+      // chọn trùng quy cách hiện tại thì không có gì thay đổi, chặn luôn.
+      if (needsPotSpec && isPlantRoom && r.trong > 0 && r.potStageCode === r.lot.stageCode) {
+        toast.error(`${r.lot.plantType.code} (${r.lot.stageCode}): Trồng lại trong Phòng cây trồng phải chọn quy cách chậu KHÁC quy cách hiện tại`); return;
+      }
       // Không bắt buộc chọn Vườn sản xuất khi không có vườn nào để chọn (Đối tác vận hành ở Kho thị
       // trường — xem page.tsx truyền gardens=[] cho trường hợp này).
       if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error(`Chưa chọn Vườn sản xuất cho dòng ${trongLabel}`); return; }
@@ -340,13 +345,14 @@ export default function DeXuatExecuteForm({
                             />
                             {needsPotSpec && (parseInt(getValue(l.id).trong, 10) || 0) > 0 && (
                               <Select
-                                items={POT_OPTIONS}
+                                items={isPlantRoom ? POT_OPTIONS.filter((o) => o.value !== l.stageCode) : POT_OPTIONS}
                                 value={getValue(l.id).potStageCode || null}
                                 onValueChange={(v) => setValue(l.id, { potStageCode: (v as string) ?? "" })}
                               >
                                 <SelectTrigger className="h-9 w-full mt-1.5"><SelectValue placeholder="Quy cách chậu" /></SelectTrigger>
                                 <SelectContent>
-                                  {POT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                  {/* Phòng cây trồng: ẩn quy cách hiện tại của lô — phải trồng lại sang chậu khác. */}
+                                  {(isPlantRoom ? POT_OPTIONS.filter((o) => o.value !== l.stageCode) : POT_OPTIONS).map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                                 </SelectContent>
                               </Select>
                             )}

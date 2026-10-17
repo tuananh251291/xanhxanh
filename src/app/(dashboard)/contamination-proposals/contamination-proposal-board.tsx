@@ -134,8 +134,11 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
   const [notes, setNotes] = useState(proposal.notes ?? "");
   const [potStageCode, setPotStageCode] = useState(proposal.plantStageCode ?? "");
   const [saving, setSaving] = useState(false);
-  // Kho thị trường: Trồng từ Phòng sản phẩm đạt/không đạt phải chọn quy cách chậu (cây vào Phòng cây trồng).
-  const needsPotSpec = type === "TRONG" && (proposal.room?.type === "PHONG_SAN_PHAM_DAT" || proposal.room?.type === "PHONG_SAN_PHAM_KHONG_DAT");
+  // Kho thị trường: Trồng luôn phải chọn quy cách chậu (cây vào Phòng cây trồng) — kể cả trồng lại ngay trong
+  // Phòng cây trồng, khi đó phải chọn chậu KHÁC quy cách hiện tại (xem PATCH /api/contamination-proposals/[id]).
+  const isPlantRoom = proposal.room?.type === "PHONG_CAY_TRONG";
+  const needsPotSpec = type === "TRONG" && (proposal.room?.type === "PHONG_SAN_PHAM_DAT" || proposal.room?.type === "PHONG_SAN_PHAM_KHONG_DAT" || isPlantRoom);
+  const potOptions = isPlantRoom ? POT_OPTIONS.filter((o) => o.value !== proposal.stageCode) : POT_OPTIONS;
 
   const resetForm = () => {
     setType(proposal.type);
@@ -148,6 +151,9 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
     const value = Number(quantity);
     if (!Number.isFinite(value) || value <= 0) { toast.error("Số lượng không hợp lệ"); return; }
     if (needsPotSpec && !potStageCode) { toast.error("Chọn quy cách chậu cho phần Trồng"); return; }
+    if (needsPotSpec && isPlantRoom && potStageCode === proposal.stageCode) {
+      toast.error("Trồng lại trong Phòng cây trồng phải chọn quy cách chậu KHÁC quy cách hiện tại"); return;
+    }
     setSaving(true);
     try {
       const res = await fetch(`/api/contamination-proposals/${proposal.id}`, {
@@ -195,11 +201,15 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
           </div>
           {needsPotSpec && (
             <div className="space-y-1">
-              <Label className="text-xs">Quy cách chậu (cây chuyển sang Phòng cây trồng khi được duyệt)</Label>
-              <Select items={POT_OPTIONS} value={potStageCode || null} onValueChange={(v) => setPotStageCode((v as string) ?? "")}>
+              <Label className="text-xs">
+                {isPlantRoom
+                  ? `Quy cách chậu mới (khác ${proposal.stageCode} — trừ ${proposal.stageCode}, cộng quy cách mới khi được duyệt)`
+                  : "Quy cách chậu (cây chuyển sang Phòng cây trồng khi được duyệt)"}
+              </Label>
+              <Select items={potOptions} value={potStageCode || null} onValueChange={(v) => setPotStageCode((v as string) ?? "")}>
                 <SelectTrigger><SelectValue placeholder="Chọn quy cách chậu" /></SelectTrigger>
                 <SelectContent>
-                  {POT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  {potOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

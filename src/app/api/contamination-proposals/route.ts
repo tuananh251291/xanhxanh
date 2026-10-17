@@ -146,6 +146,10 @@ export async function POST(req: NextRequest) {
       if (!requestedPlantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(requestedPlantStageCode)) {
         return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
       }
+      // Trồng lại trong Phòng cây trồng: quy cách mới phải KHÁC quy cách hiện tại (trừ cũ lúc gửi, cộng mới lúc duyệt).
+      if (room.type === "PHONG_CAY_TRONG" && requestedPlantStageCode === stageCode) {
+        return NextResponse.json({ message: `Trồng lại trong Phòng cây trồng phải chọn quy cách chậu KHÁC quy cách hiện tại (${stageCode})` }, { status: 400 });
+      }
       plantStageCode = requestedPlantStageCode;
     }
     const lot = await prisma.lot.findFirst({ where: { roomId, plantTypeId, stageCode, status: "ACTIVE" } });
