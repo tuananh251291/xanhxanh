@@ -6,6 +6,9 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
 import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
+import { deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
+import { upsertLot } from "@/lib/goods-receipt";
+import { createAlert } from "@/lib/inventory";
 
 const include = {
   plantType: { select: { code: true, name: true } },
@@ -49,7 +52,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ batc
   return NextResponse.json(proposals);
 }
 
-const patchSchema = z.object({ action: z.literal("approve") });
+// quantities (tuỳ chọn, CHỈ Kho thị trường): QL thị trường sửa số từng dòng trước khi duyệt — { [proposalId]: số mới }.
+const patchSchema = z.object({ action: z.literal("approve"), quantities: z.record(z.string(), z.number().int().positive()).optional() });
 
 // "Duyệt nhanh tất cả" — duyệt 1 lượt mọi dòng đang PENDING trong đề xuất, khỏi phải bấm Duyệt từng
 // dòng cây. Chỉ hỗ trợ approve (tác dụng phụ tồn kho duy nhất của approve: Trồng của Đối tác vận hành từ
@@ -64,7 +68,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const { batchCode } = await params;
   const pending = await prisma.contaminationProposal.findMany({
     where: { ...batchWhere(batchCode), status: "PENDING" },
-    select: { id: true, warehouseId: true, room: { select: { type: true } }, warehouse: { select: { type: true } } },
+    select: {
+      id: true, code: true, warehouseId: true, roomId: true, plantTypeId: true, stageCode: true, quantity: true, requestedById: true,
+      room: { select: { type: true } }, warehouse: { select: { type: true } },
+      plantType: { select: { code: true } }, requestedBy: { select: { code: true } },
+    },
   });
   if (pending.length === 0) return NextResponse.json({ message: "Không có dòng nào đang chờ duyệt" }, { status: 400 });
 
@@ -84,7 +92,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const missingPot = await findMarketPlantingMissingPot(pending.map((p) => p.id));
   if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
 
-  const newHandoverIds = await prisma.$transaction(async (tx) => {
+  // Sửa số trước khi duyệt — chỉ Kho thị trường (dòng có phòng nguồn). Lúc gửi đã trừ đúng số cũ ở phòng nguồn:
+  // giảm thì hoàn phần chênh về phòng nguồn, tăng thì trừ thêm (phải đủ tồn).
+  const quantities = parsed.data.quantities ?? {};
+  const edits = pending
+    .filter((p) => quantities[p.id] !== undefined && quantities[p.id] !== p.quantity)
+    .map((p) => ({ p, newQty: quantities[p.id] }));
+  if (edits.length > 0 && edits.some(({ p }) => p.warehouse.type !== "THI_TRUONG" || !p.roomId)) {
+    return NextResponse.json({ message: "Chỉ sửa được số lượng đề xuất của Kho thị trường" }, { status: 400 });
+  }
+
+  let newHandoverIds: string[];
+  try {
+  newHandoverIds = await prisma.$transaction(async (tx) => {
+    for (const { p, newQty } of edits) {
+      const diff = newQty - p.quantity;
+      if (diff > 0) {
+        await deductFromRoomFifo(tx, p.roomId!, p.plantTypeId, p.stageCode, diff, `${p.plantType.code} ${p.stageCode} (cần thêm ${diff})`);
+      } else {
+        await upsertLot(tx, p.roomId!, p.plantTypeId, p.plantType.code, p.stageCode, -diff, p.requestedBy.code);
+      }
+      // Chỉ sửa dòng còn PENDING (khoá chống 2 người duyệt cùng lúc).
+      const locked = await tx.contaminationProposal.updateMany({ where: { id: p.id, status: "PENDING" }, data: { quantity: newQty } });
+      if (locked.count === 0) throw new InsufficientRoomStockError(`Phiếu ${p.code} vừa được xử lý — tải lại trang`);
+    }
     await tx.contaminationProposal.updateMany({
       where: { id: { in: pending.map((p) => p.id) } },
       data: { status: "APPROVED", approvedById: session!.user!.id, approvedAt: new Date() },
@@ -92,7 +123,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
     await moveApprovedMarketPlantingToPlantRoom(tx, pending.map((p) => p.id));
     return attachApprovedToGardenHandover(tx, pending.map((p) => p.id));
   });
+  } catch (err) {
+    if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+    throw err;
+  }
   await notifyGardenHandoversCreated(newHandoverIds);
+
+  if (edits.length > 0) {
+    await createAlert({
+      type: "CONTAMINATION_PROPOSAL",
+      title: `Đề xuất ${batchCode} được duyệt với số lượng đã sửa`,
+      message: `QL thị trường đã sửa số trước khi duyệt: ${edits.map(({ p, newQty }) => `${p.plantType.code} ${p.stageCode}: ${p.quantity} → ${newQty}`).join("; ")}.`,
+      userId: edits[0].p.requestedById,
+      relatedId: edits[0].p.id,
+      relatedType: "ContaminationProposal",
+    });
+  }
 
   return NextResponse.json({ success: true, count: pending.length });
 }

@@ -205,7 +205,18 @@ export async function POST(req: NextRequest) {
   // Chỉ nhận batchCode do client truyền lại nếu đúng là code của 1 dòng đã tạo trước đó, cùng người gửi,
   // cùng kho, cùng loại Trồng/Hủy — tránh gộp nhầm đề xuất không liên quan nếu client gửi sai dữ liệu.
   let batchCode = code;
-  if (requestedBatchCode) {
+  if (isMarketPartner) {
+    // Kho thị trường: mọi đề xuất CÙNG loại (Trồng/Hủy) của cùng kho gửi trong CÙNG 1 ngày (giờ VN) gộp chung 1
+    // phiếu — dù từ nhiều việc tuần/phòng/lần bấm gửi khác nhau — để QL thị trường mở 1 phiếu, sửa số và duyệt
+    // 1 lần (xem PATCH /api/contamination-proposals/batch/[batchCode]).
+    const vnDay = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+    const dayHead = await prisma.contaminationProposal.findFirst({
+      where: { warehouseId, type, status: { not: "DRAFT" }, createdAt: { gte: new Date(`${vnDay}T00:00:00+07:00`) } },
+      orderBy: { createdAt: "asc" },
+      select: { code: true, batchCode: true },
+    });
+    if (dayHead) batchCode = dayHead.batchCode ?? dayHead.code;
+  } else if (requestedBatchCode) {
     const head = await prisma.contaminationProposal.findFirst({
       where: { code: requestedBatchCode, requestedById: session!.user.id, warehouseId, type },
     });

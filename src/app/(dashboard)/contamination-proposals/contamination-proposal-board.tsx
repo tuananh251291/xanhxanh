@@ -42,7 +42,7 @@ export type Proposal = {
 export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
 
 // 3 phòng của Kho thị trường — đề xuất từ các phòng này do Đối tác vận hành gửi.
-const MARKET_ROOM_TYPE_SET = new Set(["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"]);
+export const MARKET_ROOM_TYPE_SET = new Set(["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"]);
 
 // Đề xuất của Quản lý kho thành phẩm từ Phòng chờ xử lý chỉ Admin cấp cao duyệt (xem
 // requiresSuperAdminApproval, src/lib/garden-handover.ts) — Admin thường không hiện nút Duyệt/Từ chối.
