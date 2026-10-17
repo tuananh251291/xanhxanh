@@ -25,11 +25,14 @@ const PICK_FIELDS: PickField[] = ["pickedQuantity1", "pickedQuantity2", "pickedQ
 // Giá trị đang gõ trên form của 1 dòng — số lượng giữ dạng chuỗi để cho phép ô trống khi đang gõ.
 type RowDraft = Record<PickField, string> & { pickNotes: string };
 
+// Lần nhặt chưa có số (0) để ô TRỐNG thay vì hiện "0" — NV chỉ cần gõ số, không phải xoá số 0 trước.
+const qtyDraft = (n: number) => (n === 0 ? "" : String(n));
+
 function toDraft(item: PickItem): RowDraft {
   return {
-    pickedQuantity1: String(item.pickedQuantity1),
-    pickedQuantity2: String(item.pickedQuantity2),
-    pickedQuantity3: String(item.pickedQuantity3),
+    pickedQuantity1: qtyDraft(item.pickedQuantity1),
+    pickedQuantity2: qtyDraft(item.pickedQuantity2),
+    pickedQuantity3: qtyDraft(item.pickedQuantity3),
     pickNotes: item.pickNotes ?? "",
   };
 }
