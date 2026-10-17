@@ -127,11 +127,13 @@ export async function ensureWeeklyDeXuatTask(warehouseId: string | null) {
 // nhắc Quản lý từ sáng Thứ Sáu nếu còn việc chưa gửi, 1 lần/tuần/việc (dedup qua relatedId). Không gán NV
 // cụ thể — mọi Quản lý của kho đều làm được. slotKey có tiền tố "qlk-" vì @@unique([warehouseId, weekStart,
 // slotKey]) dùng chung với các việc DE_XUAT_TRONG_HUY của NV cùng kho/tuần.
+// "Phiếu xử lý" (slotKey "qlk-xu-ly") đã tách khỏi việc tuần thành mục menu riêng "Tạo phiếu xử lý"
+// (/ktp-repack) — việc qlk-xu-ly cũ còn PENDING tự chuyển CANCELLED trong ensureWeeklyManagerTask.
 export const QLK_WEEKLY_SLOTS = {
   "qlk-huy": "Đề xuất hủy",
   "qlk-trong": "Đề xuất trồng",
-  "qlk-xu-ly": "Phiếu xử lý",
 } as const;
+export const LEGACY_QLK_PROCESSING_SLOT = "qlk-xu-ly";
 export type QlkWeeklySlot = keyof typeof QLK_WEEKLY_SLOTS;
 // slotKey "manager" = việc gộp cả 3 phần của bản cũ (trước khi tách) — coi như việc Đề xuất hủy.
 export const qlkSlotOf = (slotKey: string | null): QlkWeeklySlot =>
@@ -146,7 +148,15 @@ export async function ensureWeeklyManagerTask(warehouseId: string | null) {
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const weekLabel = `tuần ${getWeek(weekStart, { weekStartsOn: 1 })} (ngày ${format(weekStart, "dd/MM", { locale: vi })} đến ngày ${format(weekEnd, "dd/MM", { locale: vi })})`;
   const select = { id: true, code: true, status: true, title: true, slotKey: true } as const;
-  const tasks = await prisma.dailyTask.findMany({ where: { type: "QLK_DE_XUAT_TUAN", warehouseId, weekStart }, select });
+
+  // Việc "Phiếu xử lý" kiểu cũ (mọi tuần) còn chờ → huỷ, giờ tạo phiếu ở mục menu "Tạo phiếu xử lý".
+  await prisma.dailyTask.updateMany({
+    where: { type: "QLK_DE_XUAT_TUAN", warehouseId, slotKey: LEGACY_QLK_PROCESSING_SLOT, status: "PENDING" },
+    data: { status: "CANCELLED", resultNotes: "Đã chuyển sang mục menu Tạo phiếu xử lý" },
+  });
+
+  const tasks = (await prisma.dailyTask.findMany({ where: { type: "QLK_DE_XUAT_TUAN", warehouseId, weekStart }, select }))
+    .filter((t) => t.slotKey !== LEGACY_QLK_PROCESSING_SLOT);
 
   // Việc gộp kiểu cũ (slotKey "manager") của tuần này: chưa gửi → đổi thành việc Đề xuất hủy (giữ mã);
   // đã gửi (gồm cả 3 phần) → tuần này không sinh thêm việc nào.

@@ -914,6 +914,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/task-assignment", label: "Phân công nhiệm vụ ngày", icon: "ClipboardList" },
     { href: "/task-progress", label: "Theo dõi tiến độ công việc", icon: "Gauge" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
+    // Phiếu xử lý gửi Kho mô khu sản xuất (từ Phòng chờ xử lý) — trước đây là việc tuần "Phiếu xử lý".
+    { href: "/ktp-repack", label: "Tạo phiếu xử lý", icon: "RefreshCw" },
     { href: "/ktp-handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },

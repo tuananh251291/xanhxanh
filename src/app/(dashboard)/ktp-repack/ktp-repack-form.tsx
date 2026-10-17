@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { ArrowLeft, Plus, Trash2, Loader2, TriangleAlert, RefreshCw, Send } from "lucide-react";
+import { Plus, Trash2, Loader2, TriangleAlert, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { FINISHED_SPEC_LABELS, FINISHED_SPEC_BAG_SIZE } from "@/types";
 
@@ -35,16 +34,13 @@ const keyOf = (g: { plantTypeId: string; stageCode: string }) => `${g.plantTypeI
 const fmt = (n: number) => n.toLocaleString("vi-VN");
 const emptyRow = (key: number): Row => ({ key, comboKey: "", quantity: "", outputStageCode: "" });
 
-// Việc tuần "Phiếu xử lý" của Quản lý kho thành phẩm — giao diện giống "Tạo chỉ định cấy xử lý" của Kỹ
-// thuật (create-repack-instruction-dialog.tsx) nhưng đầu vào là Phòng chờ xử lý (không theo kệ): mỗi dòng
-// = 1 mã cây + quy cách → 1 chỉ định xử lý ở khu sản xuất đã chọn. Xem POST /api/finished-goods-weekly/[taskId].
-export default function QlkProcessingForm({
-  taskId, taskCode, taskTitle, deadlineLabel, hasProcessingRoom, processingStock, productionWarehouses,
+// "Tạo phiếu xử lý" của Quản lý kho thành phẩm (mục menu riêng, trước đây là việc tuần "Phiếu xử lý") —
+// giao diện giống "Tạo chỉ định cấy xử lý" của Kỹ thuật (create-repack-instruction-dialog.tsx) nhưng đầu vào
+// là Phòng chờ xử lý (không theo kệ): mỗi dòng = 1 mã cây + quy cách → 1 phiếu xử lý ở khu sản xuất đã chọn.
+// Xem POST /api/ktp-repack-instructions.
+export default function KtpRepackForm({
+  hasProcessingRoom, processingStock, productionWarehouses,
 }: {
-  taskId: string;
-  taskCode: string;
-  taskTitle: string;
-  deadlineLabel: string | null;
   hasProcessingRoom: boolean;
   processingStock: StockGroup[];
   productionWarehouses: Option[];
@@ -92,30 +88,27 @@ export default function QlkProcessingForm({
         return false;
       }
     }
-    if (usedByKey.size > 0 && !productionWarehouseId) { toast.error("Chọn khu sản xuất nhận phiếu xử lý"); return false; }
+    if (usedByKey.size === 0) { toast.error("Chưa nhập dòng nào"); return false; }
+    if (!productionWarehouseId) { toast.error("Chọn khu sản xuất nhận phiếu xử lý"); return false; }
     return true;
   };
 
   const send = async () => {
     setSubmitting(true);
     try {
-      const process = filledRows.map((r) => {
+      const lines = filledRows.map((r) => {
         const s = stockByKey.get(r.comboKey)!;
         return { plantTypeId: s.plantTypeId, stageCode: s.stageCode, quantity: Number(r.quantity) || 0, outputStageCode: r.outputStageCode };
       });
-      const res = await fetch(`/api/finished-goods-weekly/${taskId}`, {
+      const res = await fetch("/api/ktp-repack-instructions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          process,
-          productionWarehouseId: process.length > 0 ? productionWarehouseId ?? undefined : undefined,
-          notes: notes.trim() || undefined,
-        }),
+        body: JSON.stringify({ lines, productionWarehouseId, notes: notes.trim() || undefined }),
       });
       const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Gửi thất bại"); return; }
-      toast.success(json.xuLy > 0 ? `Đã tạo ${json.xuLy} phiếu xử lý — vào Bàn giao liên kho để bàn giao` : "Đã hoàn thành việc tuần (không có phiếu xử lý)");
-      router.push("/task-assignment");
+      if (!res.ok) { toast.error(json.message ?? "Tạo phiếu thất bại"); return; }
+      toast.success(`Đã tạo ${json.count} phiếu xử lý — vào Bàn giao liên kho để bàn giao`);
+      router.push("/ktp-handover-out");
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -125,17 +118,9 @@ export default function QlkProcessingForm({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Link href="/task-assignment">
-          <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{taskTitle}</h1>
-          <p className="text-text-secondary text-sm">
-            <span className="font-mono">{taskCode}</span>
-            {deadlineLabel && <span className="text-warning-foreground font-medium"> · {deadlineLabel}</span>}
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Tạo phiếu xử lý</h1>
+        <p className="text-text-secondary text-sm mt-1">Gửi cây từ Phòng chờ xử lý sang Kho mô khu sản xuất xử lý (đổi quy cách, xử lý lá vàng…)</p>
       </div>
 
       {!hasProcessingRoom && (
@@ -153,7 +138,7 @@ export default function QlkProcessingForm({
         </CardHeader>
         <CardContent className="space-y-4">
           {processingStock.length === 0 ? (
-            <p className="text-sm text-text-muted py-2">Phòng chờ xử lý đang trống — bấm Hoàn thành nếu tuần này không có gì cần xử lý.</p>
+            <p className="text-sm text-text-muted py-2">Phòng chờ xử lý đang trống — chuyển cây cần xử lý vào Phòng chờ xử lý trước.</p>
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -252,24 +237,22 @@ export default function QlkProcessingForm({
             </div>
           </div>
 
-          <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting || !hasProcessingRoom} onClick={() => { if (validate()) setConfirmOpen(true); }}>
-            {filledRows.length > 0
-              ? <><Plus className="w-4 h-4 mr-2" /> Tạo {filledRows.length > 1 ? `${filledRows.length} phiếu xử lý` : "phiếu xử lý"}</>
-              : <><Send className="w-4 h-4 mr-2" /> Hoàn thành (không có phiếu xử lý)</>}
+          <Button className="w-full bg-primary hover:bg-primary-hover" disabled={submitting || !hasProcessingRoom || processingStock.length === 0} onClick={() => { if (validate()) setConfirmOpen(true); }}>
+            <Plus className="w-4 h-4 mr-2" /> Tạo {filledRows.length > 1 ? `${filledRows.length} phiếu xử lý` : "phiếu xử lý"}
           </Button>
         </CardContent>
       </Card>
 
       <Dialog open={confirmOpen} onOpenChange={(o) => { if (!submitting) setConfirmOpen(o); }}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Xác nhận phiếu xử lý tuần</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Xác nhận tạo phiếu xử lý</DialogTitle></DialogHeader>
           <p className="text-sm text-foreground flex items-center gap-2">
             <RefreshCw className="w-4 h-4 text-text-muted" />
-            {filledRows.length > 0 ? `Tạo ${filledRows.length} phiếu xử lý — ${fmt(totalQty)} cây` : "Tuần này không tạo phiếu xử lý nào"}
+            Tạo {filledRows.length} phiếu xử lý — {fmt(totalQty)} cây gửi {productionWarehouses.find((w) => w.id === productionWarehouseId)?.name ?? "khu sản xuất"}
           </p>
           <div className="flex items-start gap-2 text-sm font-medium text-warning-foreground bg-warning-light rounded-lg p-3">
             <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
-            Kiểm tra lại: đây là số cây, không phải số túi. Gửi xong nhiệm vụ này sẽ hoàn thành.
+            Kiểm tra lại: đây là số cây, không phải số túi. Tạo xong vào Bàn giao liên kho để bàn giao cho Kho mô.
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>Kiểm tra lại</Button>

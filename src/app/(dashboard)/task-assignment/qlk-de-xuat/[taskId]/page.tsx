@@ -2,12 +2,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { isAdminRole } from "@/types";
-import { getDeXuatDeadline, qlkSlotOf } from "@/lib/daily-task-weekly";
+import { getDeXuatDeadline, qlkSlotOf, LEGACY_QLK_PROCESSING_SLOT } from "@/lib/daily-task-weekly";
 import { getManagerWeeklyData } from "@/lib/finished-goods-weekly";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import QlkDeXuatForm from "./qlk-de-xuat-form";
-import QlkProcessingForm from "./qlk-processing-form";
 
 // 1 trong 3 việc tuần của Quản lý kho thành phẩm (QLK_DE_XUAT_TUAN — Đề xuất hủy / Đề xuất trồng / Phiếu xử
 // lý theo slotKey, xem QLK_WEEKLY_SLOTS) — xem POST /api/finished-goods-weekly/[taskId].
@@ -24,6 +23,8 @@ export default async function QlkDeXuatPage({ params }: { params: Promise<{ task
   });
   if (!task || task.type !== "QLK_DE_XUAT_TUAN" || !task.warehouseId) notFound();
   if (role === "QUAN_LY_KHO_THANH_PHAM" && task.warehouseId !== session.user.workplaceWarehouseId) redirect("/task-assignment");
+  // Việc "Phiếu xử lý" kiểu cũ — giờ là mục menu riêng.
+  if (task.slotKey === LEGACY_QLK_PROCESSING_SLOT) redirect("/ktp-repack");
   if (task.status !== "PENDING") redirect("/task-assignment");
 
   const slot = qlkSlotOf(task.slotKey);
@@ -39,9 +40,6 @@ export default async function QlkDeXuatPage({ params }: { params: Promise<{ task
     hasProcessingRoom: !!data.processingRoom,
   };
 
-  if (slot === "qlk-xu-ly") {
-    return <QlkProcessingForm {...common} processingStock={data.processingStock} productionWarehouses={data.productionWarehouses} />;
-  }
   return (
     <QlkDeXuatForm
       {...common}

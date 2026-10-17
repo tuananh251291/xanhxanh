@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole, FINISHED_SPEC_LABELS } from "@/types";
+import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
-import { generateContaminationProposalCode, generateRepackInstructionCode } from "@/lib/codes";
+import { generateContaminationProposalCode } from "@/lib/codes";
 import { getProcessingRoom, deductFromRoomFifo, getAvailableInProcessingRoom, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { qlkSlotOf } from "@/lib/daily-task-weekly";
 import { z } from "zod";
-
-const OUTPUT_STAGE_CODES = Object.keys(FINISHED_SPEC_LABELS) as [keyof typeof FINISHED_SPEC_LABELS, ...(keyof typeof FINISHED_SPEC_LABELS)[]];
 
 const lineSchema = z.object({ plantTypeId: z.string().min(1), stageCode: z.string().min(1), quantity: z.number().int().min(0) });
 
@@ -20,21 +18,16 @@ const schema = z.object({
   // Việc Đề xuất trồng.
   plant: z.array(lineSchema).default([]),
   productionGardenId: z.string().optional(),
-  // Việc Phiếu xử lý — mỗi dòng 1 chỉ định xử lý (cùng mã cây + quy cách có thể nhiều dòng).
-  process: z.array(lineSchema.extend({ outputStageCode: z.enum(OUTPUT_STAGE_CODES) })).default([]),
-  productionWarehouseId: z.string().optional(),
   notes: z.string().trim().max(500).optional(),
 });
 
-// Quản lý kho thành phẩm gửi 1 trong 3 việc tuần (QLK_DE_XUAT_TUAN, slotKey xem QLK_WEEKLY_SLOTS) — mỗi việc
+// Quản lý kho thành phẩm gửi 1 trong 2 việc tuần (QLK_DE_XUAT_TUAN, slotKey xem QLK_WEEKLY_SLOTS) — mỗi việc
 // chỉ nhận đúng phần của nó, 1 transaction:
 // - qlk-huy: gộp mọi FinishedGoodsCheckLine chưa gộp (tồn đã trừ lúc NV gửi phiếu) → 1 phiếu HUY/nhóm,
 //   roomId = Phòng chờ xử lý (Admin cấp cao từ chối thì hoàn về đó); phần Quản lý giảm cộng Phòng chờ xử lý.
 // - qlk-trong: trừ Phòng chờ xử lý, tạo phiếu TRONG gửi Admin cấp cao — duyệt thì tự tạo phiếu bàn giao về
 //   Vườn (xem PATCH /api/contamination-proposals/[id]).
-// - qlk-xu-ly: tạo Phiếu xử lý (RepackInstruction có ktpRoomId, KTP_WAITING_HANDOVER) cho khu sản xuất đã
-//   chọn — không cần duyệt, CHƯA trừ Phòng chờ xử lý (chỉ giữ chỗ): Kho thành phẩm vào "Bàn giao liên kho"
-//   bấm Bàn giao mới trừ, Kho mô nhận vào Phòng đợi xử lý, xử lý xong bàn giao liên kho lại Kho thành phẩm.
+// (Phiếu xử lý trước đây là việc tuần thứ 3 — đã tách thành mục menu riêng, xem POST /api/ktp-repack-instructions.)
 // Việc này + các việc cùng loại của tuần trước còn PENDING đều chuyển COMPLETED. Gửi không có dòng nào
 // vẫn được (tuần đó không có gì cần làm).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
@@ -63,7 +56,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
   const sameSlotKeys = slot === "qlk-huy" ? ["qlk-huy", "manager"] : [slot];
 
   const plantLines = slot === "qlk-trong" ? data.plant.filter((l) => l.quantity > 0) : [];
-  const processLines = slot === "qlk-xu-ly" ? data.process.filter((l) => l.quantity > 0) : [];
 
   const processingRoom = await getProcessingRoom(warehouseId);
   if (!processingRoom) return NextResponse.json({ message: "Kho chưa có Phòng chờ xử lý — liên hệ Admin" }, { status: 400 });
@@ -72,15 +64,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     if (!data.productionGardenId) return NextResponse.json({ message: "Chưa chọn Vườn sản xuất cho Đề xuất trồng" }, { status: 400 });
     const garden = await prisma.productionGarden.findUnique({ where: { id: data.productionGardenId }, select: { isActive: true } });
     if (!garden?.isActive) return NextResponse.json({ message: "Vườn sản xuất không hợp lệ" }, { status: 400 });
-  }
-  let productionWarehouse: { id: string; code: string; name: string } | null = null;
-  if (processLines.length > 0) {
-    if (!data.productionWarehouseId) return NextResponse.json({ message: "Chưa chọn khu sản xuất cho Phiếu xử lý" }, { status: 400 });
-    productionWarehouse = await prisma.warehouse.findFirst({
-      where: { id: data.productionWarehouseId, type: "SAN_XUAT", isActive: true },
-      select: { id: true, code: true, name: true },
-    });
-    if (!productionWarehouse) return NextResponse.json({ message: "Khu sản xuất không hợp lệ" }, { status: 400 });
   }
 
   const pendingLines = slot === "qlk-huy"
@@ -105,16 +88,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
     }
   }
 
-  const plantTypeIds = [...new Set([...destroyTotals.keys()].map((k) => k.split(":")[0]).concat(plantLines.map((l) => l.plantTypeId), processLines.map((l) => l.plantTypeId)))];
+  const plantTypeIds = [...new Set([...destroyTotals.keys()].map((k) => k.split(":")[0]).concat(plantLines.map((l) => l.plantTypeId)))];
   const plantTypes = await prisma.plantType.findMany({ where: { id: { in: plantTypeIds } }, select: { id: true, code: true, name: true } });
   const ptById = new Map(plantTypes.map((p) => [p.id, p]));
-  if (plantLines.some((l) => !ptById.has(l.plantTypeId)) || processLines.some((l) => !ptById.has(l.plantTypeId))) {
+  if (plantLines.some((l) => !ptById.has(l.plantTypeId))) {
     return NextResponse.json({ message: "Mã cây không hợp lệ" }, { status: 400 });
   }
   const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { code: true } });
   const staffCode = me?.code ?? "000";
 
-  let created = { huy: 0, trong: 0, xuLy: 0 };
+  let created = { huy: 0, trong: 0 };
   try {
     created = await prisma.$transaction(async (tx) => {
       const locked = await tx.dailyTask.updateMany({ where: { id: task.id, status: "PENDING" }, data: { status: "COMPLETED", completedAt: new Date(), resultNotes: data.notes } });
@@ -176,25 +159,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tas
         trong += 1;
       }
 
-      for (const l of processLines) {
-        const pt = ptById.get(l.plantTypeId)!;
-        // Chỉ giữ chỗ — tồn trừ lúc Kho thành phẩm bấm Bàn giao (PATCH /api/repack-instructions/[id] ktpHandover).
-        const availableProcess = await getAvailableInProcessingRoom(tx, processingRoom.id, l.plantTypeId, l.stageCode);
-        if (availableProcess < l.quantity) {
-          throw new InsufficientRoomStockError(`Phiếu xử lý ${pt.code} ${l.stageCode}: chỉ còn ${availableProcess.toLocaleString("vi-VN")} cây chưa giữ chỗ`);
-        }
-        const code = await generateRepackInstructionCode({ warehouseCode: productionWarehouse!.code, shelfCode: "TP", client: tx });
-        await tx.repackInstruction.create({
-          data: {
-            code, plantTypeId: l.plantTypeId, ktpRoomId: processingRoom.id, productionWarehouseId: productionWarehouse!.id,
-            inputStageCode: l.stageCode, inputQuantity: l.quantity, outputStageCode: l.outputStageCode,
-            expectedOutputQuantity: l.quantity, createdById: session.user.id, notes: data.notes, status: "KTP_WAITING_HANDOVER",
-          },
-          select: { id: true },
-        });
-      }
-
-      return { huy, trong, xuLy: processLines.length };
+      return { huy, trong };
     }, { timeout: 30000 });
   } catch (err) {
     if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
