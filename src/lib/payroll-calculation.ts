@@ -101,7 +101,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
 
   const [
     dailyRecords, transfers, violationSums, disqualifyingViolations, recoverySums, otherBonusSums,
-    kpiBonusRate, holidays, instructions, plantRates, annualWorkDays, probationEvaluations,
+    kpiBonusRate, holidays, instructions, plantRates, annualWorkDays, probationEvaluations, repackInstructions,
   ] = await Promise.all([
     prisma.dailyRecord.findMany({
       where: { staffId: { in: staffIds }, recordDate: { gte: rangeStart, lt: rangeEnd } },
@@ -172,6 +172,13 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     prisma.probationEvaluation.findMany({
       where: { staffId: { in: staffIds }, status: "COMPLETED", weekStart: { gte: rangeStart, lt: rangeEnd } },
       select: { staffId: true, items: { select: { managerScore: true } } },
+    }),
+    // Chỉ định cấy xử lý (RepackInstruction) — sản lượng ghi nhận = creditedQuantity (số đạt Kho mô đã kiểm tra),
+    // tính lương theo mã cây + quy cách KẾT QUẢ (outputStageCode) giống chỉ định cấy thường. Về kỳ theo ngày NV
+    // bàn giao kết quả (staffHandedBackAt — tương đương ngày cấy của lô thường), chưa kiểm tra thì chưa tính.
+    prisma.repackInstruction.findMany({
+      where: { assignedToId: { in: staffIds }, creditedQuantity: { not: null }, staffHandedBackAt: { gte: rangeStart, lt: rangeEnd } },
+      select: { assignedToId: true, plantTypeId: true, outputStageCode: true, creditedQuantity: true, confirmedFailedQuantity: true, staffHandedBackAt: true },
     }),
   ]);
 
@@ -265,6 +272,11 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
       }
     }
     // Còn lại (chưa kiểm tra VÀ chưa xếp kệ xong): chưa ghi nhận được, bỏ qua.
+  }
+
+  for (const r of repackInstructions) {
+    if (!r.assignedToId || !r.staffHandedBackAt) continue;
+    creditItem(r.assignedToId, r.staffHandedBackAt, rateKey(r.plantTypeId, r.outputStageCode), r.creditedQuantity ?? 0, r.confirmedFailedQuantity ?? 0);
   }
 
   // Tỉ lệ nhiễm trong kỳ — CÙNG công thức đã sửa ở /api/reports/mother-contamination: tổng
