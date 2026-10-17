@@ -4,7 +4,8 @@ import { generateDailyTaskCode } from "@/lib/codes";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek, addDays, endOfWeek, format, getWeek } from "date-fns";
 import { vi } from "date-fns/locale";
-import type { RoomType } from "@prisma/client";
+import type { Prisma, RoomType } from "@prisma/client";
+import { upsertLot } from "@/lib/goods-receipt";
 
 // 3 phòng cố định của Kho thị trường (WarehouseType.THI_TRUONG, xem User.workplaceWarehouseId của
 // DOI_TAC_VAN_HANH) — dùng cho việc kiểm tra định kì hàng tuần + luồng "Thực hiện" nhiệm vụ, tái dùng
@@ -92,5 +93,28 @@ export async function ensureWeeklyMarketInspectionTask(warehouseId: string | nul
         });
       }
     }
+  }
+}
+
+// Đề xuất "Trồng" của Đối tác vận hành từ Phòng sản phẩm đạt/không đạt được duyệt → cộng đúng số lượng
+// vào Phòng cây trồng cùng kho (lúc gửi đề xuất đã trừ ở phòng nguồn) — giống luồng Phân loại hàng không
+// đạt (PATCH /api/reject-classifications/[id]). Đề xuất Trồng từ CHÍNH Phòng cây trồng và đề xuất Hủy thì
+// không cộng đi đâu (cây ra khỏi kho). Gọi trong transaction duyệt, SAU khi đã set status APPROVED.
+export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.TransactionClient, proposalIds: string[]): Promise<void> {
+  const proposals = await tx.contaminationProposal.findMany({
+    where: {
+      id: { in: proposalIds }, type: "TRONG", status: "APPROVED",
+      room: { type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT"] } },
+      warehouse: { type: "THI_TRUONG" },
+    },
+    select: {
+      warehouseId: true, plantTypeId: true, stageCode: true, quantity: true,
+      plantType: { select: { code: true } }, requestedBy: { select: { code: true } },
+    },
+  });
+  for (const p of proposals) {
+    const plantRoom = await tx.room.findFirst({ where: { warehouseId: p.warehouseId, type: "PHONG_CAY_TRONG", isActive: true }, select: { id: true } });
+    if (!plantRoom) throw new Error("Kho thị trường thiếu Phòng cây trồng — liên hệ Admin kiểm tra lại kho");
+    await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.stageCode, p.quantity, p.requestedBy.code);
   }
 }

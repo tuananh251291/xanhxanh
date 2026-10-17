@@ -5,6 +5,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
+import { moveApprovedMarketPlantingToPlantRoom } from "@/lib/market-inspection";
 
 const include = {
   plantType: { select: { code: true, name: true } },
@@ -51,7 +52,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ batc
 const patchSchema = z.object({ action: z.literal("approve") });
 
 // "Duyệt nhanh tất cả" — duyệt 1 lượt mọi dòng đang PENDING trong đề xuất, khỏi phải bấm Duyệt từng
-// dòng cây. Chỉ hỗ trợ approve (updateMany an toàn vì approve không có tác dụng phụ tồn kho — xem PATCH
+// dòng cây. Chỉ hỗ trợ approve (tác dụng phụ tồn kho duy nhất của approve: Trồng của Đối tác vận hành từ
+// Phòng SP đạt/không đạt cộng vào Phòng cây trồng — moveApprovedMarketPlantingToPlantRoom, giống PATCH
 // /api/contamination-proposals/[id]); Từ chối vẫn phải làm từng dòng vì mỗi dòng hoàn tồn về 1 nguồn
 // khác nhau, Admin nên xem lý do trước khi từ chối riêng lẻ.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ batchCode: string }> }) {
@@ -84,6 +86,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
       where: { id: { in: pending.map((p) => p.id) } },
       data: { status: "APPROVED", approvedById: session!.user!.id, approvedAt: new Date() },
     });
+    await moveApprovedMarketPlantingToPlantRoom(tx, pending.map((p) => p.id));
     return attachApprovedToGardenHandover(tx, pending.map((p) => p.id));
   });
   await notifyGardenHandoversCreated(newHandoverIds);

@@ -6,6 +6,7 @@ import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
+import { moveApprovedMarketPlantingToPlantRoom } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const schema = z.union([
@@ -176,6 +177,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
       }
     }
+
+    if (action === "approve") await moveApprovedMarketPlantingToPlantRoom(tx, [id]);
 
     // Đề xuất Trồng của Kho thành phẩm (từ Phòng chờ xử lý) được duyệt → tự tạo/gộp phiếu bàn giao về Vườn.
     return action === "approve" ? attachApprovedToGardenHandover(tx, [id]) : [];
