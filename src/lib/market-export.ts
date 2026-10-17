@@ -1,5 +1,3 @@
-import type { Prisma } from "@prisma/client";
-import { generateLotCode } from "@/lib/codes";
 import { FINISHED_SPEC_BAG_SIZE } from "@/types";
 
 // Quy cách túi (Phòng sản phẩm đạt) — luôn kiểm tra 3 mã này TRƯỚC quy cách chậu (1 ký tự) để tránh
@@ -46,40 +44,4 @@ export function roomKindForStageCode(stageCode: string): ExportRoomKind | null {
 // trong FINISHED_SPEC_BAG_SIZE nên mặc định 1).
 export function bagSizeForStageCode(stageCode: string): number {
   return (FINISHED_SPEC_BAG_SIZE as Record<string, number>)[stageCode] ?? 1;
-}
-
-// Trừ tồn thực (Lot.quantity) theo (phòng, loại cây, quy cách) — lấy lô ACTIVE cũ nhất, CHO PHÉP âm nếu
-// bán vượt tồn thực tế (đối soát lại sau, xem comment MarketExport ở schema.prisma). Chưa từng có lô nào
-// ở đúng combo này thì tạo mới với quantity âm — vẫn cần 1 bản ghi Lot để giữ đúng tồn thực, không thể bỏ
-// qua như trường hợp cộng dồn (upsertLot, src/lib/goods-receipt.ts).
-export async function deductOrCreateLot(
-  tx: Prisma.TransactionClient,
-  roomId: string,
-  plantTypeId: string,
-  plantTypeCode: string,
-  stageCode: string,
-  quantity: number,
-  staffCode: string
-): Promise<void> {
-  const existingLot = await tx.lot.findFirst({
-    where: { roomId, plantTypeId, stageCode, status: "ACTIVE" },
-    orderBy: { enteredAt: "asc" },
-  });
-  if (existingLot) {
-    await tx.lot.update({ where: { id: existingLot.id }, data: { quantity: { decrement: quantity } } });
-    return;
-  }
-  const code = await generateLotCode({ plantTypeCode, staffCode, stageCode, client: tx });
-  await tx.lot.create({
-    data: {
-      code,
-      plantTypeId,
-      stage: "THANH_PHAM",
-      stageCode,
-      roomId,
-      quantity: -quantity,
-      initialQuantity: -quantity,
-      status: "ACTIVE",
-    },
-  });
 }

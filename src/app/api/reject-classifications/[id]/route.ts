@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { upsertLot } from "@/lib/goods-receipt";
+import { deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import type { UserRole } from "@prisma/client";
 import { z } from "zod";
@@ -178,19 +179,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ).map((p) => [p.id, p.code])
   );
 
+  try {
   await prisma.$transaction(async (tx) => {
+    // Khoá trạng thái — 2 người bấm duyệt cùng lúc thì người sau bị chặn (không trừ tồn 2 lần).
+    const locked = await tx.rejectedGoodsClassification.updateMany({ where: { id, status: "PENDING_APPROVAL" }, data: { status: "APPROVED" } });
+    if (locked.count === 0) throw new InsufficientRoomStockError("Đề xuất đã được duyệt trước đó");
     for (const row of approveItems) {
       const item = itemById.get(row.itemId)!;
       const plantQuantity = item.rejectedQuantity - row.destroyQuantity;
       const plantTypeCode = plantTypeCodeById.get(item.plantTypeId)!;
 
-      const failedLot = await tx.lot.findFirst({
-        where: { roomId: failedRoom.id, plantTypeId: item.plantTypeId, stageCode: item.stageCode, status: "ACTIVE" },
-        orderBy: { enteredAt: "asc" },
-      });
-      if (failedLot) {
-        await tx.lot.update({ where: { id: failedLot.id }, data: { quantity: { decrement: item.rejectedQuantity } } });
-      }
+      // Trừ FIFO qua các lô của Phòng sản phẩm không đạt, THIẾU thì báo lỗi — trước đây chỉ trừ lô cũ nhất
+      // (có thể âm), không tìm thấy lô thì BỎ QUA trừ nhưng vẫn cộng phần Trồng sang Phòng cây trồng.
+      await deductFromRoomFifo(tx, failedRoom.id, item.plantTypeId, item.stageCode, item.rejectedQuantity, `${plantTypeCode} ${item.stageCode} (Phòng sản phẩm không đạt)`);
       if (plantQuantity > 0) {
         await upsertLot(tx, plantRoom.id, item.plantTypeId, plantTypeCode, item.stageCode, plantQuantity, staffCode);
       }
@@ -205,6 +206,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { status: "APPROVED", approvedById: session.user.id, approvedAt: new Date() },
     });
   });
+  } catch (err) {
+    if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+    throw err;
+  }
 
   await createAlert({
     type: "REJECTED_GOODS_PROPOSAL_APPROVED",

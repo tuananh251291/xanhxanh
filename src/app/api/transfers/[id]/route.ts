@@ -9,6 +9,7 @@ import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
 import { QUALITY_DEFECT_COUNT, sumDefects } from "@/lib/quality-defects";
+import { InsufficientRoomStockError } from "@/lib/finished-goods";
 
 const confirmSchema = z.object({
   action: z.enum(["confirm", "reject", "assign", "ack"]),
@@ -517,13 +518,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // đạt nằm im ở Phòng sản phẩm không đạt không ai theo dõi.
     const totalFailed = marketSplit.reduce((sum, s) => sum + s.failedQuantity, 0);
 
-    const rejectClassificationId = await prisma.$transaction(async (tx) => {
+    let rejectClassificationId: string | null;
+    try {
+    rejectClassificationId = await prisma.$transaction(async (tx) => {
       // Trừ NGUYÊN số đã gửi khỏi từng lô nguồn — hàng đã rời Kho thành phẩm dù nhận thiếu. Phiếu do hệ
       // thống tự tạo lúc Xuất đơn hàng (orderId khác null, xem shipOrder ở /api/orders/[id]) đã trừ tồn
       // thực NGAY lúc đó rồi — bỏ qua bước này để tránh trừ đôi.
       if (!transfer.orderId) {
         for (const item of transfer.items) {
-          await tx.lot.update({ where: { id: item.lotId }, data: { quantity: { decrement: item.quantity } } });
+          // Lô nguồn ở Kho thành phẩm phải còn đủ — có thể đã bị xuất/xử lý cho việc khác sau lúc tạo phiếu.
+          const deducted = await tx.lot.updateMany({ where: { id: item.lotId, quantity: { gte: item.quantity } }, data: { quantity: { decrement: item.quantity } } });
+          if (deducted.count === 0) {
+            throw new InsufficientRoomStockError(`Lô ${item.lot.code} (${item.lot.plantType.code} ${item.lot.stageCode}) ở Kho thành phẩm không còn đủ ${item.quantity.toLocaleString("vi-VN")} cây — báo Kho thành phẩm kiểm tra lại tồn trước khi nhận`);
+          }
         }
       }
       for (const s of marketSplit) {
@@ -565,6 +572,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       return classification.id;
     }, RECEIVE_TX_OPTIONS);
+    } catch (err) {
+      if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+      throw err;
+    }
 
     if (rejectClassificationId) {
       await createAlert({

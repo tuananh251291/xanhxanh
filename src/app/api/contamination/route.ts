@@ -107,18 +107,23 @@ export async function PATCH(req: NextRequest) {
     include: { lot: true },
   });
   if (!record) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+  if (record.confirmedAt) return NextResponse.json({ message: "Bản ghi nhiễm này đã được xác nhận" }, { status: 400 });
 
-  // Xác nhận: trừ tồn kho lô
-  await prisma.$transaction([
-    prisma.contaminationRecord.update({
-      where: { id },
+  // Xác nhận: trừ tồn kho lô — chỉ khi chưa xác nhận (bấm 2 lần không trừ 2 lần) và lô còn đủ tồn.
+  const ok = await prisma.$transaction(async (tx) => {
+    const locked = await tx.contaminationRecord.updateMany({
+      where: { id, confirmedAt: null },
       data: { confirmedAt: new Date(), confirmedById: session.user.id },
-    }),
-    prisma.lot.update({
-      where: { id: record.lotId },
+    });
+    if (locked.count === 0) return "Bản ghi nhiễm này đã được xác nhận";
+    const deducted = await tx.lot.updateMany({
+      where: { id: record.lotId, quantity: { gte: record.quantity } },
       data: { quantity: { decrement: record.quantity } },
-    }),
-  ]);
+    });
+    if (deducted.count === 0) throw new Error(`Lô ${record.lot.code} chỉ còn ${record.lot.quantity}, không đủ trừ ${record.quantity} cây nhiễm`);
+    return null;
+  }).catch((err: Error) => err.message);
+  if (ok) return NextResponse.json({ message: ok }, { status: 400 });
 
   return NextResponse.json({ success: true });
 }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { QUALITY_DEFECT_COUNT, sumDefects } from "@/lib/quality-defects";
+import { deductFromRoomFifo } from "@/lib/finished-goods";
 
 // [Lỗi 1..Lỗi 5] — xem QUALITY_DEFECT_LABELS (src/lib/quality-defects.ts).
 const schema = z.object({
@@ -56,16 +57,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     await prisma.$transaction(async (tx) => {
-      if (returnQuantity > 0) {
-        const lot = await tx.lot.findFirst({
-          where: { roomId: item.receipt.roomId, plantTypeId: item.plantTypeId, stageCode: item.stageCode, status: "ACTIVE" },
-          orderBy: { enteredAt: "asc" },
-        });
-        if (!lot || lot.quantity < returnQuantity) {
-          throw new Error("Tồn thực tế không đủ để trả hàng — số cây đã cộng lúc nhập có thể đã được xuất bán");
-        }
-        await tx.lot.update({ where: { id: lot.id }, data: { quantity: { decrement: returnQuantity } } });
-      }
+      // Khoá dòng — 2 người bấm cùng lúc thì người sau bị chặn (không trừ tồn 2 lần).
+      const locked = await tx.goodsReceiptItem.updateMany({ where: { id, returnedAt: null }, data: { returnedAt: new Date() } });
+      if (locked.count === 0) throw new Error("Dòng này đã được kiểm tra");
+      // Trừ FIFO qua các lô cùng phòng/mã cây/quy cách (trước đây chỉ xét lô cũ nhất — tồn chia nhiều lô thì
+      // báo thiếu sai); thiếu tồn thì báo lỗi.
+      await deductFromRoomFifo(tx, item.receipt.roomId, item.plantTypeId, item.stageCode, returnQuantity, "Tồn thực tế không đủ để trả hàng — số cây đã cộng lúc nhập có thể đã được xuất bán");
 
       await tx.goodsReceiptItem.update({
         where: { id },
