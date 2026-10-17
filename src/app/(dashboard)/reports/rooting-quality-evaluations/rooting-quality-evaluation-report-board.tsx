@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
-import { format } from "date-fns";
+import { format, addDays, getISOWeek } from "date-fns";
 import { vi } from "date-fns/locale";
 
 type Item = {
@@ -64,6 +64,7 @@ export default function RootingQualityEvaluationReportBoard() {
                 <th className="text-left px-2 py-3 text-primary-strong font-bold text-base"></th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Nhóm tuần</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Cơ sở</th>
+                <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Tuần giao Kho TP</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">NV Kỹ thuật</th>
                 <th className="text-left px-4 py-3 text-primary-strong font-bold text-base">Hoàn thành</th>
                 <th className="text-right px-4 py-3 text-primary-strong font-bold text-base">Tổng</th>
@@ -74,13 +75,14 @@ export default function RootingQualityEvaluationReportBoard() {
             </thead>
             <tbody>
               {evaluations.length === 0 ? (
-                <tr><td colSpan={9} className="px-3 py-6 text-center text-text-muted">Chưa có đánh giá nào hoàn thành</td></tr>
+                <tr><td colSpan={10} className="px-3 py-6 text-center text-text-muted">Chưa có đánh giá nào hoàn thành</td></tr>
               ) : evaluations.map((e) => {
                 const isOpen = expanded === e.id;
                 const total = e.items.reduce((s, i) => s + i.totalQuantity, 0);
                 const passed = e.items.reduce((s, i) => s + i.passedQuantity, 0);
                 const failed = total - passed;
                 const pct = total > 0 ? Math.round((passed / total) * 1000) / 10 : 0;
+                const weekStart = new Date(e.weekStart);
                 return (
                   <Fragment key={e.id}>
                     <tr
@@ -97,6 +99,10 @@ export default function RootingQualityEvaluationReportBoard() {
                         <p className="text-xs text-text-secondary">{e.room.name} · <span className="font-mono">{e.code}</span></p>
                       </td>
                       <td className="px-4 py-3 text-text-secondary">{e.warehouse.name}</td>
+                      <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
+                        <p className="text-foreground">Tuần {getISOWeek(weekStart)}</p>
+                        <p className="text-xs">{format(weekStart, "dd/MM")} – {format(addDays(weekStart, 6), "dd/MM/yyyy")}</p>
+                      </td>
                       <td className="px-4 py-3 text-foreground">{e.assignedTo.name}</td>
                       <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
                         {e.completedAt ? format(new Date(e.completedAt), "dd/MM/yyyy HH:mm", { locale: vi }) : "—"}
@@ -108,7 +114,7 @@ export default function RootingQualityEvaluationReportBoard() {
                     </tr>
                     {isOpen && (
                       <tr className="bg-background border-b">
-                        <td colSpan={9} className="px-6 py-4">
+                        <td colSpan={10} className="px-6 py-4">
                           {e.reason && (
                             <p className="text-sm text-foreground mb-3">
                               <span className="font-medium">Lý do:</span> {e.reason}

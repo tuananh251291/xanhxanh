@@ -7,7 +7,8 @@ import { describeRootingEvaluationGroup, countRootingRotationSlots, loadRootingG
 // Danh sách đánh giá — dùng cho cả màn "Đánh giá chất lượng cây ra rễ" (KY_THUAT, lọc status=PENDING,
 // chỉ thấy việc của chính mình) lẫn trang báo cáo lịch sử (KHO_MO/KY_THUAT/Admin, thường lọc
 // status=COMPLETED). KY_THUAT chỉ thấy đánh giá được giao cho MÌNH; KHO_MO chỉ thấy đúng kho mình đang
-// làm việc; Admin thấy tất cả.
+// làm việc; Quản lý kho TP chỉ thấy đánh giá đã HOÀN THÀNH (lượng hàng sắp về) của mọi khu sản xuất; Admin
+// thấy tất cả.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -22,6 +23,8 @@ export async function GET(req: NextRequest) {
   } else if (role === "KHO_MO") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
     where.warehouseId = session.user.workplaceWarehouseId;
+  } else if (role === "QUAN_LY_KHO_THANH_PHAM") {
+    where.status = "COMPLETED";
   } else if (!isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }

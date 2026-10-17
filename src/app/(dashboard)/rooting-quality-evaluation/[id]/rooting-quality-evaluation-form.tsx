@@ -40,6 +40,7 @@ export default function RootingQualityEvaluationForm({
   const totalAll = rows.reduce((s, r) => s + r.total, 0);
   const totalPassed = rows.reduce((s, r) => s + (passed[`${r.plantTypeId}::${r.stageCode}`] ?? 0), 0);
   const totalFailed = totalAll - totalPassed;
+  const passedPct = totalAll > 0 ? Math.round((totalPassed / totalAll) * 1000) / 10 : 0;
 
   const submit = async () => {
     if (!reason.trim()) { toast.error("Cần nhập lý do giải thích tỉ lệ đạt/không đạt"); return; }
@@ -124,6 +125,16 @@ export default function RootingQualityEvaluationForm({
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-primary-light/40 font-bold">
+                    <td className="px-4 py-2.5 text-foreground" colSpan={2}>Tổng nhóm tuần</td>
+                    <td className="px-4 py-2.5 text-right text-foreground tabular-nums">{totalAll.toLocaleString("vi-VN")}</td>
+                    <td className="px-4 py-2.5 text-right text-success-foreground tabular-nums">
+                      {totalPassed.toLocaleString("vi-VN")} <span className="font-normal">({passedPct}%)</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-destructive tabular-nums">{totalFailed.toLocaleString("vi-VN")}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -137,6 +148,7 @@ export default function RootingQualityEvaluationForm({
               Tổng: <strong className="text-foreground">{totalAll.toLocaleString("vi-VN")}</strong>
               {" "}· Đạt: <strong className="text-success-foreground">{totalPassed.toLocaleString("vi-VN")}</strong>
               {" "}· Không đạt: <strong className="text-destructive">{totalFailed.toLocaleString("vi-VN")}</strong>
+              {" "}· Tỉ lệ đạt: <strong className="text-foreground">{passedPct}%</strong>
             </p>
             <div className="space-y-1">
               <Label>Giải thích nguyên nhân tỉ lệ này <span className="text-destructive">*</span></Label>

@@ -82,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const evaluation = await prisma.rootingQualityEvaluation.findUnique({
     where: { id },
-    select: { id: true, code: true, warehouseId: true, roomId: true, rotationGroupId: true, status: true, assignedToId: true },
+    select: { id: true, code: true, warehouseId: true, roomId: true, rotationGroupId: true, status: true, assignedToId: true, weekStart: true, warehouse: { select: { name: true } } },
   });
   if (!evaluation) return NextResponse.json({ message: "Không tìm thấy đánh giá" }, { status: 404 });
   if (evaluation.assignedToId !== session.user.id && !isAdminRole(session.user.role)) {
@@ -219,7 +219,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     await notifyRootingQualityEvaluationReady({
       warehouseId: evaluation.warehouseId,
+      warehouseName: evaluation.warehouse.name,
       code: evaluation.code,
+      weekStart: evaluation.weekStart,
       totalQuantity: result.evalTotal,
       passedQuantity: result.evalPassed,
       reason: parsed.data.reason,
