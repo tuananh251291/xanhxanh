@@ -903,7 +903,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
     { href: "/reports/inventory-flow-summary", label: "Báo cáo Nhập - Xuất", icon: "BarChart3" },
-    { href: "/reports/rooting-quality-evaluations", label: "Báo cáo đánh giá chất lượng ra rễ", icon: "ClipboardCheck" },
+    { href: "/reports/rooting-quality-evaluations", label: "Dự kiến hàng ra rễ về Kho TP", icon: "ClipboardCheck" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "Sprout" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
