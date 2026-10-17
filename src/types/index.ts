@@ -878,6 +878,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
     { href: "/orders/pack", label: "Sắp xếp đơn hàng", icon: "PackageOpen" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
+    { href: "/reports/rooting-quality-evaluations", label: "Dự kiến hàng ra rễ về Kho TP", icon: "ClipboardCheck" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

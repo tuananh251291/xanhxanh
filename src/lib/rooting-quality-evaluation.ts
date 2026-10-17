@@ -223,9 +223,8 @@ export function describeRootingDeliveryWeek(weekStart: Date) {
 }
 
 // Sau khi NV Kỹ thuật hoàn thành 1 đánh giá — báo Kho mô cùng kho biết tỉ lệ đạt/không đạt + lý do; báo
-// Quản lý kho thành phẩm + Admin kỹ thuật lượng hàng ĐẠT sẽ về Kho thành phẩm trong tuần bàn giao (gửi
-// theo userId từng người — targetRole QUAN_LY_KHO_THANH_PHAM sẽ lọt cả sang NV kho TP thường, xem
-// alertTargetRolesFor). Admin cấp cao xem qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES).
+// Quản lý + NV kho thành phẩm + Admin kỹ thuật lượng hàng ĐẠT sẽ về Kho thành phẩm trong tuần bàn giao
+// (gửi theo userId từng người). Admin cấp cao xem qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES).
 export async function notifyRootingQualityEvaluationReady(params: {
   warehouseId: string;
   warehouseName: string;
@@ -249,7 +248,7 @@ export async function notifyRootingQualityEvaluationReady(params: {
   });
 
   const recipients = await prisma.user.findMany({
-    where: { role: { in: ["QUAN_LY_KHO_THANH_PHAM", "ADMIN_KY_THUAT"] }, isActive: true },
+    where: { role: { in: ["QUAN_LY_KHO_THANH_PHAM", "KHO_THANH_PHAM", "ADMIN_KY_THUAT"] }, isActive: true },
     select: { id: true },
   });
   if (recipients.length === 0) return;

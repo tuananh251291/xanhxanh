@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { describeRootingEvaluationGroup, countRootingRotationSlots, loadRootingGroupShelfRanges } from "@/lib/rooting-quality-evaluation";
 
 // Danh sách đánh giá — dùng cho cả màn "Đánh giá chất lượng cây ra rễ" (KY_THUAT, lọc status=PENDING,
 // chỉ thấy việc của chính mình) lẫn trang báo cáo lịch sử (KHO_MO/KY_THUAT/Admin, thường lọc
 // status=COMPLETED). KY_THUAT chỉ thấy đánh giá được giao cho MÌNH; KHO_MO chỉ thấy đúng kho mình đang
-// làm việc; Quản lý kho TP chỉ thấy đánh giá đã HOÀN THÀNH (lượng hàng sắp về) của mọi khu sản xuất; Admin
+// làm việc; Quản lý/NV kho TP chỉ thấy đánh giá đã HOÀN THÀNH (lượng hàng sắp về) của mọi khu sản xuất; Admin
 // thấy tất cả.
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   } else if (role === "KHO_MO") {
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
     where.warehouseId = session.user.workplaceWarehouseId;
-  } else if (role === "QUAN_LY_KHO_THANH_PHAM") {
+  } else if (isKhoThanhPhamRole(role)) {
     where.status = "COMPLETED";
   } else if (!isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
