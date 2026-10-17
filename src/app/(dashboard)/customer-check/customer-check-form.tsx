@@ -13,12 +13,12 @@ import { CUSTOMER_STATUS_LABELS } from "@/types";
 import { validateWebsite, hasWebsitePath, WEBSITE_MAX_LENGTH } from "@/lib/customer";
 
 type Market = { id: string; code: string; name: string };
+// Khách đã có người phụ trách: server chỉ trả status + isMine (không lộ thông tin khách/NV khác, xem
+// POST /api/customer-check); id + name chỉ có khi khách "Chưa phân công" để đăng ký phụ trách.
 type MatchResult = {
-  id: string; name: string; website: string;
-  market: { code: string; name: string };
+  id?: string; name?: string;
   status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
-  assignedTo: { id: string; code: string; name: string } | null;
-  manager: { id: string; code: string; name: string } | null;
+  isMine: boolean;
 };
 
 // Cần đơn giản hoá kiểm tra email — chỉ báo lỗi rõ ràng khi rõ ràng sai định dạng, không chặn hết các
@@ -78,7 +78,7 @@ export default function CustomerCheckForm() {
   };
 
   const doRegister = async () => {
-    if (!match) return;
+    if (!match?.id) return;
     setRegistering(true);
     try {
       const res = await fetch("/api/customer-check/register", {
@@ -176,10 +176,8 @@ export default function CustomerCheckForm() {
             <div className="flex items-start gap-2 bg-danger-light rounded-lg px-4 py-3">
               <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
               <div className="text-sm">
-                <p className="font-medium text-destructive">Khách này đã có người phụ trách</p>
-                <p className="text-text-secondary mt-0.5">
-                  {match.name} ({match.website}) — thị trường {match.market.name}, trạng thái {CUSTOMER_STATUS_LABELS[match.status]}, do{" "}
-                  <span className="font-medium text-foreground">{match.assignedTo?.name} ({match.assignedTo?.code})</span> phụ trách.
+                <p className="font-medium text-destructive">
+                  {match.isMine ? "Khách này bạn đang phụ trách" : "Khách này đã có người phụ trách"}
                 </p>
               </div>
             </div>

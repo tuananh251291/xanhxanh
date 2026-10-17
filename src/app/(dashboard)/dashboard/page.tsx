@@ -1541,14 +1541,12 @@ function KhoDashboard({
                     <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
                     <p className="text-xs text-text-secondary truncate">{t.description}</p>
                   </div>
-                  <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
+                  <MyTaskStatusBadge task={t} />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {!t.confirmedAt && <ConfirmTaskButton endpoint={t.endpoint} />}
                   {t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType === "DE_XUAT_TRONG_HUY" ? (
-                    <Link href={`/task-assignment/de-xuat/${t.dailyTaskId}`}>
-                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
-                    </Link>
+                    <DeXuatTaskAction task={t} />
                   ) : t.dailyTaskId && t.dailyTaskCode && t.dailyTaskType ? (
                     <DailyTaskCompleteDialog taskId={t.dailyTaskId} code={t.dailyTaskCode} type={t.dailyTaskType} subtitle={t.description} />
                   ) : (
@@ -1563,6 +1561,33 @@ function KhoDashboard({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function MyTaskStatusBadge({ task }: { task: MyTask }) {
+  if (task.proposalState === "SUBMITTED") return <Badge variant="info" className="shrink-0">Chờ Admin duyệt</Badge>;
+  if (task.proposalState === "REJECTED") return <Badge variant="overdue" className="shrink-0">Bị từ chối</Badge>;
+  return <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>;
+}
+
+// Nút của việc Đề xuất trồng/hủy — đã gửi đề xuất thì trang thực hiện không cho làm lại (redirect đi, với
+// Đối tác vận hành còn bị đẩy tiếp về đúng Dashboard nên trông như "bấm không có gì xảy ra"), nên khoá nút
+// "Đã gửi đề xuất" thay vì link; có phiếu bị từ chối thì dẫn sang trang Đề xuất Trồng/Hủy để sửa & gửi lại.
+function DeXuatTaskAction({ task }: { task: MyTask }) {
+  if (task.proposalState === "SUBMITTED") {
+    return <Button size="sm" className="h-8" disabled>Đã gửi đề xuất</Button>;
+  }
+  if (task.proposalState === "REJECTED") {
+    return (
+      <Link href="/contamination-proposals">
+        <Button size="sm" variant="outline" className="h-8">Sửa &amp; gửi lại</Button>
+      </Link>
+    );
+  }
+  return (
+    <Link href={`/task-assignment/de-xuat/${task.dailyTaskId}`}>
+      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
+    </Link>
   );
 }
 
@@ -1597,14 +1622,10 @@ function DoiTacVanHanhDashboard({ myTasks, userName }: { myTasks: MyTask[]; user
                     <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
                     <p className="text-xs text-text-secondary truncate">{t.description}</p>
                   </div>
-                  <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>
+                  <MyTaskStatusBadge task={t} />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {t.dailyTaskId && (
-                    <Link href={`/task-assignment/de-xuat/${t.dailyTaskId}`}>
-                      <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">Thực hiện nhiệm vụ</Button>
-                    </Link>
-                  )}
+                  {t.dailyTaskId && <DeXuatTaskAction task={t} />}
                 </div>
               </div>
             ))

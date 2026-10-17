@@ -144,6 +144,9 @@ export type MyTask = {
   dailyTaskId?: string;
   dailyTaskCode?: string;
   dailyTaskType?: DailyTaskType;
+  // Chỉ việc Đề xuất trồng/hủy: đã gửi đề xuất (chờ Admin duyệt — trang thực hiện không cho làm lại) hay
+  // có phiếu bị từ chối (sửa & gửi lại ở /contamination-proposals). null = chưa gửi gì, còn "Thực hiện".
+  proposalState?: "SUBMITTED" | "REJECTED" | null;
 };
 
 // Việc đang chờ gán cho ĐÚNG 1 NV (dashboard NV kho thành phẩm, khối "Công việc hôm nay của tôi") — 3
@@ -167,7 +170,11 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
     }),
     prisma.dailyTask.findMany({
       where: { assignedToId: userId, status: "PENDING" },
-      select: { id: true, code: true, type: true, weekStart: true, title: true, assignmentConfirmedAt: true, plantType: { select: { code: true, name: true } }, room: { select: { name: true } } },
+      select: {
+        id: true, code: true, type: true, weekStart: true, title: true, assignmentConfirmedAt: true,
+        plantType: { select: { code: true, name: true } }, room: { select: { name: true } },
+        proposals: { where: { status: { not: "DRAFT" } }, select: { status: true } },
+      },
     }),
   ]);
 
@@ -216,6 +223,9 @@ export async function getMyPendingTasks(userId: string): Promise<MyTask[]> {
       dailyTaskId: d.id,
       dailyTaskCode: d.code,
       dailyTaskType: d.type,
+      proposalState: d.type !== "DE_XUAT_TRONG_HUY" || d.proposals.length === 0
+        ? null
+        : d.proposals.some((p) => p.status === "REJECTED") ? "REJECTED" : "SUBMITTED",
     });
   }
   return tasks;

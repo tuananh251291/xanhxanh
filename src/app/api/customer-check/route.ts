@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { isSocialMediaWebsite, normalizeCustomerName, normalizeWebsite, validateWebsite } from "@/lib/customer";
-import { getCustomerManager } from "@/lib/customer-manager";
 
 // Website/SĐT/Email đều KHÔNG bắt buộc riêng lẻ — nhưng phải có ÍT NHẤT 1 trong 3 (cùng ràng buộc ở
 // POST /api/customer-check/create) để còn cơ sở đối chiếu trùng khách ngoài Tên công ty.
@@ -62,9 +61,7 @@ export async function POST(req: NextRequest) {
     },
     select: {
       id: true, name: true, website: true, phone: true, email: true, marketId: true,
-      market: { select: { code: true, name: true } },
       status: true, assignedToId: true,
-      assignedTo: { select: { id: true, code: true, name: true } },
       nameNormalized: true, websiteNormalized: true,
     },
   });
@@ -78,17 +75,11 @@ export async function POST(req: NextRequest) {
 
   const bestMatch = matches.reduce((best, m) => (scoreOf(m) > scoreOf(best) ? m : best), matches[0]);
 
-  const manager = await getCustomerManager(bestMatch.assignedToId, bestMatch.marketId);
-
-  return NextResponse.json({
-    match: {
-      id: bestMatch.id,
-      name: bestMatch.name,
-      website: bestMatch.website,
-      market: bestMatch.market,
-      status: bestMatch.status,
-      assignedTo: bestMatch.assignedTo,
-      manager,
-    },
-  });
+  // Bảo mật thông tin giữa các NV bán hàng: khách đã có người phụ trách thì CHỈ báo "đã có người phụ trách"
+  // (isMine = chính mình phụ trách), không trả tên/website/thị trường/NV phụ trách/NV quản lý. Khách "Chưa
+  // phân công" mới trả id + tên để NV đăng ký phụ trách (POST /api/customer-check/register).
+  if (bestMatch.status !== "CHUA_PHAN_CONG") {
+    return NextResponse.json({ match: { status: bestMatch.status, isMine: bestMatch.assignedToId === session!.user.id } });
+  }
+  return NextResponse.json({ match: { id: bestMatch.id, name: bestMatch.name, status: bestMatch.status, isMine: false } });
 }
