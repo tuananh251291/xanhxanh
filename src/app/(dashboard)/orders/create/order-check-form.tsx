@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/combobox";
 import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert, Download, Upload, PenLine, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, FINISHED_SPEC_BAG_SIZE, type CustomerGroup } from "@/types";
 import ShipAtInput from "@/components/shared/ship-at-input";
 
@@ -33,6 +34,8 @@ type DemandRow = { key: string; plantTypeId: string; stageCode: string; quantity
 type ExcelItem = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; stageCode: string; quantity: number; quantityInput: string; notes?: string };
 const isValidQty = (v: string) => /^\d+$/.test(v.trim()) && Number(v) > 0;
 type ExcelRowError = { row: number; label: string; message: string };
+// Mã không đủ tồn lúc Tạm giữ đơn — POST /api/orders trả về đủ danh sách (gộp theo mã cây + quy cách).
+type OrderShortage = { plantTypeCode: string; plantTypeName: string; stageCode: string; needed: number; available: number; note?: string };
 type Alternative = {
   stageCode: string; available: number; suggestedQty: number; surplusQuantity: number; accepted: boolean;
   requiresProcessing: boolean; source: "DAT_TIEU_CHUAN" | "HAN_TUI_THEO_DOI";
@@ -141,6 +144,7 @@ export default function OrderCheckForm({
   const [results, setResults] = useState<CheckResult[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [holding, setHolding] = useState(false);
+  const [shortages, setShortages] = useState<OrderShortage[] | null>(null);
   const [customerId, setCustomerId] = useState("");
   const onCustomerChange = (id: string) => {
     setCustomerId(id);
@@ -303,7 +307,11 @@ export default function OrderCheckForm({
         }),
       });
       const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      if (!res.ok) {
+        if (Array.isArray(json.shortages) && json.shortages.length > 0) setShortages(json.shortages);
+        else toast.error(json.message ?? "Có lỗi xảy ra");
+        return;
+      }
       const holdLabel = sendToMarketWarehouse
         ? "đã gửi Kho thị trường"
         : `giữ trong ${selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`}`;
@@ -837,6 +845,51 @@ export default function OrderCheckForm({
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!shortages} onOpenChange={(o) => { if (!o) setShortages(null); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <TriangleAlert className="w-5 h-5" /> Không đủ tồn — chưa tạo đơn
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">
+            {shortages?.length ?? 0} mã dưới đây không đủ tồn đạt tiêu chuẩn. Sửa số lượng (hoặc bỏ dòng) rồi bấm Tạm giữ lại — chưa có dòng nào được giữ.
+          </p>
+          <div className="border border-divider rounded-lg overflow-x-auto max-h-[60vh] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0">
+                <tr className="bg-primary-light">
+                  <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Mã cây</th>
+                  <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Tên cây</th>
+                  <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Quy cách</th>
+                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Cần</th>
+                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Còn</th>
+                  <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Thiếu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shortages?.map((x) => (
+                  <tr key={`${x.plantTypeCode}:${x.stageCode}`} className="border-t border-divider align-top">
+                    <td className="px-3 py-2 font-mono text-xs text-foreground">{x.plantTypeCode}</td>
+                    <td className="px-3 py-2 text-foreground">
+                      {x.plantTypeName}
+                      {x.note && <span className="block text-xs text-text-secondary">{x.note}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-text-secondary">{x.stageCode}</td>
+                    <td className="px-3 py-2 text-right text-foreground">{x.needed.toLocaleString("vi-VN")}</td>
+                    <td className="px-3 py-2 text-right text-foreground">{x.available.toLocaleString("vi-VN")}</td>
+                    <td className="px-3 py-2 text-right font-medium text-destructive">{Math.max(0, x.needed - x.available).toLocaleString("vi-VN")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShortages(null)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

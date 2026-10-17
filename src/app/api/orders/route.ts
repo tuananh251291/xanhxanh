@@ -17,6 +17,16 @@ const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
 // đơn (ngày) mặc định của NV Sale — xem CustomerGroup, prisma/schema.prisma.
 const LARGE_COMPANY_HOLD_MONTHS = 5;
 
+// Các mã cây + quy cách không đủ tồn khi tạo đơn — gom HẾT mọi dòng thiếu rồi mới báo (thay vì dừng ở dòng
+// thiếu đầu tiên), để người tạo đơn (nhất là Quản lý kho TP tạo hộ bằng Excel, không qua bước Check) sửa 1
+// lần. needed/available tính gộp theo mã cây + quy cách (nhiều dòng cùng mã cộng dồn).
+type OrderShortage = { plantTypeCode: string; plantTypeName: string; stageCode: string; needed: number; available: number; note?: string };
+class OrderShortageError extends Error {
+  constructor(public shortages: OrderShortage[]) {
+    super(`Không đủ tồn cho ${shortages.length} mã: ${shortages.map((x) => `${x.plantTypeCode} ${x.stageCode}`).join(", ")}`);
+  }
+}
+
 const createSchema = z.object({
   // Đúng 1 trong 2: customerId (đơn bán cho khách hàng ngoài) hoặc marketWarehouseId (đơn gửi nội bộ
   // sang 1 Kho thị trường — xem checkbox "Kho thị trường" ở order-check-form.tsx), validate ở dưới vì
@@ -166,6 +176,10 @@ export async function POST(req: NextRequest) {
 
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
   const inProgressRoomIds = await getInProgressRoomIds(session.user.workplaceWarehouseId);
+  const plantTypeById = new Map(
+    (await prisma.plantType.findMany({ where: { id: { in: [...new Set(items.map((i) => i.plantTypeId))] } }, select: { id: true, code: true, name: true } }))
+      .map((p) => [p.id, p])
+  );
 
   try {
     const order = await prisma.$transaction(
@@ -193,6 +207,17 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        // key = plantTypeId:stageCode — tồn còn giữ được lúc gặp dòng ĐẦU TIÊN của mã đó (trước khi dòng nào
+        // của mã đó giữ chỗ), tổng nhu cầu cả đơn, và có dòng nào thiếu không.
+        const demandByKey = new Map<string, { plantTypeId: string; stageCode: string; needed: number; available: number; short: boolean; note?: string }>();
+        const track = (plantTypeId: string, stageCode: string, quantity: number, available: number) => {
+          const key = `${plantTypeId}:${stageCode}`;
+          const d = demandByKey.get(key) ?? { plantTypeId, stageCode, needed: 0, available, short: false };
+          d.needed += quantity;
+          demandByKey.set(key, d);
+          return d;
+        };
+
         for (const item of items) {
           // Dòng cần xử lý (bù túi trong Phòng đạt tiêu chuẩn HOẶC chuyển từ Kho hàn túi/Theo dõi — cả 2
           // đều sinh Yêu cầu xử lý cây lúc Xác nhận, xem confirmOrder) được tìm trong CẢ Phòng đạt tiêu
@@ -210,10 +235,11 @@ export async function POST(req: NextRequest) {
             // khác) — không đụng Lot.quantity thật, chỉ thật sự trừ/cộng khi Kho thành phẩm bấm "Hoàn
             // thành xử lý".
             const lot = lots.find((l) => l.available >= item.quantity);
+            const d = track(item.plantTypeId, item.stageCode, item.quantity, lots.reduce((s, l) => s + l.available, 0));
             if (!lot) {
-              throw new Error(
-                `Tồn kho đã thay đổi — vui lòng Check lại (quy cách ${item.stageCode} không còn đủ 1 lô để mở nguyên túi ${item.quantity})`
-              );
+              d.short = true;
+              d.note = `không còn 1 lô đủ nguyên túi ${item.quantity} cây để xử lý`;
+              continue;
             }
             await tx.orderItem.create({
               data: { orderId: created.id, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, notes: item.notes },
@@ -222,8 +248,10 @@ export async function POST(req: NextRequest) {
           }
 
           const totalAvailable = lots.reduce((s, l) => s + l.available, 0);
+          const d = track(item.plantTypeId, item.stageCode, item.quantity, totalAvailable);
           if (totalAvailable < item.quantity) {
-            throw new Error(`Tồn kho đã thay đổi — vui lòng Check lại (quy cách ${item.stageCode} chỉ còn ${totalAvailable}/${item.quantity} cần giữ)`);
+            d.short = true;
+            continue;
           }
 
           let remaining = item.quantity;
@@ -236,6 +264,19 @@ export async function POST(req: NextRequest) {
             });
             remaining -= take;
           }
+        }
+
+        const shortages = [...demandByKey.values()].filter((d) => d.short);
+        if (shortages.length > 0) {
+          // Rollback cả đơn — báo đủ danh sách mã thiếu.
+          throw new OrderShortageError(
+            shortages
+              .map((d) => {
+                const pt = plantTypeById.get(d.plantTypeId);
+                return { plantTypeCode: pt?.code ?? "?", plantTypeName: pt?.name ?? "", stageCode: d.stageCode, needed: d.needed, available: Math.max(0, d.available), note: d.note };
+              })
+              .sort((a, b) => (a.plantTypeCode === b.plantTypeCode ? a.stageCode.localeCompare(b.stageCode) : a.plantTypeCode.localeCompare(b.plantTypeCode)))
+          );
         }
 
         return created;
@@ -251,6 +292,9 @@ export async function POST(req: NextRequest) {
         { message: "Có người khác vừa giữ đơn cùng lúc, vui lòng Check lại" },
         { status: 409 }
       );
+    }
+    if (err instanceof OrderShortageError) {
+      return NextResponse.json({ message: err.message, shortages: err.shortages }, { status: 400 });
     }
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";
     return NextResponse.json({ message }, { status: 400 });
