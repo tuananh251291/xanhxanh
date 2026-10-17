@@ -180,8 +180,8 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
 
   const approve = async () => {
     if (!data) return;
-    // Phiếu cũ (chưa tạm trừ lúc gửi) được phép không chọn chậu — giữ quy cách túi gốc như trước.
-    const missingPot = data.stockDeductedAt && data.items.find((it) => plantQtyFor(it) > 0 && !potStage[it.id]);
+    // Phòng cây trồng chỉ chứa quy cách chậu — phần Trồng luôn phải chọn chậu (kể cả phiếu cũ).
+    const missingPot = data.items.find((it) => plantQtyFor(it) > 0 && !potStage[it.id]);
     if (missingPot) {
       toast.error(`Chọn quy cách chậu cho phần trồng (${missingPot.plantType.name} ${missingPot.stageCode})`);
       return;

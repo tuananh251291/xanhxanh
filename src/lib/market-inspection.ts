@@ -117,10 +117,30 @@ export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.Transacti
   for (const p of proposals) {
     const plantRoom = await tx.room.findFirst({ where: { warehouseId: p.warehouseId, type: "PHONG_CAY_TRONG", isActive: true }, select: { id: true } });
     if (!plantRoom) throw new Error("Kho thị trường thiếu Phòng cây trồng — liên hệ Admin kiểm tra lại kho");
-    // Cộng theo quy cách chậu đã chọn lúc gửi (phiếu cũ chưa có thì giữ quy cách túi gốc).
-    await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.plantStageCode ?? p.stageCode, p.quantity, p.requestedBy.code);
+    // Phòng cây trồng chỉ chứa quy cách chậu S/M/L/C — không bao giờ cộng quy cách túi T vào đây (route duyệt
+    // đã chặn trước bằng findMarketPlantingMissingPot, đây là lớp chặn cuối).
+    if (!p.plantStageCode) throw new Error("Đề xuất Trồng chưa có quy cách chậu (S/M/L/C)");
+    await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.plantStageCode, p.quantity, p.requestedBy.code);
   }
 }
+
+// Đề xuất Trồng của Kho thị trường từ Phòng sản phẩm đạt/không đạt mà chưa có quy cách chậu (phiếu gửi trước
+// khi có ô chọn chậu) — không duyệt được, QL thị trường phải Từ chối để Đối tác "Sửa & gửi lại" kèm quy cách
+// chậu. Trả mã phiếu đầu tiên vi phạm, null = hợp lệ.
+export async function findMarketPlantingMissingPot(proposalIds: string[]): Promise<string | null> {
+  const p = await prisma.contaminationProposal.findFirst({
+    where: {
+      id: { in: proposalIds }, type: "TRONG", plantStageCode: null,
+      room: { type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT"] } },
+      warehouse: { type: "THI_TRUONG" },
+    },
+    select: { code: true },
+  });
+  return p?.code ?? null;
+}
+
+export const missingPotMessage = (code: string) =>
+  `Phiếu ${code} chưa có quy cách chậu (S/M/L/C) — Từ chối để Đối tác "Sửa & gửi lại" kèm quy cách chậu`;
 
 // Mã quy cách chậu hợp lệ cho phần Trồng (Phòng cây trồng) — validate ở API gửi/duyệt đề xuất.
 export const POT_STAGE_CODE_LIST = Object.keys(POT_SPEC_LABELS) as (keyof typeof POT_SPEC_LABELS)[];

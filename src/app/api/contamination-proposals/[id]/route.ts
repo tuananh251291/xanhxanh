@@ -6,7 +6,7 @@ import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
-import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const schema = z.union([
@@ -158,6 +158,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (proposal.status !== "PENDING") return NextResponse.json({ message: "Đề xuất đã được xử lý" }, { status: 400 });
 
   const { action, reason } = parsed.data;
+
+  if (action === "approve") {
+    const missingPot = await findMarketPlantingMissingPot([id]);
+    if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
+  }
 
   const newHandoverIds = await prisma.$transaction(async (tx) => {
     await tx.contaminationProposal.update({

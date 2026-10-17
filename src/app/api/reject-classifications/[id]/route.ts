@@ -200,8 +200,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (row.plantStageCode !== undefined && !isPotStageCode(row.plantStageCode)) {
       return NextResponse.json({ message: `Quy cách chậu không hợp lệ (${item.stageCode})` }, { status: 400 });
     }
-    // Phiếu cũ (gửi trước khi có quy cách chậu, chưa tạm trừ) được giữ quy cách túi gốc nếu QL không chọn chậu.
-    if (item.rejectedQuantity - row.destroyQuantity > 0 && classification.stockDeductedAt && !(row.plantStageCode ?? item.plantStageCode)) {
+    // Phòng cây trồng chỉ chứa quy cách chậu — phần Trồng luôn phải có chậu (phiếu cũ chưa chọn thì QL chọn lúc duyệt).
+    if (item.rejectedQuantity - row.destroyQuantity > 0 && !(row.plantStageCode ?? item.plantStageCode)) {
       return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/C) cho phần trồng (${item.stageCode})` }, { status: 400 });
     }
   }
@@ -241,7 +241,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await deductFromRoomFifo(tx, failedRoom.id, item.plantTypeId, item.stageCode, item.rejectedQuantity, `${plantTypeCode} ${item.stageCode} (Phòng sản phẩm không đạt)`);
       }
       if (plantQuantity > 0) {
-        await upsertLot(tx, plantRoom.id, item.plantTypeId, plantTypeCode, plantStageCode ?? item.stageCode, plantQuantity, staffCode);
+        await upsertLot(tx, plantRoom.id, item.plantTypeId, plantTypeCode, plantStageCode!, plantQuantity, staffCode);
       }
 
       await tx.rejectedGoodsClassificationItem.update({

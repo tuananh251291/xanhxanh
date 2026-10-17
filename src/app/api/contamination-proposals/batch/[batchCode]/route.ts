@@ -5,7 +5,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
-import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
 
 const include = {
   plantType: { select: { code: true, name: true } },
@@ -80,6 +80,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   if (pending.some((p) => requiresSuperAdminApproval(p.room)) && session?.user?.role !== "SUPER_ADMIN") {
     return NextResponse.json({ message: "Đề xuất từ Phòng chờ xử lý chỉ Admin cấp cao được duyệt" }, { status: 403 });
   }
+
+  const missingPot = await findMarketPlantingMissingPot(pending.map((p) => p.id));
+  if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
 
   const newHandoverIds = await prisma.$transaction(async (tx) => {
     await tx.contaminationProposal.updateMany({
