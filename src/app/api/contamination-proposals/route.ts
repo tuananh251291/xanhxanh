@@ -140,7 +140,9 @@ export async function POST(req: NextRequest) {
     if (!room || room.warehouseId !== warehouseId || !(MARKET_ROOM_TYPES as readonly string[]).includes(room.type)) {
       return NextResponse.json({ message: "Phòng không hợp lệ" }, { status: 400 });
     }
-    if (type === "TRONG" && room.type !== "PHONG_CAY_TRONG") {
+    // Trồng (kể cả trồng lại ngay trong Phòng cây trồng sang quy cách chậu khác, VD S → M) luôn phải chọn quy
+    // cách chậu — lúc duyệt cây được cộng vào Phòng cây trồng theo quy cách này (moveApprovedMarketPlantingToPlantRoom).
+    if (type === "TRONG") {
       if (!requestedPlantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(requestedPlantStageCode)) {
         return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
       }

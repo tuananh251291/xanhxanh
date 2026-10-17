@@ -59,7 +59,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     let plantStageCode: string | null = null;
     if (type === "TRONG" && proposal.warehouse.type === "THI_TRUONG" && proposal.roomId) {
       const room = await prisma.room.findUnique({ where: { id: proposal.roomId }, select: { type: true } });
-      if (room && room.type !== "PHONG_CAY_TRONG") {
+      // Kể cả trồng lại trong Phòng cây trồng (đổi quy cách chậu) — xem POST /api/contamination-proposals.
+      if (room) {
         if (!parsed.data.plantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(parsed.data.plantStageCode)) {
           return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
         }

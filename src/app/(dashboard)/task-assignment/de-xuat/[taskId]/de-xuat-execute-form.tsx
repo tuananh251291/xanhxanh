@@ -60,7 +60,9 @@ export default function DeXuatExecuteForm({
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   // Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm đạt/không đạt — cây sẽ vào Phòng cây trồng khi QL thị
   // trường duyệt, nên phải chọn quy cách chậu (S/M/L/C) cho từng dòng. Trồng từ chính Phòng cây trồng thì không.
-  const needsPotSpec = isMarketPartner && rooms.find((r) => r.id === roomId)?.type !== "PHONG_CAY_TRONG";
+  // Đối tác: phần Trồng luôn chọn quy cách chậu — kể cả ở Phòng cây trồng (trồng lại sang chậu khác, VD S → M).
+  const needsPotSpec = isMarketPartner;
+  const isPlantRoom = rooms.find((r) => r.id === roomId)?.type === "PHONG_CAY_TRONG";
 
   const loadLots = useCallback(async (id: string) => {
     setLoadingLots(true);
@@ -123,9 +125,8 @@ export default function DeXuatExecuteForm({
   // vì số cây, phải bấm xác nhận lần nữa (send) mới thật sự gửi.
   const submit = () => {
     const rows = collectRows();
-    // Kho thành phẩm: không nhập dòng nào vẫn gửi được (không có cây hỏng/hủy) — Đối tác vận hành vẫn bắt
-    // buộc vì luồng đề xuất cũ không có phiếu rỗng.
-    if (rows.length === 0 && isMarketPartner) { toast.error("Chưa nhập số lượng dòng nào"); return; }
+    // Không nhập dòng nào vẫn gửi được: Kho thành phẩm = phiếu kiểm tra rỗng; Đối tác vận hành = "Đã kiểm tra –
+    // không có đề xuất" (đóng việc tuần, xem action=no_proposal ở PATCH /api/daily-tasks/[id]).
     for (const r of rows) {
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
       // Hủy + trồng/chuyển phòng đều trừ khỏi CÙNG lô này nên tổng không được vượt tồn.
@@ -164,8 +165,26 @@ export default function DeXuatExecuteForm({
     }
   };
 
+  const sendNoProposal = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/daily-tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "no_proposal" }),
+      });
+      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      toast.success("Đã đóng việc — kiểm tra xong, không có đề xuất");
+      router.push("/task-assignment");
+    } finally {
+      setSubmitting(false);
+      setConfirmOpen(false);
+    }
+  };
+
   const send = async () => {
     if (!isMarketPartner) return sendCheck();
+    if (collectRows().length === 0) return sendNoProposal();
     const rows = collectRows();
     setSubmitting(true);
     let batchCode: string | undefined;
@@ -265,7 +284,9 @@ export default function DeXuatExecuteForm({
             {isMarketPartner && (
               <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3">
                 Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/trồng để QL thị trường xác nhận lại.
-                {needsPotSpec && <><br />Phần đề xuất trồng cần chọn quy cách chậu — khi được duyệt, cây chuyển sang Phòng cây trồng theo quy cách này.</>}
+                {needsPotSpec && (isPlantRoom
+                  ? <><br />Phần đề xuất trồng = trồng lại sang quy cách chậu khác (VD S → M) — khi được duyệt, cây ở lại Phòng cây trồng theo quy cách mới.</>
+                  : <><br />Phần đề xuất trồng cần chọn quy cách chậu — khi được duyệt, cây chuyển sang Phòng cây trồng theo quy cách này.</>)}
                 <br />
                 Lưu ý hình ảnh cần chụp trên nền trắng, sắp xếp gọn gàng để hiển thị rõ số lượng, các lỗi
                 của cây, tem tên cây quay ra mặt trước.
@@ -391,15 +412,19 @@ export default function DeXuatExecuteForm({
           <DialogHeader><DialogTitle>Kiểm tra lại số liệu</DialogTitle></DialogHeader>
           <div className="flex items-start gap-2 text-sm font-medium text-warning-foreground bg-warning-light rounded-lg p-3">
             <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
-            {!isMarketPartner && collectRows().length === 0
-              ? "Bạn chưa nhập dòng nào — xác nhận kiểm tra xong, không có cây nào hỏng/hủy?"
+            {collectRows().length === 0
+              ? isMarketPartner
+                ? "Bạn chưa nhập dòng nào — xác nhận đã kiểm tra phòng này, tuần này không có đề xuất Trồng/Hủy nào?"
+                : "Bạn chưa nhập dòng nào — xác nhận kiểm tra xong, không có cây nào hỏng/hủy?"
               : "Hãy kiểm tra số liệu một lần nữa, chắc chắn rằng đây là số cây, không phải số túi."}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>Kiểm tra lại</Button>
             <Button className="bg-primary hover:bg-primary-hover" onClick={send} disabled={submitting}>
               {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              {isMarketPartner ? "Đúng là số cây, gửi đề xuất" : collectRows().length === 0 ? "Xác nhận, không có cây hỏng" : "Đúng là số cây, gửi phiếu"}
+              {collectRows().length === 0
+                ? isMarketPartner ? "Đã kiểm tra – không có đề xuất" : "Xác nhận, không có cây hỏng"
+                : isMarketPartner ? "Đúng là số cây, gửi đề xuất" : "Đúng là số cây, gửi phiếu"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -16,7 +16,10 @@ const cancelSchema = z.object({ action: z.literal("cancel") });
 const assignSchema = z.object({ action: z.literal("assign"), assignedToId: z.string().nullable() });
 // NV được gán bấm "Xác nhận" đã nhận nhiệm vụ — khoá không cho Quản lý đổi assignedToId nữa.
 const ackSchema = z.object({ action: z.literal("ack") });
-const patchSchema = z.discriminatedUnion("action", [completeSchema, cancelSchema, assignSchema, ackSchema]);
+// Đối tác vận hành: "Đã kiểm tra – không có đề xuất" — đóng việc tuần (DE_XUAT_TRONG_HUY) của Kho thị trường khi
+// phòng đó tuần này không có gì cần Trồng/Hủy (bình thường việc chỉ tự hoàn thành khi đề xuất được duyệt hết).
+const noProposalSchema = z.object({ action: z.literal("no_proposal") });
+const patchSchema = z.discriminatedUnion("action", [completeSchema, cancelSchema, assignSchema, ackSchema, noProposalSchema]);
 
 // Hoàn thành/hủy/gán 1 "Nhiệm vụ ngày" (Kiểm tra cây / Đề xuất trồng-hủy) — action=complete do đúng NV
 // được gán hoặc Quản lý/Admin thực hiện; action=cancel/assign chỉ Quản lý/Admin. Hoàn thành xong báo lại
@@ -38,6 +41,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (task.status !== "PENDING") return NextResponse.json({ message: "Nhiệm vụ này đã được xử lý" }, { status: 400 });
 
   const isManager = isAdminRole(session.user.role) || session.user.role === "QUAN_LY_KHO_THANH_PHAM";
+
+  if (parsed.data.action === "no_proposal") {
+    if (task.type !== "DE_XUAT_TRONG_HUY") return NextResponse.json({ message: "Không áp dụng cho nhiệm vụ này" }, { status: 400 });
+    if (task.assignedToId !== session.user.id && !isAdminRole(session.user.role)) {
+      return NextResponse.json({ message: "Bạn không được giao nhiệm vụ này" }, { status: 403 });
+    }
+    const warehouse = task.warehouseId ? await prisma.warehouse.findUnique({ where: { id: task.warehouseId }, select: { type: true } }) : null;
+    if (warehouse?.type !== "THI_TRUONG") return NextResponse.json({ message: "Chỉ áp dụng cho việc kiểm tra Kho thị trường" }, { status: 400 });
+    const proposalCount = await prisma.contaminationProposal.count({ where: { dailyTaskId: id, status: { not: "DRAFT" } } });
+    if (proposalCount > 0) {
+      return NextResponse.json({ message: "Việc này đã có đề xuất — chờ duyệt (bị từ chối thì Sửa & gửi lại)" }, { status: 400 });
+    }
+    const done = await prisma.dailyTask.updateMany({
+      where: { id, status: "PENDING" },
+      data: { status: "COMPLETED", completedAt: new Date(), resultNotes: "Đã kiểm tra – không có đề xuất Trồng/Hủy" },
+    });
+    if (done.count === 0) return NextResponse.json({ message: "Nhiệm vụ này đã được xử lý" }, { status: 400 });
+    return NextResponse.json({ success: true });
+  }
 
   if (parsed.data.action === "cancel") {
     if (!isManager) return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới hủy được nhiệm vụ" }, { status: 403 });

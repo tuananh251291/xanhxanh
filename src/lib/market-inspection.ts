@@ -97,19 +97,22 @@ export async function ensureWeeklyMarketInspectionTask(warehouseId: string | nul
   }
 }
 
-// Đề xuất "Trồng" của Đối tác vận hành từ Phòng sản phẩm đạt/không đạt được duyệt → cộng đúng số lượng
-// vào Phòng cây trồng cùng kho (lúc gửi đề xuất đã trừ ở phòng nguồn) — giống luồng Phân loại hàng không
-// đạt (PATCH /api/reject-classifications/[id]). Đề xuất Trồng từ CHÍNH Phòng cây trồng và đề xuất Hủy thì
-// không cộng đi đâu (cây ra khỏi kho). Cây vào Phòng cây trồng theo quy cách chậu plantStageCode (S/M/L/C).
+// Đề xuất "Trồng" của Đối tác vận hành được duyệt → cộng đúng số lượng vào Phòng cây trồng cùng kho theo quy
+// cách chậu plantStageCode (S/M/L/C) — lúc gửi đề xuất đã trừ ở phòng nguồn. Áp dụng cho Trồng từ Phòng sản
+// phẩm đạt/không đạt (giống Phân loại hàng không đạt) VÀ trồng lại ngay trong Phòng cây trồng sang quy cách
+// chậu khác (VD S → M: trừ S lúc gửi, cộng M lúc duyệt — tổng số cây trong phòng không đổi). Đề xuất Hủy không
+// cộng đi đâu (cây ra khỏi kho). Phiếu Trồng từ Phòng cây trồng gửi TRƯỚC khi có ô chọn chậu (plantStageCode
+// null) giữ cách cũ: cây ra khỏi kho, không cộng lại.
 // Gọi trong transaction duyệt, SAU khi đã set status APPROVED.
 export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.TransactionClient, proposalIds: string[]): Promise<void> {
   const proposals = await tx.contaminationProposal.findMany({
     where: {
       id: { in: proposalIds }, type: "TRONG", status: "APPROVED",
-      room: { type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT"] } },
+      room: { type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"] } },
       warehouse: { type: "THI_TRUONG" },
     },
     select: {
+      room: { select: { type: true } },
       warehouseId: true, plantTypeId: true, stageCode: true, plantStageCode: true, quantity: true,
       plantType: { select: { code: true } }, requestedBy: { select: { code: true } },
     },
@@ -119,7 +122,10 @@ export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.Transacti
     if (!plantRoom) throw new Error("Kho thị trường thiếu Phòng cây trồng — liên hệ Admin kiểm tra lại kho");
     // Phòng cây trồng chỉ chứa quy cách chậu S/M/L/C — không bao giờ cộng quy cách túi T vào đây (route duyệt
     // đã chặn trước bằng findMarketPlantingMissingPot, đây là lớp chặn cuối).
-    if (!p.plantStageCode) throw new Error("Đề xuất Trồng chưa có quy cách chậu (S/M/L/C)");
+    if (!p.plantStageCode) {
+      if (p.room?.type === "PHONG_CAY_TRONG") continue; // phiếu cũ — cây ra khỏi kho như trước
+      throw new Error("Đề xuất Trồng chưa có quy cách chậu (S/M/L/C)");
+    }
     await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.plantStageCode, p.quantity, p.requestedBy.code);
   }
 }
