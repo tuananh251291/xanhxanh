@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { canAccessOrderPages } from "@/types";
 import { canSaleViewOrder } from "@/lib/customer-manager";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
@@ -18,8 +19,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
-  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
-  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
+  // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
+  if (!canAccessOrderPages(role)) redirect("/dashboard");
 
   const { id } = await params;
 

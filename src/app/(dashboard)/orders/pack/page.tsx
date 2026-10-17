@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PackageOpen, ListChecks, Eye } from "lucide-react";
 import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
-import { MARKET_LABELS } from "@/types";
+import { MARKET_LABELS, canAccessOrderPages } from "@/types";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 
@@ -15,8 +15,8 @@ export default async function OrdersPackPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/pack"))) redirect("/dashboard");
-  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
-  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
+  // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
+  if (!canAccessOrderPages(role)) redirect("/dashboard");
 
   const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
   // NV kho thành phẩm thường chỉ thấy đơn ĐÃ được Quản lý kho thành phẩm phân công cho đúng mình — Quản

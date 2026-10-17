@@ -72,6 +72,13 @@ export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "ADMIN" || role === "SUPER_ADMIN" || role === "ADMIN_KY_THUAT";
 }
 
+// Các trang đơn hàng (/orders/list, /orders/list/[id], /orders/[id], /orders/pack, /orders/create) — CHỈ NV bán
+// hàng, NV điều phối, NV/Quản lý kho thành phẩm và các Admin; mọi vai trò khác bị chặn hẳn (isPageAllowed mặc
+// định cho phép nếu chưa cấu hình nên không đủ). Phạm vi đơn từng vai trò thấy vẫn lọc riêng ở từng trang.
+export function canAccessOrderPages(role: UserRole | null | undefined): boolean {
+  return role === "SALE" || role === "DIEU_PHOI" || role === "KHO_THANH_PHAM" || role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(role);
+}
+
 // Loại hợp đồng — chỉ áp dụng cho NV cấy mô (CAY_MO), xem User.employmentType.
 export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   CHINH_THUC: "Chính thức",

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { isPageAllowed } from "@/lib/permissions";
-import { MARKET_LABELS } from "@/types";
+import { MARKET_LABELS, canAccessOrderPages } from "@/types";
 import { getCustomerManager, canSaleViewOrder } from "@/lib/customer-manager";
 import { PrintButton } from "@/components/shared/print-button";
 import "./print-order.css";
@@ -40,8 +40,8 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
-  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
-  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
+  // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
+  if (!canAccessOrderPages(role)) redirect("/dashboard");
 
   const { id } = await params;
 

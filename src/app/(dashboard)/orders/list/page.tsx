@@ -8,7 +8,7 @@ import { ClipboardList, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
-import { MARKET_LABELS } from "@/types";
+import { MARKET_LABELS, canAccessOrderPages } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 import { getManagedOrderScope } from "@/lib/customer-manager";
@@ -168,8 +168,8 @@ export default async function OrdersListPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
-  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
-  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
+  // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
+  if (!canAccessOrderPages(role)) redirect("/dashboard");
 
   // Quản lý kho thành phẩm xem/quản lý HỘ mọi đơn (không chỉ đơn saleId trùng chính mình) — đơn tạo hộ
   // luôn gán saleId = NV bán hàng thật đang phụ trách khách, không phải người quản lý (xem canActAsSale,
