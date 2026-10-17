@@ -17,6 +17,7 @@ import DeleteUserButton from "./delete-user-button";
 import InspectionLaneOverrideDialog from "./inspection-lane-override-dialog";
 
 type WarehouseOption = { id: string; code: string; name: string };
+export type KhoMoOption = { id: string; code: string; name: string; workplaceWarehouseId: string; warehouseName: string };
 
 const toDateInputValue = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
@@ -36,6 +37,9 @@ export default function UserEditableFields({
   isWorkplaceRole,
   workplaceWarehouseId,
   workplaceWarehouse,
+  responsibleKhoMoId,
+  responsibleKhoMo,
+  khoMoOptions,
   warehouseOptions,
   plantingCapacity,
   holdDays,
@@ -68,6 +72,10 @@ export default function UserEditableFields({
   isWorkplaceRole: boolean;
   workplaceWarehouseId: string | null;
   workplaceWarehouse: { code: string; name: string } | null;
+  // Chỉ dùng cho NV cấy mô — NV Kho mô phụ trách (User.responsibleKhoMoId), sửa cùng quyền với Vị trí làm việc.
+  responsibleKhoMoId: string | null;
+  responsibleKhoMo: { code: string; name: string } | null;
+  khoMoOptions: KhoMoOption[];
   warehouseOptions: WarehouseOption[];
   plantingCapacity: number;
   holdDays: number | null;
@@ -100,6 +108,7 @@ export default function UserEditableFields({
   const canEditThisInspectionLane = role === "CAY_MO" && canEditInspectionLane;
 
   const [wp, setWp] = useState(workplaceWarehouseId ?? "NONE");
+  const [km, setKm] = useState(responsibleKhoMoId ?? "NONE");
   const [cap, setCap] = useState(String(plantingCapacity));
   const [hd, setHd] = useState(holdDays != null ? String(holdDays) : "");
   const [emp, setEmp] = useState(employmentType ?? "NONE");
@@ -116,6 +125,11 @@ export default function UserEditableFields({
   if (workplaceWarehouseId !== prevWorkplaceWarehouseId) {
     setPrevWorkplaceWarehouseId(workplaceWarehouseId);
     setWp(workplaceWarehouseId ?? "NONE");
+  }
+  const [prevResponsibleKhoMoId, setPrevResponsibleKhoMoId] = useState(responsibleKhoMoId);
+  if (responsibleKhoMoId !== prevResponsibleKhoMoId) {
+    setPrevResponsibleKhoMoId(responsibleKhoMoId);
+    setKm(responsibleKhoMoId ?? "NONE");
   }
   const [prevPlantingCapacity, setPrevPlantingCapacity] = useState(plantingCapacity);
   if (plantingCapacity !== prevPlantingCapacity) {
@@ -144,12 +158,16 @@ export default function UserEditableFields({
   }
 
   const wpDirty = canEditWorkplace && wp !== (workplaceWarehouseId ?? "NONE");
+  // NV Kho phụ trách chỉ chọn trong Kho mô cùng kho đang chọn ở ô Vị trí làm việc.
+  const canEditKhoMo = role === "CAY_MO" && canEditWorkplace;
+  const khoMoChoices = khoMoOptions.filter((k) => k.workplaceWarehouseId === wp);
+  const kmDirty = canEditKhoMo && km !== (responsibleKhoMoId ?? "NONE");
   const capDirty = canEditThisCapacity && cap !== String(plantingCapacity);
   const hdDirty = canEditThisHoldDays && hd !== (holdDays != null ? String(holdDays) : "");
   const empDirty = canEditThisEmployment && emp !== (employmentType ?? "NONE");
   const trnDirty = canEditThisEmployment && trn !== isTrainee;
   const pstDirty = canEditThisEmployment && pst !== toDateInputValue(probationStartDate);
-  const dirty = wpDirty || capDirty || hdDirty || empDirty || trnDirty || pstDirty;
+  const dirty = wpDirty || kmDirty || capDirty || hdDirty || empDirty || trnDirty || pstDirty;
 
   const patch = (body: Record<string, unknown>) =>
     fetch(`/api/users/${userId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -176,6 +194,10 @@ export default function UserEditableFields({
     try {
       if (wpDirty) {
         const res = await patch({ workplaceWarehouseId: wp === "NONE" ? null : wp });
+        if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      }
+      if (kmDirty) {
+        const res = await patch({ responsibleKhoMoId: km === "NONE" ? null : km });
         if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       }
       if (capDirty) {
@@ -213,7 +235,11 @@ export default function UserEditableFields({
             <Select
               items={[{ value: "NONE", label: "— Chưa gán —" }, ...warehouseOptions.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))]}
               value={wp}
-              onValueChange={(v) => setWp(v as string)}
+              onValueChange={(v) => {
+                setWp(v as string);
+                // Đổi kho thì Kho mô đang chọn (thuộc kho cũ) không còn hợp lệ.
+                if (!khoMoOptions.some((k) => k.id === km && k.workplaceWarehouseId === v)) setKm("NONE");
+              }}
             >
               <SelectTrigger className="w-52 h-8 text-xs" disabled={saving}>
                 <SelectValue />
@@ -232,6 +258,32 @@ export default function UserEditableFields({
           )
         ) : (
           <span className="text-xs text-text-muted">—</span>
+        )}
+        {role === "CAY_MO" && (
+          <div className="mt-1.5 space-y-0.5">
+            <p className="text-[11px] text-text-muted">NV Kho phụ trách</p>
+            {canEditKhoMo ? (
+              <Select
+                items={[{ value: "NONE", label: "— Chưa gán —" }, ...khoMoChoices.map((k) => ({ value: k.id, label: `${k.name} (${k.code})` }))]}
+                value={km}
+                onValueChange={(v) => setKm(v as string)}
+              >
+                <SelectTrigger className="w-52 h-8 text-xs" disabled={saving || wp === "NONE"}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">— Chưa gán —</SelectItem>
+                  {khoMoChoices.map((k) => (
+                    <SelectItem key={k.id} value={k.id}>{k.name} ({k.code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-xs text-text-secondary">
+                {responsibleKhoMo ? `${responsibleKhoMo.name} (${responsibleKhoMo.code})` : "Chưa gán"}
+              </span>
+            )}
+          </div>
         )}
       </td>
       <td className="px-4 py-3">

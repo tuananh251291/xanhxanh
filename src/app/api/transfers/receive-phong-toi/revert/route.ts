@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isCayMoInKhoMoScope, OUT_OF_KHO_MO_SCOPE_MESSAGE } from "@/lib/kho-mo-scope";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 import { z } from "zod";
 
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
     where: { id: { in: transferIds } },
     include: {
       fromRoom: { select: { type: true, warehouseId: true, warehouse: { select: { code: true } } } },
+      fromUser: { select: { responsibleKhoMoId: true } },
       items: {
         select: {
           id: true, confirmedAt: true,
@@ -64,6 +66,9 @@ export async function POST(req: NextRequest) {
   for (const t of transfers) {
     if (t.fromRoom?.type !== "PHONG_TOI" || t.fromRoom.warehouseId !== workplaceWarehouseId) {
       return NextResponse.json({ message: `Phiếu ${t.code} không thuộc kho bạn phụ trách` }, { status: 403 });
+    }
+    if (!isCayMoInKhoMoScope(t.fromUser, session.user.id)) {
+      return NextResponse.json({ message: `Phiếu ${t.code}: ${OUT_OF_KHO_MO_SCOPE_MESSAGE}` }, { status: 403 });
     }
     if (t.status !== "PENDING" || t.notes === SURPLUS_TRANSFER_TAG) {
       return NextResponse.json({ message: `Phiếu ${t.code} không ở trạng thái có thể hoàn lại` }, { status: 400 });

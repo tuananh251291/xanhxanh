@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo } from "@/lib/kho-mo-scope";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,6 +61,9 @@ export default async function InstructionsPage({
   if (role === "KHO_MO") {
     where.motherReceivedAt = null;
     where.status = { not: "CANCELLED" };
+    // Chỉ chỉ định chưa gán NV (kệ chung — Kho mô tự chọn NV trong phạm vi mình) hoặc đã gán cho NV mình
+    // phụ trách / NV chưa có Kho phụ trách (User.responsibleKhoMoId, xem src/lib/kho-mo-scope.ts).
+    where.OR = [{ assignedToId: null }, { assignedTo: cayMoScopeForKhoMo(session!.user.id) }];
   }
 
   if (dateFilter) {
@@ -152,7 +156,16 @@ export default async function InstructionsPage({
           take: PAGE_SIZE,
         }),
     role === "KHO_MO"
-      ? prisma.user.findMany({ where: { role: "CAY_MO", isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+      ? prisma.user.findMany({
+          where: {
+            role: "CAY_MO",
+            isActive: true,
+            ...(session?.user?.workplaceWarehouseId ? { workplaceWarehouseId: session.user.workplaceWarehouseId } : {}),
+            ...cayMoScopeForKhoMo(session!.user.id),
+          },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
       : Promise.resolve([]),
   ]);
 

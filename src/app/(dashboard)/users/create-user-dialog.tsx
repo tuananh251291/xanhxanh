@@ -33,6 +33,7 @@ const schema = z.object({
   isRetailManager: z.boolean().optional(),
   retailWarehouseIds: z.array(z.string()).optional(),
   probationStartDate: z.string().optional(),
+  responsibleKhoMoId: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -40,8 +41,9 @@ type FormData = z.infer<typeof schema>;
 type MarketRoom = { id: string; name: string; warehouseName: string };
 type ThanhPhamWarehouse = { id: string; code: string; name: string; rooms: { id: string; name: string; type: string }[] };
 type ThiTruongWarehouse = { id: string; code: string; name: string };
+type KhoMoOption = { id: string; code: string; name: string; warehouseName: string };
 
-export default function CreateUserDialog({ assignableRoles }: { assignableRoles: UserRole[] }) {
+export default function CreateUserDialog({ assignableRoles, khoMoOptions }: { assignableRoles: UserRole[]; khoMoOptions: KhoMoOption[] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [thanhPhamWarehouses, setThanhPhamWarehouses] = useState<ThanhPhamWarehouse[]>([]);
@@ -124,6 +126,7 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
         isRetailManager: data.role === "SALE" ? data.isRetailManager : undefined,
         retailWarehouseIds: data.role === "SALE" ? data.retailWarehouseIds : undefined,
         probationStartDate: data.role === "CAY_MO" ? data.probationStartDate : undefined,
+        responsibleKhoMoId: data.role === "CAY_MO" && data.responsibleKhoMoId ? data.responsibleKhoMoId : undefined,
       };
       const res = await fetch("/api/users", {
         method: "POST",
@@ -251,6 +254,26 @@ export default function CreateUserDialog({ assignableRoles }: { assignableRoles:
                   )
                 )}
               </div>
+            </div>
+          )}
+
+          {role === "CAY_MO" && (
+            <div className="space-y-1">
+              <Label>NV Kho phụ trách</Label>
+              <Select
+                items={khoMoOptions.map((k) => ({ value: k.id, label: `${k.name} (${k.code}) — ${k.warehouseName}` }))}
+                onValueChange={(v) => setValue("responsibleKhoMoId", v as string)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn NV Kho mô phụ trách" />
+                </SelectTrigger>
+                <SelectContent>
+                  {khoMoOptions.map((k) => (
+                    <SelectItem key={k.id} value={k.id}>{k.name} ({k.code}) — {k.warehouseName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-text-muted">NV Kho mô này bàn giao mẫu mẹ và nhận bàn giao Phòng tối của NV. NV tự nhận khu sản xuất làm việc của Kho mô đã chọn.</p>
             </div>
           )}
 

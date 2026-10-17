@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { creatableRolesFor } from "@/types";
+import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -25,6 +26,9 @@ const createSchema = z.object({
   // tạo" 9 tuần (xem src/lib/training-roadmap.ts). Không bắt buộc — bỏ trống thì sửa lại sau qua PATCH
   // /api/users/[id].
   probationStartDate: z.string().optional(),
+  // Chỉ áp dụng khi tạo tài khoản CAY_MO — NV Kho mô phụ trách (User.responsibleKhoMoId). Chọn thì NV cấy mô
+  // tự nhận luôn khu sản xuất làm việc của Kho mô đó (+ Phòng tối cá nhân), không phải gán thêm lần nữa.
+  responsibleKhoMoId: z.string().optional(),
 });
 
 export async function GET() {
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, isRetailManager, retailWarehouseIds, probationStartDate } = parsed.data;
+  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, isRetailManager, retailWarehouseIds, probationStartDate, responsibleKhoMoId } = parsed.data;
 
   // NV Hành chính nhân sự chỉ tạo được tài khoản vị trí nhân viên, không tạo được tài khoản Admin.
   if (!allowedRoles.includes(role)) {
@@ -73,6 +77,20 @@ export async function POST(req: NextRequest) {
   }
   if (probationStartDate !== undefined && role !== "CAY_MO") {
     return NextResponse.json({ message: "Ngày bắt đầu thử việc chỉ áp dụng khi tạo tài khoản NV cấy mô" }, { status: 400 });
+  }
+  if (responsibleKhoMoId !== undefined && role !== "CAY_MO") {
+    return NextResponse.json({ message: "NV Kho phụ trách chỉ áp dụng khi tạo tài khoản NV cấy mô" }, { status: 400 });
+  }
+  let khoMoWarehouseId: string | null = null;
+  if (responsibleKhoMoId) {
+    const khoMo = await prisma.user.findUnique({ where: { id: responsibleKhoMoId }, select: { role: true, isActive: true, workplaceWarehouseId: true } });
+    if (!khoMo || khoMo.role !== "KHO_MO" || !khoMo.isActive) {
+      return NextResponse.json({ message: "NV Kho phụ trách không hợp lệ" }, { status: 400 });
+    }
+    if (!khoMo.workplaceWarehouseId) {
+      return NextResponse.json({ message: "NV Kho mô này chưa được gán khu sản xuất làm việc" }, { status: 400 });
+    }
+    khoMoWarehouseId = khoMo.workplaceWarehouseId;
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -110,7 +128,9 @@ export async function POST(req: NextRequest) {
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
       data: {
-        code, name, email, password: hashed, role, status: "APPROVED", workplaceWarehouseId,
+        code, name, email, password: hashed, role, status: "APPROVED",
+        workplaceWarehouseId: workplaceWarehouseId ?? khoMoWarehouseId ?? undefined,
+        ...(responsibleKhoMoId ? { responsibleKhoMoId } : {}),
         ...(isNewCayMo ? { employmentType: "THU_VIEC", isTrainee: true } : {}),
         ...(isRetailManager !== undefined ? { isRetailManager } : {}),
         ...(probationStartDate ? { probationStartDate: new Date(probationStartDate) } : {}),
@@ -125,6 +145,11 @@ export async function POST(req: NextRequest) {
     }
     return created;
   });
+
+  // Giống gán kho ở PATCH /api/users/[id] — NV cấy mô có kho thì sinh sẵn Phòng tối cá nhân.
+  if (role === "CAY_MO" && khoMoWarehouseId) {
+    await getOrCreatePersonalDarkRoom(user.id, khoMoWarehouseId);
+  }
 
   return NextResponse.json(user, { status: 201 });
 }

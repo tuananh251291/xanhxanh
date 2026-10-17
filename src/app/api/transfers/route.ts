@@ -294,17 +294,22 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
-  // Bàn giao từ Phòng tối → thông báo cho đúng KHO_MO cùng kho nguồn có phiếu chờ nhận.
+  // Bàn giao từ Phòng tối → thông báo cho NV Kho mô PHỤ TRÁCH NV cấy mô này (User.responsibleKhoMoId); NV
+  // chưa gán Kho phụ trách thì báo mọi KHO_MO cùng kho nguồn như trước.
   if (isFromDarkRoom) {
-    await createAlertForWarehouseStaff({
-      role: "KHO_MO",
-      warehouseId: fromWarehouseId,
-      type: "LOT_READY_TRANSFER",
+    const sender = await prisma.user.findUnique({ where: { id: session.user.id }, select: { responsibleKhoMoId: true } });
+    const alertData = {
+      type: "LOT_READY_TRANSFER" as const,
       title: "Có phiếu bàn giao từ phòng tối chờ nhận",
       message: `${session.user.name} đã gửi phiếu ${transfer.code} — ${items.length} lô từ phòng tối, chờ xác nhận nhập kho`,
       relatedId: transfer.id,
       relatedType: "Transfer",
-    });
+    };
+    if (sender?.responsibleKhoMoId) {
+      await createAlert({ ...alertData, userId: sender.responsibleKhoMoId });
+    } else {
+      await createAlertForWarehouseStaff({ role: "KHO_MO", warehouseId: fromWarehouseId, ...alertData });
+    }
   }
 
   // Bàn giao thành phẩm từ Phòng ra rễ → thông báo cho Kho thành phẩm có phiếu chờ nhận.

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo } from "@/lib/kho-mo-scope";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 
 // Danh sách phiếu "Bàn giao MM dư" đang chờ — mẫu mẹ dư khi 1 chỉ định kết thúc do hết thời gian
@@ -18,6 +19,7 @@ export async function GET() {
       status: "PENDING",
       notes: SURPLUS_TRANSFER_TAG,
       fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId },
+      fromUser: cayMoScopeForKhoMo(session.user.id),
     },
     select: {
       id: true,

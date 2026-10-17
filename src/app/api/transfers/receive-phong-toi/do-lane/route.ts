@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo } from "@/lib/kho-mo-scope";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 import { uninspectedPendingItems } from "@/lib/transfer-reinspect";
 
@@ -21,7 +22,7 @@ export async function GET() {
       OR: [{ fromUser: { inspectionLane: { in: ["DO", "VANG"] } } }, { fromUser: { inspectionLane: null } }],
       // notes nullable — `not`/`NOT` dịch sang SQL `<>` sẽ loại luôn cả dòng NULL (đa số phiếu
       // thường không phải surplus nên notes luôn null). Đã gặp đúng bug này lúc build luồng Xanh.
-      AND: [{ OR: [{ notes: null }, { notes: { not: SURPLUS_TRANSFER_TAG } }] }],
+      AND: [{ OR: [{ notes: null }, { notes: { not: SURPLUS_TRANSFER_TAG } }] }, { fromUser: cayMoScopeForKhoMo(session.user.id) }],
     },
     select: {
       id: true,

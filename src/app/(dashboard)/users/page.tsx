@@ -63,7 +63,7 @@ export default async function UsersPage({
     ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { code: { contains: search, mode: "insensitive" } }] } : {}),
   };
 
-  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses, thiTruongWarehouses, defaultHoldDaysStr] = await Promise.all([
+  const [totalAllUsers, pendingUsers, filteredTotal, users, permissions, sanXuatWarehouses, thanhPhamWarehouses, thiTruongWarehouses, defaultHoldDaysStr, khoMoUsers] = await Promise.all([
     prisma.user.count({ where: adminExclusion }),
     prisma.user.findMany({
       where: { status: "PENDING" },
@@ -73,7 +73,11 @@ export default async function UsersPage({
     prisma.user.findMany({
       where,
       orderBy: [{ role: "asc" }, { name: "asc" }],
-      include: { workplaceWarehouse: { select: { code: true, name: true } }, retailWarehouseAccess: { select: { warehouseId: true } } },
+      include: {
+        workplaceWarehouse: { select: { code: true, name: true } },
+        retailWarehouseAccess: { select: { warehouseId: true } },
+        responsibleKhoMo: { select: { code: true, name: true } },
+      },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -82,7 +86,14 @@ export default async function UsersPage({
     prisma.warehouse.findMany({ where: { type: "THANH_PHAM", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.warehouse.findMany({ where: { type: "THI_TRUONG", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     getSystemConfig("default_hold_days", "3"),
+    // NV Kho mô đang làm việc — lựa chọn "NV Kho phụ trách" cho NV cấy mô (lọc theo đúng kho ở client).
+    prisma.user.findMany({
+      where: { role: "KHO_MO", isActive: true, workplaceWarehouseId: { not: null } },
+      select: { id: true, code: true, name: true, workplaceWarehouseId: true, workplaceWarehouse: { select: { name: true } } },
+      orderBy: { name: "asc" },
+    }),
   ]);
+  const khoMoOptions = khoMoUsers.map((u) => ({ id: u.id, code: u.code, name: u.name, workplaceWarehouseId: u.workplaceWarehouseId!, warehouseName: u.workplaceWarehouse?.name ?? "" }));
   const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
@@ -100,7 +111,7 @@ export default async function UsersPage({
           <h1 className="text-2xl font-bold text-foreground">Quản lý người dùng</h1>
           <p className="text-text-secondary text-sm mt-1">{totalAllUsers} tài khoản</p>
         </div>
-        {assignableRoles.length > 0 && <CreateUserDialog assignableRoles={assignableRoles} />}
+        {assignableRoles.length > 0 && <CreateUserDialog assignableRoles={assignableRoles} khoMoOptions={khoMoOptions} />}
       </div>
 
       <Tabs defaultValue="accounts">
@@ -216,6 +227,9 @@ export default async function UsersPage({
                           isWorkplaceRole={!!user.role && WORKPLACE_ROLES.includes(user.role as (typeof WORKPLACE_ROLES)[number])}
                           workplaceWarehouseId={user.workplaceWarehouseId}
                           workplaceWarehouse={user.workplaceWarehouse}
+                          responsibleKhoMoId={user.responsibleKhoMoId}
+                          responsibleKhoMo={user.responsibleKhoMo}
+                          khoMoOptions={khoMoOptions}
                           warehouseOptions={
                             user.role && THI_TRUONG_WORKPLACE_ROLES.includes(user.role as (typeof THI_TRUONG_WORKPLACE_ROLES)[number])
                               ? thiTruongWarehouses

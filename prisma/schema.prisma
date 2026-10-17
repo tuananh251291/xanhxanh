@@ -469,6 +469,12 @@ model User {
   // được tài khoản. SUPER_ADMIN/HANH_CHINH_NHAN_SU được sửa field này (xem canAssignWorkplace).
   workplaceWarehouseId          String?
   workplaceWarehouse            Warehouse?                    @relation(fields: [workplaceWarehouseId], references: [id])
+  // Chỉ áp dụng NV cấy mô (CAY_MO) — NV Kho mô phụ trách NV này (cùng khu sản xuất): chỉ đúng Kho mô đó
+  // bàn giao mẫu mẹ / nhận bàn giao Phòng tối của NV (xem src/lib/kho-mo-scope.ts). null = chưa gán → mọi
+  // Kho mô cùng kho đều thao tác được như trước.
+  responsibleKhoMoId            String?
+  responsibleKhoMo              User?                         @relation("UserResponsibleKhoMo", fields: [responsibleKhoMoId], references: [id])
+  responsibleCayMoStaff         User[]                        @relation("UserResponsibleKhoMo")
   // "Quản lý bán lẻ" — chỉ áp dụng NV bán hàng (SALE), Admin/Admin cao nhất bật/tắt + gán kèm 1 hoặc
   // nhiều Kho thị trường (WarehouseType.THI_TRUONG, xem RetailWarehouseAccess) qua PATCH /api/users/[id].
   // Cho phép XEM tồn kho ở /inventory/thi-truong (giống Admin cấp cao xem được nhiều kho) VÀ nhận/duyệt

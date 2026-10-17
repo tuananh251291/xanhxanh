@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isCayMoInKhoMoScope, OUT_OF_KHO_MO_SCOPE_MESSAGE } from "@/lib/kho-mo-scope";
 import { findPendingItems, buildStagePreview } from "@/lib/receive-phong-toi";
 
 // Kệ gợi ý (planShelfAssignments) cho ĐÚNG 1 NV luồng Xanh — tách khỏi GET /api/transfers/receive-phong-toi
@@ -16,10 +17,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ sta
   const { staffId } = await params;
   const staff = await prisma.user.findUnique({
     where: { id: staffId },
-    select: { role: true, inspectionLane: true, workplaceWarehouseId: true },
+    select: { role: true, inspectionLane: true, workplaceWarehouseId: true, responsibleKhoMoId: true },
   });
   if (!staff || staff.role !== "CAY_MO" || staff.inspectionLane !== "XANH" || staff.workplaceWarehouseId !== workplaceWarehouseId) {
     return NextResponse.json({ message: "Nhân viên không hợp lệ hoặc không thuộc luồng Xanh" }, { status: 400 });
+  }
+  if (!isCayMoInKhoMoScope(staff, session.user.id)) {
+    return NextResponse.json({ message: OUT_OF_KHO_MO_SCOPE_MESSAGE }, { status: 403 });
   }
 
   const { items: pendingItems } = await findPendingItems(staffId);

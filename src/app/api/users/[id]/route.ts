@@ -25,6 +25,8 @@ const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
   z.object({ status: z.literal("REJECTED") }),
   z.object({ workplaceWarehouseId: z.string().nullable() }),
+  // NV Kho mô phụ trách 1 NV cấy mô (User.responsibleKhoMoId) — cùng quyền với gán địa điểm làm việc.
+  z.object({ responsibleKhoMoId: z.string().nullable() }),
   // true = đánh dấu "Nghỉ việc" (khoá đăng nhập ngay, giữ dữ liệu lịch sử), false = khôi phục "Đang làm
   // việc" — dùng chung 1 field isActive có sẵn (đã đúng ý nghĩa "khoá đăng nhập, không xoá dữ liệu",
   // xem DELETE bên dưới) nhưng tách hẳn khỏi nhánh "name" (sửa tài khoản đầy đủ, chỉ SUPER_ADMIN) để
@@ -106,9 +108,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ message: requiredTypeMessage }, { status: 400 });
       }
     }
+    // NV cấy mô đổi sang kho khác — bỏ luôn Kho mô phụ trách cũ nếu người đó không thuộc kho mới.
+    let clearResponsibleKhoMo = false;
+    if (target.role === "CAY_MO") {
+      const current = await prisma.user.findUnique({ where: { id }, select: { responsibleKhoMo: { select: { workplaceWarehouseId: true } } } });
+      clearResponsibleKhoMo = !!current?.responsibleKhoMo && current.responsibleKhoMo.workplaceWarehouseId !== workplaceWarehouseId;
+    }
     const updated = await prisma.user.update({
       where: { id },
-      data: { workplaceWarehouseId },
+      data: { workplaceWarehouseId, ...(clearResponsibleKhoMo ? { responsibleKhoMoId: null } : {}) },
       select: { id: true, code: true, name: true, email: true, role: true, workplaceWarehouse: { select: { code: true, name: true } } },
     });
 
@@ -118,6 +126,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await getOrCreatePersonalDarkRoom(id, workplaceWarehouseId);
     }
 
+    return NextResponse.json(updated);
+  }
+
+  if ("responsibleKhoMoId" in parsed.data) {
+    if (!canAssignWorkplace(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất/NV Hành chính nhân sự mới có quyền gán NV Kho phụ trách" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true, workplaceWarehouseId: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "CAY_MO") return NextResponse.json({ message: "Chỉ áp dụng cho NV cấy mô" }, { status: 400 });
+    const { responsibleKhoMoId } = parsed.data;
+    if (responsibleKhoMoId) {
+      const khoMo = await prisma.user.findUnique({ where: { id: responsibleKhoMoId }, select: { role: true, isActive: true, workplaceWarehouseId: true } });
+      if (!khoMo || khoMo.role !== "KHO_MO" || !khoMo.isActive) {
+        return NextResponse.json({ message: "NV Kho phụ trách không hợp lệ" }, { status: 400 });
+      }
+      if (!target.workplaceWarehouseId || khoMo.workplaceWarehouseId !== target.workplaceWarehouseId) {
+        return NextResponse.json({ message: "NV Kho phụ trách phải cùng khu sản xuất với NV cấy mô" }, { status: 400 });
+      }
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { responsibleKhoMoId },
+      select: { id: true, code: true, name: true, responsibleKhoMo: { select: { code: true, name: true } } },
+    });
     return NextResponse.json(updated);
   }
 

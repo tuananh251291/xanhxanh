@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo } from "@/lib/kho-mo-scope";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { createAlert } from "@/lib/inventory";
 import { uninspectedPendingItems } from "@/lib/transfer-reinspect";
@@ -9,9 +10,9 @@ import { z } from "zod";
 // items = CHỈ các dòng đang chờ xếp mà nhóm (mã cây + quy cách) chưa có kết quả kiểm tra — sau khi Kho mô
 // "Kiểm tra lại" (xem reopenTransferInspection) phiếu có thể còn giữ kết quả của các dòng đã xếp kệ, chỉ
 // các dòng được mở lại mới cần kiểm tra lại. pendingCount = tổng số dòng đang chờ xếp (kể cả đã kiểm tra).
-async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
+async function loadTransfer(transferId: string, workplaceWarehouseId: string, khoMoUserId: string) {
   const transfer = await prisma.transfer.findFirst({
-    where: { id: transferId, status: "PENDING", fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId } },
+    where: { id: transferId, status: "PENDING", fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId }, fromUser: cayMoScopeForKhoMo(khoMoUserId) },
     include: {
       fromUser: { select: { code: true, name: true, inspectionLane: true } },
       fromRoom: { select: { warehouseId: true, warehouse: { select: { code: true } } } },
@@ -40,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
   if (!workplaceWarehouseId) return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc" }, { status: 400 });
 
   const { transferId } = await params;
-  const transfer = await loadTransfer(transferId, workplaceWarehouseId);
+  const transfer = await loadTransfer(transferId, workplaceWarehouseId, session.user.id);
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy phiếu bàn giao" }, { status: 404 });
   if (transfer.fromUser.inspectionLane === "XANH") {
     return NextResponse.json({ message: "NV luồng Xanh không cần kiểm tra ở đây" }, { status: 400 });
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
   const parsed = postSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const transfer = await loadTransfer(transferId, workplaceWarehouseId);
+  const transfer = await loadTransfer(transferId, workplaceWarehouseId, session.user.id);
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy phiếu bàn giao" }, { status: 404 });
   if (transfer.fromUser.inspectionLane === "XANH") {
     return NextResponse.json({ message: "NV luồng Xanh không cần kiểm tra ở đây" }, { status: 400 });

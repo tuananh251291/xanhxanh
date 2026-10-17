@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { isCayMoInKhoMoScope, OUT_OF_KHO_MO_SCOPE_MESSAGE } from "@/lib/kho-mo-scope";
+
+// Kho mô chỉ bàn giao/hoàn tác bàn giao với NV cấy mô mình phụ trách (User.responsibleKhoMoId) — Admin
+// không bị giới hạn. Trả về response lỗi nếu vượt phạm vi, null nếu hợp lệ.
+async function khoMoScopeError(role: string | null | undefined, khoMoUserId: string, cayMoUserId: string | null) {
+  if (role !== "KHO_MO" || !cayMoUserId) return null;
+  const staff = await prisma.user.findUnique({ where: { id: cayMoUserId }, select: { responsibleKhoMoId: true } });
+  if (!staff || isCayMoInKhoMoScope(staff, khoMoUserId)) return null;
+  return NextResponse.json({ message: OUT_OF_KHO_MO_SCOPE_MESSAGE }, { status: 403 });
+}
 import { isAdminRole } from "@/types";
 import { startOfWeek } from "date-fns";
 import { detachInstructionFromMediumOrder, syncInstructionMediumOrder } from "@/lib/instruction-medium-order";
@@ -598,6 +608,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!instruction.assignedToId) {
       return NextResponse.json({ message: "Chỉ định chưa có nhân viên cấy mô để bàn giao" }, { status: 400 });
     }
+    const confirmScopeError = await khoMoScopeError(role, session!.user!.id, instruction.assignedToId);
+    if (confirmScopeError) return confirmScopeError;
     // Kho mô được bàn giao trước chỉ định mới ngay cả khi NV cấy mô đang thực hiện chỉ định khác — luật
     // "1 chỉ định tại 1 thời điểm" chỉ chặn ở bước NV cấy mô XÁC NHẬN (xem confirmMotherReceived).
     const isFirstHandover = !instruction.handedOverAt;
@@ -643,6 +655,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (instruction.motherReceivedAt) {
       return NextResponse.json({ message: "NV cấy mô đã xác nhận nhận mẫu mẹ — không thể hoàn tác bàn giao nữa" }, { status: 400 });
     }
+    const undoScopeError = await khoMoScopeError(role, session!.user!.id, instruction.assignedToId);
+    if (undoScopeError) return undoScopeError;
     // NV được gán qua kệ "đã chia" (kệ tự cố định 1 NV, tự động điền ngay lúc TẠO chỉ định — xem
     // autoAssignedToId ở POST /api/instructions) thì hoàn tác GIỮ NGUYÊN NV đó, vì đây là cấu hình kệ,
     // không phải lựa chọn của Kho mô. Ngược lại — kệ "chung" (Kho mô tự chọn NV lúc bàn giao qua
@@ -720,6 +734,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (role === "KHO_MO" && extraWorkRequest.staff.workplaceWarehouseId !== session!.user.workplaceWarehouseId) {
       return NextResponse.json({ message: "Đăng ký không thuộc kho bạn làm việc" }, { status: 403 });
     }
+    const backupScopeError = await khoMoScopeError(role, session!.user!.id, extraWorkRequest.staff.id);
+    if (backupScopeError) return backupScopeError;
     if (extraWorkRequest.status !== "APPROVED" || extraWorkRequest.fulfilledAt) {
       return NextResponse.json({ message: "Đăng ký này chưa được duyệt hoặc đã dùng cho chỉ định khác" }, { status: 400 });
     }
@@ -768,6 +784,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: { items: { select: { lotId: true } } },
     });
     if (!instruction) return NextResponse.json({ message: "Không tìm thấy" }, { status: 404 });
+    const assignScopeError = await khoMoScopeError(role, session!.user!.id, (parsed.data as { assignedToId?: string | null }).assignedToId ?? null);
+    if (assignScopeError) return assignScopeError;
     const isFirstHandover = !instruction.handedOverAt;
     const updated = await prisma.$transaction(async (tx) => {
       if (isFirstHandover) await markSourceLotsPlanted(tx, instruction.items);

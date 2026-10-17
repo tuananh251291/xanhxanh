@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo } from "@/lib/kho-mo-scope";
 import { isAdminRole } from "@/types";
 import { createAlertForWarehouseStaff } from "@/lib/inventory";
 import { z } from "zod";
@@ -108,7 +109,11 @@ export async function GET(req: NextRequest) {
   } else if (role === "KHO_MO") {
     // Kho mô chỉ thấy đăng ký của đúng NV cấy mô cùng kho sản xuất mình đang làm việc.
     if (!session.user.workplaceWarehouseId) return NextResponse.json([]);
-    where.staff = { workplaceWarehouseId: session.user.workplaceWarehouseId };
+    where.staff = {
+      workplaceWarehouseId: session.user.workplaceWarehouseId,
+      // Gán chỉ định dự phòng (bàn giao mẫu mẹ) — chỉ NV mình phụ trách, xem src/lib/kho-mo-scope.ts.
+      ...(availableToAssign ? cayMoScopeForKhoMo(session.user.id) : {}),
+    };
   } else if (!isAdminRole(role)) {
     return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   }

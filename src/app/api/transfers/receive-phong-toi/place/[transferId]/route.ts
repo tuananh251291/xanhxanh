@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo } from "@/lib/kho-mo-scope";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
 import { lotSelect, buildStagePreview, confirmStage, confirmStageManual } from "@/lib/receive-phong-toi";
 import { SURPLUS_TRANSFER_TAG } from "@/types";
 import { uninspectedPendingItems } from "@/lib/transfer-reinspect";
 import { z } from "zod";
 
-async function loadTransfer(transferId: string, workplaceWarehouseId: string) {
+async function loadTransfer(transferId: string, workplaceWarehouseId: string, khoMoUserId: string) {
   return prisma.transfer.findFirst({
-    where: { id: transferId, fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId } },
+    where: { id: transferId, fromRoom: { type: "PHONG_TOI", warehouseId: workplaceWarehouseId }, fromUser: cayMoScopeForKhoMo(khoMoUserId) },
     include: {
       fromUser: { select: { id: true, code: true, name: true } },
       inspection: { select: { id: true, items: { select: { plantTypeId: true, stageCode: true } } } },
@@ -28,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tra
   if (!workplaceWarehouseId) return NextResponse.json({ message: "Bạn chưa được gán địa điểm làm việc" }, { status: 400 });
 
   const { transferId } = await params;
-  const transfer = await loadTransfer(transferId, workplaceWarehouseId);
+  const transfer = await loadTransfer(transferId, workplaceWarehouseId, session.user.id);
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy phiếu bàn giao" }, { status: 404 });
   // Phiếu MM dư (SURPLUS_TRANSFER_TAG) không qua bước kiểm tra luồng Đỏ — luôn xếp thẳng vào Kho quá
   // hạn, không có gì để kiểm tra nhiễm (xem PATCH /api/transfers/[id], isSurplusTransfer).
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tra
     return NextResponse.json({ message: "Chỉ hỗ trợ tự nhập kệ cho mẫu mẹ" }, { status: 400 });
   }
 
-  const transfer = await loadTransfer(transferId, workplaceWarehouseId);
+  const transfer = await loadTransfer(transferId, workplaceWarehouseId, session.user.id);
   if (!transfer) return NextResponse.json({ message: "Không tìm thấy phiếu bàn giao" }, { status: 404 });
   const isSurplus = transfer.notes === SURPLUS_TRANSFER_TAG;
   if (!isSurplus && uninspectedPendingItems(transfer.items, transfer.inspection).length > 0) {

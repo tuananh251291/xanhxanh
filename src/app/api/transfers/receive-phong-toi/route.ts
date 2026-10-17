@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { cayMoScopeForKhoMo, isCayMoInKhoMoScope, OUT_OF_KHO_MO_SCOPE_MESSAGE } from "@/lib/kho-mo-scope";
 import { ShelfAssignError } from "@/lib/shelf-assignment";
 import { findPendingItems, confirmStage, confirmStageManual } from "@/lib/receive-phong-toi";
 import { z } from "zod";
@@ -18,7 +19,8 @@ export async function GET() {
   if (!workplaceWarehouseId) return NextResponse.json([]);
 
   const staffList = await prisma.user.findMany({
-    where: { role: "CAY_MO", workplaceWarehouseId, inspectionLane: "XANH" },
+    // Chỉ NV mình phụ trách (User.responsibleKhoMoId) + NV chưa gán Kho phụ trách — xem src/lib/kho-mo-scope.ts.
+    where: { role: "CAY_MO", workplaceWarehouseId, inspectionLane: "XANH", ...cayMoScopeForKhoMo(session.user.id) },
     select: { id: true, code: true, name: true },
     orderBy: { code: "asc" },
   });
@@ -71,10 +73,13 @@ export async function POST(req: NextRequest) {
   // Xác thực lại luồng phía server — không tin bộ lọc phía client.
   const staff = await prisma.user.findUnique({
     where: { id: staffId },
-    select: { role: true, inspectionLane: true, workplaceWarehouseId: true },
+    select: { role: true, inspectionLane: true, workplaceWarehouseId: true, responsibleKhoMoId: true },
   });
   if (!staff || staff.role !== "CAY_MO" || staff.inspectionLane !== "XANH" || staff.workplaceWarehouseId !== workplaceWarehouseId) {
     return NextResponse.json({ message: "Nhân viên không hợp lệ hoặc không thuộc luồng Xanh" }, { status: 400 });
+  }
+  if (!isCayMoInKhoMoScope(staff, session.user.id)) {
+    return NextResponse.json({ message: OUT_OF_KHO_MO_SCOPE_MESSAGE }, { status: 403 });
   }
 
   const { items: pendingItems } = await findPendingItems(staffId);
