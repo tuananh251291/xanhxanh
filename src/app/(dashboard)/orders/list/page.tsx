@@ -11,6 +11,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
+import { getManagedOrderScope } from "@/lib/customer-manager";
 import ConfirmOrderButton from "./confirm-order-button";
 import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
@@ -19,6 +20,7 @@ import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } f
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
   assignedTo: Pick<User, "id" | "name"> | null;
+  sale?: Pick<User, "code" | "name">;
   items: (Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
     lot: Pick<Lot, "stageCode" | "plantTypeId"> & { plantType: Pick<PlantType, "name" | "code"> };
     processingRequest: Pick<OrderProcessingRequest, "status"> | null;
@@ -36,6 +38,7 @@ function OrdersTable({
   showActions,
   linkToDetailPage,
   canEditShipAt,
+  showSale = false,
 }: {
   title: string;
   description: string;
@@ -50,6 +53,8 @@ function OrdersTable({
   linkToDetailPage: boolean;
   // Quản lý kho thành phẩm sửa được thời gian dự kiến xuất (mặc định 9:00 lúc tạo đơn).
   canEditShipAt: boolean;
+  // Cột NV bán hàng — chỉ dùng cho mục "Đơn của nhân sự tôi quản lý".
+  showSale?: boolean;
 }) {
   return (
     <Card>
@@ -63,6 +68,7 @@ function OrdersTable({
             <thead>
               <tr className="bg-primary-light">
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã đơn</th>
+                {showSale && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">NV bán hàng</th>}
                 <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Khách hàng</th>
                 {showQuantity && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Số lượng</th>}
                 {showHoldUntil && <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày hết hạn tạm giữ</th>}
@@ -75,6 +81,7 @@ function OrdersTable({
               {orders.map((o) => (
                 <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
                   <td className="px-4 py-3 text-sm font-mono text-text-secondary">{o.code}</td>
+                  {showSale && <td className="px-4 py-3 text-sm text-foreground">{o.sale ? `${o.sale.code} - ${o.sale.name}` : "—"}</td>}
                   <td className="px-4 py-3 text-sm text-foreground">{o.customerCode} · {MARKET_LABELS[o.market]}</td>
                   {showQuantity && (
                     <td className="px-4 py-3 text-sm text-foreground">{o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây</td>
@@ -142,7 +149,7 @@ function OrdersTable({
               {orders.length === 0 && (
                 <tr>
                   <td
-                    colSpan={2 + [showQuantity, showHoldUntil, showExpectedShipAt, showStatus].filter(Boolean).length + 1}
+                    colSpan={2 + [showSale, showQuantity, showHoldUntil, showExpectedShipAt, showStatus].filter(Boolean).length + 1}
                     className="px-4 py-8 text-center text-sm text-text-muted"
                   >
                     Chưa có đơn hàng nào
@@ -166,10 +173,7 @@ export default async function OrdersListPage() {
   // luôn gán saleId = NV bán hàng thật đang phụ trách khách, không phải người quản lý (xem canActAsSale,
   // POST /api/orders), nên lọc theo saleId sẽ không thấy được đơn mình vừa tạo hộ.
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
-  const orders = await prisma.order.findMany({
-    where: { status: { in: ["HELD", "CONFIRMED"] }, ...(isActingForSale ? {} : { saleId: session?.user?.id ?? "" }) },
-    orderBy: { createdAt: "desc" },
-    select: {
+  const orderSelect = {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
       expectedShipAt: true, notes: true, createdAt: true,
       assignedTo: { select: { id: true, name: true } },
@@ -181,8 +185,23 @@ export default async function OrdersListPage() {
           processingRequest: { select: { status: true } },
         },
       },
-    },
+      sale: { select: { code: true, name: true } },
+  } as const;
+  const orders = await prisma.order.findMany({
+    where: { status: { in: ["HELD", "CONFIRMED"] }, ...(isActingForSale ? {} : { saleId: session?.user?.id ?? "" }) },
+    orderBy: { createdAt: "desc" },
+    select: orderSelect,
   });
+  // NV bán hàng là người quản lý: xem thêm (chỉ xem, không Xác nhận/Xoá) đơn của nhân sự mình quản lý — xem
+  // getManagedOrderScope. NV bán hàng khác nhau KHÔNG thấy đơn của nhau.
+  const managedScope = role === "SALE" && session?.user?.id ? await getManagedOrderScope(session.user.id) : [];
+  const teamOrders = managedScope.length > 0
+    ? await prisma.order.findMany({
+        where: { status: { in: ["HELD", "CONFIRMED"] }, saleId: { not: session!.user.id }, OR: managedScope },
+        orderBy: { createdAt: "desc" },
+        select: orderSelect,
+      })
+    : [];
 
   const heldOrders = orders.filter((o) => o.status === "HELD");
   const confirmedOrders = orders.filter((o) => o.status === "CONFIRMED");
@@ -225,6 +244,22 @@ export default async function OrdersListPage() {
         linkToDetailPage
         canEditShipAt={isActingForSale}
       />
+
+      {managedScope.length > 0 && (
+        <OrdersTable
+          title="Đơn của nhân sự tôi quản lý"
+          description="Đơn đang giữ/đã xác nhận của NV bán hàng bạn quản lý (đúng thị trường được giao quản lý) — chỉ xem, NV phụ trách tự xác nhận/xoá."
+          orders={teamOrders}
+          showSale
+          showHoldUntil
+          showQuantity
+          showExpectedShipAt
+          showStatus={false}
+          showActions={false}
+          linkToDetailPage
+          canEditShipAt={false}
+        />
+      )}
     </div>
   );
 }

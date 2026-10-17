@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { canSaleViewOrder } from "@/lib/customer-manager";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
@@ -38,7 +39,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   // Sale chỉ xem chi tiết đơn của chính mình — Quản lý kho thành phẩm/Admin xem mọi đơn (giống phạm vi
   // /orders/list, xem isActingForSale ở đó và role === "SALE" check ở /orders/[id] print page).
-  if (role === "SALE" && order.saleId !== session!.user.id) redirect("/orders/list");
+  // Ngoại lệ: người quản lý xem (chỉ xem) đơn của nhân sự mình quản lý, xem canSaleViewOrder.
+  if (role === "SALE" && order.saleId !== session!.user.id && !(await canSaleViewOrder(session!.user.id, order.id))) redirect("/orders/list");
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">

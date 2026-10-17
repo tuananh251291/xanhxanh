@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Search, AlertTriangle, UserPlus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { CUSTOMER_STATUS_LABELS } from "@/types";
 import { validateWebsite, hasWebsitePath, WEBSITE_MAX_LENGTH } from "@/lib/customer";
 
 type Market = { id: string; code: string; name: string };

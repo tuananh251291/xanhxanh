@@ -7,7 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { isPageAllowed } from "@/lib/permissions";
 import { MARKET_LABELS } from "@/types";
-import { getCustomerManager } from "@/lib/customer-manager";
+import { getCustomerManager, canSaleViewOrder } from "@/lib/customer-manager";
 import { PrintButton } from "@/components/shared/print-button";
 import "./print-order.css";
 
@@ -55,7 +55,8 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
 
   // Sale chỉ xem phiếu đơn của chính mình — Quản lý kho thành phẩm/Admin xem mọi đơn (giống phạm vi
   // /orders/list, xem isActingForSale ở đó).
-  if (role === "SALE" && order.saleId !== session!.user.id) redirect("/orders/list");
+  // Ngoại lệ: người quản lý xem (chỉ xem) đơn của nhân sự mình quản lý, xem canSaleViewOrder.
+  if (role === "SALE" && order.saleId !== session!.user.id && !(await canSaleViewOrder(session!.user.id, order.id))) redirect("/orders/list");
 
   const manager = order.customerId && order.customer
     ? await getCustomerManager(order.saleId, order.customer.marketId)
