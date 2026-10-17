@@ -223,8 +223,9 @@ export function describeRootingDeliveryWeek(weekStart: Date) {
 }
 
 // Sau khi NV Kỹ thuật hoàn thành 1 đánh giá — báo Kho mô cùng kho biết tỉ lệ đạt/không đạt + lý do; báo
-// Quản lý + NV kho thành phẩm + Admin kỹ thuật lượng hàng ĐẠT sẽ về Kho thành phẩm trong tuần bàn giao
-// (gửi theo userId từng người). Admin cấp cao xem qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES).
+// Quản lý kho thành phẩm + Admin kỹ thuật lượng hàng ĐẠT sẽ về Kho thành phẩm trong tuần bàn giao (gửi
+// theo userId từng người — targetRole QUAN_LY_KHO_THANH_PHAM sẽ lọt cả sang NV kho TP thường, xem
+// alertTargetRolesFor). Kho mô nhận cùng nội dung + phần không đạt đã lùi tuần + lý do. Admin cấp cao xem qua widget Dashboard (ADMIN_DASHBOARD_ALERT_TYPES).
 export async function notifyRootingQualityEvaluationReady(params: {
   warehouseId: string;
   warehouseName: string;
@@ -237,18 +238,19 @@ export async function notifyRootingQualityEvaluationReady(params: {
   const { warehouseId, warehouseName, code, weekStart, totalQuantity, passedQuantity, reason } = params;
   const failedQuantity = totalQuantity - passedQuantity;
   const pct = totalQuantity > 0 ? Math.round((passedQuantity / totalQuantity) * 1000) / 10 : 0;
+  const deliveryText = `Lượng hàng từ khu sản xuất ${warehouseName} sẽ gửi đến Kho Thành Phẩm trong ${describeRootingDeliveryWeek(weekStart)}: ${passedQuantity.toLocaleString("vi-VN")} cây đạt tiêu chuẩn / tổng ${totalQuantity.toLocaleString("vi-VN")} cây của nhóm tuần (đạt ${pct}%).`;
   await createAlertForWarehouseStaff({
     role: "KHO_MO",
     warehouseId,
     type: "ROOTING_QUALITY_EVALUATION_READY",
-    title: "Đã có kết quả đánh giá chất lượng cây ra rễ",
-    message: `Đánh giá ${code}: đạt ${passedQuantity.toLocaleString("vi-VN")}/${totalQuantity.toLocaleString("vi-VN")} (${pct}%), không đạt ${failedQuantity.toLocaleString("vi-VN")} đã lùi sang tuần sau. Lý do: ${reason}`,
+    title: "Lượng hàng ra rễ sẽ gửi đến Kho Thành Phẩm",
+    message: `${deliveryText} Không đạt ${failedQuantity.toLocaleString("vi-VN")} cây đã lùi sang tuần sau. Lý do: ${reason}. Đánh giá ${code}.`,
     relatedId: code,
     relatedType: "RootingQualityEvaluation",
   });
 
   const recipients = await prisma.user.findMany({
-    where: { role: { in: ["QUAN_LY_KHO_THANH_PHAM", "KHO_THANH_PHAM", "ADMIN_KY_THUAT"] }, isActive: true },
+    where: { role: { in: ["QUAN_LY_KHO_THANH_PHAM", "ADMIN_KY_THUAT"] }, isActive: true },
     select: { id: true },
   });
   if (recipients.length === 0) return;
@@ -257,7 +259,7 @@ export async function notifyRootingQualityEvaluationReady(params: {
       type: "ROOTING_QUALITY_EVALUATION_READY" as const,
       userId: u.id,
       title: "Lượng hàng ra rễ sẽ gửi đến Kho Thành Phẩm",
-      message: `Lượng hàng từ khu sản xuất ${warehouseName} sẽ gửi đến Kho Thành Phẩm trong ${describeRootingDeliveryWeek(weekStart)}: ${passedQuantity.toLocaleString("vi-VN")} cây đạt tiêu chuẩn / tổng ${totalQuantity.toLocaleString("vi-VN")} cây của nhóm tuần (đạt ${pct}%). Đánh giá ${code}.`,
+      message: `${deliveryText} Đánh giá ${code}.`,
       relatedId: code,
       relatedType: "RootingQualityEvaluation",
     })),
