@@ -16,6 +16,9 @@ type Customer = {
   market: { code: string; name: string };
   status: "CHUA_PHAN_CONG" | "DA_PHAN_CONG" | "MAC_DINH";
   firstContactAt: string; lastOrderAt: string | null; lastOrderCode: string | null;
+  // false = khách của nhân sự mình quản lý (xem GET /api/customer-status) — chỉ xem, không cập nhật.
+  isMine: boolean;
+  assignedTo: { code: string; name: string } | null;
 };
 
 const PAGE_SIZE = 10;
@@ -27,6 +30,7 @@ export default function CustomerStatusBoard() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [scope, setScope] = useState<"mine" | "team">("mine");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,11 +44,14 @@ export default function CustomerStatusBoard() {
 
   useEffect(() => { load(); }, [load]);
 
+  const hasTeam = customers.some((c) => !c.isMine);
+  const scoped = useMemo(() => customers.filter((c) => (scope === "mine" ? c.isMine : !c.isMine)), [customers, scope]);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) => c.name.toLowerCase().includes(q));
-  }, [customers, search]);
+    if (!q) return scoped;
+    return scoped.filter((c) => c.name.toLowerCase().includes(q) || (!c.isMine && !!c.assignedTo?.name.toLowerCase().includes(q)));
+  }, [scoped, search]);
+  const isTeam = scope === "team";
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -81,17 +88,32 @@ export default function CustomerStatusBoard() {
 
   return (
     <div className="space-y-4">
+      {hasTeam && (
+        <div className="flex gap-2">
+          {([["mine", "Khách của tôi"], ["team", "Khách nhân sự tôi quản lý"]] as const).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={scope === value ? "default" : "outline"}
+              onClick={() => { setScope(value); setPage(1); }}
+            >
+              {label} ({customers.filter((c) => (value === "mine" ? c.isMine : !c.isMine)).length})
+            </Button>
+          ))}
+        </div>
+      )}
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <Input
           value={search}
           onChange={(e) => changeSearch(e.target.value)}
-          placeholder="Tìm theo tên khách hàng..."
+          placeholder={isTeam ? "Tìm theo tên khách hàng hoặc NV phụ trách..." : "Tìm theo tên khách hàng..."}
           list="customer-name-suggestions"
           className="pl-9"
         />
         <datalist id="customer-name-suggestions">
-          {customers.map((c) => <option key={c.id} value={c.name} />)}
+          {scoped.map((c) => <option key={c.id} value={c.name} />)}
         </datalist>
       </div>
 
@@ -102,17 +124,18 @@ export default function CustomerStatusBoard() {
             <thead>
               <tr className="border-b border-border">
                 <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Khách hàng</th>
+                {isTeam && <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">NV phụ trách</th>}
                 <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Thị trường</th>
                 <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Trạng thái</th>
                 <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ngày tiếp cận</th>
                 <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ngày ra đơn gần nhất</th>
                 <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Mã đơn gần nhất</th>
-                <th className="px-3 py-2"></th>
+                {!isTeam && <th className="px-3 py-2"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-divider">
-              {customers.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-6 text-text-muted">Bạn chưa phụ trách khách hàng nào</td></tr>
+              {scoped.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-6 text-text-muted">{isTeam ? "Nhân sự bạn quản lý chưa phụ trách khách hàng nào" : "Bạn chưa phụ trách khách hàng nào"}</td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-6 text-text-muted">Không tìm thấy khách hàng nào khớp</td></tr>
               ) : (
@@ -127,6 +150,7 @@ export default function CustomerStatusBoard() {
                         <p className="font-medium">{c.name}</p>
                         <p className="text-xs text-text-muted">{c.website}</p>
                       </td>
+                      {isTeam && <td className="px-3 py-2">{c.assignedTo ? `${c.assignedTo.code} - ${c.assignedTo.name}` : "—"}</td>}
                       <td className="px-3 py-2">{c.market.code}</td>
                       <td className="px-3 py-2">
                         <Badge variant={CUSTOMER_STATUS_BADGE_VARIANT[c.status]}>
@@ -137,25 +161,34 @@ export default function CustomerStatusBoard() {
                         )}
                       </td>
                       <td className="px-3 py-2">{format(new Date(c.firstContactAt), "dd/MM/yyyy", { locale: vi })}</td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="date" className="h-8 w-36"
-                          value={d.lastOrderAt}
-                          onChange={(e) => setDraft((prev) => ({ ...prev, [c.id]: { ...d, lastOrderAt: e.target.value } }))}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          className="h-8 w-32"
-                          value={d.lastOrderCode}
-                          onChange={(e) => setDraft((prev) => ({ ...prev, [c.id]: { ...d, lastOrderCode: e.target.value } }))}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={savingId === c.id} onClick={() => save(c)}>
-                          {savingId === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        </Button>
-                      </td>
+                      {isTeam ? (
+                        <>
+                          <td className="px-3 py-2">{c.lastOrderAt ? format(new Date(c.lastOrderAt), "dd/MM/yyyy", { locale: vi }) : "—"}</td>
+                          <td className="px-3 py-2">{c.lastOrderCode || "—"}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="date" className="h-8 w-36"
+                              value={d.lastOrderAt}
+                              onChange={(e) => setDraft((prev) => ({ ...prev, [c.id]: { ...d, lastOrderAt: e.target.value } }))}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              className="h-8 w-32"
+                              value={d.lastOrderCode}
+                              onChange={(e) => setDraft((prev) => ({ ...prev, [c.id]: { ...d, lastOrderCode: e.target.value } }))}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={savingId === c.id} onClick={() => save(c)}>
+                              {savingId === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            </Button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })

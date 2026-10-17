@@ -15,7 +15,8 @@ export default async function CustomerStatusPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           Danh sách khách hàng bạn đang phụ trách — cập nhật Ngày ra đơn/Mã đơn gần nhất để giữ khách. Sau 2 tháng kể từ Ngày đầu
-          tiếp cận không có đơn nào, khách sẽ tự động chuyển về &quot;Chưa phân công&quot;.
+          tiếp cận không có đơn nào, khách sẽ tự động chuyển về &quot;Chưa phân công&quot;. Nếu bạn quản lý nhân sự bán hàng, tab
+          &quot;Khách nhân sự tôi quản lý&quot; hiện khách của họ (chỉ xem).
         </p>
       </div>
       <CustomerStatusBoard />
