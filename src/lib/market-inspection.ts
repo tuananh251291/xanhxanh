@@ -5,6 +5,7 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek, addDays, endOfWeek, format, getWeek } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { Prisma, RoomType } from "@prisma/client";
+import { POT_SPEC_LABELS } from "@/types";
 import { upsertLot } from "@/lib/goods-receipt";
 
 // 3 phòng cố định của Kho thị trường (WarehouseType.THI_TRUONG, xem User.workplaceWarehouseId của
@@ -99,7 +100,8 @@ export async function ensureWeeklyMarketInspectionTask(warehouseId: string | nul
 // Đề xuất "Trồng" của Đối tác vận hành từ Phòng sản phẩm đạt/không đạt được duyệt → cộng đúng số lượng
 // vào Phòng cây trồng cùng kho (lúc gửi đề xuất đã trừ ở phòng nguồn) — giống luồng Phân loại hàng không
 // đạt (PATCH /api/reject-classifications/[id]). Đề xuất Trồng từ CHÍNH Phòng cây trồng và đề xuất Hủy thì
-// không cộng đi đâu (cây ra khỏi kho). Gọi trong transaction duyệt, SAU khi đã set status APPROVED.
+// không cộng đi đâu (cây ra khỏi kho). Cây vào Phòng cây trồng theo quy cách chậu plantStageCode (S/M/L/C).
+// Gọi trong transaction duyệt, SAU khi đã set status APPROVED.
 export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.TransactionClient, proposalIds: string[]): Promise<void> {
   const proposals = await tx.contaminationProposal.findMany({
     where: {
@@ -108,13 +110,24 @@ export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.Transacti
       warehouse: { type: "THI_TRUONG" },
     },
     select: {
-      warehouseId: true, plantTypeId: true, stageCode: true, quantity: true,
+      warehouseId: true, plantTypeId: true, stageCode: true, plantStageCode: true, quantity: true,
       plantType: { select: { code: true } }, requestedBy: { select: { code: true } },
     },
   });
   for (const p of proposals) {
     const plantRoom = await tx.room.findFirst({ where: { warehouseId: p.warehouseId, type: "PHONG_CAY_TRONG", isActive: true }, select: { id: true } });
     if (!plantRoom) throw new Error("Kho thị trường thiếu Phòng cây trồng — liên hệ Admin kiểm tra lại kho");
-    await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.stageCode, p.quantity, p.requestedBy.code);
+    // Cộng theo quy cách chậu đã chọn lúc gửi (phiếu cũ chưa có thì giữ quy cách túi gốc).
+    await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.plantStageCode ?? p.stageCode, p.quantity, p.requestedBy.code);
   }
+}
+
+// Mã quy cách chậu hợp lệ cho phần Trồng (Phòng cây trồng) — validate ở API gửi/duyệt đề xuất.
+export const POT_STAGE_CODE_LIST = Object.keys(POT_SPEC_LABELS) as (keyof typeof POT_SPEC_LABELS)[];
+
+// Duyệt đề xuất Trồng/Hủy của Kho thị trường (Đối tác vận hành gửi) — CHỈ QL thị trường (NV bán hàng có
+// RetailWarehouseAccess tới đúng kho), Admin không duyệt thay — khớp luồng Phân loại hàng không đạt.
+export async function isMarketSaleApprover(userId: string, role: string | null | undefined, warehouseId: string): Promise<boolean> {
+  if (role !== "SALE") return false;
+  return !!(await prisma.retailWarehouseAccess.findUnique({ where: { userId_warehouseId: { userId, warehouseId } } }));
 }

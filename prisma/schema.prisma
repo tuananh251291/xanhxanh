@@ -2278,6 +2278,11 @@ model ContaminationProposal {
   // nên createdAt là mốc chính xác để tự xoá sau 1 tháng, không cần field riêng (xem
   // cleanupExpiredContaminationProposalPhotos, src/lib/contamination-proposal-storage.ts).
   photoUrls          String[]                    @default([])
+  // Quy cách chậu (S/M/L/C — POT_SPEC_LABELS) khi Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm
+  // đạt/không đạt — lúc QL thị trường duyệt, cây cộng vào Phòng cây trồng theo đúng quy cách này (xem
+  // moveApprovedMarketPlantingToPlantRoom). NULL = không chuyển phòng (Hủy, Trồng từ chính Phòng cây trồng,
+  // luồng Kho mô/Kho thành phẩm).
+  plantStageCode     String?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
@@ -2338,6 +2343,9 @@ model RejectedGoodsClassification {
   approvedById String?
   approvedBy   User?                             @relation("RejectClassApprovedBy", fields: [approvedById], references: [id])
   approvedAt   DateTime?
+  // Đã tạm trừ toàn bộ số Không đạt khỏi Phòng sản phẩm không đạt lúc Đối tác bấm "Gửi đề xuất" — lúc duyệt
+  // không trừ lại nữa. NULL = phiếu gửi trước khi có cơ chế tạm trừ (duyệt mới trừ như cũ).
+  stockDeductedAt DateTime?
   createdAt    DateTime                          @default(now())
 
   items RejectedGoodsClassificationItem[]
@@ -2361,6 +2369,9 @@ model RejectedGoodsClassificationItem {
   plantQuantity    Int                         @default(0)
   destroyPhotoUrls String[]                    @default([])
   plantPhotoUrls   String[]                    @default([])
+  // Quy cách chậu (S/M/L/C) của phần Trồng — Đối tác chọn lúc gửi, NV bán hàng sửa được lúc duyệt; phần
+  // Trồng cộng vào Phòng cây trồng theo quy cách này. NULL = phiếu cũ (giữ nguyên quy cách túi stageCode).
+  plantStageCode   String?
   // NV bán hàng ghi khi duyệt (tuỳ chọn, gõ tay) — Đối tác vận hành không nhập được field này.
   saleNote         String?
 

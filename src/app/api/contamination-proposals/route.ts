@@ -5,7 +5,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { generateContaminationProposalCode } from "@/lib/codes";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { FINISHED_GOODS_ROOM_TYPES } from "@/lib/finished-goods";
-import { MARKET_ROOM_TYPES } from "@/lib/market-inspection";
+import { MARKET_ROOM_TYPES, POT_STAGE_CODE_LIST } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -30,6 +30,9 @@ const createSchema = z.object({
   // Ảnh bằng chứng (đã tải lên trước qua POST /api/contamination-proposals/photos) — CHỈ bắt buộc khi
   // người gửi là Đối tác vận hành (xem nhánh isMarketPartner bên dưới), Kho mô/Kho thành phẩm bỏ trống.
   photoUrls: z.array(z.string()).default([]),
+  // Quy cách chậu (S/M/L/C) — bắt buộc khi Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm đạt/không đạt
+  // (cây vào Phòng cây trồng theo quy cách này lúc QL thị trường duyệt), các trường hợp khác bỏ qua.
+  plantStageCode: z.string().optional(),
 });
 
 const include = {
@@ -96,12 +99,13 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode, productionGardenId, dailyTaskId, photoUrls } = parsed.data;
+  const { type, plantTypeId, stageCode, quantity, notes, roomId, batchCode: requestedBatchCode, productionGardenId, dailyTaskId, photoUrls, plantStageCode: requestedPlantStageCode } = parsed.data;
   const warehouseId = session!.user.workplaceWarehouseId;
 
   let lotId: string;
   let sourceRoomId: string | null = null;
   let sourceRoomName: string | null = null;
+  let plantStageCode: string | null = null;
 
   if (isFinishedGoods) {
     if (!roomId) return NextResponse.json({ message: "Chưa chọn phòng" }, { status: 400 });
@@ -135,6 +139,12 @@ export async function POST(req: NextRequest) {
     const room = await prisma.room.findUnique({ where: { id: roomId } });
     if (!room || room.warehouseId !== warehouseId || !(MARKET_ROOM_TYPES as readonly string[]).includes(room.type)) {
       return NextResponse.json({ message: "Phòng không hợp lệ" }, { status: 400 });
+    }
+    if (type === "TRONG" && room.type !== "PHONG_CAY_TRONG") {
+      if (!requestedPlantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(requestedPlantStageCode)) {
+        return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
+      }
+      plantStageCode = requestedPlantStageCode;
     }
     const lot = await prisma.lot.findFirst({ where: { roomId, plantTypeId, stageCode, status: "ACTIVE" } });
     if (!lot || lot.quantity < quantity) {
@@ -213,6 +223,7 @@ export async function POST(req: NextRequest) {
         quantity,
         notes,
         photoUrls,
+        plantStageCode,
         requestedById: session!.user.id,
       },
       include,

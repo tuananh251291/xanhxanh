@@ -12,6 +12,10 @@ import { vi } from "date-fns/locale";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 import { REJECT_CLASSIFICATION_COMPRESS_OPTIONS } from "@/lib/reject-classification-constants";
 import MultiPhotoSlotGroup from "@/components/shared/multi-photo-slot-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { POT_SPEC_LABELS, finishedStageLabel } from "@/types";
+
+const POT_OPTIONS = Object.entries(POT_SPEC_LABELS).map(([value, label]) => ({ value, label }));
 
 type Item = {
   id: string;
@@ -22,6 +26,8 @@ type Item = {
   plantQuantity: number;
   destroyPhotoUrls: string[];
   plantPhotoUrls: string[];
+  // Quy cách chậu (S/M/L/C) của phần Trồng — cây vào Phòng cây trồng theo quy cách này khi được duyệt.
+  plantStageCode: string | null;
   saleNote: string | null;
 };
 type Classification = {
@@ -32,6 +38,8 @@ type Classification = {
   warehouse: { code: string; name: string };
   createdBy: { code: string; name: string };
   approvedBy: { code: string; name: string } | null;
+  // Có giá trị = đã tạm trừ Phòng sản phẩm không đạt lúc gửi (phiếu gửi trước thay đổi này thì null).
+  stockDeductedAt: string | null;
   items: Item[];
 };
 
@@ -51,6 +59,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
   const [loading, setLoading] = useState(true);
   const [destroyQty, setDestroyQty] = useState<Record<string, number>>({});
   const [saleNote, setSaleNote] = useState<Record<string, string>>({});
+  const [potStage, setPotStage] = useState<Record<string, string>>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,6 +72,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
       setData(json);
       setDestroyQty(Object.fromEntries(json.items.map((it) => [it.id, it.destroyQuantity])));
       setSaleNote(Object.fromEntries(json.items.map((it) => [it.id, it.saleNote ?? ""])));
+      setPotStage(Object.fromEntries(json.items.map((it) => [it.id, it.plantStageCode ?? ""])));
     } finally {
       setLoading(false);
     }
@@ -138,6 +148,10 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
         toast.error(`Cần đính kèm ảnh cho phần đề xuất trồng (${item.plantType.name} ${item.stageCode})`);
         return;
       }
+      if (plantQty > 0 && !potStage[item.id]) {
+        toast.error(`Chọn quy cách chậu cho phần đề xuất trồng (${item.plantType.name} ${item.stageCode})`);
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -151,6 +165,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
             destroyQuantity: destroyQty[it.id] ?? it.destroyQuantity,
             destroyPhotoUrls: it.destroyPhotoUrls,
             plantPhotoUrls: it.plantPhotoUrls,
+            plantStageCode: potStage[it.id] || undefined,
           })),
         }),
       });
@@ -165,6 +180,12 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
 
   const approve = async () => {
     if (!data) return;
+    // Phiếu cũ (chưa tạm trừ lúc gửi) được phép không chọn chậu — giữ quy cách túi gốc như trước.
+    const missingPot = data.stockDeductedAt && data.items.find((it) => plantQtyFor(it) > 0 && !potStage[it.id]);
+    if (missingPot) {
+      toast.error(`Chọn quy cách chậu cho phần trồng (${missingPot.plantType.name} ${missingPot.stageCode})`);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch(`/api/reject-classifications/${id}`, {
@@ -176,6 +197,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
             itemId: it.id,
             destroyQuantity: destroyQty[it.id] ?? it.destroyQuantity,
             saleNote: saleNote[it.id]?.trim() || undefined,
+            plantStageCode: potStage[it.id] || undefined,
           })),
         }),
       });
@@ -204,7 +226,9 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
       {isSubmitMode && (
         <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3 flex items-start gap-2">
           <Info className="w-4 h-4 mt-0.5 shrink-0" />
-          Bạn cần đính kèm ảnh sản phẩm không đạt để quản lý kĩ thuật xác nhận lại.
+          Bạn cần đính kèm ảnh sản phẩm không đạt để QL thị trường xác nhận lại. Phần đề xuất trồng cần chọn
+          quy cách chậu — khi được duyệt, cây chuyển sang Phòng cây trồng theo quy cách này. Bấm Gửi đề xuất là
+          toàn bộ số không đạt được tạm trừ khỏi Phòng sản phẩm không đạt ngay.
         </p>
       )}
 
@@ -221,6 +245,7 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Đề xuất huỷ</th>
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh huỷ</th>
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Đề xuất trồng</th>
+                  <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Quy cách chậu</th>
                   <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ảnh trồng</th>
                   {(isApproveMode || data.status === "APPROVED") && (
                     <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Ghi chú</th>
@@ -262,6 +287,24 @@ export default function RejectClassificationDetailBoard({ id, canSubmit, canAppr
                         />
                       </td>
                       <td className="px-3 py-2 font-medium text-primary-strong">{plantQty.toLocaleString("vi-VN")}</td>
+                      <td className="px-3 py-2">
+                        {plantQty === 0 ? (
+                          <span className="text-text-muted">—</span>
+                        ) : isEditable ? (
+                          <Select
+                            items={POT_OPTIONS}
+                            value={potStage[item.id] || null}
+                            onValueChange={(v) => setPotStage((prev) => ({ ...prev, [item.id]: (v as string) ?? "" }))}
+                          >
+                            <SelectTrigger className="h-8 w-28"><SelectValue placeholder="Chọn chậu" /></SelectTrigger>
+                            <SelectContent>
+                              {POT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-text-secondary">{item.plantStageCode ? finishedStageLabel(item.plantStageCode) : "—"}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <MultiPhotoSlotGroup
                           urls={item.plantPhotoUrls}

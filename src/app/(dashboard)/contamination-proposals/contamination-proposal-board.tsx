@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
+import { POT_SPEC_LABELS, finishedStageLabel } from "@/types";
 
 export type Proposal = {
   id: string;
@@ -35,14 +36,25 @@ export type Proposal = {
   requestedById: string;
   approvedBy: { name: string } | null;
   photoUrls: string[];
+  // Quy cách chậu của đề xuất Trồng (Kho thị trường, từ Phòng sản phẩm đạt/không đạt) — null nếu không có.
+  plantStageCode: string | null;
 };
 export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
 
+// 3 phòng của Kho thị trường — đề xuất từ các phòng này do Đối tác vận hành gửi.
+const MARKET_ROOM_TYPE_SET = new Set(["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"]);
+
 // Đề xuất của Quản lý kho thành phẩm từ Phòng chờ xử lý chỉ Admin cấp cao duyệt (xem
 // requiresSuperAdminApproval, src/lib/garden-handover.ts) — Admin thường không hiện nút Duyệt/Từ chối.
+// Đề xuất của Kho thị trường chỉ QL thị trường (NV bán hàng phụ trách kho) duyệt — Admin không hiện nút
+// (khớp PATCH /api/contamination-proposals/[id]).
 export function canApproveProposal(p: Proposal, role: string | null | undefined): boolean {
+  if (p.room?.type && MARKET_ROOM_TYPE_SET.has(p.room.type)) return role === "SALE";
+  if (role === "SALE") return false;
   return p.room?.type !== "PHONG_CHO_XU_LY" || role === "SUPER_ADMIN";
 }
+
+const POT_OPTIONS = Object.entries(POT_SPEC_LABELS).map(([value, label]) => ({ value, label }));
 
 // Nhóm các dòng cùng batchCode (cùng 1 lần bấm "Gửi đề xuất trồng/hủy") thành 1 "đề xuất" — dòng cũ tạo
 // trước khi có tính năng gộp (batchCode null) hiển thị như 1 đề xuất riêng, dùng chính code của nó.
@@ -120,23 +132,28 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
   const [type, setType] = useState<"TRONG" | "HUY">(proposal.type);
   const [quantity, setQuantity] = useState(String(proposal.quantity));
   const [notes, setNotes] = useState(proposal.notes ?? "");
+  const [potStageCode, setPotStageCode] = useState(proposal.plantStageCode ?? "");
   const [saving, setSaving] = useState(false);
+  // Kho thị trường: Trồng từ Phòng sản phẩm đạt/không đạt phải chọn quy cách chậu (cây vào Phòng cây trồng).
+  const needsPotSpec = type === "TRONG" && (proposal.room?.type === "PHONG_SAN_PHAM_DAT" || proposal.room?.type === "PHONG_SAN_PHAM_KHONG_DAT");
 
   const resetForm = () => {
     setType(proposal.type);
     setQuantity(String(proposal.quantity));
     setNotes(proposal.notes ?? "");
+    setPotStageCode(proposal.plantStageCode ?? "");
   };
 
   const submit = async () => {
     const value = Number(quantity);
     if (!Number.isFinite(value) || value <= 0) { toast.error("Số lượng không hợp lệ"); return; }
+    if (needsPotSpec && !potStageCode) { toast.error("Chọn quy cách chậu cho phần Trồng"); return; }
     setSaving(true);
     try {
       const res = await fetch(`/api/contamination-proposals/${proposal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resubmit: true, type, quantity: value, notes: notes.trim() || undefined }),
+        body: JSON.stringify({ resubmit: true, type, quantity: value, notes: notes.trim() || undefined, plantStageCode: needsPotSpec ? potStageCode : undefined }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       toast.success(`Đã sửa & gửi lại phiếu ${proposal.code}`);
@@ -176,6 +193,17 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
               </SelectContent>
             </Select>
           </div>
+          {needsPotSpec && (
+            <div className="space-y-1">
+              <Label className="text-xs">Quy cách chậu (cây chuyển sang Phòng cây trồng khi được duyệt)</Label>
+              <Select items={POT_OPTIONS} value={potStageCode || null} onValueChange={(v) => setPotStageCode((v as string) ?? "")}>
+                <SelectTrigger><SelectValue placeholder="Chọn quy cách chậu" /></SelectTrigger>
+                <SelectContent>
+                  {POT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1">
             <Label className="text-xs">Số lượng</Label>
             <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
@@ -252,7 +280,10 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
                   </div>
                 )}
               </td>
-              <td className="px-3 py-2 text-foreground">{p.stageCode}</td>
+              <td className="px-3 py-2 text-foreground whitespace-nowrap">
+                {p.stageCode}
+                {p.plantStageCode && <span className="text-text-secondary"> → {finishedStageLabel(p.plantStageCode)}</span>}
+              </td>
               <td className="px-3 py-2 text-right font-medium text-foreground">{p.quantity.toLocaleString("vi-VN")}</td>
               {(canApprove || canSubmit) && (
                 <td className="px-3 py-2">

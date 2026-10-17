@@ -5,7 +5,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
-import { moveApprovedMarketPlantingToPlantRoom } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover } from "@/lib/market-inspection";
 
 const include = {
   plantType: { select: { code: true, name: true } },
@@ -64,16 +64,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const { batchCode } = await params;
   const pending = await prisma.contaminationProposal.findMany({
     where: { ...batchWhere(batchCode), status: "PENDING" },
-    select: { id: true, warehouseId: true, room: { select: { type: true } } },
+    select: { id: true, warehouseId: true, room: { select: { type: true } }, warehouse: { select: { type: true } } },
   });
   if (pending.length === 0) return NextResponse.json({ message: "Không có dòng nào đang chờ duyệt" }, { status: 400 });
 
-  // Cả batch cùng 1 kho (1 người gửi 1 lần) — chỉ cần tra quyền theo warehouseId của dòng đầu, giống hệt
-  // permission ở PATCH /api/contamination-proposals/[id].
-  const isSaleApprover = session?.user?.role === "SALE" && !!(await prisma.retailWarehouseAccess.findUnique({
-    where: { userId_warehouseId: { userId: session.user.id, warehouseId: pending[0].warehouseId } },
-  }));
-  if (!isSaleApprover && !isAdminRole(session?.user?.role)) {
+  // Cả batch cùng 1 kho (1 người gửi 1 lần) — chỉ cần tra quyền theo kho của dòng đầu, giống hệt
+  // permission ở PATCH /api/contamination-proposals/[id] (Kho thị trường: chỉ QL thị trường; còn lại: Admin).
+  const canApprove = pending[0].warehouse.type === "THI_TRUONG"
+    ? await isMarketSaleApprover(session?.user?.id ?? "", session?.user?.role, pending[0].warehouseId)
+    : isAdminRole(session?.user?.role);
+  if (!canApprove) {
     return NextResponse.json({ message: "Bạn không có quyền duyệt đề xuất này" }, { status: 403 });
   }
 

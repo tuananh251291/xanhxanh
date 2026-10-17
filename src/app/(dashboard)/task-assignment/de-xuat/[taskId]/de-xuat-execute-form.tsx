@@ -14,11 +14,14 @@ import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 import { CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS } from "@/lib/contamination-proposal-constants";
 import MultiPhotoSlotGroup from "@/components/shared/multi-photo-slot-group";
+import { POT_SPEC_LABELS } from "@/types";
+
+const POT_OPTIONS = Object.entries(POT_SPEC_LABELS).map(([value, label]) => ({ value, label }));
 
 type Room = { id: string; name: string; type: string };
 type Garden = { id: string; code: string; name: string };
 type Lot = { id: string; plantTypeId: string; stageCode: string; quantity: number; plantType: { code: string; name: string } };
-type RowValue = { huy: string; trong: string; huyPhotos: string[]; trongPhotos: string[] };
+type RowValue = { huy: string; trong: string; huyPhotos: string[]; trongPhotos: string[]; potStageCode: string };
 
 export default function DeXuatExecuteForm({
   taskId, taskCode, taskTitle, deadlineLabel, rooms, gardens, initialRoomId, plantCategoryCodes, isMarketPartner, roomLocked = false,
@@ -55,6 +58,9 @@ export default function DeXuatExecuteForm({
   const [confirmOpen, setConfirmOpen] = useState(false);
   // key = `${lotId}:huy|trong` — ô nào đang tải ảnh lên.
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  // Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm đạt/không đạt — cây sẽ vào Phòng cây trồng khi QL thị
+  // trường duyệt, nên phải chọn quy cách chậu (S/M/L/C) cho từng dòng. Trồng từ chính Phòng cây trồng thì không.
+  const needsPotSpec = isMarketPartner && rooms.find((r) => r.id === roomId)?.type !== "PHONG_CAY_TRONG";
 
   const loadLots = useCallback(async (id: string) => {
     setLoadingLots(true);
@@ -70,7 +76,7 @@ export default function DeXuatExecuteForm({
 
   useEffect(() => { if (roomId) loadLots(roomId); }, [roomId, loadLots]);
 
-  const getValue = (lotId: string): RowValue => values[lotId] ?? { huy: "", trong: "", huyPhotos: [], trongPhotos: [] };
+  const getValue = (lotId: string): RowValue => values[lotId] ?? { huy: "", trong: "", huyPhotos: [], trongPhotos: [], potStageCode: "" };
   const setValue = (lotId: string, patch: Partial<RowValue>) =>
     setValues((prev) => ({ ...prev, [lotId]: { ...getValue(lotId), ...patch } }));
 
@@ -109,7 +115,7 @@ export default function DeXuatExecuteForm({
     lots
       .map((l) => {
         const v = getValue(l.id);
-        return { lot: l, huy: parseInt(v.huy, 10) || 0, trong: parseInt(v.trong, 10) || 0, huyPhotos: v.huyPhotos, trongPhotos: v.trongPhotos };
+        return { lot: l, huy: parseInt(v.huy, 10) || 0, trong: parseInt(v.trong, 10) || 0, huyPhotos: v.huyPhotos, trongPhotos: v.trongPhotos, potStageCode: v.potStageCode };
       })
       .filter((r) => r.huy > 0 || r.trong > 0);
 
@@ -122,8 +128,9 @@ export default function DeXuatExecuteForm({
     if (rows.length === 0 && isMarketPartner) { toast.error("Chưa nhập số lượng dòng nào"); return; }
     for (const r of rows) {
       if (r.huy > r.lot.quantity || r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: số lượng vượt quá tồn kho`); return; }
-      // Kho thành phẩm: hủy + chuyển phòng đều trừ khỏi CÙNG lô này nên tổng không được vượt tồn.
-      if (!isMarketPartner && r.huy + r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: tổng hủy + chuyển vượt quá tồn kho`); return; }
+      // Hủy + trồng/chuyển phòng đều trừ khỏi CÙNG lô này nên tổng không được vượt tồn.
+      if (r.huy + r.trong > r.lot.quantity) { toast.error(`${r.lot.plantType.code}: tổng hủy + ${isMarketPartner ? "trồng" : "chuyển"} vượt quá tồn kho`); return; }
+      if (needsPotSpec && r.trong > 0 && !r.potStageCode) { toast.error(`${r.lot.plantType.code}: chọn quy cách chậu cho phần đề xuất trồng`); return; }
       // Không bắt buộc chọn Vườn sản xuất khi không có vườn nào để chọn (Đối tác vận hành ở Kho thị
       // trường — xem page.tsx truyền gardens=[] cho trường hợp này).
       if (r.trong > 0 && !productionGardenId && gardens.length > 0) { toast.error(`Chưa chọn Vườn sản xuất cho dòng ${trongLabel}`); return; }
@@ -165,9 +172,9 @@ export default function DeXuatExecuteForm({
     let successCount = 0;
     try {
       for (const r of rows) {
-        const calls: { type: "HUY" | "TRONG"; quantity: number; photoUrls: string[] }[] = [];
+        const calls: { type: "HUY" | "TRONG"; quantity: number; photoUrls: string[]; plantStageCode?: string }[] = [];
         if (r.huy > 0) calls.push({ type: "HUY", quantity: r.huy, photoUrls: r.huyPhotos });
-        if (r.trong > 0) calls.push({ type: "TRONG", quantity: r.trong, photoUrls: r.trongPhotos });
+        if (r.trong > 0) calls.push({ type: "TRONG", quantity: r.trong, photoUrls: r.trongPhotos, plantStageCode: needsPotSpec ? r.potStageCode : undefined });
         for (const c of calls) {
           const res = await fetch("/api/contamination-proposals", {
             method: "POST",
@@ -181,6 +188,7 @@ export default function DeXuatExecuteForm({
               batchCode,
               dailyTaskId: taskId,
               photoUrls: c.photoUrls,
+              plantStageCode: c.plantStageCode,
               // productionGardenId (state) có thể là null (chưa chọn/không có vườn nào, xem gardens.length
               // === 0) — gửi undefined thay vì null vì z.string().optional() không nhận null.
               productionGardenId: c.type === "TRONG" && productionGardenId ? productionGardenId : undefined,
@@ -193,8 +201,9 @@ export default function DeXuatExecuteForm({
         }
       }
       if (successCount > 0) {
-        toast.success(`Đã gửi ${successCount} đề xuất cho Admin duyệt`);
-        router.push("/task-assignment");
+        toast.success(`Đã gửi ${successCount} đề xuất cho QL thị trường duyệt`);
+        // Đối tác vận hành không vào được /task-assignment (bị đẩy về Dashboard) — về thẳng Dashboard.
+        router.push("/dashboard");
       }
     } finally {
       setSubmitting(false);
@@ -255,7 +264,8 @@ export default function DeXuatExecuteForm({
           <CardContent className="space-y-4">
             {isMarketPartner && (
               <p className="text-sm text-info-foreground bg-info-light rounded-lg p-3">
-                Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/trồng để quản lý kĩ thuật xác nhận lại.
+                Bạn cần đính kèm ảnh sản phẩm cho phần đề xuất huỷ/trồng để QL thị trường xác nhận lại.
+                {needsPotSpec && <><br />Phần đề xuất trồng cần chọn quy cách chậu — khi được duyệt, cây chuyển sang Phòng cây trồng theo quy cách này.</>}
                 <br />
                 Lưu ý hình ảnh cần chụp trên nền trắng, sắp xếp gọn gàng để hiển thị rõ số lượng, các lỗi
                 của cây, tem tên cây quay ra mặt trước.
@@ -307,6 +317,18 @@ export default function DeXuatExecuteForm({
                               value={getValue(l.id).trong}
                               onChange={(e) => setValue(l.id, { trong: e.target.value })}
                             />
+                            {needsPotSpec && (parseInt(getValue(l.id).trong, 10) || 0) > 0 && (
+                              <Select
+                                items={POT_OPTIONS}
+                                value={getValue(l.id).potStageCode || null}
+                                onValueChange={(v) => setValue(l.id, { potStageCode: (v as string) ?? "" })}
+                              >
+                                <SelectTrigger className="h-9 w-full mt-1.5"><SelectValue placeholder="Quy cách chậu" /></SelectTrigger>
+                                <SelectContent>
+                                  {POT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            )}
                           </td>
                           {isMarketPartner && (
                             <>

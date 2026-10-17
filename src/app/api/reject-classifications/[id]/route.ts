@@ -5,6 +5,7 @@ import { isAdminRole } from "@/types";
 import { upsertLot } from "@/lib/goods-receipt";
 import { deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
+import { POT_STAGE_CODE_LIST } from "@/lib/market-inspection";
 import type { UserRole } from "@prisma/client";
 import { z } from "zod";
 
@@ -48,6 +49,8 @@ const submitSchema = z.object({
       destroyQuantity: z.number().int().min(0),
       destroyPhotoUrls: z.array(z.string()).default([]),
       plantPhotoUrls: z.array(z.string()).default([]),
+      // Quy cách chậu (S/M/L/C) của phần Trồng — bắt buộc khi phần Trồng > 0.
+      plantStageCode: z.string().optional(),
     })
   ),
 });
@@ -59,11 +62,17 @@ const approveSchema = z.object({
       itemId: z.string(),
       destroyQuantity: z.number().int().min(0),
       saleNote: z.string().optional(),
+      // QL thị trường sửa được quy cách chậu lúc duyệt — không truyền = giữ quy cách Đối tác đã chọn.
+      plantStageCode: z.string().optional(),
     })
   ),
 });
 
 const patchSchema = z.union([submitSchema, approveSchema]);
+
+function isPotStageCode(code: string | null | undefined): code is string {
+  return !!code && (POT_STAGE_CODE_LIST as string[]).includes(code);
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -103,12 +112,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (plantQuantity > 0 && row.plantPhotoUrls.length === 0) {
         return NextResponse.json({ message: `Cần đính kèm ảnh cho phần đề xuất trồng (${item.stageCode})` }, { status: 400 });
       }
+      if (plantQuantity > 0 && !isPotStageCode(row.plantStageCode)) {
+        return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/C) cho phần đề xuất trồng (${item.stageCode})` }, { status: 400 });
+      }
+    }
+    if (new Set(parsed.data.items.map((r) => r.itemId)).size !== classification.items.length) {
+      return NextResponse.json({ message: "Cần phân loại đủ mọi dòng không đạt" }, { status: 400 });
     }
 
+    const [failedRoomForSubmit, plantTypesForSubmit] = await Promise.all([
+      prisma.room.findFirst({ where: { warehouseId: classification.warehouseId, type: "PHONG_SAN_PHAM_KHONG_DAT", isActive: true }, select: { id: true } }),
+      prisma.plantType.findMany({ where: { id: { in: classification.items.map((it) => it.plantTypeId) } }, select: { id: true, code: true } }),
+    ]);
+    if (!failedRoomForSubmit) {
+      return NextResponse.json({ message: "Kho thị trường thiếu Phòng sản phẩm không đạt — liên hệ Admin kiểm tra lại kho" }, { status: 400 });
+    }
+    const submitPlantCodeById = new Map(plantTypesForSubmit.map((p) => [p.id, p.code]));
+
     const submitItems = parsed.data.items;
+    try {
     await prisma.$transaction(async (tx) => {
+      // Khoá trạng thái — bấm gửi 2 lần cùng lúc thì lần sau bị chặn (không tạm trừ tồn 2 lần).
+      const locked = await tx.rejectedGoodsClassification.updateMany({
+        where: { id, status: "PENDING_CLASSIFICATION" },
+        data: { status: "PENDING_APPROVAL", submittedAt: new Date(), stockDeductedAt: new Date() },
+      });
+      if (locked.count === 0) throw new InsufficientRoomStockError("Đề xuất đã được gửi trước đó");
       for (const row of submitItems) {
         const item = itemById.get(row.itemId)!;
+        // Tạm trừ NGAY toàn bộ số Không đạt (Hủy + Trồng luôn bằng đúng số này) khỏi Phòng sản phẩm không
+        // đạt — lúc QL thị trường duyệt không trừ lại, chỉ cộng phần Trồng (theo số đã duyệt) vào Phòng cây trồng.
+        await deductFromRoomFifo(tx, failedRoomForSubmit.id, item.plantTypeId, item.stageCode, item.rejectedQuantity, `${submitPlantCodeById.get(item.plantTypeId) ?? ""} ${item.stageCode} (Phòng sản phẩm không đạt)`);
+        const plantQuantity = item.rejectedQuantity - row.destroyQuantity;
         await tx.rejectedGoodsClassificationItem.update({
           where: { id: row.itemId },
           data: {
@@ -116,18 +151,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             plantQuantity: item.rejectedQuantity - row.destroyQuantity,
             destroyPhotoUrls: row.destroyPhotoUrls,
             plantPhotoUrls: row.plantPhotoUrls,
+            plantStageCode: plantQuantity > 0 ? row.plantStageCode : null,
           },
         });
       }
-      await tx.rejectedGoodsClassification.update({
-        where: { id },
-        data: { status: "PENDING_APPROVAL", submittedAt: new Date() },
-      });
       await tx.alert.updateMany({
         where: { type: "REJECTED_GOODS_CLASSIFICATION_PENDING", relatedId: id, status: "UNREAD" },
         data: { status: "READ", readAt: new Date() },
       });
     });
+    } catch (err) {
+      if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+      throw err;
+    }
 
     await createAlertForMarketSaleStaff({
       warehouseId: classification.warehouseId,
@@ -161,6 +197,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (row.destroyQuantity > item.rejectedQuantity) {
       return NextResponse.json({ message: `Số lượng huỷ (${item.stageCode}) vượt quá số không đạt` }, { status: 400 });
     }
+    if (row.plantStageCode !== undefined && !isPotStageCode(row.plantStageCode)) {
+      return NextResponse.json({ message: `Quy cách chậu không hợp lệ (${item.stageCode})` }, { status: 400 });
+    }
+    // Phiếu cũ (gửi trước khi có quy cách chậu, chưa tạm trừ) được giữ quy cách túi gốc nếu QL không chọn chậu.
+    if (item.rejectedQuantity - row.destroyQuantity > 0 && classification.stockDeductedAt && !(row.plantStageCode ?? item.plantStageCode)) {
+      return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/C) cho phần trồng (${item.stageCode})` }, { status: 400 });
+    }
   }
 
   const [failedRoom, plantRoom] = await Promise.all([
@@ -189,16 +232,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const plantQuantity = item.rejectedQuantity - row.destroyQuantity;
       const plantTypeCode = plantTypeCodeById.get(item.plantTypeId)!;
 
-      // Trừ FIFO qua các lô của Phòng sản phẩm không đạt, THIẾU thì báo lỗi — trước đây chỉ trừ lô cũ nhất
-      // (có thể âm), không tìm thấy lô thì BỎ QUA trừ nhưng vẫn cộng phần Trồng sang Phòng cây trồng.
-      await deductFromRoomFifo(tx, failedRoom.id, item.plantTypeId, item.stageCode, item.rejectedQuantity, `${plantTypeCode} ${item.stageCode} (Phòng sản phẩm không đạt)`);
+      const plantStageCode = plantQuantity > 0 ? (row.plantStageCode ?? item.plantStageCode) : null;
+
+      // Phiếu đã tạm trừ lúc Đối tác gửi (stockDeductedAt) thì không trừ lại — Hủy + Trồng luôn bằng đúng số
+      // Không đạt nên QL sửa số Hủy cũng không đổi tổng đã trừ. Phiếu cũ chưa tạm trừ thì trừ FIFO tại đây,
+      // THIẾU thì báo lỗi.
+      if (!classification.stockDeductedAt) {
+        await deductFromRoomFifo(tx, failedRoom.id, item.plantTypeId, item.stageCode, item.rejectedQuantity, `${plantTypeCode} ${item.stageCode} (Phòng sản phẩm không đạt)`);
+      }
       if (plantQuantity > 0) {
-        await upsertLot(tx, plantRoom.id, item.plantTypeId, plantTypeCode, item.stageCode, plantQuantity, staffCode);
+        await upsertLot(tx, plantRoom.id, item.plantTypeId, plantTypeCode, plantStageCode ?? item.stageCode, plantQuantity, staffCode);
       }
 
       await tx.rejectedGoodsClassificationItem.update({
         where: { id: row.itemId },
-        data: { destroyQuantity: row.destroyQuantity, plantQuantity, saleNote: row.saleNote },
+        data: { destroyQuantity: row.destroyQuantity, plantQuantity, saleNote: row.saleNote, plantStageCode },
       });
     }
     await tx.rejectedGoodsClassification.update({

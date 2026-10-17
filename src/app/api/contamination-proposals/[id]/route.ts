@@ -6,7 +6,7 @@ import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
-import { moveApprovedMarketPlantingToPlantRoom } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const schema = z.union([
@@ -19,6 +19,8 @@ const schema = z.union([
     type: z.enum(["TRONG", "HUY"]),
     quantity: z.number().int().positive(),
     notes: z.string().optional(),
+    // Quy cách chậu — bắt buộc khi Kho thị trường đề xuất Trồng từ Phòng sản phẩm đạt/không đạt.
+    plantStageCode: z.string().optional(),
   }),
 ]);
 
@@ -52,6 +54,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { type, quantity, notes } = parsed.data;
 
+    // Kho thị trường: Trồng từ Phòng sản phẩm đạt/không đạt phải chọn quy cách chậu (cây sẽ vào Phòng cây
+    // trồng theo quy cách này lúc duyệt) — các trường hợp khác luôn để null.
+    let plantStageCode: string | null = null;
+    if (type === "TRONG" && proposal.warehouse.type === "THI_TRUONG" && proposal.roomId) {
+      const room = await prisma.room.findUnique({ where: { id: proposal.roomId }, select: { type: true } });
+      if (room && room.type !== "PHONG_CAY_TRONG") {
+        if (!parsed.data.plantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(parsed.data.plantStageCode)) {
+          return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
+        }
+        plantStageCode = parsed.data.plantStageCode;
+      }
+    }
+
     // Đổi sang Trồng cho đề xuất Kho thành phẩm CHƯA từng chọn Vườn sản xuất (tạo lúc type=HUY) — không
     // hỗ trợ chọn Vườn ở đây (giữ form sửa đơn giản, chỉ Số lượng/Loại/Ghi chú), phải gửi đề xuất mới qua
     // form thường nếu thực sự cần đổi hẳn sang Trồng.
@@ -83,7 +98,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return tx.contaminationProposal.update({
         where: { id },
         data: {
-          type, quantity, notes,
+          type, quantity, notes, plantStageCode,
           status: "PENDING",
           approvedById: null,
           approvedAt: null,
@@ -122,7 +137,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const proposal = await prisma.contaminationProposal.findUnique({
     where: { id },
     include: {
-      plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true } }, requestedBy: { select: { code: true } },
+      plantType: { select: { code: true, name: true } }, warehouse: { select: { code: true, type: true } }, requestedBy: { select: { code: true } },
       room: { select: { type: true } },
     },
   });
@@ -131,13 +146,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Đề xuất từ Phòng chờ xử lý chỉ Admin cấp cao được duyệt" }, { status: 403 });
   }
 
-  // NV bán hàng có RetailWarehouseAccess tới đúng kho này (đề xuất do Đối tác vận hành gửi) cũng duyệt
-  // được, KHÔNG chỉ Admin — Kho mô/Kho thành phẩm không ai gán RetailWarehouseAccess nên vẫn chỉ Admin
-  // duyệt được như cũ (xem canApprove ở page.tsx, khớp isSaleApprover ở PATCH /api/reject-classifications/[id]).
-  const isSaleApprover = session?.user?.role === "SALE" && !!(await prisma.retailWarehouseAccess.findUnique({
-    where: { userId_warehouseId: { userId: session.user.id, warehouseId: proposal.warehouseId } },
-  }));
-  if (!isSaleApprover && !isAdminRole(session?.user?.role)) {
+  // Đề xuất của Kho thị trường (Đối tác vận hành gửi) — CHỈ QL thị trường (NV bán hàng có
+  // RetailWarehouseAccess tới đúng kho) duyệt, Admin không duyệt thay (khớp Phân loại hàng không đạt).
+  // Kho mô/Kho thành phẩm vẫn chỉ Admin duyệt như cũ (xem canApprove ở page.tsx).
+  const canApprove = proposal.warehouse.type === "THI_TRUONG"
+    ? await isMarketSaleApprover(session?.user?.id ?? "", session?.user?.role, proposal.warehouseId)
+    : isAdminRole(session?.user?.role);
+  if (!canApprove) {
     return NextResponse.json({ message: "Bạn không có quyền duyệt đề xuất này" }, { status: 403 });
   }
   if (proposal.status !== "PENDING") return NextResponse.json({ message: "Đề xuất đã được xử lý" }, { status: 400 });
