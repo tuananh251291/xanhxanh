@@ -13,6 +13,8 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { SURPLUS_TRANSFER_TAG, sumLotQuantity } from "@/types";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
+import QualityDefectLegend from "@/components/shared/quality-defect-legend";
+import { QUALITY_DEFECT_COUNT, emptyDefects, sumDefects } from "@/lib/quality-defects";
 
 type Shelf = {
   id: string;
@@ -54,9 +56,10 @@ export default function TransferReceiveBoard() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [shelfMap, setShelfMap] = useState<Record<string, string>>({});
-  // Chia số lượng thành phẩm (theo từng loại cây + quy cách T01/T05) vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý
-  // lúc nhận từ Phòng ra rễ — key = `${transferId}:${plantTypeId}:${stageCode}:${roomId}`.
-  const [splitInputs, setSplitInputs] = useState<Record<string, number>>({});
+  // Đánh giá chất lượng lúc nhận thành phẩm từ Phòng ra rễ — số lượng [Lỗi 1..Lỗi 5] theo từng loại cây + quy
+  // cách (xem src/lib/quality-defects.ts); tổng lỗi → Phòng chờ xử lý, còn lại → Phòng đạt tiêu chuẩn (server
+  // tự chia, xem qualityChecks ở PATCH /api/transfers/[id]). key = transferId:plantTypeId:stageCode.
+  const [defectInputs, setDefectInputs] = useState<Record<string, number[]>>({});
   const [processing, setProcessing] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -86,7 +89,7 @@ export default function TransferReceiveBoard() {
     items: TransferItem[],
     mode: "auto" | "manual" | "noShelf" | "split",
     isSurplus: boolean,
-    finishedSplit?: { roomId: string; plantTypeId: string; stageCode: string; quantity: number }[]
+    qualityChecks?: { plantTypeId: string; stageCode: string; defectQuantities: number[] }[]
   ) => {
     const assignments = mode === "manual"
       ? items.map((item) => ({ lotId: item.lotId, shelfId: shelfMap[item.lotId] ?? "" }))
@@ -99,7 +102,7 @@ export default function TransferReceiveBoard() {
         body: JSON.stringify({
           action: "confirm",
           shelfAssignments: assignments,
-          ...(mode === "split" ? { finishedSplit } : {}),
+          ...(mode === "split" ? { qualityChecks } : {}),
         }),
       });
       // Server lỗi 500 (VD transaction quá hạn) trả về body không phải JSON — không được để res.json() ném
@@ -214,19 +217,18 @@ export default function TransferReceiveBoard() {
                     const groups = Object.values(groupMap).sort((a, b) =>
                       a.plantTypeCode === b.plantTypeCode ? a.stageCode.localeCompare(b.stageCode) : a.plantTypeCode.localeCompare(b.plantTypeCode)
                     );
-                    const splitKey = (plantTypeId: string, stageCode: string, roomId: string) => `${t.id}:${plantTypeId}:${stageCode}:${roomId}`;
-                    const getSplit = (g: SplitGroup, roomId: string) => splitInputs[splitKey(g.plantTypeId, g.stageCode, roomId)] ?? 0;
-                    const rowSum = (g: SplitGroup) =>
-                      (datRoom ? getSplit(g, datRoom.id) : 0) + (choXuLyRoom ? getSplit(g, choXuLyRoom.id) : 0);
-                    const allMatched = datRoom && choXuLyRoom && groups.length > 0 && groups.every((g) => rowSum(g) === g.total);
+                    const defectKey = (g: SplitGroup) => `${t.id}:${g.plantTypeId}:${g.stageCode}`;
+                    const getDefects = (g: SplitGroup) => defectInputs[defectKey(g)] ?? emptyDefects();
+                    const setDefect = (g: SplitGroup, idx: number, value: number) =>
+                      setDefectInputs((prev) => ({ ...prev, [defectKey(g)]: getDefects(g).map((v, j) => (j === idx ? value : v)) }));
+                    const defectTotal = (g: SplitGroup) => sumDefects(getDefects(g));
+                    const allMatched = datRoom && choXuLyRoom && groups.length > 0 && groups.every((g) => defectTotal(g) <= g.total);
 
                     const submitSplit = () => {
                       if (!datRoom || !choXuLyRoom) return;
-                      const finishedSplit = groups.flatMap((g) => [
-                        { roomId: datRoom.id, plantTypeId: g.plantTypeId, stageCode: g.stageCode, quantity: getSplit(g, datRoom.id) },
-                        { roomId: choXuLyRoom.id, plantTypeId: g.plantTypeId, stageCode: g.stageCode, quantity: getSplit(g, choXuLyRoom.id) },
-                      ]).filter((s) => s.quantity > 0);
-                      confirm(t.id, t.items, "split", false, finishedSplit);
+                      confirm(t.id, t.items, "split", false, groups.map((g) => ({
+                        plantTypeId: g.plantTypeId, stageCode: g.stageCode, defectQuantities: getDefects(g),
+                      })));
                     };
 
                     const isExpanded = expanded === t.id;
@@ -273,9 +275,10 @@ export default function TransferReceiveBoard() {
                               <div className="space-y-3">
                                 {isExternalFinishedHandoff ? (
                                   <>
-                                    <p className="text-xs text-text-secondary bg-info-light rounded p-2">
-                                      Kho thành phẩm không quản lý theo giàn kệ — chia số lượng theo từng loại cây + quy cách vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý (được phép chia vào 1 hoặc cả 2 phòng).
+                                    <p className="text-xs text-text-secondary">
+                                      Đánh giá chất lượng theo từng mã cây + quy cách: điền số cây mỗi loại lỗi. Tổng lỗi tự vào {choXuLyRoom?.name ?? "Phòng chờ xử lý"}, phần còn lại tự vào {datRoom?.name ?? "Phòng đạt tiêu chuẩn"}.
                                     </p>
+                                    <QualityDefectLegend />
                                     {!datRoom || !choXuLyRoom ? (
                                       <p className="text-sm text-destructive flex items-center gap-1.5">
                                         <AlertTriangle className="w-4 h-4" /> Chưa có đủ Phòng đạt tiêu chuẩn / Phòng chờ xử lý trong kho thành phẩm — liên hệ Admin tạo phòng.
@@ -285,48 +288,42 @@ export default function TransferReceiveBoard() {
                                         <table className="w-full text-sm">
                                           <thead>
                                             <tr className="bg-primary-light">
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Mã cây</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tên cây chi tiết</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Quy cách</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Tổng theo phiếu</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{datRoom.name}</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">{choXuLyRoom.name}</th>
-                                              <th className="text-left px-3 py-2 text-sm text-primary-strong font-bold">Đã nhập</th>
+                                              <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Mã cây</th>
+                                              <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Quy cách</th>
+                                              <th className="text-right px-3 py-2 text-base text-primary-strong font-bold whitespace-nowrap">Tổng theo phiếu</th>
+                                              {Array.from({ length: QUALITY_DEFECT_COUNT }, (_, i) => (
+                                                <th key={i} className="text-left px-2 py-2 text-base text-primary-strong font-bold whitespace-nowrap">Lỗi {i + 1}</th>
+                                              ))}
+                                              <th className="text-right px-3 py-2 text-base text-primary-strong font-bold whitespace-nowrap">{choXuLyRoom.name}</th>
+                                              <th className="text-right px-3 py-2 text-base text-primary-strong font-bold whitespace-nowrap">{datRoom.name}</th>
                                             </tr>
                                           </thead>
                                           <tbody>
                                             {groups.map((g) => {
-                                              const matched = rowSum(g) === g.total;
+                                              const defects = getDefects(g);
+                                              const over = defectTotal(g) > g.total;
                                               return (
                                                 <tr key={`${g.plantTypeId}:${g.stageCode}`} className="border-b last:border-0 even:bg-primary-light">
-                                                  <td className="px-3 py-2 font-mono text-xs">{g.plantTypeCode}</td>
-                                                  <td className="px-3 py-2">{g.plantTypeName}</td>
+                                                  <td className="px-3 py-2 font-mono">{g.plantTypeCode}</td>
                                                   <td className="px-3 py-2 font-medium">{g.stageCode}</td>
-                                                  <td className="px-3 py-2">{g.total.toLocaleString("vi-VN")}</td>
-                                                  <td className="px-3 py-2">
-                                                    <Input
-                                                      type="number"
-                                                      min={0}
-                                                      className="w-24 h-8"
-                                                      value={getSplit(g, datRoom.id) || ""}
-                                                      onChange={(e) =>
-                                                        setSplitInputs((prev) => ({ ...prev, [splitKey(g.plantTypeId, g.stageCode, datRoom.id)]: Math.max(0, parseInt(e.target.value, 10) || 0) }))
-                                                      }
-                                                    />
+                                                  <td className="px-3 py-2 text-right tabular-nums">{g.total.toLocaleString("vi-VN")}</td>
+                                                  {defects.map((v, i) => (
+                                                    <td key={i} className="px-2 py-2">
+                                                      <Input
+                                                        type="number"
+                                                        min={0}
+                                                        className="w-16 h-8"
+                                                        placeholder="0"
+                                                        value={v || ""}
+                                                        onChange={(e) => setDefect(g, i, Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                                      />
+                                                    </td>
+                                                  ))}
+                                                  <td className={`px-3 py-2 text-right font-medium tabular-nums ${over ? "text-destructive" : "text-foreground"}`}>
+                                                    {defectTotal(g).toLocaleString("vi-VN")}
                                                   </td>
-                                                  <td className="px-3 py-2">
-                                                    <Input
-                                                      type="number"
-                                                      min={0}
-                                                      className="w-24 h-8"
-                                                      value={getSplit(g, choXuLyRoom.id) || ""}
-                                                      onChange={(e) =>
-                                                        setSplitInputs((prev) => ({ ...prev, [splitKey(g.plantTypeId, g.stageCode, choXuLyRoom.id)]: Math.max(0, parseInt(e.target.value, 10) || 0) }))
-                                                      }
-                                                    />
-                                                  </td>
-                                                  <td className={`px-3 py-2 font-medium ${matched ? "text-primary-strong" : "text-destructive"}`}>
-                                                    {rowSum(g).toLocaleString("vi-VN")} / {g.total.toLocaleString("vi-VN")}
+                                                  <td className="px-3 py-2 text-right font-medium tabular-nums text-primary-strong">
+                                                    {over ? "—" : (g.total - defectTotal(g)).toLocaleString("vi-VN")}
                                                   </td>
                                                 </tr>
                                               );
@@ -337,7 +334,7 @@ export default function TransferReceiveBoard() {
                                     )}
                                     {datRoom && choXuLyRoom && !allMatched && (
                                       <p className="text-sm text-destructive flex items-center gap-1.5">
-                                        <AlertTriangle className="w-4 h-4" /> Tổng số lượng chưa khớp với phiếu bàn giao — vui lòng kiểm tra lại.
+                                        <AlertTriangle className="w-4 h-4" /> Tổng lỗi vượt quá số lượng theo phiếu ở dòng tô đỏ — vui lòng kiểm tra lại.
                                       </p>
                                     )}
                                   </>

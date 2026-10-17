@@ -630,6 +630,8 @@ model User {
   orchidCustomer                        OrchidCustomer?
   orchidRetailPoint                     OrchidRetailPoint?
 
+  transferQualityChecks TransferQualityCheck[] @relation("TransferQualityCheckBy")
+
   @@map("users")
 }
 
@@ -929,6 +931,8 @@ model PlantType {
   stockCountItems                  StockCountItem[]
   finishedGoodsCheckLines          FinishedGoodsCheckLine[]
 
+  transferQualityChecks TransferQualityCheck[]
+
   @@unique([categoryId, seq])
   @@map("plant_types")
 }
@@ -1164,6 +1168,10 @@ model GoodsReceiptItem {
   returnQuantityNhiem    Int?
   returnQuantityKhongDat Int?
   returnQuantity         Int?
+  // Số lượng theo 5 loại lỗi [Lỗi 1..Lỗi 5] (xem QUALITY_DEFECT_LABELS, src/lib/quality-defects.ts) — thay 2 cột
+  // Nhiễm/Không đạt từ 17/10/2026; vẫn ghi returnQuantityNhiem = Lỗi 1, returnQuantityKhongDat = Lỗi 2..5 để
+  // dữ liệu cũ/mới đọc chung được. Rỗng = dòng kiểm tra trước khi có 5 loại lỗi.
+  returnDefectQuantities Int[]     @default([])
   returnedAt             DateTime?
   returnedById           String?
   returnedBy             User?     @relation("GoodsReceiptItemReturnedBy", fields: [returnedById], references: [id])
@@ -2772,6 +2780,8 @@ model Transfer {
   items                       TransferItem[]
   inspection                  TransferInspection?
   rejectedGoodsClassification RejectedGoodsClassification?
+
+  qualityChecks TransferQualityCheck[]
 
   @@map("transfers")
 }
@@ -4594,4 +4604,25 @@ model OrchidRetailPayment {
   createdAt     DateTime              @default(now())
 
   @@map("orchid_retail_payments")
+}
+
+// Đánh giá chất lượng lúc Kho thành phẩm nhận bàn giao thành phẩm từ Phòng ra rễ (PATCH /api/transfers/[id]
+// action=confirm) — 1 dòng / (phiếu, mã cây, quy cách). defectQuantities = [Lỗi 1..Lỗi 5] (xem
+// QUALITY_DEFECT_LABELS, src/lib/quality-defects.ts); tổng lỗi vào Phòng chờ xử lý, phần còn lại
+// (totalQuantity − tổng lỗi) vào Phòng đạt tiêu chuẩn.
+model TransferQualityCheck {
+  id               String    @id @default(cuid())
+  transferId       String
+  transfer         Transfer  @relation(fields: [transferId], references: [id])
+  plantTypeId      String
+  plantType        PlantType @relation(fields: [plantTypeId], references: [id])
+  stageCode        String
+  totalQuantity    Int
+  defectQuantities Int[]
+  checkedById      String
+  checkedBy        User      @relation("TransferQualityCheckBy", fields: [checkedById], references: [id])
+  createdAt        DateTime  @default(now())
+
+  @@index([transferId])
+  @@map("transfer_quality_checks")
 }

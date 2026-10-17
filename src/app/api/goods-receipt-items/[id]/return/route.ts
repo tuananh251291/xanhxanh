@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { QUALITY_DEFECT_COUNT, sumDefects } from "@/lib/quality-defects";
 
+// [Lỗi 1..Lỗi 5] — xem QUALITY_DEFECT_LABELS (src/lib/quality-defects.ts).
 const schema = z.object({
-  returnQuantityNhiem: z.number().int().min(0),
-  returnQuantityKhongDat: z.number().int().min(0),
+  defectQuantities: z.array(z.number().int().min(0)).length(QUALITY_DEFECT_COUNT),
 });
 
 // "Kiểm tra" + "Trả hàng" — chỉ áp dụng cho dòng nhập hàng của nhà cung cấp cho phép trả hàng
 // (Supplier.allowsReturn). Kho thành phẩm kiểm tra lại trong vòng Supplier.returnWindowDays ngày kể từ
-// ngày nhập, phát hiện thêm cây không đạt trong số đã tính "đạt" lúc nhập, phân loại theo lỗi Nhiễm/Không
-// đạt tiêu chuẩn — bấm "Xác nhận gửi trả NCC" sẽ trừ thẳng TỔNG 2 loại lỗi khỏi lô ĐÚNG QUY CÁCH
+// ngày nhập, phát hiện thêm cây không đạt trong số đã tính "đạt" lúc nhập, phân loại theo 5 loại lỗi
+// (Lỗi 1..Lỗi 5) — bấm "Xác nhận gửi trả NCC" sẽ trừ thẳng TỔNG 5 loại lỗi khỏi lô ĐÚNG QUY CÁCH
 // (item.stageCode) đã cộng ở Phòng đạt tiêu chuẩn lúc nhập hàng (giảm cả tồn thực tế lẫn tồn đạt tiêu
 // chuẩn vì hàng rời kho thật, khác phần "không đạt" ban đầu vẫn nằm nguyên trong Phòng theo dõi). Cả 2 số
 // lượng = 0 vẫn hợp lệ — nghĩa là đã kiểm tra, không phát hiện thêm lỗi.
@@ -25,8 +26,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { returnQuantityNhiem, returnQuantityKhongDat } = parsed.data;
-  const returnQuantity = returnQuantityNhiem + returnQuantityKhongDat;
+  const { defectQuantities } = parsed.data;
+  const returnQuantity = sumDefects(defectQuantities);
+  // Giữ 2 cột cũ để dữ liệu trước/sau khi đổi sang 5 loại lỗi đọc chung được: Lỗi 1 = Nhiễm, Lỗi 2..5 = Không đạt.
+  const returnQuantityNhiem = defectQuantities[0];
+  const returnQuantityKhongDat = returnQuantity - returnQuantityNhiem;
 
   const item = await prisma.goodsReceiptItem.findUnique({
     where: { id },
@@ -65,7 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       await tx.goodsReceiptItem.update({
         where: { id },
-        data: { returnQuantityNhiem, returnQuantityKhongDat, returnQuantity, returnedAt: new Date(), returnedById: session.user.id },
+        data: { returnDefectQuantities: defectQuantities, returnQuantityNhiem, returnQuantityKhongDat, returnQuantity, returnedAt: new Date(), returnedById: session.user.id },
       });
     });
 

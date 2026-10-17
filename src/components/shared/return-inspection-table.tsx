@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Undo2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { QUALITY_DEFECT_COUNT } from "@/lib/quality-defects";
+import QualityDefectLegend from "./quality-defect-legend";
 
 export type ReturnInspectionItem = {
   id: string;
@@ -21,14 +23,13 @@ export type ReturnInspectionItem = {
 };
 
 function ReturnInspectionRow({ item }: { item: ReturnInspectionItem }) {
-  const [nhiem, setNhiem] = useState("");
-  const [khongDat, setKhongDat] = useState("");
+  // [Lỗi 1..Lỗi 5] — xem QUALITY_DEFECT_LABELS (src/lib/quality-defects.ts).
+  const [defects, setDefects] = useState<string[]>(() => Array.from({ length: QUALITY_DEFECT_COUNT }, () => ""));
   const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
 
-  const nhiemQty = Number(nhiem) || 0;
-  const khongDatQty = Number(khongDat) || 0;
-  const total = nhiemQty + khongDatQty;
+  const defectQtys = defects.map((d) => Math.max(0, parseInt(d, 10) || 0));
+  const total = defectQtys.reduce((s, n) => s + n, 0);
   const overLimit = total > item.quantityPassed;
 
   const submit = async () => {
@@ -38,7 +39,7 @@ function ReturnInspectionRow({ item }: { item: ReturnInspectionItem }) {
       const res = await fetch(`/api/goods-receipt-items/${item.id}/return`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnQuantityNhiem: nhiemQty, returnQuantityKhongDat: khongDatQty }),
+        body: JSON.stringify({ defectQuantities: defectQtys }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
@@ -55,34 +56,24 @@ function ReturnInspectionRow({ item }: { item: ReturnInspectionItem }) {
         <span className="font-mono">{item.receiptCode}</span> · {item.supplierName}
       </td>
       <td className="px-3 py-2 text-sm font-mono text-text-secondary whitespace-nowrap">{item.plantCode}</td>
-      <td className="px-3 py-2 text-sm text-foreground whitespace-nowrap">{item.plantName}</td>
       <td className="px-3 py-2 text-sm text-foreground whitespace-nowrap">{item.stageCode}</td>
       <td className="px-3 py-2 text-sm text-right font-medium tabular-nums whitespace-nowrap">{item.quantityPassed.toLocaleString("vi-VN")}</td>
       <td className="px-3 py-2 whitespace-nowrap">
         <Badge variant={item.overdue ? "overdue" : "in-progress"}>{item.deadlineLabel}</Badge>
       </td>
-      <td className="px-3 py-2">
-        <Input
-          type="number"
-          min={0}
-          className="h-8 w-20 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          value={nhiem}
-          disabled={submitting}
-          onChange={(e) => setNhiem(e.target.value)}
-          placeholder="0"
-        />
-      </td>
-      <td className="px-3 py-2">
-        <Input
-          type="number"
-          min={0}
-          className="h-8 w-20 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          value={khongDat}
-          disabled={submitting}
-          onChange={(e) => setKhongDat(e.target.value)}
-          placeholder="0"
-        />
-      </td>
+      {defects.map((value, i) => (
+        <td key={i} className="px-2 py-2">
+          <Input
+            type="number"
+            min={0}
+            className="h-8 w-16 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            value={value}
+            disabled={submitting}
+            onChange={(e) => setDefects((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
+            placeholder="0"
+          />
+        </td>
+      ))}
       <td className={`px-3 py-2 text-sm text-right font-semibold tabular-nums whitespace-nowrap ${overLimit ? "text-destructive" : "text-foreground"}`}>
         {total.toLocaleString("vi-VN")}
       </td>
@@ -98,26 +89,28 @@ function ReturnInspectionRow({ item }: { item: ReturnInspectionItem }) {
 
 // Bảng "Trả hàng nhà cung cấp" dùng chung ở /goods-receipts (NV kho thành phẩm thao tác) và
 // /task-assignment (Quản lý kho thành phẩm theo dõi/thao tác hộ) — mỗi hàng là 1 GoodsReceiptItem (1 mã
-// cây trong 1 phiếu nhập) đang chờ kiểm tra (returnedAt = null). "Tổng trả" tính LIVE từ 2 ô Nhiễm/Không
-// đạt tiêu chuẩn đang gõ, chưa lưu gì cho tới khi bấm "Xác nhận gửi trả NCC" — khác OrderPickTable (không
+// cây trong 1 phiếu nhập) đang chờ kiểm tra (returnedAt = null). "Tổng trả" tính LIVE từ 5 ô Lỗi 1..Lỗi 5
+// đang gõ, chưa lưu gì cho tới khi bấm "Xác nhận gửi trả NCC" — khác OrderPickTable (không
 // tự lưu khi rời ô) vì đây là thao tác MỘT LẦN duy nhất (item biến mất khỏi bảng ngay sau khi xác nhận).
 export default function ReturnInspectionTable({ items }: { items: ReturnInspectionItem[] }) {
   if (items.length === 0) {
     return <p className="text-sm text-text-muted">Không có dòng nào cần kiểm tra trả hàng</p>;
   }
   return (
+    <div className="space-y-2">
+    <QualityDefectLegend />
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-primary-light text-left text-primary-strong">
             <th className="px-3 py-2 font-bold text-base">Phiếu · NCC</th>
             <th className="px-3 py-2 font-bold text-base">Mã cây</th>
-            <th className="px-3 py-2 font-bold text-base">Tên cây</th>
             <th className="px-3 py-2 font-bold text-base">Quy cách</th>
             <th className="px-3 py-2 font-bold text-base text-right">SL đạt lúc nhập</th>
             <th className="px-3 py-2 font-bold text-base">Hạn kiểm tra</th>
-            <th className="px-3 py-2 font-bold text-base">Nhiễm</th>
-            <th className="px-3 py-2 font-bold text-base">Không đạt tiêu chuẩn</th>
+            {Array.from({ length: QUALITY_DEFECT_COUNT }, (_, i) => (
+              <th key={i} className="px-2 py-2 font-bold text-base whitespace-nowrap">Lỗi {i + 1}</th>
+            ))}
             <th className="px-3 py-2 font-bold text-base text-right">Tổng trả</th>
             <th className="px-3 py-2 font-bold text-base"></th>
           </tr>
@@ -128,6 +121,7 @@ export default function ReturnInspectionTable({ items }: { items: ReturnInspecti
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { generateLotCode, generateRejectClassificationCode } from "@/lib/codes";
 import { createAlert } from "@/lib/inventory";
 import { upsertLot } from "@/lib/goods-receipt";
 import { z } from "zod";
+import { QUALITY_DEFECT_COUNT, sumDefects } from "@/lib/quality-defects";
 
 const confirmSchema = z.object({
   action: z.enum(["confirm", "reject", "assign", "ack"]),
@@ -15,6 +16,14 @@ const confirmSchema = z.object({
   // Nhận thành phẩm từ Phòng ra rễ — chia số lượng theo TỪNG loại cây + quy cách (T01/T05) vào Phòng
   // đạt tiêu chuẩn/Phòng chờ xử lý (không được gộp nhiều loại cây lại rồi chia theo tổng quy cách).
   finishedSplit: z.array(z.object({ roomId: z.string(), plantTypeId: z.string(), stageCode: z.string(), quantity: z.number().int().positive() })).optional(),
+  // Đánh giá chất lượng lúc nhận thành phẩm từ Phòng ra rễ — mỗi loại cây + quy cách 1 dòng [Lỗi 1..Lỗi 5]
+  // (xem src/lib/quality-defects.ts). Có field này thì server TỰ chia phòng: tổng lỗi → Phòng chờ xử lý, phần
+  // còn lại → Phòng đạt tiêu chuẩn (bỏ qua finishedSplit), và lưu TransferQualityCheck.
+  qualityChecks: z.array(z.object({
+    plantTypeId: z.string(),
+    stageCode: z.string(),
+    defectQuantities: z.array(z.number().int().min(0)).length(QUALITY_DEFECT_COUNT),
+  })).optional(),
   // Nhận hàng ở Kho thị trường (từ Kho thành phẩm) — chia số THỰC NHẬN theo từng loại cây + quy cách
   // vào Phòng sản phẩm đạt/không đạt. Tổng 2 số này được phép NHỎ HƠN số đã gửi (hao hụt vận chuyển,
   // không tính thẳng vào đâu — chỉ ghi chú lại ở receiveNotes) nhưng không được vượt quá.
@@ -137,7 +146,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(updated);
   }
 
-  const { action, shelfAssignments, finishedSplit } = parsed.data;
+  const { action, shelfAssignments, qualityChecks } = parsed.data;
+  let { finishedSplit } = parsed.data;
 
   // Kho mô hoàn lại phiếu MM dư (VD NV cấy mô gửi sai số) — phiếu chưa xếp kệ gì nên huỷ hẳn: xoá phiếu + lô
   // MM dư sinh kèm (xem POST /api/instructions/[id]/surplus-handover), bỏ dấu surplusHandedOverAt để NV cấy
@@ -244,6 +254,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const isExternalFinishedHandoff = transfer.fromRoom?.type === "PHONG_RA_RE";
 
     if (isExternalFinishedHandoff) {
+      if (qualityChecks) {
+        const rooms = await prisma.room.findMany({
+          where: { warehouseId: transfer.toWarehouseId, isActive: true, type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY"] } },
+          select: { id: true, type: true },
+        });
+        const datRoomId = rooms.find((r) => r.type === "PHONG_DAT_TIEU_CHUAN")?.id;
+        const choXuLyRoomId = rooms.find((r) => r.type === "PHONG_CHO_XU_LY")?.id;
+        if (!datRoomId || !choXuLyRoomId) {
+          return NextResponse.json({ message: "Kho chưa có đủ Phòng đạt tiêu chuẩn / Phòng chờ xử lý — liên hệ Admin" }, { status: 400 });
+        }
+        const totals = new Map<string, number>();
+        for (const item of transfer.items) {
+          const key = `${item.lot.plantTypeId}:${item.lot.stageCode}`;
+          totals.set(key, (totals.get(key) ?? 0) + item.quantity);
+        }
+        const checkKeys = new Set(qualityChecks.map((c) => `${c.plantTypeId}:${c.stageCode}`));
+        if (checkKeys.size !== qualityChecks.length || checkKeys.size !== totals.size || [...checkKeys].some((k) => !totals.has(k))) {
+          return NextResponse.json({ message: "Đánh giá chất lượng không khớp các dòng của phiếu bàn giao — tải lại trang" }, { status: 400 });
+        }
+        finishedSplit = [];
+        for (const c of qualityChecks) {
+          const total = totals.get(`${c.plantTypeId}:${c.stageCode}`)!;
+          const defectTotal = sumDefects(c.defectQuantities);
+          if (defectTotal > total) {
+            const code = transfer.items.find((i) => i.lot.plantTypeId === c.plantTypeId)?.lot.plantType.code ?? "";
+            return NextResponse.json({ message: `${code} ${c.stageCode}: tổng lỗi vượt quá số lượng theo phiếu` }, { status: 400 });
+          }
+          if (total - defectTotal > 0) finishedSplit.push({ roomId: datRoomId, plantTypeId: c.plantTypeId, stageCode: c.stageCode, quantity: total - defectTotal });
+          if (defectTotal > 0) finishedSplit.push({ roomId: choXuLyRoomId, plantTypeId: c.plantTypeId, stageCode: c.stageCode, quantity: defectTotal });
+        }
+      }
       if (!finishedSplit || finishedSplit.length === 0) {
         return NextResponse.json({ message: "Cần nhập số lượng phân bổ vào Phòng đạt tiêu chuẩn / Phòng chờ xử lý" }, { status: 400 });
       }
@@ -290,7 +331,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         for (const key of totalsByGroup.keys()) {
           const [plantTypeId, stageCode] = key.split(":");
           const groupItems = transfer.items.filter((i) => i.lot.plantTypeId === plantTypeId && i.lot.stageCode === stageCode);
-          const buckets = finishedSplit.filter((s) => s.plantTypeId === plantTypeId && s.stageCode === stageCode && s.quantity > 0);
+          const buckets = finishedSplit!.filter((s) => s.plantTypeId === plantTypeId && s.stageCode === stageCode && s.quantity > 0);
 
           let itemIdx = 0;
           let itemRemaining = groupItems[0]?.quantity ?? 0;
@@ -344,6 +385,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
         await tx.transferItem.updateMany({ where: { transferId: id }, data: { confirmedAt: new Date() } });
         await tx.transfer.update({ where: { id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+        if (qualityChecks) {
+          await tx.transferQualityCheck.createMany({
+            data: qualityChecks.map((c) => ({
+              transferId: id,
+              plantTypeId: c.plantTypeId,
+              stageCode: c.stageCode,
+              totalQuantity: transfer.items
+                .filter((i) => i.lot.plantTypeId === c.plantTypeId && i.lot.stageCode === c.stageCode)
+                .reduce((sum, i) => sum + i.quantity, 0),
+              defectQuantities: c.defectQuantities,
+              checkedById: session.user.id,
+            })),
+          });
+        }
         // Nhận xong — tắt thông báo "Có phiếu bàn giao thành phẩm chờ nhận" (nút "Thực hiện" ở trang
         // Thông báo của Kho thành phẩm, xem GET /api/alerts) cho mọi NV Kho thành phẩm.
         await tx.alert.updateMany({
