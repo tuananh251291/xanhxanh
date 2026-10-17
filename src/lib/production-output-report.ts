@@ -2,6 +2,7 @@ import { addDays, format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { computeProductionRecordForPeriod } from "@/lib/production-record-report";
+import { buildKpiRateMap } from "@/types";
 
 // Báo cáo "Sản lượng ghi nhận" cho HCNS — 1 dòng = 1 NV cấy mô × 1 mã cây × 1 quy cách trong 1 kỳ lương.
 // Số lượng lấy từ computeProductionRecordForPeriod (cùng công thức "ghi nhận" với Bảng lương, theo NGÀY CẤY
@@ -28,7 +29,7 @@ export async function buildProductionOutputReport(params: { month?: string | nul
   const { periodMonth, rangeStart, rangeEnd } = resolvePayrollPeriod(params.month);
   const record = await computeProductionRecordForPeriod(format(rangeStart, "yyyy-MM-dd"), format(addDays(rangeEnd, -1), "yyyy-MM-dd"), params.warehouseId);
   const rates = await prisma.plantTypeKpiRate.findMany({ select: { plantTypeId: true, stageCode: true, vndPerUnit: true } });
-  const rateMap = new Map(rates.map((r) => [`${r.plantTypeId}|${r.stageCode}`, r.vndPerUnit]));
+  const rateMap = buildKpiRateMap(rates);
 
   const q = params.q?.trim().toLowerCase() ?? "";
   const rows: ProductionOutputRow[] = record.rows

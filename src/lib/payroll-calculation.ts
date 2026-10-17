@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolvePayrollPeriod } from "@/lib/payroll-period";
 import { eachDayOfInterval, addDays, format } from "date-fns";
-import { SURPLUS_TRANSFER_TAG } from "@/types";
+import { SURPLUS_TRANSFER_TAG, buildKpiRateMap } from "@/types";
 import { computeAnnualWorkDays, computeKpiDailyRate, type AnnualWorkDays } from "@/lib/kpi-daily-rate";
 
 export type PayrollBreakdown = {
@@ -222,7 +222,7 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
     m.set(key, (m.get(key) ?? 0) + qty);
     recordedByStaffAndPlant.set(staffId, m);
   };
-  const plantRateMap = new Map(plantRates.map((r) => [rateKey(r.plantTypeId, r.stageCode), r.vndPerUnit]));
+  const plantRateMap = buildKpiRateMap(plantRates);
 
   // Sản lượng tính theo NGÀY CẤY của từng lô (Lot.darkRoomEnteredAt = recordDate nhật ký cấy, bất biến) —
   // KHÔNG theo ngày bàn giao/ngày Kho mô nhận. VD lô cấy 31/10, bàn giao 07/11, Kho mô 10/11 mới kiểm tra →

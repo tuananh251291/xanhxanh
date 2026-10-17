@@ -297,6 +297,22 @@ export const FINISHED_SPEC_LABELS = {
 // mô bàn giao phòng tối. Bàn giao quy cách ngoài danh sách (hoặc chưa đặt đơn giá) = quy đổi 0đ.
 export const KPI_RATE_STAGE_CODES = ["M05", "T01", "T05"] as const;
 
+// Quy cách KHÔNG đặt đơn giá riêng mà tính bằng đơn giá của quy cách khác cùng mã cây (17/10/2026: T10 = T05,
+// VD kết quả Chỉ định cấy xử lý ra T10). Hiện chỉ đọc ở trang "Quy đổi sản lượng-KPI".
+export const KPI_RATE_STAGE_ALIASES: Record<string, (typeof KPI_RATE_STAGE_CODES)[number]> = { T10: "T05" };
+
+// Map đơn giá key `${plantTypeId}|${stageCode}` → VNĐ/đơn vị, đã kèm các quy cách dùng chung đơn giá
+// (KPI_RATE_STAGE_ALIASES) — dùng ở mọi nơi quy đổi sản lượng ra tiền (bảng lương, báo cáo sản lượng).
+export function buildKpiRateMap(rates: { plantTypeId: string; stageCode: string; vndPerUnit: number }[]): Map<string, number> {
+  const map = new Map(rates.map((r) => [`${r.plantTypeId}|${r.stageCode}`, r.vndPerUnit]));
+  for (const [alias, source] of Object.entries(KPI_RATE_STAGE_ALIASES)) {
+    for (const r of rates) {
+      if (r.stageCode === source && !map.has(`${r.plantTypeId}|${alias}`)) map.set(`${r.plantTypeId}|${alias}`, r.vndPerUnit);
+    }
+  }
+  return map;
+}
+
 // Số cây trong 1 túi theo quy cách — dùng để quy đổi số cây sang số túi (VD: T05 → chia 5)
 export const FINISHED_SPEC_BAG_SIZE = {
   T01: 1,

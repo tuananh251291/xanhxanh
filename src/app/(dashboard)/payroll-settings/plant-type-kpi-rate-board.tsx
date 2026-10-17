@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import ExcelImportCard from "@/components/shared/excel-import-card";
 import { Loader2, Check, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
-import { KPI_RATE_STAGE_CODES } from "@/types";
+import { KPI_RATE_STAGE_CODES, KPI_RATE_STAGE_ALIASES } from "@/types";
 
 type StageCode = (typeof KPI_RATE_STAGE_CODES)[number];
 type Row = { plantTypeId: string; plantTypeCode: string; plantTypeName: string; rates: Record<StageCode, number | null> };
@@ -108,6 +108,11 @@ export default function PlantTypeKpiRateBoard() {
                         {sc} <span className="font-normal text-sm">(VNĐ/{sc.startsWith("M") ? "cụm" : "cây"})</span>
                       </th>
                     ))}
+                    {Object.entries(KPI_RATE_STAGE_ALIASES).map(([alias, source]) => (
+                      <th key={alias} className="text-right px-4 py-3 text-primary-strong font-bold text-base whitespace-nowrap">
+                        {alias} <span className="font-normal text-sm">(= {source})</span>
+                      </th>
+                    ))}
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -124,6 +129,11 @@ export default function PlantTypeKpiRateBoard() {
                             onChange={(e) => setDrafts((p) => ({ ...p, [draftKey(r.plantTypeId, sc)]: e.target.value }))}
                             className="w-32 h-8 text-right ml-auto"
                           />
+                        </td>
+                      ))}
+                      {Object.entries(KPI_RATE_STAGE_ALIASES).map(([alias, source]) => (
+                        <td key={alias} className="px-4 py-3 text-right text-text-secondary tabular-nums" title={`Tự lấy theo đơn giá ${source}`}>
+                          {draftValue(r, source) === "" ? "—" : Number(draftValue(r, source)).toLocaleString("vi-VN")}
                         </td>
                       ))}
                       <td className="px-4 py-3 text-right">
