@@ -26,6 +26,16 @@ export async function getProcessingRoom(warehouseId: string, client: Client = pr
 // Trừ `quantity` cây (plantTypeId + stageCode) khỏi các lô ACTIVE của 1 phòng, lô cũ trước (FIFO) — kho
 // thành phẩm có thể có nhiều lô cùng mã cây/quy cách trong 1 phòng. Ném InsufficientRoomStockError nếu
 // tổng tồn không đủ (đọc lại trong chính transaction, không tin số client đã xem).
+// Tổng tồn (lô ACTIVE, quantity > 0) của 1 mã cây + quy cách trong 1 phòng — CỘNG mọi lô, không chỉ lô đầu
+// tiên (tồn 1 combo có thể nằm rải nhiều lô). Đi cùng deductFromRoomFifo khi trừ.
+export async function getRoomStock(roomId: string, plantTypeId: string, stageCode: string, client: Client = prisma): Promise<number> {
+  const agg = await client.lot.aggregate({
+    where: { roomId, plantTypeId, stageCode, status: "ACTIVE", quantity: { gt: 0 } },
+    _sum: { quantity: true },
+  });
+  return agg._sum.quantity ?? 0;
+}
+
 export async function deductFromRoomFifo(
   tx: Prisma.TransactionClient,
   roomId: string,

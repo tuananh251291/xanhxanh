@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
+import { getRoomStock, deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
 import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
@@ -81,24 +82,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
     }
 
-    let lotId: string;
+    // Tồn tính TỔNG mọi lô của mã cây + quy cách trong phòng (không chỉ lô đầu tiên), trừ FIFO.
+    let deductRoomId: string;
     if (proposal.roomId) {
-      const lot = await prisma.lot.findFirst({ where: { roomId: proposal.roomId, plantTypeId: proposal.plantTypeId, stageCode: proposal.stageCode, status: "ACTIVE" } });
-      if (!lot || lot.quantity < quantity) {
-        return NextResponse.json({ message: `Phòng không có đủ số lượng cho mã cây/quy cách này (còn ${lot?.quantity ?? 0})` }, { status: 400 });
+      const stock = await getRoomStock(proposal.roomId, proposal.plantTypeId, proposal.stageCode);
+      if (stock < quantity) {
+        return NextResponse.json({ message: `Phòng không có đủ số lượng cho mã cây/quy cách này (còn ${stock})` }, { status: 400 });
       }
-      lotId = lot.id;
+      deductRoomId = proposal.roomId;
     } else {
       const room = await prisma.room.findFirst({ where: { warehouseId: proposal.warehouseId, type: "PHONG_NHIEM" } });
-      const lot = room ? await prisma.lot.findFirst({ where: { roomId: room.id, plantTypeId: proposal.plantTypeId, stageCode: proposal.stageCode, status: "ACTIVE" } }) : null;
-      if (!lot || lot.quantity < quantity) {
-        return NextResponse.json({ message: `Phòng nhiễm không có đủ số lượng cho mã cây/quy cách này (còn ${lot?.quantity ?? 0})` }, { status: 400 });
+      const stock = room ? await getRoomStock(room.id, proposal.plantTypeId, proposal.stageCode) : 0;
+      if (!room || stock < quantity) {
+        return NextResponse.json({ message: `Phòng nhiễm không có đủ số lượng cho mã cây/quy cách này (còn ${stock})` }, { status: 400 });
       }
-      lotId = lot.id;
+      deductRoomId = room.id;
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      await tx.lot.update({ where: { id: lotId }, data: { quantity: { decrement: quantity } } });
+    let updated;
+    try {
+    updated = await prisma.$transaction(async (tx) => {
+      await deductFromRoomFifo(tx, deductRoomId, proposal.plantTypeId, proposal.stageCode, quantity, `${proposal.plantType.code} ${proposal.stageCode}`);
       return tx.contaminationProposal.update({
         where: { id },
         data: {
@@ -110,6 +114,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
     });
+    } catch (err) {
+      if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+      throw err;
+    }
 
     const typeLabel = type === "TRONG" ? "Trồng lại" : "Hủy bỏ";
     const resubmitMessage = `${session.user.name} đã sửa & gửi lại đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${proposal.stageCode}) — phiếu ${proposal.code}`;
