@@ -8,6 +8,8 @@ import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole, isKhoThanhPhamRole, MARKET_LABELS } from "@/types";
 import OrderPickTable from "./order-pick-table";
+import OrderEditDialog from "@/components/shared/order-edit-dialog";
+import { canEditOrderItems } from "@/lib/order-edit";
 
 export default async function OrderPickPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -34,6 +36,11 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
   if (role === "KHO_THANH_PHAM" && order.assignedToId !== session?.user?.id) redirect("/orders/pack");
 
   const canEdit = isKhoThanhPhamRole(role) || isAdminRole(role);
+  // QL Kho TP / Admin cấp cao sửa đơn chưa xuất (thêm/bớt mã, số lượng, quy cách) — xem src/lib/order-edit.ts.
+  const canEditOrder = canEditOrderItems(role) && (order.status === "HELD" || order.status === "CONFIRMED");
+  const plantTypes = canEditOrder
+    ? await prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } })
+    : [];
 
   return (
     <div className="space-y-6">
@@ -41,9 +48,12 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
         <Link href="/orders/pack" className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-foreground mb-2">
           <ArrowLeft className="w-4 h-4" /> Quay lại danh sách
         </Link>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <ListChecks className="w-6 h-6 text-primary-strong" /> Nhặt hàng — {order.code}
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <ListChecks className="w-6 h-6 text-primary-strong" /> Nhặt hàng — {order.code}
+          </h1>
+          {canEditOrder && <OrderEditDialog orderId={order.id} orderCode={order.code} plantTypes={plantTypes} />}
+        </div>
         <p className="text-text-secondary text-sm mt-1">
           {order.customerCode} · {MARKET_LABELS[order.market]} · NV {order.sale.name}
           {order.assignedTo && ` · Giao cho ${order.assignedTo.name} (${order.assignedTo.code})`}
@@ -57,6 +67,8 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
         </CardHeader>
         <CardContent>
           <OrderPickTable
+            // Đơn bị sửa (thêm/bớt dòng, đổi số lượng) thì dựng lại bảng — state nháp khởi tạo 1 lần từ items.
+            key={order.items.map((i) => `${i.id}:${i.quantity}`).join("|")}
             items={order.items.map((item) => ({
               id: item.id,
               plantCode: item.lot.plantType.code,

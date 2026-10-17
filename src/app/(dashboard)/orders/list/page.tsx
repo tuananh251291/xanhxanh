@@ -16,6 +16,7 @@ import ConfirmOrderButton from "./confirm-order-button";
 import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
 import ShipAtEditCell from "./ship-at-edit-cell";
+import OrderEditDialog from "@/components/shared/order-edit-dialog";
 import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } from "@prisma/client";
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
@@ -39,6 +40,7 @@ function OrdersTable({
   linkToDetailPage,
   canEditShipAt,
   showSale = false,
+  editPlantTypes,
 }: {
   title: string;
   description: string;
@@ -55,6 +57,8 @@ function OrdersTable({
   canEditShipAt: boolean;
   // Cột NV bán hàng — chỉ dùng cho mục "Đơn của nhân sự tôi quản lý".
   showSale?: boolean;
+  // Có giá trị = hiện nút "Sửa đơn" (QL Kho TP, xem src/lib/order-edit.ts) — danh sách mã cây để thêm dòng.
+  editPlantTypes?: { id: string; code: string; name: string }[];
 }) {
   return (
     <Card>
@@ -136,6 +140,7 @@ function OrdersTable({
                           }))}
                         />
                       )}
+                      {editPlantTypes && <OrderEditDialog orderId={o.id} orderCode={o.code} plantTypes={editPlantTypes} />}
                       {showActions && (
                         <>
                           <ConfirmOrderButton orderId={o.id} />
@@ -205,6 +210,10 @@ export default async function OrdersListPage() {
       })
     : [];
 
+  const editPlantTypes = isActingForSale
+    ? await prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } })
+    : undefined;
+
   const heldOrders = orders.filter((o) => o.status === "HELD");
   const confirmedOrders = orders.filter((o) => o.status === "CONFIRMED");
 
@@ -232,6 +241,7 @@ export default async function OrdersListPage() {
         showActions
         linkToDetailPage={false}
         canEditShipAt={isActingForSale}
+        editPlantTypes={editPlantTypes}
       />
 
       <OrdersTable
@@ -245,6 +255,7 @@ export default async function OrdersListPage() {
         showActions={false}
         linkToDetailPage
         canEditShipAt={isActingForSale}
+        editPlantTypes={editPlantTypes}
       />
 
       {managedScope.length > 0 && (

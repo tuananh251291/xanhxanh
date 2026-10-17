@@ -497,6 +497,7 @@ export const ALERT_TYPE_LABELS = {
   STOCK_LOW: "Tồn kho thấp",
   LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
+  ORDER_EDITED: "Đơn hàng đã được sửa",
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
   MOTHER_LOT_READY: "Mẫu mẹ sắp đến tuổi cấy chuyển",
   ROOTING_LOT_READY: "Lô ra rễ đến hạn chuyển kho thành phẩm",
@@ -549,6 +550,7 @@ export const ALERT_TYPE_LABELS = {
 // vào vừa đánh dấu đã xem vừa điều hướng thẳng tới đó, thay vì chỉ có nút "Đã xem" chung chung (xem
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
+  ORDER_EDITED: "/orders/list",
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
   OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "/output-deviation-response",
   REJECTED_GOODS_CLASSIFICATION_PENDING: "/market-receive/reject-classification",

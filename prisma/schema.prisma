@@ -381,6 +381,8 @@ enum AlertType {
   // Kho thành phẩm góp ý lúc nhận bàn giao thành phẩm từ Phòng ra rễ (Transfer.receiveFeedback) — gửi NV
   // Kho mô + NV Kỹ thuật của đúng khu sản xuất gửi phiếu.
   TRANSFER_RECEIVE_FEEDBACK
+  // QL Kho thành phẩm / Admin cấp cao sửa đơn chưa xuất (src/lib/order-edit.ts) — báo NV bán hàng của đơn.
+  ORDER_EDITED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
