@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
       stockErrors.push({
         row: r.row,
         label: `${r.orderCode} · ${r.productCode}`,
-        message: `Vượt tồn: ${n.plantTypeCode} ${n.stageCode} cả file cần ${n.quantity.toLocaleString("vi-VN")} cây, tồn kho chỉ còn ${have.toLocaleString("vi-VN")} cây`,
+        message: `Vượt tồn: ${n.plantTypeCode} ${n.stageCode} cả file cần ${n.quantity.toLocaleString("vi-VN")} cây, ${n.roomId === passedRoom.id ? "Phòng sản phẩm đạt" : "Phòng cây trồng"} chỉ còn ${have.toLocaleString("vi-VN")} cây`,
       });
     }
   }
