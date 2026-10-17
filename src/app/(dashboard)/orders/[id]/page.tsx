@@ -40,6 +40,8 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
+  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
+  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
 
   const { id } = await params;
 

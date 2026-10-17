@@ -15,6 +15,8 @@ export default async function OrdersPackPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/pack"))) redirect("/dashboard");
+  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
+  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
 
   const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || role === "ADMIN" || role === "SUPER_ADMIN";
   // NV kho thành phẩm thường chỉ thấy đơn ĐÃ được Quản lý kho thành phẩm phân công cho đúng mình — Quản

@@ -15,6 +15,8 @@ export default async function OrdersPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/orders/create"))) redirect("/dashboard");
+  // Kho mô/Cấy mô không liên quan đơn hàng — chặn hẳn (isPageAllowed mặc định cho phép nếu chưa cấu hình).
+  if (role === "KHO_MO" || role === "CAY_MO") redirect("/dashboard");
 
   // Quản lý kho thành phẩm tạo/giữ đơn HỘ NV bán hàng (xem canActAsSale, src/types/index.ts) — không giới
   // hạn theo khách mình phụ trách như Sale, chỉ cần khách đã có NV bán hàng phụ trách; "Năng lực giữ đơn"
