@@ -50,6 +50,11 @@ export type CayMoQuestStats = {
 // khác ngày trùng mã vào chung 1 nhóm). KHÔNG đòi hỏi đã kiểm tra nhiễm xong — khớp điều kiện
 // product-handover-board.tsx dùng để HIỆN 1 thẻ lô (thẻ vẫn hiện, chỉ bị khoá nút bàn giao) — nếu đòi hỏi
 // thì NV chưa kiểm tra nhiễm lô nào sẽ bị báo "Đã xong" sai dù còn nhiều lô quá hạn đang treo.
+// Lô phòng tối đã nằm trong 1 phiếu bàn giao PENDING (chờ Kho mô xác nhận) vẫn ở phòng tối (status/roomId
+// chưa đổi) nhưng trang Bàn giao sản phẩm + Kiểm tra nhiễm đều ẩn đi (xem /api/lots?roomType=PHONG_TOI) —
+// nhiệm vụ ngày phải loại y hệt, nếu không NV đã bàn giao xong vẫn bị báo "Chưa hoàn thành".
+export const NOT_IN_PENDING_HANDOVER = { transferItems: { none: { transfer: { status: "PENDING" as const } } } };
+
 export function hasPendingDarkRoomHandover(lots: { code: string; enteredAt: Date }[], now: Date = new Date()): boolean {
   const groups = new Map<string, Date>();
   for (const lot of lots) groups.set(`${lot.code}__${format(lot.enteredAt, "yyyy-MM-dd")}`, lot.enteredAt);
@@ -142,6 +147,7 @@ export async function getCayMoQuestStats(userId: string): Promise<CayMoQuestStat
       where: {
         status: "ACTIVE",
         room: { type: "PHONG_TOI", assignedStaffId: userId },
+        ...NOT_IN_PENDING_HANDOVER,
       },
       select: { code: true, enteredAt: true, inspectedAt: true },
     }),

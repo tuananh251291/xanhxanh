@@ -22,7 +22,7 @@ import ProductivityLeaderboard from "@/components/shared/productivity-leaderboar
 import { isMediumOrderInProgress, isMediumSurplusEntryDay, toVnCalendarDate } from "@/lib/medium-orders";
 import { randomGreetingQuote } from "@/lib/greetings";
 import { getInspectionDueAt } from "@/lib/inspection";
-import { hasPendingDarkRoomHandover } from "@/lib/cay-mo-quest-stats";
+import { hasPendingDarkRoomHandover, NOT_IN_PENDING_HANDOVER } from "@/lib/cay-mo-quest-stats";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { summarizeMotherWeekGroups, getMotherRotationEpochResolver } from "@/lib/mother-week-group";
 import { getMyPendingTasks, type MyTask } from "@/lib/task-assignment";
@@ -261,13 +261,14 @@ async function getCayMoStats(userId: string) {
         instruction: { assignedToId: userId },
         inspectedAt: null,
         room: { type: "PHONG_TOI" },
+        ...NOT_IN_PENDING_HANDOVER,
       },
       select: { enteredAt: true },
     }),
     // "Bàn giao sản phẩm" — cùng điều kiện với Giao diện cơ bản (xem hasPendingDarkRoomHandover): chỉ xong
     // khi phòng tối cá nhân không còn lô nào đủ ngày ủ tối thiểu.
     prisma.lot.findMany({
-      where: { status: "ACTIVE", room: { type: "PHONG_TOI", assignedStaffId: userId } },
+      where: { status: "ACTIVE", room: { type: "PHONG_TOI", assignedStaffId: userId }, ...NOT_IN_PENDING_HANDOVER },
       select: { code: true, enteredAt: true },
     }),
     // Luồng Đỏ (hoặc chưa cài đặt luồng) — Kho mô vừa kiểm tra xong 1 phiếu bàn giao, chưa xem kết quả.
