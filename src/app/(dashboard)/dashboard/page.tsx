@@ -39,7 +39,12 @@ import { getRootingEvalWeeklyTask, ROOTING_EVAL_DEADLINE_LABEL } from "@/lib/roo
 // GET /api/trial-varieties/due-rounds (query trực tiếp ở đây để khỏi round-trip fetch nội bộ).
 async function getDueTrialRounds() {
   return prisma.trialCultivationRound.findMany({
-    where: { recordedAt: null, expectedReadyAt: { lte: addDays(new Date(), 3) } },
+    // Lượt có chỉ định cấy R&D: recordedAt luôn null (kết quả nhập theo chỉ định) — chỉ nhắc khi chỉ định còn chạy.
+    where: {
+      recordedAt: null,
+      expectedReadyAt: { lte: addDays(new Date(), 3) },
+      OR: [{ instructionId: null }, { instruction: { status: { in: ["DRAFT", "ACTIVE"] } } }],
+    },
     select: {
       id: true,
       motherInputQuantity: true,
@@ -47,6 +52,8 @@ async function getDueTrialRounds() {
       plantedAt: true,
       expectedReadyAt: true,
       trialVariety: { select: { id: true, code: true, name: true } },
+      // Lượt cấy có chỉ định cấy R&D (mỗi lượt = 1 chỉ định) — kết quả nhập theo chỉ định, không qua form lượt cấy.
+      instructionId: true,
     },
     orderBy: { expectedReadyAt: "asc" },
   });

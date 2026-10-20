@@ -13,7 +13,12 @@ export async function GET() {
   if (!isAdminRole(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
   const rounds = await prisma.trialCultivationRound.findMany({
-    where: { recordedAt: null, expectedReadyAt: { lte: addDays(new Date(), 3) } },
+    // Lượt có chỉ định cấy R&D: recordedAt luôn null (kết quả nhập theo chỉ định) — chỉ nhắc khi chỉ định còn chạy.
+    where: {
+      recordedAt: null,
+      expectedReadyAt: { lte: addDays(new Date(), 3) },
+      OR: [{ instructionId: null }, { instruction: { status: { in: ["DRAFT", "ACTIVE"] } } }],
+    },
     select: {
       id: true,
       motherInputQuantity: true,
@@ -21,6 +26,8 @@ export async function GET() {
       plantedAt: true,
       expectedReadyAt: true,
       trialVariety: { select: { id: true, code: true, name: true } },
+      // Lượt cấy có chỉ định cấy R&D (mỗi lượt = 1 chỉ định) — kết quả nhập theo chỉ định, không qua form lượt cấy.
+      instructionId: true,
     },
     orderBy: { expectedReadyAt: "asc" },
   });

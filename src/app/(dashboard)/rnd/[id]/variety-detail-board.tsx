@@ -21,6 +21,8 @@ type Round = {
   m05Quantity: number | null; t05Quantity: number | null; t01Quantity: number | null;
   mediumType: { code: string; name: string } | null;
   recordedAt: string | null; notes: string | null;
+  // Lượt cấy = 1 chỉ định cấy R&D thật (kết quả nhập theo chỉ định) — null với lượt cũ đã nhập kết quả trước đó.
+  instruction: { id: string; code: string; status: string } | null;
 };
 type VarietyDetail = {
   id: string; code: string; name: string; plantGroup: string; description: string | null; origin: string | null;
@@ -146,7 +148,14 @@ export default function VarietyDetailBoard({ varietyId }: { varietyId: string })
                       <td className="py-2 px-3 text-center tabular-nums">{r.motherInputQuantity.toLocaleString("vi-VN")}</td>
                       <td className="py-2 px-3 text-center tabular-nums">{r.waitWeeks}</td>
                       <td className="py-2 px-3 whitespace-nowrap">{format(new Date(r.expectedReadyAt), "dd/MM/yyyy", { locale: vi })}</td>
-                      {r.recordedAt === null ? (
+                      {r.recordedAt === null && r.instruction ? (
+                        <td className="py-2 px-3 text-center" colSpan={6}>
+                          <Link href={`/rnd-production/${r.instruction.id}`} className="font-mono text-info-foreground underline underline-offset-2">
+                            Chỉ định {r.instruction.code}
+                          </Link>
+                          <span className="text-xs text-text-muted"> — nhập dữ liệu cấy theo chỉ định</span>
+                        </td>
+                      ) : r.recordedAt === null ? (
                         <td className="py-2 px-3 text-center" colSpan={6}><Badge variant="in-progress">Chưa nhập</Badge></td>
                       ) : (
                         <>

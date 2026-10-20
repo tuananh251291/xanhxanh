@@ -43,9 +43,17 @@ export default function TrialRoundTaskCard({ rounds }: { rounds: DueTrialRound[]
                 {" "}(mẫu mẹ đưa vào: {r.motherInputQuantity.toLocaleString("vi-VN")})
               </p>
             </div>
-            <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover shrink-0" onClick={() => setActiveRound(r)}>
-              <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện nhiệm vụ
-            </Button>
+            {r.instructionId ? (
+              <Link href={`/rnd-production/${r.instructionId}`} className="shrink-0">
+                <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover">
+                  <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện nhiệm vụ
+                </Button>
+              </Link>
+            ) : (
+              <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover shrink-0" onClick={() => setActiveRound(r)}>
+                <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện nhiệm vụ
+              </Button>
+            )}
           </div>
         ))}
       </CardContent>

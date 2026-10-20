@@ -33,6 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           m05Quantity: true, t05Quantity: true, t01Quantity: true,
           mediumType: { select: { code: true, name: true } },
           recordedAt: true, notes: true,
+          instruction: { select: { id: true, code: true, status: true } },
         },
       },
     },

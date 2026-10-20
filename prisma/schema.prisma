@@ -1672,6 +1672,12 @@ model TrialCultivationRound {
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
 
+  // Mỗi lượt cấy = 1 chỉ định cấy THẬT tại Kho sản xuất R&D (20/10/2026, xem src/lib/rnd-instruction-create.ts) —
+  // kết quả cấy nhập theo chỉ định (nhật ký cấy), không nhập ở các field kết quả phía trên nữa. NULL = lượt cũ đã
+  // nhập kết quả trước khi có liên kết này.
+  instructionId String?              @unique
+  instruction   PlantingInstruction? @relation(fields: [instructionId], references: [id])
+
   @@index([trialVarietyId])
   @@index([expectedReadyAt])
   @@map("trial_cultivation_rounds")
@@ -1769,6 +1775,8 @@ model PlantingInstruction {
 
   extraWorkRequests          ExtraWorkRequest[] @relation("ExtraWorkRequestCurrentInstruction")
   fulfilledExtraWorkRequests ExtraWorkRequest[] @relation("ExtraWorkRequestFulfilledInstruction")
+
+  trialRound TrialCultivationRound?
 
   @@map("planting_instructions")
 }
@@ -2341,24 +2349,24 @@ enum RejectedGoodsClassificationStatus {
 // duyệt thay vì Admin, và bắt buộc đính kèm ảnh làm bằng chứng cho kỹ thuật đối chiếu (ảnh tự xoá sau 1
 // tháng, xem cleanupExpiredRejectClassificationPhotos ở src/lib/reject-classification-storage.ts).
 model RejectedGoodsClassification {
-  id           String                            @id @default(cuid())
-  code         String                            @unique
-  transferId   String                            @unique
-  transfer     Transfer                          @relation(fields: [transferId], references: [id])
-  warehouseId  String
-  warehouse    Warehouse                         @relation(fields: [warehouseId], references: [id])
-  status       RejectedGoodsClassificationStatus @default(PENDING_CLASSIFICATION)
-  createdById  String
-  createdBy    User                              @relation("RejectClassCreatedBy", fields: [createdById], references: [id])
+  id              String                            @id @default(cuid())
+  code            String                            @unique
+  transferId      String                            @unique
+  transfer        Transfer                          @relation(fields: [transferId], references: [id])
+  warehouseId     String
+  warehouse       Warehouse                         @relation(fields: [warehouseId], references: [id])
+  status          RejectedGoodsClassificationStatus @default(PENDING_CLASSIFICATION)
+  createdById     String
+  createdBy       User                              @relation("RejectClassCreatedBy", fields: [createdById], references: [id])
   // Có giá trị khi Đối tác vận hành bấm "Gửi đề xuất" (status -> PENDING_APPROVAL).
-  submittedAt  DateTime?
-  approvedById String?
-  approvedBy   User?                             @relation("RejectClassApprovedBy", fields: [approvedById], references: [id])
-  approvedAt   DateTime?
+  submittedAt     DateTime?
+  approvedById    String?
+  approvedBy      User?                             @relation("RejectClassApprovedBy", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
   // Đã tạm trừ toàn bộ số Không đạt khỏi Phòng sản phẩm không đạt lúc Đối tác bấm "Gửi đề xuất" — lúc duyệt
   // không trừ lại nữa. NULL = phiếu gửi trước khi có cơ chế tạm trừ (duyệt mới trừ như cũ).
   stockDeductedAt DateTime?
-  createdAt    DateTime                          @default(now())
+  createdAt       DateTime                          @default(now())
 
   items RejectedGoodsClassificationItem[]
 

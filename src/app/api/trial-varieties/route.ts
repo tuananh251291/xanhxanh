@@ -7,6 +7,7 @@ import { uploadTrialVarietyPhoto } from "@/lib/trial-variety-storage";
 import { addWeeks } from "date-fns";
 import { z } from "zod";
 import { ensurePlantTypeForTrialVariety } from "@/lib/trial-variety-plant-type";
+import { prepareRndInstruction, insertRndInstruction } from "@/lib/rnd-instruction-create";
 
 // "Quản lý giống mới" (R&D, /rnd) — danh sách giống thử nghiệm kèm tổng số đợt ảnh/lượt cấy + lượt gần
 // nhất, để hiện bảng tổng quan. TÁCH HOÀN TOÀN khỏi PlantType/Lot thật — xem comment đầu khối model
@@ -86,9 +87,16 @@ export async function POST(req: NextRequest) {
     const plantedAt = new Date();
     const expectedReadyAt = addWeeks(plantedAt, transferWaitWeeks);
 
-    // Giống thử nghiệm mặc định đưa vào sản xuất luôn — tạo kèm mã cây sản xuất cùng mã trong CÙNG transaction
-    // (xem ensurePlantTypeForTrialVariety).
+    // Giống thử nghiệm mặc định đưa vào sản xuất luôn — trong CÙNG transaction: tạo mã cây sản xuất cùng mã
+    // (ensurePlantTypeForTrialVariety), lượt cấy đầu tiên = 1 chỉ định cấy thật tại Kho sản xuất R&D giao cho
+    // người tạo (src/lib/rnd-instruction-create.ts), rồi tạo giống + lượt cấy liên kết chỉ định đó.
+    const prep = await prepareRndInstruction({ plantTypeCode: code, assignedToId: session!.user!.id });
     const variety = await prisma.$transaction(async (tx) => {
+    const plantType = await ensurePlantTypeForTrialVariety(tx, { code, name, plantCategoryId, description, transferWaitWeeks });
+    const instruction = await insertRndInstruction(tx, prep, {
+      plantTypeId: plantType.id, mediumTypeId: null, quantity: motherInputQuantity,
+      createdById: session!.user!.id, assignedToId: session!.user!.id, at: plantedAt,
+    });
     const created = await tx.trialVariety.create({
       data: {
         code,
@@ -106,12 +114,12 @@ export async function POST(req: NextRequest) {
             plantedAt,
             expectedReadyAt,
             createdById: session!.user!.id,
+            instructionId: instruction.id,
           },
         },
       },
       select: { id: true, code: true },
     });
-    await ensurePlantTypeForTrialVariety(tx, { code, name, plantCategoryId, description, transferWaitWeeks });
     return created;
     });
     return NextResponse.json(variety, { status: 201 });

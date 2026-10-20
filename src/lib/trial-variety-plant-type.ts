@@ -7,12 +7,12 @@ import type { Prisma } from "@prisma/client";
 export async function ensurePlantTypeForTrialVariety(
   tx: Prisma.TransactionClient,
   v: { code: string; name: string; plantCategoryId: string; description?: string | null; transferWaitWeeks: number }
-): Promise<{ created: boolean }> {
+): Promise<{ id: string; created: boolean }> {
   const existing = await tx.plantType.findUnique({ where: { code: v.code }, select: { id: true } });
-  if (existing) return { created: false };
+  if (existing) return { id: existing.id, created: false };
   // seq chỉ dùng sắp thứ tự hiển thị trong Loại cây — lấy số lớn nhất + 1 (giống POST /api/plant-types).
   const maxSeq = await tx.plantType.aggregate({ where: { categoryId: v.plantCategoryId }, _max: { seq: true } });
-  await tx.plantType.create({
+  const created = await tx.plantType.create({
     data: {
       code: v.code,
       name: v.name,
@@ -21,6 +21,7 @@ export async function ensurePlantTypeForTrialVariety(
       description: v.description || null,
       transferWaitWeeks: v.transferWaitWeeks,
     },
+    select: { id: true },
   });
-  return { created: true };
+  return { id: created.id, created: true };
 }

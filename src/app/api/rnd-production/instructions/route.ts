@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateLotCode, generateInstructionCode } from "@/lib/codes";
-import { getOrCreateRndWarehouse, getOrCreateRndInputShelf } from "@/lib/rnd-instruction-warehouse";
-import { toStoredWeekStart } from "@/lib/week-rotation";
-import { startOfWeek } from "date-fns";
+import { getOrCreateRndWarehouse } from "@/lib/rnd-instruction-warehouse";
+import { prepareRndInstruction, insertRndInstruction } from "@/lib/rnd-instruction-create";
 import { z } from "zod";
 
 // "Tạo chỉ định cấy R&D" — Admin kỹ thuật tạo 1 chỉ định cấy THẬT tại "Kho sản xuất R&D" (xem
@@ -77,51 +75,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const bucketShelf = await getOrCreateRndInputShelf(rndWarehouse.id, assignedToId);
-
-  const now = new Date();
-  const weekStart = toStoredWeekStart(startOfWeek(now, { weekStartsOn: 1 }));
-  const lotCode = await generateLotCode({ plantTypeCode: plantType.code, staffCode: assignedStaff.code, stageCode: "M05" });
-  const instructionCode = await generateInstructionCode({ warehouseCode: rndWarehouse.code, shelfCode: bucketShelf.code });
-
-  const instruction = await prisma.$transaction(async (tx) => {
-    const lot = await tx.lot.create({
-      data: {
-        code: lotCode,
-        plantTypeId,
-        stage: "MAU_ME",
-        stageCode: "M05",
-        shelfId: bucketShelf.id,
-        quantity,
-        initialQuantity: quantity,
-        status: "PLANTED",
-      },
-    });
-
-    return tx.plantingInstruction.create({
-      data: {
-        code: instructionCode,
-        plantTypeId,
-        createdById: session.user.id,
-        assignedToId,
-        inputMotherQuantity: quantity,
-        status: "ACTIVE",
-        weekStart,
-        handedOverAt: now,
-        handedOverById: session.user.id,
-        motherReceivedAt: now,
-        items: {
-          create: {
-            shelfId: bucketShelf.id,
-            lotId: lot.id,
-            stageCode: "M05",
-            quantity,
-            motherMediumTypeId: mediumTypeId,
-          },
-        },
-      },
-    });
-  });
+  const prep = await prepareRndInstruction({ plantTypeCode: plantType.code, assignedToId });
+  const instruction = await prisma.$transaction((tx) =>
+    insertRndInstruction(tx, prep, { plantTypeId, mediumTypeId, quantity, createdById: session.user.id, assignedToId })
+  );
 
   return NextResponse.json(instruction, { status: 201 });
 }
