@@ -1616,7 +1616,7 @@ function DoiTacVanHanhDashboard({ myTasks, userName }: { myTasks: MyTask[]; user
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Công việc hôm nay của bạn</CardTitle>
-          <p className="text-xs text-text-secondary">Kiểm tra định kì hàng tuần — tự động tạo, gửi đề xuất Trồng/Hủy cho Admin duyệt</p>
+          <p className="text-xs text-text-secondary">Kiểm tra định kì hàng tuần — tự động tạo, gửi đề xuất Trồng/Hủy cho QL thị trường duyệt</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {myTasks.length === 0 ? (
