@@ -6,6 +6,7 @@ import { generateTrialVarietyCode } from "@/lib/codes";
 import { uploadTrialVarietyPhoto } from "@/lib/trial-variety-storage";
 import { addWeeks } from "date-fns";
 import { z } from "zod";
+import { ensurePlantTypeForTrialVariety } from "@/lib/trial-variety-plant-type";
 
 // "Quản lý giống mới" (R&D, /rnd) — danh sách giống thử nghiệm kèm tổng số đợt ảnh/lượt cấy + lượt gần
 // nhất, để hiện bảng tổng quan. TÁCH HOÀN TOÀN khỏi PlantType/Lot thật — xem comment đầu khối model
@@ -85,7 +86,10 @@ export async function POST(req: NextRequest) {
     const plantedAt = new Date();
     const expectedReadyAt = addWeeks(plantedAt, transferWaitWeeks);
 
-    const variety = await prisma.trialVariety.create({
+    // Giống thử nghiệm mặc định đưa vào sản xuất luôn — tạo kèm mã cây sản xuất cùng mã trong CÙNG transaction
+    // (xem ensurePlantTypeForTrialVariety).
+    const variety = await prisma.$transaction(async (tx) => {
+    const created = await tx.trialVariety.create({
       data: {
         code,
         name,
@@ -106,6 +110,9 @@ export async function POST(req: NextRequest) {
         },
       },
       select: { id: true, code: true },
+    });
+    await ensurePlantTypeForTrialVariety(tx, { code, name, plantCategoryId, description, transferWaitWeeks });
+    return created;
     });
     return NextResponse.json(variety, { status: 201 });
   } catch (e) {

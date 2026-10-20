@@ -61,7 +61,7 @@ export default function NewVarietyManager() {
           <div>
             <CardTitle className="text-base">Quản lý giống mới</CardTitle>
             <p className="text-sm text-text-secondary mt-1">
-              Ghi nhận giống cây mới đang thử nghiệm — tách riêng khỏi kho/tồn kho sản xuất thật.
+              Ghi nhận giống cây mới đang thử nghiệm — tạo xong tự có mã cây sản xuất cùng mã (dùng được ngay ở chỉ định cấy, nhập kho...).
             </p>
           </div>
           <CreateVarietyDialog
