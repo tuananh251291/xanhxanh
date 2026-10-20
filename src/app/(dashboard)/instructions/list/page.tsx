@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ClipboardList, Printer, Search, ChevronLeft, ChevronRight, ArrowLeft } from "lucide-react";
+import { ClipboardList, Printer, Search, ChevronLeft, ChevronRight, ArrowLeft, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -105,6 +105,27 @@ export default async function InstructionsListPage({
   ]);
 
   const staffOptions = staff.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
+
+  // Lượt cấy R&D của giống thử nghiệm (TrialVariety, mã VD "MT997" — tách khỏi mã cây sản xuất, không phải
+  // PlantingInstruction nên không nằm trong danh sách trên). Chỉ vai trò Admin (đúng phạm vi trang /rnd). Bộ
+  // lọc Mã cây/Ngày tạo áp dụng chung; Mã chỉ định/Giàn kệ/NV cấy không áp dụng cho R&D.
+  const showRnd = isAdminRole(role);
+  const rndRounds = showRnd
+    ? await prisma.trialCultivationRound.findMany({
+        where: {
+          ...(plantCodeFilter ? { trialVariety: { code: { contains: plantCodeFilter, mode: "insensitive" as const } } } : {}),
+          ...(dateFilter && !Number.isNaN(new Date(dateFilter).getTime())
+            ? { plantedAt: { gte: startOfDay(new Date(dateFilter)), lte: endOfDay(new Date(dateFilter)) } }
+            : {}),
+        },
+        include: {
+          trialVariety: { select: { id: true, code: true, name: true } },
+          createdBy: { select: { name: true } },
+        },
+        orderBy: { plantedAt: "desc" },
+        take: 100,
+      })
+    : [];
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasFilters = !!(codeFilter || dateFilter || shelfFilter || plantCodeFilter || staffFilter);
@@ -260,6 +281,69 @@ export default async function InstructionsListPage({
                     <Button variant="outline" size="sm" disabled>Sau <ChevronRight className="w-4 h-4 ml-1" /></Button>
                   )}
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {showRnd && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="px-4 pt-4 pb-2">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <FlaskConical className="w-5 h-5 text-primary-strong" /> Lượt cấy R&D (giống thử nghiệm)
+              </h2>
+              <p className="text-sm text-text-secondary">
+                {rndRounds.length} lượt cấy — giống thử nghiệm tạo ở mục R&D (VD MT997), tách khỏi kho/lương sản xuất. Lọc theo Mã cây/Ngày tạo ở trên.
+              </p>
+            </div>
+            {rndRounds.length === 0 ? (
+              <p className="px-4 pb-6 text-sm text-text-muted">Chưa có lượt cấy R&D nào{hasFilters ? " khớp bộ lọc" : ""}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-primary-light">
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã giống</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên giống</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Ngày cấy</th>
+                      <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">MM đưa vào</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Đến tuổi cấy</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Kết quả</th>
+                      <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Người tạo</th>
+                      <th className="px-4 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rndRounds.map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
+                        <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{r.trialVariety.code}</td>
+                        <td className="px-4 py-3 text-sm text-foreground">{r.trialVariety.name}</td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{format(r.plantedAt, "dd/MM/yyyy", { locale: vi })}</td>
+                        <td className="px-4 py-3 text-sm text-right tabular-nums">{r.motherInputQuantity.toLocaleString("vi-VN")}</td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{format(r.expectedReadyAt, "dd/MM/yyyy", { locale: vi })}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {r.recordedAt ? (
+                            <span className="text-foreground">
+                              M05 {(r.m05Quantity ?? 0).toLocaleString("vi-VN")} · T05 {(r.t05Quantity ?? 0).toLocaleString("vi-VN")} · T01 {(r.t01Quantity ?? 0).toLocaleString("vi-VN")}
+                            </span>
+                          ) : (
+                            <Badge variant="secondary">Chưa nhập kết quả</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-foreground">{r.createdBy.name}</td>
+                        <td className="px-4 py-3">
+                          <Link href={`/rnd/${r.trialVariety.id}`}>
+                            <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">
+                              <Search className="w-3.5 h-3.5 mr-1.5" /> Xem giống
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>
