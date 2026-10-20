@@ -14,6 +14,10 @@ export async function ensureInstructionsEnded(): Promise<void> {
     where: {
       status: { in: ["ACTIVE", "DRAFT"] },
       weekStart: { lt: currentWeekStart },
+      // Chỉ định của 1 lượt cấy giống thử nghiệm R&D (TrialCultivationRound.instructionId) KHÔNG tự kết thúc
+      // theo tuần — weekStart = tuần cấy, kết quả thường nhập 4-6 tuần sau (đến tuổi cấy) nên kết thúc theo
+      // tuần sẽ đóng chỉ định trước khi kịp nhập. Chỉ kết thúc khi dùng hết mẫu mẹ (POST /api/daily-records).
+      trialRound: { is: null },
     },
     data: { status: "ENDED", endReason: "TIME_UP" },
   });
