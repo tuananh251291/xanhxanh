@@ -6,7 +6,6 @@ import { isAdminRole } from "@/types";
 import PlantTypesContent from "../plant-types/plant-types-content";
 import MediumTypesContent from "../medium-types/medium-types-content";
 import MaterialsContent from "../materials/materials-content";
-import ProductPricesContent from "../product-prices/product-prices-content";
 import SuppliersContent from "../suppliers/suppliers-content";
 import SaleSettingsTabs from "../settings/sale/sale-settings-tabs";
 import CustomersBoard from "../settings/sale/customers/customers-board";
@@ -42,7 +41,6 @@ export default async function MasterDataPage() {
           {role === "SUPER_ADMIN" && (
             <>
               <TabsTrigger value="materials">Vật tư</TabsTrigger>
-              <TabsTrigger value="product-prices">Bảng giá sản phẩm</TabsTrigger>
               <TabsTrigger value="suppliers">Nhà cung cấp</TabsTrigger>
               <TabsTrigger value="sale">Cài đặt Sale</TabsTrigger>
             </>
@@ -59,9 +57,6 @@ export default async function MasterDataPage() {
           <>
             <TabsContent value="materials" className="mt-4">
               <MaterialsContent role={role} />
-            </TabsContent>
-            <TabsContent value="product-prices" className="mt-4">
-              <ProductPricesContent />
             </TabsContent>
             <TabsContent value="suppliers" className="mt-4">
               <SuppliersContent />
