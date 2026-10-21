@@ -499,6 +499,10 @@ export const ALERT_TYPE_LABELS = {
   LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
   ORDER_EDITED: "Đơn hàng đã được sửa",
+  PRICE_LIST_MONTHLY_DUE: "Nhắc cập nhật bảng giá tháng sau",
+  PRICE_LIST_SUBMITTED: "Bảng giá mới chờ duyệt",
+  PRICE_LIST_DECIDED: "Kết quả duyệt bảng giá",
+  EXCHANGE_RATE_MONTHLY_DUE: "Nhắc cập nhật tỉ giá tháng sau",
   MEDIUM_HANDOVER_READY: "Môi trường sẵn sàng bàn giao",
   MOTHER_LOT_READY: "Mẫu mẹ sắp đến tuổi cấy chuyển",
   ROOTING_LOT_READY: "Lô ra rễ đến hạn chuyển kho thành phẩm",
@@ -552,6 +556,10 @@ export const ALERT_TYPE_LABELS = {
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
   ORDER_EDITED: "/orders/list",
+  PRICE_LIST_MONTHLY_DUE: "/price-lists",
+  PRICE_LIST_SUBMITTED: "/price-lists",
+  PRICE_LIST_DECIDED: "/price-lists",
+  EXCHANGE_RATE_MONTHLY_DUE: "/exchange-rates",
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
   OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "/output-deviation-response",
   REJECTED_GOODS_CLASSIFICATION_PENDING: "/market-receive/reject-classification",
@@ -744,6 +752,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings/data-import", label: "Nhập liệu trực tiếp", icon: "UploadCloud" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
+    { href: "/price-lists", label: "Bảng giá tháng", icon: "DollarSign" },
+    { href: "/exchange-rates", label: "Tỉ giá tháng", icon: "TrendingUp" },
+    { href: "/company-profiles", label: "Thông tin công ty (invoice)", icon: "BookOpen" },
     { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
@@ -881,6 +892,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     // Khách hàng + NV quản lý đủ quyền; Thị trường chỉ xem — xem canManageSaleCustomers/canEditSaleMarkets.
     { href: "/settings/sale/customers", label: "Cài đặt Sale", icon: "Flag" },
+    { href: "/price-lists", label: "Bảng giá tháng", icon: "DollarSign" },
     { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
@@ -942,6 +954,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // "Kiểm tra đáp ứng" + "Danh sách đơn hàng" gộp chung 1 mục "Xử lý đơn hàng" (xem /orders, hub y
     // hệt /inventory — trang check/tạo đơn thật đã dời sang /orders/create).
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
+    { href: "/price-lists", label: "Bảng giá tháng", icon: "DollarSign" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   MOI_TRUONG: [
@@ -999,6 +1012,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   // yêu cầu nghiệp vụ cụ thể.
   KE_TOAN: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/exchange-rates", label: "Tỉ giá tháng", icon: "DollarSign" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Dự án hoa lan — mọi role hoa lan KHÔNG có "/dashboard" (proxy.ts chuyển thẳng /dashboard về trang chủ

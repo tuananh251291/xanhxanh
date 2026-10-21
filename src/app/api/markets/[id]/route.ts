@@ -7,6 +7,11 @@ const patchSchema = z.object({
   code: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1).optional(),
   isActive: z.boolean().optional(),
+  // Bảng giá & invoice (xem Market trong schema.prisma).
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Đơn vị tiền 3 chữ cái, VD USD").optional(),
+  derivedCurrency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).nullable().optional(),
+  invoiceCalcKind: z.enum(["US", "EU", "AU", "SEA", "SG", "SIMPLE"]).optional(),
+  priceListEnabled: z.boolean().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -19,7 +24,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
-  const data: { code?: string; name?: string; isActive?: boolean } = { ...parsed.data };
+  const data: z.infer<typeof patchSchema> = { ...parsed.data };
+  if (data.derivedCurrency && data.derivedCurrency === (data.currency ?? (await prisma.market.findUnique({ where: { id }, select: { currency: true } }))?.currency)) {
+    return NextResponse.json({ message: "Đơn vị tiền tự tạo phải khác đơn vị tiền của bảng giá" }, { status: 400 });
+  }
   if (data.code) {
     data.code = data.code.toUpperCase();
     const existing = await prisma.market.findUnique({ where: { code: data.code } });

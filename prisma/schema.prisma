@@ -383,6 +383,12 @@ enum AlertType {
   TRANSFER_RECEIVE_FEEDBACK
   // QL Kho thành phẩm / Admin cấp cao sửa đơn chưa xuất (src/lib/order-edit.ts) — báo NV bán hàng của đơn.
   ORDER_EDITED
+  // Bảng giá / tỉ giá hằng tháng (xem src/lib/pricing-reminders.ts): nhắc NV Trợ lý tải bảng giá tháng sau, nhắc
+  // NV Kế toán nhập tỉ giá tháng sau (từ ngày 28); bảng giá mới chờ Admin cấp cao duyệt; kết quả duyệt.
+  PRICE_LIST_MONTHLY_DUE
+  PRICE_LIST_SUBMITTED
+  PRICE_LIST_DECIDED
+  EXCHANGE_RATE_MONTHLY_DUE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -643,6 +649,10 @@ model User {
   orchidRetailPoint                     OrchidRetailPoint?
 
   transferQualityChecks TransferQualityCheck[] @relation("TransferQualityCheckBy")
+
+  priceListsUploaded   PriceList[]    @relation("PriceListUploadedBy")
+  priceListsDecided    PriceList[]    @relation("PriceListDecidedBy")
+  exchangeRatesUpdated ExchangeRate[] @relation("ExchangeRateUpdatedBy")
 
   @@map("users")
 }
@@ -945,6 +955,8 @@ model PlantType {
   finishedGoodsCheckLines          FinishedGoodsCheckLine[]
 
   transferQualityChecks TransferQualityCheck[]
+
+  priceListItems PriceListItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -3617,8 +3629,19 @@ model Market {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  // ── Bảng giá & invoice (thay Invoice Desk, 21/10/2026) ──
+  // Đơn vị tiền của bảng giá tải lên hằng tháng (VD Thái Lan = THB).
+  currency         String  @default("USD")
+  // Đơn vị tiền thứ 2 TỰ TẠO từ bảng giá chính × tỉ giá tháng của NV Kế toán (VD Thái Lan: USD) — không tải lên.
+  derivedCurrency  String?
+  // Kiểu tính phí ship/thuế khi lập invoice: US | EU | AU | SEA | SG | SIMPLE (xem src/lib/invoice-calc.ts).
+  invoiceCalcKind  String  @default("SIMPLE")
+  // Có cần bảng giá hằng tháng không (nhắc NV Trợ lý tải lên) — tắt cho thị trường chưa dùng invoice.
+  priceListEnabled Boolean @default(true)
+
   customers   Customer[]
   assignments SalesManagerAssignment[]
+  priceLists  PriceList[]
 
   @@map("markets")
 }
@@ -4695,4 +4718,94 @@ model TransferQualityCheck {
 
   @@index([transferId])
   @@map("transfer_quality_checks")
+}
+
+enum PriceListStatus {
+  PENDING // NV Trợ lý / Admin cấp cao vừa tải lên — chờ Admin cấp cao duyệt
+  APPROVED // Có hiệu lực từ đầu tháng `month`
+  REJECTED
+}
+
+// Bảng giá theo bậc số lượng của 1 thị trường cho 1 tháng (thay "Bảng giá sản phẩm" + báo giá PDF của Invoice
+// Desk). Tải lên bằng Excel (xem POST /api/price-lists), Admin cấp cao duyệt. Bảng ĐANG ÁP DỤNG cho 1 tháng =
+// bảng APPROVED có month lớn nhất <= tháng đó (mới duyệt sau cùng nếu trùng tháng) — giữ lịch sử mọi tháng.
+model PriceList {
+  id              String          @id @default(cuid())
+  marketId        String
+  market          Market          @relation(fields: [marketId], references: [id])
+  month           DateTime        @db.Date // ngày 1 của tháng áp dụng
+  currency        String
+  // Nhãn bậc số lượng theo đúng thứ tự cột giá, VD ["5-9","10-19",...,"5000+"].
+  tiers           String[]
+  status          PriceListStatus @default(PENDING)
+  fileName        String?
+  note            String?
+  rejectionReason String?
+  uploadedById    String
+  uploadedBy      User            @relation("PriceListUploadedBy", fields: [uploadedById], references: [id])
+  decidedById     String?
+  decidedBy       User?           @relation("PriceListDecidedBy", fields: [decidedById], references: [id])
+  decidedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  items           PriceListItem[]
+
+  @@index([marketId, month])
+  @@map("price_lists")
+}
+
+// 1 dòng bảng giá. code = mã gốc trong file (VD "AL62", "MT001T10"); plantTypeId/stageCode = đối chiếu sang mã
+// cây + quy cách của hệ thống (AL62 → AL062; T10; chậu 1,7 inch → S, 2,8 inch → M) — null nếu không đối chiếu
+// được (vẫn lưu, hiện cảnh báo). stageCode null với báo giá TC (US/EU/AU) = áp dụng mọi loại túi.
+model PriceListItem {
+  id          String     @id @default(cuid())
+  priceListId String
+  priceList   PriceList  @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  rowNo       Int
+  code        String
+  name        String
+  spec        String
+  plantTypeId String?
+  plantType   PlantType? @relation(fields: [plantTypeId], references: [id])
+  stageCode   String?
+  // (number|null)[] — giá/cây theo từng bậc của PriceList.tiers; null = không bán ở bậc đó.
+  prices      Json
+
+  @@index([priceListId])
+  @@index([plantTypeId])
+  @@map("price_list_items")
+}
+
+// Tỉ giá tháng do NV Kế toán nhập (thay mục 6 Invoice Desk): vndPerUnit = 1 đơn vị tiền = ? VND (quy đổi chéo,
+// VD bảng giá Thái USD tự tạo từ bảng THB); perUsd = 1 USD = ? đơn vị (phụ thu túi 1 cây ĐNA = 0.30 USD × perUsd).
+model ExchangeRate {
+  id          String   @id @default(cuid())
+  month       DateTime @db.Date // ngày 1 của tháng
+  currency    String
+  vndPerUnit  Float
+  perUsd      Float?
+  updatedById String
+  updatedBy   User     @relation("ExchangeRateUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([month, currency])
+  @@map("exchange_rates")
+}
+
+// Thông tin công ty in trên invoice — Admin cấp cao tạo sẵn vài mẫu, NV bán hàng chọn khi lập invoice.
+model CompanyProfile {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  email     String
+  phone     String?
+  taxCode   String?
+  bankInfo  String?  @db.Text
+  note      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("company_profiles")
 }

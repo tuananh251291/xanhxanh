@@ -33,6 +33,8 @@ import { TRAINING_ROADMAP_WEEKS, getCurrentTrainingWeek } from "@/lib/training-r
 import { isEvaluationOverdue } from "@/lib/probation-evaluation";
 import { getRootingHandoffTaskGroups } from "@/lib/rooting-handoff-task";
 import { getRootingEvalWeeklyTask, ROOTING_EVAL_DEADLINE_LABEL } from "@/lib/rooting-quality-evaluation";
+import MonthlyPricingCard from "@/components/shared/monthly-pricing-card";
+import { ensureMonthlyPricingReminders, getMonthlyPricingStatus } from "@/lib/pricing-reminders";
 
 // Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
 // Admin kỹ thuật (R&D là mục riêng của role này, xem ROLE_NAV.ADMIN_KY_THUAT) — cùng nguồn dữ liệu với
@@ -769,6 +771,18 @@ export default async function DashboardPage() {
   if (role === "MOI_TRUONG") {
     const stats = await getMoiTruongStats(userId, session?.user?.workplaceWarehouseId ?? null);
     return <MoiTruongDashboard stats={stats} userName={session?.user?.name ?? ""} />;
+  }
+
+  // NV Trợ lý / NV Kế toán: việc hằng tháng cập nhật bảng giá / tỉ giá tháng sau (nhắc từ ngày 28, xem pricing-reminders.ts).
+  if (role === "TRO_LY" || role === "KE_TOAN") {
+    await ensureMonthlyPricingReminders({ id: userId, role });
+    const pricing = await getMonthlyPricingStatus();
+    return (
+      <div className="space-y-6">
+        <DefaultDashboard role={role} userName={session?.user?.name ?? ""} />
+        <MonthlyPricingCard role={role} status={pricing} />
+      </div>
+    );
   }
 
   return <DefaultDashboard role={role} userName={session?.user?.name ?? ""} />;
