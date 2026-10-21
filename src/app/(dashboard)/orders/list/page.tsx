@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 import { getManagedOrderScope } from "@/lib/customer-manager";
 import ConfirmOrderButton from "./confirm-order-button";
+import OrderInvoiceLink from "./order-invoice-link";
 import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
 import ShipAtEditCell from "./ship-at-edit-cell";
@@ -21,6 +22,7 @@ import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } f
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
   assignedTo: Pick<User, "id" | "name"> | null;
+  invoices?: { id: string; invoiceNo: string; status: string }[];
   sale?: Pick<User, "code" | "name">;
   items: (Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
     lot: Pick<Lot, "stageCode" | "plantTypeId"> & { plantType: Pick<PlantType, "name" | "code"> };
@@ -143,6 +145,7 @@ function OrdersTable({
                       {editPlantTypes && <OrderEditDialog orderId={o.id} orderCode={o.code} plantTypes={editPlantTypes} />}
                       {showActions && (
                         <>
+                          <OrderInvoiceLink orderId={o.id} invoice={o.invoices?.[0] ?? null} />
                           <ConfirmOrderButton orderId={o.id} />
                           <CancelOrderButton orderId={o.id} orderCode={o.code} />
                         </>
@@ -193,6 +196,8 @@ export default async function OrdersListPage() {
         },
       },
       sale: { select: { code: true, name: true } },
+      // Invoice gắn đơn (mới nhất, chưa huỷ) — nút Invoice cạnh Xác nhận: chưa có thì lập mới, có thì mở xem.
+      invoices: { where: { status: { not: "CANCELLED" } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true, invoiceNo: true, status: true } },
   } as const;
   const orders = await prisma.order.findMany({
     where: { status: { in: ["HELD", "CONFIRMED"] }, ...(isActingForSale ? {} : { saleId: session?.user?.id ?? "" }) },

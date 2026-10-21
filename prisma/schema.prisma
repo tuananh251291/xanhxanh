@@ -389,6 +389,9 @@ enum AlertType {
   PRICE_LIST_SUBMITTED
   PRICE_LIST_DECIDED
   EXCHANGE_RATE_MONTHLY_DUE
+  // Invoice có giá nhập tay chờ Admin cấp cao duyệt (relatedId = Invoice.id) / đã duyệt-từ chối (báo người lập).
+  INVOICE_APPROVAL_NEEDED
+  INVOICE_DECIDED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -651,6 +654,8 @@ model User {
   transferQualityChecks TransferQualityCheck[] @relation("TransferQualityCheckBy")
 
   priceListsUploaded   PriceList[]    @relation("PriceListUploadedBy")
+  invoicesCreated      Invoice[]      @relation("InvoiceCreatedBy")
+  invoicesDecided      Invoice[]      @relation("InvoiceDecidedBy")
   priceListsDecided    PriceList[]    @relation("PriceListDecidedBy")
   exchangeRatesUpdated ExchangeRate[] @relation("ExchangeRateUpdatedBy")
 
@@ -2957,6 +2962,7 @@ model Order {
   items              OrderItem[]
   processingRequests OrderProcessingRequest[]
   transfers          Transfer[]
+  invoices           Invoice[]
 
   @@index([customerId])
   @@index([marketWarehouseId])
@@ -3642,6 +3648,7 @@ model Market {
   customers   Customer[]
   assignments SalesManagerAssignment[]
   priceLists  PriceList[]
+  invoices    Invoice[]
 
   @@map("markets")
 }
@@ -3674,6 +3681,7 @@ model Customer {
   // đây là quan hệ tổ chức (đổi 1 lần áp dụng ngay cho mọi khách của NV đó), không phải mốc lưu cố định.
   assignedToId      String?
   assignedTo        User?          @relation("CustomerAssignedTo", fields: [assignedToId], references: [id])
+  invoices          Invoice[]
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
@@ -4806,6 +4814,57 @@ model CompanyProfile {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  invoices  Invoice[]
 
   @@map("company_profiles")
+}
+
+// Trạng thái invoice: không có giá nhập tay → APPROVED ngay khi lưu; có giá nhập tay (sửa giá dòng hoặc dòng
+// nhập tay) → PENDING_APPROVAL chờ Admin cấp cao duyệt (chưa in PDF, chưa dùng để xác nhận đơn được).
+enum InvoiceStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// Invoice của NV bán hàng — báo giá độc lập hoặc gắn 1 đơn hàng (orderId). Lưu tối giản: đầu vào (input) +
+// kết quả tính lúc lưu (result, chụp lại để in đúng số dù bảng giá/tỉ giá/cài đặt đổi sau) — xem
+// src/lib/invoice-engine.ts. Đơn hàng chỉ Xác nhận được khi có invoice APPROVED gắn đơn (xem confirmOrder).
+model Invoice {
+  id               String          @id @default(cuid())
+  invoiceNo        String          @unique
+  invoiceDate      DateTime        @db.Date
+  marketId         String
+  market           Market          @relation(fields: [marketId], references: [id])
+  currency         String
+  priceListId      String?
+  customerId       String?
+  customer         Customer?       @relation(fields: [customerId], references: [id])
+  customerName     String
+  customerAddress  String?
+  customerEmail    String?
+  orderId          String?
+  order            Order?          @relation(fields: [orderId], references: [id])
+  companyProfileId String?
+  companyProfile   CompanyProfile? @relation(fields: [companyProfileId], references: [id])
+  input            Json
+  result           Json
+  total            Float
+  hasManualPrice   Boolean         @default(false)
+  status           InvoiceStatus
+  note             String?
+  rejectionReason  String?
+  createdById      String
+  createdBy        User            @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  decidedById      String?
+  decidedBy        User?           @relation("InvoiceDecidedBy", fields: [decidedById], references: [id])
+  decidedAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([orderId])
+  @@index([createdById])
+  @@index([status])
+  @@map("invoices")
 }
