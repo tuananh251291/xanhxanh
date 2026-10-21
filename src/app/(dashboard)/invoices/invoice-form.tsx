@@ -13,7 +13,7 @@ import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import InvoiceSheet, { type InvoiceSheetProfile } from "@/components/shared/invoice-sheet";
 import {
-  AU_STATES, SHIP_CATS, US_STATES, autoShipCat, blankInvoiceInput, computeInvoice, fmtMoney, isTcProduct, priceKey,
+  AU_STATES, SHIP_CATS, US_STATES, autoShipCat, euSettingsFor, blankInvoiceInput, computeInvoice, fmtMoney, isTcProduct, priceKey,
   type InvoiceContext, type InvoiceInput, type InvoiceLine, type ShipCat,
 } from "@/lib/invoice-engine";
 
@@ -328,13 +328,13 @@ export default function InvoiceForm({
               )}
               {kind === "EU" && (
                 <>
-                  <label className="flex items-center gap-2"><Checkbox checked={input.eu.nl} onCheckedChange={(c) => set("eu", { nl: !!c })} /> Giao tại Hà Lan (bỏ tick = nước EU khác: chỉ tính tiền hàng)</label>
+                  <label className="flex items-center gap-2"><Checkbox checked={input.eu.nl} onCheckedChange={(c) => set("eu", { nl: !!c })} /> {ctx.market.code === "EU" ? "Giao tại Hà Lan (bỏ tick = nước EU khác: chỉ tính tiền hàng)" : "Tính phí vận chuyển (bỏ tick = chỉ tính tiền hàng)"}</label>
                   {input.eu.nl && (
                     <div className="flex flex-wrap gap-3">
-                      <label className="space-y-1"><span className="text-xs text-text-secondary block">Phí DHL chặng cuối (€)</span><NumInput className="h-8 w-28" value={input.eu.lastMile} onChange={(v) => set("eu", { lastMile: v })} /></label>
+                      <label className="space-y-1"><span className="text-xs text-text-secondary block">{ctx.market.code === "EU" ? "Phí DHL chặng cuối" : "Phí giao chặng cuối"} ({input.currency})</span><NumInput className="h-8 w-28" value={input.eu.lastMile} onChange={(v) => set("eu", { lastMile: v })} /></label>
                       <label className="space-y-1"><span className="text-xs text-text-secondary block">Số thùng TC (trống = tự động)</span><NumInput className="h-8 w-28" value={input.eu.tcBoxes} onChange={(v) => set("eu", { tcBoxes: v })} /></label>
                       <label className="space-y-1"><span className="text-xs text-text-secondary block">Thùng cành</span><NumInput className="h-8 w-20" value={input.eu.cutBoxes} onChange={(v) => set("eu", { cutBoxes: v ?? 0 })} /></label>
-                      <label className="flex items-center gap-2 self-end pb-1"><Checkbox checked={input.eu.insurance} onCheckedChange={(c) => set("eu", { insurance: !!c })} /> Mua bảo hiểm DHL ({settings.eu.insurancePct}%)</label>
+                      <label className="flex items-center gap-2 self-end pb-1"><Checkbox checked={input.eu.insurance} onCheckedChange={(c) => set("eu", { insurance: !!c })} /> Mua bảo hiểm vận chuyển ({euSettingsFor(settings, ctx.market.code).insurancePct}%)</label>
                     </div>
                   )}
                 </>

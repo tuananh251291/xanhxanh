@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { SHIP_CATS, US_MILESTONES, type ExtraFee, type ExtraFeeKind, type InvoiceSettings } from "@/lib/invoice-engine";
+import { SHIP_CATS, US_MILESTONES, euSettingsFor, type EuSettings, type ExtraFee, type ExtraFeeKind, type InvoiceSettings } from "@/lib/invoice-engine";
 
 type Market = { code: string; name: string; currency: string; derivedCurrency: string | null; invoiceCalcKind: string };
 const FEE_KINDS: Record<ExtraFeeKind, string> = { PCT_GOODS: "% giá trị hàng", PCT_TOTAL: "% tổng (hàng + phí)", PER_PLANT: "Theo cây", FIXED: "Cố định / invoice" };
@@ -148,23 +148,36 @@ export default function InvoiceSettingsBoard({ markets, canEdit }: { markets: Ma
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Châu Âu (EU — Fertiplant, AMS)</CardTitle></CardHeader>
-            <CardContent className="flex flex-wrap gap-4 items-end">
-              <Field label="Cước thùng TC (€)"><Num value={s.eu.boxTC} onChange={(v) => up((d) => { d.eu.boxTC = n0(v); })} /></Field>
-              <Field label="TC từ 5 thùng"><Num value={s.eu.boxTC5} onChange={(v) => up((d) => { d.eu.boxTC5 = n0(v); })} /></Field>
-              <Field label="Thùng cành (€)"><Num value={s.eu.boxCut} onChange={(v) => up((d) => { d.eu.boxCut = n0(v); })} /></Field>
-              <Field label="Cành từ 5 thùng"><Num value={s.eu.boxCut5} onChange={(v) => up((d) => { d.eu.boxCut5 = n0(v); })} /></Field>
-              <Field label="Sức chứa túi 1"><Num value={s.eu.cap1} onChange={(v) => up((d) => { d.eu.cap1 = n0(v); })} /></Field>
-              <Field label="Túi 5"><Num value={s.eu.cap5} onChange={(v) => up((d) => { d.eu.cap5 = n0(v); })} /></Field>
-              <Field label="Túi 10"><Num value={s.eu.cap10} onChange={(v) => up((d) => { d.eu.cap10 = n0(v); })} /></Field>
-              <Toggle checked={s.eu.handlingEnabled} onChange={(v) => up((d) => { d.eu.handlingEnabled = v; })} label="Phí handling" />
-              <Field label="Handling tối thiểu (€)"><Num value={s.eu.handlingMin} onChange={(v) => up((d) => { d.eu.handlingMin = n0(v); })} /></Field>
-              <Field label="Ngưỡng đơn (€)"><Num value={s.eu.handlingThreshold} onChange={(v) => up((d) => { d.eu.handlingThreshold = n0(v); })} /></Field>
-              <Field label="Handling trên ngưỡng (%)"><Num value={s.eu.handlingPct} onChange={(v) => up((d) => { d.eu.handlingPct = n0(v); })} /></Field>
-              <Field label="Bảo hiểm DHL (%)"><Num value={s.eu.insurancePct} onChange={(v) => up((d) => { d.eu.insurancePct = n0(v); })} /></Field>
-            </CardContent>
-          </Card>
+          {markets.filter((m) => m.invoiceCalcKind === "EU").map((m) => {
+            const e = euSettingsFor(s, m.code);
+            const c = m.currency;
+            // Ghi vào đúng bộ số của thị trường: EU → settings.eu, thị trường khác → euMarkets[mã] (lần đầu chép từ EU).
+            const setE = <K extends keyof EuSettings>(k: K, v: EuSettings[K]) => up((d) => {
+              if (m.code === "EU") { d.eu[k] = v; return; }
+              d.euMarkets ??= {};
+              d.euMarkets[m.code] ??= { ...d.eu };
+              d.euMarkets[m.code][k] = v;
+            });
+            return (
+              <Card key={m.code}>
+                <CardHeader className="pb-2"><CardTitle className="text-base">{m.code === "EU" ? "Châu Âu (EU — Fertiplant, AMS)" : `${m.name} (${m.code}) — cách tính kiểu EU`} <span className="text-xs font-normal text-text-muted">· số tiền tính bằng {c}</span></CardTitle></CardHeader>
+                <CardContent className="flex flex-wrap gap-4 items-end">
+                  <Field label={`Cước thùng TC (${c})`}><Num value={e.boxTC} onChange={(v) => setE("boxTC", n0(v))} /></Field>
+                  <Field label="TC từ 5 thùng"><Num value={e.boxTC5} onChange={(v) => setE("boxTC5", n0(v))} /></Field>
+                  <Field label={`Thùng cành (${c})`}><Num value={e.boxCut} onChange={(v) => setE("boxCut", n0(v))} /></Field>
+                  <Field label="Cành từ 5 thùng"><Num value={e.boxCut5} onChange={(v) => setE("boxCut5", n0(v))} /></Field>
+                  <Field label="Sức chứa túi 1"><Num value={e.cap1} onChange={(v) => setE("cap1", n0(v))} /></Field>
+                  <Field label="Túi 5"><Num value={e.cap5} onChange={(v) => setE("cap5", n0(v))} /></Field>
+                  <Field label="Túi 10"><Num value={e.cap10} onChange={(v) => setE("cap10", n0(v))} /></Field>
+                  <Toggle checked={e.handlingEnabled} onChange={(v) => setE("handlingEnabled", v)} label="Phí handling" />
+                  <Field label={`Handling tối thiểu (${c})`}><Num value={e.handlingMin} onChange={(v) => setE("handlingMin", n0(v))} /></Field>
+                  <Field label={`Ngưỡng đơn (${c})`}><Num value={e.handlingThreshold} onChange={(v) => setE("handlingThreshold", n0(v))} /></Field>
+                  <Field label="Handling trên ngưỡng (%)"><Num value={e.handlingPct} onChange={(v) => setE("handlingPct", n0(v))} /></Field>
+                  <Field label="Bảo hiểm vận chuyển (%)"><Num value={e.insurancePct} onChange={(v) => setE("insurancePct", n0(v))} /></Field>
+                </CardContent>
+              </Card>
+            );
+          })}
 
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-base">Úc (AUS — Leafia)</CardTitle></CardHeader>

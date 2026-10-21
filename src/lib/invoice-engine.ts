@@ -10,6 +10,7 @@ import { tierRange } from "@/lib/price-list-shared";
 // ───────────── Cài đặt ─────────────
 export type UsBox = { id: string; kind: "TC" | "Rooted"; name: string; cap1: number; cap5: number; cap10: number; p45: number; p100: number; p200: number; p300: number; lmCA: number; lmW: number; lmE: number; note: string };
 export type AuBox = { name: string; cap1: number; cap5: number; pack: number; qld: number; out: number };
+export type EuSettings = { boxTC: number; boxTC5: number; boxCut: number; boxCut5: number; cap1: number; cap5: number; cap10: number; handlingEnabled: boolean; handlingMin: number; handlingThreshold: number; handlingPct: number; insurancePct: number };
 export type ExtraFeeKind = "PCT_GOODS" | "PCT_TOTAL" | "PER_PLANT" | "FIXED";
 // optional = NV bán hàng tự tick có tính cho từng invoice hay không; ngược lại luôn tính khi đang bật.
 export type ExtraFee = { id: string; label: string; kind: ExtraFeeKind; value: number; enabled: boolean; optional: boolean };
@@ -28,7 +29,10 @@ export type InvoiceSettings = {
     upsMult: number; upsAdd: number;
     boxes: UsBox[];
   };
-  eu: { boxTC: number; boxTC5: number; boxCut: number; boxCut5: number; cap1: number; cap5: number; cap10: number; handlingEnabled: boolean; handlingMin: number; handlingThreshold: number; handlingPct: number; insurancePct: number };
+  eu: EuSettings;
+  // Thị trường khác dùng cách tính kiểu EU (Market.invoiceCalcKind = "EU", VD KR/CAN/UK/TQ/VN) — mỗi thị trường 1 bộ số
+  // riêng theo đơn vị tiền gốc thị trường, ban đầu chép từ EU. Thị trường EU luôn dùng `eu` ở trên. Xem euSettingsFor.
+  euMarkets: Record<string, EuSettings>;
   au: { shipTiers: { min: number; max: number; rate: number }[]; min5: number; min1: number; boxes: AuBox[]; gstPct: number; gstEnabled: boolean };
   sea: {
     // Phí ship/cây theo nhóm hàng, tính bằng đơn vị tiền gốc của thị trường (Market.currency).
@@ -53,6 +57,8 @@ export const US_STATES = ["CA", ...US_WEST, ...US_EAST, "OTHER"];
 export const AU_STATES = ["QLD", "NSW", "VIC", "SA", "ACT", "NT", "TAS", "WA"];
 export const US_MILESTONES = [45, 100, 200, 300] as const;
 
+const EU_DEFAULT: EuSettings = { boxTC: 650, boxTC5: 650, boxCut: 850, boxCut5: 850, cap1: 680, cap5: 330, cap10: 165, handlingEnabled: true, handlingMin: 110, handlingThreshold: 5500, handlingPct: 2, insurancePct: 2 };
+
 export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   v: 1,
   paypalPct: 4.5, paypalEnabled: true,
@@ -72,7 +78,8 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
       { id: "r45", kind: "Rooted", name: "Rooted box 107×20×45", cap1: 0, cap5: 0, cap10: 0, p45: 748.33, p100: 412.28, p200: 369.95, p300: 281.41, lmCA: 132, lmW: 192, lmE: 240, note: "5 cành 40+ (size Z)" },
     ],
   },
-  eu: { boxTC: 650, boxTC5: 650, boxCut: 850, boxCut5: 850, cap1: 680, cap5: 330, cap10: 165, handlingEnabled: true, handlingMin: 110, handlingThreshold: 5500, handlingPct: 2, insurancePct: 2 },
+  eu: { ...EU_DEFAULT },
+  euMarkets: { KR: { ...EU_DEFAULT }, CAN: { ...EU_DEFAULT }, UK: { ...EU_DEFAULT }, TQ: { ...EU_DEFAULT }, VN: { ...EU_DEFAULT } },
   au: {
     shipTiers: [{ min: 1, max: 49, rate: 5.1 }, { min: 50, max: 99, rate: 3.0 }, { min: 100, max: 299, rate: 2.8 }, { min: 300, max: 500, rate: 2.1 }, { min: 501, max: 1000, rate: 2.0 }, { min: 1001, max: 999999, rate: 1.4 }],
     min5: 20, min1: 10,
@@ -402,9 +409,16 @@ function shipUS({ ctx, O, res, fee, bags, cur, conv }: ShipCtx) {
   res.combineShip = true;
 }
 
+// Bộ số kiểu EU của 1 thị trường: EU dùng settings.eu, thị trường khác dùng euMarkets[mã] (chưa có thì lấy theo EU).
+export function euSettingsFor(S: InvoiceSettings, code: string): EuSettings {
+  return code === "EU" ? S.eu : S.euMarkets?.[code] ?? S.eu;
+}
+
 function shipEU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
-  const E = ctx.settings.eu, o = O.eu;
-  if (!o.nl) { res.warnings.push("Giao ngoài Hà Lan: invoice chỉ gồm tiền hàng, phí ship báo riêng."); return; }
+  const E = euSettingsFor(ctx.settings, ctx.market.code), o = O.eu;
+  const isEU = ctx.market.code === "EU";
+  const base = ctx.market.currency;
+  if (!o.nl) { res.warnings.push(isEU ? "Giao ngoài Hà Lan: invoice chỉ gồm tiền hàng, phí ship báo riêng." : "Không tính phí vận chuyển: invoice chỉ gồm tiền hàng, phí ship báo riêng."); return; }
   const f = bags[1] / E.cap1 + bags[5] / E.cap5 + bags[10] / E.cap10;
   const autoTC = res.plants ? Math.max(1, Math.ceil(f - 1e-9)) : 0;
   const tcBoxes = o.tcBoxes ?? autoTC; const cutBoxes = +o.cutBoxes || 0;
@@ -412,14 +426,14 @@ function shipEU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
   if (!totalBoxes) { res.pending = true; return; }
   const tcRate = totalBoxes >= 5 ? E.boxTC5 : E.boxTC, cutRate = totalBoxes >= 5 ? E.boxCut5 : E.boxCut;
   res.boxNote = `${tcBoxes} TC box(es)${cutBoxes ? ` + ${cutBoxes} cutting box(es)` : ""} (TC box ${Math.round(f * 100)}% full)`;
-  fee("DPU AMS freight (VN → cleared quarantine at AMS)", conv(tcBoxes * tcRate + cutBoxes * cutRate), "ship", { detail: `${tcBoxes} × €${tcRate}${cutBoxes ? ` + ${cutBoxes} × €${cutRate}` : ""}` });
+  fee(isEU ? "DPU AMS freight (VN → cleared quarantine at AMS)" : "Freight (VN → destination)", conv(tcBoxes * tcRate + cutBoxes * cutRate), "ship", { detail: `${tcBoxes} × ${fmtMoney(tcRate, base)}${cutBoxes ? ` + ${cutBoxes} × ${fmtMoney(cutRate, base)}` : ""}` });
   if (E.handlingEnabled) {
-    const small = res.goods <= E.handlingThreshold;
-    fee(`Handling Fertiplant BV (${small ? `order ≤ €${E.handlingThreshold}: minimum` : `${E.handlingPct}% of order value`})`, small ? conv(E.handlingMin) : res.goods * E.handlingPct / 100, "fee");
+    const small = res.goods <= conv(E.handlingThreshold);
+    fee(`${isEU ? "Handling Fertiplant BV" : "Handling"} (${small ? `order ≤ ${fmtMoney(E.handlingThreshold, base)}: minimum` : `${E.handlingPct}% of order value`})`, small ? conv(E.handlingMin) : res.goods * E.handlingPct / 100, "fee");
   }
-  if (o.insurance) fee(`DHL last-mile insurance ${E.insurancePct}% of goods value`, res.goods * E.insurancePct / 100, "fee");
-  if (o.lastMile == null) { res.blockers.push("Nhập phí DHL chặng cuối (theo địa chỉ, cân nặng, kích thước thùng)"); res.pending = true; }
-  else fee("Last-mile shipping DHL 2 days (AMS → customer address)", o.lastMile, "ship");
+  if (o.insurance) fee(`${isEU ? "DHL last-mile" : "Shipping"} insurance ${E.insurancePct}% of goods value`, res.goods * E.insurancePct / 100, "fee");
+  if (o.lastMile == null) { res.blockers.push(isEU ? "Nhập phí DHL chặng cuối (theo địa chỉ, cân nặng, kích thước thùng)" : "Nhập phí giao chặng cuối (theo địa chỉ, cân nặng, kích thước thùng)"); res.pending = true; }
+  else fee(isEU ? "Last-mile shipping DHL 2 days (AMS → customer address)" : "Last-mile shipping (to customer address)", o.lastMile, "ship");
   if (totalBoxes >= 5) res.warnings.push("Từ 5 thùng: giá cước \"đang cập nhật\" — kiểm tra lại ở Cài đặt invoice.");
 }
 
