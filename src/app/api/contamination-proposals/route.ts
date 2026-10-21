@@ -30,7 +30,7 @@ const createSchema = z.object({
   // Ảnh bằng chứng (đã tải lên trước qua POST /api/contamination-proposals/photos) — CHỈ bắt buộc khi
   // người gửi là Đối tác vận hành (xem nhánh isMarketPartner bên dưới), Kho mô/Kho thành phẩm bỏ trống.
   photoUrls: z.array(z.string()).default([]),
-  // Quy cách chậu (S/M/L/C) — bắt buộc khi Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm đạt/không đạt
+  // Quy cách chậu (S/M/L/X/Y/Z/C) — bắt buộc khi Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm đạt/không đạt
   // (cây vào Phòng cây trồng theo quy cách này lúc QL thị trường duyệt), các trường hợp khác bỏ qua.
   plantStageCode: z.string().optional(),
 });
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     // cách chậu — lúc duyệt cây được cộng vào Phòng cây trồng theo quy cách này (moveApprovedMarketPlantingToPlantRoom).
     if (type === "TRONG") {
       if (!requestedPlantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(requestedPlantStageCode)) {
-        return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
+        return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/X/Y/Z/C) cho phần Trồng" }, { status: 400 });
       }
       // Trồng lại trong Phòng cây trồng: quy cách mới phải KHÁC quy cách hiện tại (trừ cũ lúc gửi, cộng mới lúc duyệt).
       if (room.type === "PHONG_CAY_TRONG" && requestedPlantStageCode === stageCode) {

@@ -98,7 +98,7 @@ export async function ensureWeeklyMarketInspectionTask(warehouseId: string | nul
 }
 
 // Đề xuất "Trồng" của Đối tác vận hành được duyệt → cộng đúng số lượng vào Phòng cây trồng cùng kho theo quy
-// cách chậu plantStageCode (S/M/L/C) — lúc gửi đề xuất đã trừ ở phòng nguồn. Áp dụng cho Trồng từ Phòng sản
+// cách chậu plantStageCode (S/M/L/X/Y/Z/C) — lúc gửi đề xuất đã trừ ở phòng nguồn. Áp dụng cho Trồng từ Phòng sản
 // phẩm đạt/không đạt (giống Phân loại hàng không đạt) VÀ trồng lại ngay trong Phòng cây trồng sang quy cách
 // chậu khác (VD S → M: trừ S lúc gửi, cộng M lúc duyệt — tổng số cây trong phòng không đổi). Đề xuất Hủy không
 // cộng đi đâu (cây ra khỏi kho). Phiếu Trồng từ Phòng cây trồng gửi TRƯỚC khi có ô chọn chậu (plantStageCode
@@ -120,11 +120,11 @@ export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.Transacti
   for (const p of proposals) {
     const plantRoom = await tx.room.findFirst({ where: { warehouseId: p.warehouseId, type: "PHONG_CAY_TRONG", isActive: true }, select: { id: true } });
     if (!plantRoom) throw new Error("Kho thị trường thiếu Phòng cây trồng — liên hệ Admin kiểm tra lại kho");
-    // Phòng cây trồng chỉ chứa quy cách chậu S/M/L/C — không bao giờ cộng quy cách túi T vào đây (route duyệt
+    // Phòng cây trồng chỉ chứa quy cách chậu S/M/L/X/Y/Z/C — không bao giờ cộng quy cách túi T vào đây (route duyệt
     // đã chặn trước bằng findMarketPlantingMissingPot, đây là lớp chặn cuối).
     if (!p.plantStageCode) {
       if (p.room?.type === "PHONG_CAY_TRONG") continue; // phiếu cũ — cây ra khỏi kho như trước
-      throw new Error("Đề xuất Trồng chưa có quy cách chậu (S/M/L/C)");
+      throw new Error("Đề xuất Trồng chưa có quy cách chậu (S/M/L/X/Y/Z/C)");
     }
     await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.plantStageCode, p.quantity, p.requestedBy.code);
   }
@@ -146,7 +146,7 @@ export async function findMarketPlantingMissingPot(proposalIds: string[]): Promi
 }
 
 export const missingPotMessage = (code: string) =>
-  `Phiếu ${code} chưa có quy cách chậu (S/M/L/C) — Từ chối để Đối tác "Sửa & gửi lại" kèm quy cách chậu`;
+  `Phiếu ${code} chưa có quy cách chậu (S/M/L/X/Y/Z/C) — Từ chối để Đối tác "Sửa & gửi lại" kèm quy cách chậu`;
 
 // Mã quy cách chậu hợp lệ cho phần Trồng (Phòng cây trồng) — validate ở API gửi/duyệt đề xuất.
 export const POT_STAGE_CODE_LIST = Object.keys(POT_SPEC_LABELS) as (keyof typeof POT_SPEC_LABELS)[];

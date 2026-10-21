@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Kể cả trồng lại trong Phòng cây trồng (đổi quy cách chậu) — xem POST /api/contamination-proposals.
       if (room) {
         if (!parsed.data.plantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(parsed.data.plantStageCode)) {
-          return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/C) cho phần Trồng" }, { status: 400 });
+          return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/X/Y/Z/C) cho phần Trồng" }, { status: 400 });
         }
         if (room.type === "PHONG_CAY_TRONG" && parsed.data.plantStageCode === proposal.stageCode) {
           return NextResponse.json({ message: `Trồng lại trong Phòng cây trồng phải chọn quy cách chậu KHÁC quy cách hiện tại (${proposal.stageCode})` }, { status: 400 });

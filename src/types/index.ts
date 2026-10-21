@@ -344,13 +344,26 @@ export const ALL_FINISHED_STAGE_CODES = [...Object.keys(FINISHED_SPEC_LABELS), .
 // Quy cách chậu (Phòng cây trồng, Kho thị trường) — gắn trên Lot.stageCode khi stage = THANH_PHAM, dùng
 // riêng cho "Xuất cây" (Đối tác vận hành, xem src/lib/market-export.ts). Khác hẳn FINISHED_SPEC_LABELS
 // (quy cách túi, Phòng sản phẩm đạt) — 1 chậu luôn tính là 1 cây (không có bagSize > 1 như túi).
-// Nhãn để đúng mã S/M/L/C (không thêm chữ "Chậu") — khớp cột Quy cách ở trang Tồn kho Phòng cây trồng.
+// Nhãn để đúng mã S/M/L/X/Y/Z/C (không thêm chữ "Chậu") — khớp cột Quy cách ở trang Tồn kho Phòng cây trồng.
+// Ý nghĩa từng mã xem POT_SPEC_DESCRIPTIONS (bảng quy cách Admin cấp cao chốt 21/10/2026).
 export const POT_SPEC_LABELS = {
   S: "S",
   M: "M",
   L: "L",
+  X: "X",
+  Y: "Y",
+  Z: "Z",
   C: "C",
 } as const;
+export const POT_SPEC_DESCRIPTIONS: Record<keyof typeof POT_SPEC_LABELS, string> = {
+  S: "Size pot 1.7 inch",
+  M: "Size pot 2,8 inch",
+  L: "Size pot 3,5 inch",
+  X: "Cutting size lá 20-30cm",
+  Y: "Cutting size lá 31-40cm",
+  Z: "Cutting size lá 40cm+",
+  C: "Node thân đốt + lá mẹ",
+};
 
 // Nhãn hiển thị quy cách dùng chung cho MỌI dòng thành phẩm (túi lẫn chậu) — trả nguyên mã nếu không
 // khớp nhãn nào (dữ liệu cũ/lạ), dùng ở trang Xuất cây thay vì chỉ tra FINISHED_SPEC_LABELS.

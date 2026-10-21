@@ -1,14 +1,14 @@
-import { FINISHED_SPEC_BAG_SIZE } from "@/types";
+import { FINISHED_SPEC_BAG_SIZE, POT_SPEC_LABELS } from "@/types";
 
 // Quy cách túi (Phòng sản phẩm đạt) — luôn kiểm tra 3 mã này TRƯỚC quy cách chậu (1 ký tự) để tránh
 // khớp nhầm khi Mã hàng không có dấu phân cách rõ ràng, xem parseExportStageCode.
 const BAG_STAGE_CODES = ["T01", "T05", "T10"] as const;
 // Quy cách chậu (Phòng cây trồng) — 1 chậu luôn tính là 1 cây, xem POT_SPEC_LABELS (src/types/index.ts).
-const POT_STAGE_CODES = ["S", "M", "L", "C"] as const;
+const POT_STAGE_CODES = Object.keys(POT_SPEC_LABELS) as (keyof typeof POT_SPEC_LABELS)[];
 
 export type ExportRoomKind = "PHONG_SAN_PHAM_DAT" | "PHONG_CAY_TRONG";
 
-// Tách quy cách (T01/T05/T10 hoặc S/M/L/C) từ cột "Mã hàng" — Mã hàng là mã sản phẩm kèm quy cách, chưa
+// Tách quy cách (T01/T05/T10 hoặc S/M/L/X/Y/Z/C) từ cột "Mã hàng" — Mã hàng là mã sản phẩm kèm quy cách, chưa
 // có quy ước dấu phân cách cố định giữa các đợt xuất nên thử theo thứ tự: (1) tách theo dấu phân cách
 // thường gặp (-, _, khoảng trắng, .) lấy đoạn CUỐI; (2) nếu không có dấu phân cách, khớp hậu tố trực tiếp
 // (ưu tiên mã túi 3 ký tự trước mã chậu 1 ký tự để tránh nhầm). Trả về null nếu không xác định được —

@@ -26,7 +26,7 @@ type Item = {
   plantQuantity: number;
   destroyPhotoUrls: string[];
   plantPhotoUrls: string[];
-  // Quy cách chậu (S/M/L/C) của phần Trồng — cây vào Phòng cây trồng theo quy cách này khi được duyệt.
+  // Quy cách chậu (S/M/L/X/Y/Z/C) của phần Trồng — cây vào Phòng cây trồng theo quy cách này khi được duyệt.
   plantStageCode: string | null;
   saleNote: string | null;
 };

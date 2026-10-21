@@ -34,8 +34,21 @@ export function tierRange(label: string): [number, number] | null {
 
 // Đối chiếu mã/quy cách báo giá sang mã cây + quy cách hệ thống:
 // - Mã: 2 chữ + số (+ hậu tố quy cách), số đệm đủ 3 chữ số — "AL62" → AL062, "MT001T10" → MT001 + T10.
-// - Quy cách: "Tissue bag 10 plant" → T10, "Tissue bag 1 plant" → T01, chậu 1,7 inch → S, 2,8 inch → M;
+// - Quy cách: "Tissue bag 10 plant" → T10, "Tissue bag 1 plant" → T01, chậu 1,7 inch → S, 2,8 inch → M, 3,5 inch → L,
+//   cành lá 20-30cm → X, 31-40cm → Y, 40cm+ → Z, node thân đốt + lá mẹ → C (xem POT_SPEC_DESCRIPTIONS);
 //   "Tissue culture" (báo giá TC Mỹ/EU/Úc) → null = mọi loại túi; cỡ chậu khác chưa có quy đổi → null.
+// Cành theo cỡ lá: 20-30cm → X, 31-40cm → Y, 40cm+ (41cm+) → Z. Cỡ khác (VD 15-17cm, 18-25cm) → null = chưa quy đổi.
+function cuttingStage(s: string): string | null {
+  const plus = s.match(/(\d+)\s*cm\s*\+/);
+  if (plus) return Number(plus[1]) >= 40 ? "Z" : null;
+  const r = s.match(/(\d+)\s*-\s*(\d+)\s*cm/);
+  if (!r) return null;
+  const a = Number(r[1]), b = Number(r[2]);
+  if (a >= 20 && b <= 30) return "X";
+  if (a >= 31 && b <= 40) return "Y";
+  return null;
+}
+
 export function mapPriceCode(code: string, spec: string): { plantCode: string | null; stageCode: string | null; stageMapped: boolean } {
   const m = code.trim().toUpperCase().match(/^([A-Z]{2})(\d{1,3})([A-Z]\d{2})?$/);
   const plantCode = m ? `${m[1]}${m[2].padStart(3, "0")}` : null;
@@ -46,6 +59,9 @@ export function mapPriceCode(code: string, spec: string): { plantCode: string | 
   if (bag) stageCode = `T${bag[1].padStart(2, "0")}`;
   else if (/1[.,]7\s*inch/.test(s)) stageCode = "S";
   else if (/2[.,]8\s*inch/.test(s)) stageCode = "M";
+  else if (/3[.,]5\s*inch/.test(s)) stageCode = "L";
+  else if (/\bnode\b/.test(s)) stageCode = "C";
+  else if (/cut/.test(s) && cuttingStage(s)) stageCode = cuttingStage(s);
   else if (/tissue culture/.test(s) || s.trim() === "") stageCode = null;
   else stageMapped = false;
   return { plantCode, stageCode, stageMapped };

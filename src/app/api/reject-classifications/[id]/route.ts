@@ -49,7 +49,7 @@ const submitSchema = z.object({
       destroyQuantity: z.number().int().min(0),
       destroyPhotoUrls: z.array(z.string()).default([]),
       plantPhotoUrls: z.array(z.string()).default([]),
-      // Quy cách chậu (S/M/L/C) của phần Trồng — bắt buộc khi phần Trồng > 0.
+      // Quy cách chậu (S/M/L/X/Y/Z/C) của phần Trồng — bắt buộc khi phần Trồng > 0.
       plantStageCode: z.string().optional(),
     })
   ),
@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ message: `Cần đính kèm ảnh cho phần đề xuất trồng (${item.stageCode})` }, { status: 400 });
       }
       if (plantQuantity > 0 && !isPotStageCode(row.plantStageCode)) {
-        return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/C) cho phần đề xuất trồng (${item.stageCode})` }, { status: 400 });
+        return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/X/Y/Z/C) cho phần đề xuất trồng (${item.stageCode})` }, { status: 400 });
       }
     }
     if (new Set(parsed.data.items.map((r) => r.itemId)).size !== classification.items.length) {
@@ -202,7 +202,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     // Phòng cây trồng chỉ chứa quy cách chậu — phần Trồng luôn phải có chậu (phiếu cũ chưa chọn thì QL chọn lúc duyệt).
     if (item.rejectedQuantity - row.destroyQuantity > 0 && !(row.plantStageCode ?? item.plantStageCode)) {
-      return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/C) cho phần trồng (${item.stageCode})` }, { status: 400 });
+      return NextResponse.json({ message: `Chọn quy cách chậu (S/M/L/X/Y/Z/C) cho phần trồng (${item.stageCode})` }, { status: 400 });
     }
   }
 

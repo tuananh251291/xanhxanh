@@ -59,7 +59,7 @@ export default function DeXuatExecuteForm({
   // key = `${lotId}:huy|trong` — ô nào đang tải ảnh lên.
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   // Đối tác vận hành đề xuất Trồng từ Phòng sản phẩm đạt/không đạt — cây sẽ vào Phòng cây trồng khi QL thị
-  // trường duyệt, nên phải chọn quy cách chậu (S/M/L/C) cho từng dòng. Trồng từ chính Phòng cây trồng thì không.
+  // trường duyệt, nên phải chọn quy cách chậu (S/M/L/X/Y/Z/C) cho từng dòng. Trồng từ chính Phòng cây trồng thì không.
   // Đối tác: phần Trồng luôn chọn quy cách chậu — kể cả ở Phòng cây trồng (trồng lại sang chậu khác, VD S → M).
   const needsPotSpec = isMarketPartner;
   const isPlantRoom = rooms.find((r) => r.id === roomId)?.type === "PHONG_CAY_TRONG";
