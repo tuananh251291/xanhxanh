@@ -22,10 +22,9 @@ import {
 import { Plus, Trash2, Search, PackageCheck, Loader2, TriangleAlert, Download, Upload, PenLine, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MARKET_LABELS, CUSTOMER_GROUP_LABELS, FINISHED_SPEC_BAG_SIZE, type CustomerGroup } from "@/types";
+import { CUSTOMER_GROUP_LABELS, FINISHED_SPEC_BAG_SIZE, type CustomerGroup } from "@/types";
 import ShipAtInput from "@/components/shared/ship-at-input";
 
-const MARKET_OPTIONS = Object.entries(MARKET_LABELS).map(([value, label]) => ({ value, label }));
 
 type PlantType = { id: string; code: string; name: string };
 type ComboOption = { value: string; label: string };
@@ -121,13 +120,16 @@ const availabilityKey = (plantTypeId: string, stageCode: string) => `${plantType
 // holdDays theo TỪNG khách — với NV bán hàng là "Năng lực giữ đơn" của chính họ (giống nhau ở mọi khách);
 // với Quản lý kho thành phẩm tạo hộ (xem canActAsSale) là của ĐÚNG NV bán hàng đang phụ trách khách đó
 // (có thể khác nhau giữa các khách) — xem src/app/(dashboard)/orders/page.tsx.
-type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; assignedToId: string | null; holdDays: number | null };
+type Customer = { id: string; code: string; name: string; customerGroup: CustomerGroup | null; assignedToId: string | null; marketId: string; holdDays: number | null };
+type MarketOpt = { id: string; code: string; name: string };
 type MarketWarehouse = { id: string; code: string; name: string };
 type SalesUser = { id: string; code: string; name: string; holdDays: number };
 
 export default function OrderCheckForm({
-  plantTypes, customers, salesUsers, isActingForSale,
-}: { plantTypes: PlantType[]; customers: Customer[]; salesUsers: SalesUser[]; isActingForSale: boolean }) {
+  plantTypes, customers, markets, salesUsers, isActingForSale,
+}: { plantTypes: PlantType[]; customers: Customer[]; markets: MarketOpt[]; salesUsers: SalesUser[]; isActingForSale: boolean }) {
+  // Thị trường lấy theo khách hàng (Customer.marketId); chỉ chọn tay khi gửi Kho thị trường / khách gõ tay.
+  const marketOptions = markets.map((m) => ({ value: m.id, label: `${m.code} · ${m.name}` }));
   const [rows, setRows] = useState<DemandRow[]>(() => Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
   // Nhãn "Mã sản phẩm - Tên cây" (VD "AL001 - Alocasia Red Secret") để gõ tìm theo cả mã lẫn tên.
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }));
@@ -177,6 +179,8 @@ export default function OrderCheckForm({
   const [marketWarehouses, setMarketWarehouses] = useState<MarketWarehouse[]>([]);
   const [loadingMarketWarehouses, setLoadingMarketWarehouses] = useState(false);
   const [market, setMarket] = useState("");
+  const marketFromCustomer = !sendToMarketWarehouse && !!selectedCustomer;
+  const effectiveMarketId = marketFromCustomer ? selectedCustomer!.marketId : market;
   const [expectedShipAt, setExpectedShipAt] = useState("");
   const [exportCode, setExportCode] = useState("");
   // "Nhập tay" = luồng Check/alternatives có sẵn (giữ nguyên 100%). "Tải Excel" = bỏ qua bước Check —
@@ -289,7 +293,7 @@ export default function OrderCheckForm({
       toast.error(useFreeCustomer ? "Cần nhập Mã khách hàng" : "Cần chọn khách hàng");
       return;
     }
-    if (!market) { toast.error("Cần chọn thị trường"); return; }
+    if (!effectiveMarketId) { toast.error("Cần chọn thị trường"); return; }
     if (!expectedShipAt) { toast.error("Cần chọn thời gian dự kiến xuất"); return; }
     if (items.length === 0) { toast.error("Không có dòng nào để giữ đơn"); return; }
 
@@ -303,7 +307,7 @@ export default function OrderCheckForm({
           freeCustomerCode: !sendToMarketWarehouse && useFreeCustomer ? freeCustomerCode.trim() : undefined,
           saleUserId: sendToMarketWarehouse || !isActingForSale ? undefined : saleUserId,
           marketWarehouseId: sendToMarketWarehouse ? marketWarehouseId : undefined,
-          market, expectedShipAt, exportCode: exportCode || undefined, items,
+          marketId: effectiveMarketId, expectedShipAt, exportCode: exportCode || undefined, items,
         }),
       });
       const json = await res.json();
@@ -815,11 +819,11 @@ export default function OrderCheckForm({
                 )}
               </div>
               <div className="space-y-1">
-                <Label>Thị trường *</Label>
-                <Select items={MARKET_OPTIONS} value={market} onValueChange={(v) => setMarket(v as string)}>
+                <Label>Thị trường *{marketFromCustomer && <span className="text-xs text-text-muted font-normal"> (theo khách hàng)</span>}</Label>
+                <Select items={marketOptions} value={effectiveMarketId} disabled={marketFromCustomer} onValueChange={(v) => setMarket(v as string)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Chọn thị trường" /></SelectTrigger>
                   <SelectContent>
-                    {MARKET_OPTIONS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    {marketOptions.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

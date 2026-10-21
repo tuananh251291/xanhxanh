@@ -2934,7 +2934,12 @@ model Order {
   // nhận nhận hàng (xem PATCH /api/transfers/[id]) vì tồn thực đã trừ ngay lúc Xuất kho rồi, tránh trừ đôi.
   marketWarehouseId String?
   marketWarehouse   Warehouse?  @relation(fields: [marketWarehouseId], references: [id])
-  market            OrderMarket
+  // Enum thị trường CŨ (chọn tay) — chỉ còn ở đơn tạo trước khi có salesMarketId, đơn mới để null.
+  market            OrderMarket?
+  // Thị trường của đơn (bảng Market): đơn có khách = Customer.marketId lúc Tạm giữ; đơn Kho thị trường / khách
+  // gõ tay = chọn tay. Hiển thị qua orderMarketLabel (src/types/index.ts) — ưu tiên field này, lùi về enum cũ.
+  salesMarketId     String?
+  salesMarket       Market?     @relation(fields: [salesMarketId], references: [id])
   status            OrderStatus @default(DRAFT)
   holdUntil         DateTime?
   // Sale tự ước lượng lúc tạm giữ đơn — chỉ để tham khảo lên kế hoạch, không ràng buộc nghiệp vụ (khác
@@ -3649,6 +3654,7 @@ model Market {
   assignments SalesManagerAssignment[]
   priceLists  PriceList[]
   invoices    Invoice[]
+  orders      Order[]
 
   @@map("markets")
 }

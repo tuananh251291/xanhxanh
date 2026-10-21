@@ -434,6 +434,11 @@ export const MARKET_LABELS = {
   HAN_QUOC: "Hàn Quốc",
 } as const;
 
+// Nhãn thị trường của 1 đơn: thị trường thật (Order.salesMarket) nếu có, đơn cũ lùi về enum MARKET_LABELS.
+export function orderMarketLabel(o: { market: keyof typeof MARKET_LABELS | null; salesMarket?: { name: string } | null }): string {
+  return o.salesMarket?.name ?? (o.market ? MARKET_LABELS[o.market] : "—");
+}
+
 export const INSTRUCTION_STATUS_LABELS = {
   DRAFT: "Nháp",
   ACTIVE: "Đang thực hiện",

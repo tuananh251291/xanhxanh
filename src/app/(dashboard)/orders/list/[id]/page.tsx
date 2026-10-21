@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { canAccessOrderPages } from "@/types";
+import { canAccessOrderPages, orderMarketLabel } from "@/types";
 import { canSaleViewOrder } from "@/lib/customer-manager";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
@@ -27,7 +27,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const order = await prisma.order.findUnique({
     where: { id },
     select: {
-      id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
+      id: true, code: true, customerCode: true, market: true, salesMarket: { select: { name: true } }, status: true, holdUntil: true,
       notes: true, createdAt: true, saleId: true,
       items: {
         select: {
@@ -66,7 +66,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <CardContent className="pt-6">
           <OrderDetailContent
             customerCode={order.customerCode}
-            market={order.market}
+            marketLabel={orderMarketLabel(order)}
             status={order.status}
             holdUntilLabel={order.holdUntil ? format(order.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
             createdAtLabel={format(order.createdAt, "HH:mm dd/MM/yyyy", { locale: vi })}

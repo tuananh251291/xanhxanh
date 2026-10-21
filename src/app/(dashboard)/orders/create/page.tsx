@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ShoppingCart } from "lucide-react";
 import { isPageAllowed } from "@/lib/permissions";
 import { getSystemConfig } from "@/lib/inventory";
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, MARKET_LABELS, canAccessOrderPages } from "@/types";
+import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, orderMarketLabel, canAccessOrderPages } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import OrderCheckForm from "./order-check-form";
@@ -31,7 +31,7 @@ export default async function OrdersPage() {
     // nhất thay vì phải phân biệt theo role.
     prisma.customer.findMany({
       where: isActingForSale ? { assignedToId: { not: null } } : { assignedToId: session?.user?.id ?? "" },
-      select: { id: true, code: true, name: true, customerGroup: true, assignedToId: true, assignedTo: { select: { holdDays: true } } },
+      select: { id: true, code: true, name: true, customerGroup: true, assignedToId: true, marketId: true, assignedTo: { select: { holdDays: true } } },
       orderBy: { name: "asc" },
     }),
     prisma.order.findMany({
@@ -39,7 +39,7 @@ export default async function OrdersPage() {
       orderBy: { createdAt: "desc" },
       take: 5,
       select: {
-        id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true, createdAt: true,
+        id: true, code: true, customerCode: true, market: true, salesMarket: { select: { name: true } }, status: true, holdUntil: true, createdAt: true,
         items: { select: { quantity: true } },
       },
     }),
@@ -58,11 +58,12 @@ export default async function OrdersPage() {
   // mới rơi về "Thời gian giữ đơn mặc định" chung ở /settings, khớp đúng logic ở POST /api/orders.
   const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
   const customers = customersRaw.map((c) => ({
-    id: c.id, code: c.code, name: c.name, customerGroup: c.customerGroup, assignedToId: c.assignedToId,
+    id: c.id, code: c.code, name: c.name, customerGroup: c.customerGroup, assignedToId: c.assignedToId, marketId: c.marketId,
     holdDays: c.assignedTo?.holdDays ?? defaultHoldDays,
   }));
   // holdDays của NV bán hàng — dùng khi Quản lý kho thành phẩm gõ tay mã khách ngoài danh mục (không có
   // khách để suy ra NV/holdDays như trên).
+  const markets = await prisma.market.findMany({ where: { isActive: true }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true } });
   const salesUsersWithHold = salesUsers.map((u) => ({ id: u.id, code: u.code, name: u.name, holdDays: u.holdDays ?? defaultHoldDays }));
 
   return (
@@ -78,7 +79,7 @@ export default async function OrdersPage() {
         </p>
       </div>
 
-      <OrderCheckForm plantTypes={plantTypes} customers={customers} salesUsers={salesUsersWithHold} isActingForSale={isActingForSale} />
+      <OrderCheckForm plantTypes={plantTypes} customers={customers} markets={markets} salesUsers={salesUsersWithHold} isActingForSale={isActingForSale} />
 
       {recentOrders.length > 0 && (
         <Card>
@@ -89,7 +90,7 @@ export default async function OrdersPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground font-mono">{o.code}</p>
                   <p className="text-xs text-text-secondary">
-                    {o.customerCode} · {MARKET_LABELS[o.market]} · {o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây ·{" "}
+                    {o.customerCode} · {orderMarketLabel(o)} · {o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây ·{" "}
                     {formatDistanceToNow(o.createdAt, { addSuffix: true, locale: vi })}
                   </p>
                 </div>

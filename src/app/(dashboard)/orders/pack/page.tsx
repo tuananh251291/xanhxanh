@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PackageOpen, ListChecks, Eye } from "lucide-react";
 import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
-import { MARKET_LABELS, canAccessOrderPages } from "@/types";
+import { orderMarketLabel, canAccessOrderPages } from "@/types";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 
@@ -32,6 +32,7 @@ export default async function OrdersPackPage() {
       orderBy: { confirmedAt: "asc" },
       include: {
         sale: { select: { name: true } },
+        salesMarket: { select: { name: true } },
         items: {
           include: {
             lot: { select: { stageCode: true } },
@@ -84,7 +85,7 @@ export default async function OrdersPackPage() {
                         <Badge variant={packStatus.variant}>{packStatus.label}</Badge>
                       </p>
                       <p className="text-xs text-text-secondary">
-                        {order.customerCode} · {MARKET_LABELS[order.market]} · NV {order.sale.name} ·{" "}
+                        {order.customerCode} · {orderMarketLabel(order)} · NV {order.sale.name} ·{" "}
                         {totalQuantity.toLocaleString("vi-VN")} cây
                         {order.confirmedAt && ` · Xác nhận lúc ${order.confirmedAt.toLocaleString("vi-VN")}`}
                       </p>

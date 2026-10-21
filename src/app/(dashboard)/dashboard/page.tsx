@@ -9,7 +9,7 @@ import {
   PackageCheck, PenLine, Send, CheckCircle2, XCircle, ClipboardList, ClipboardCheck,
   FlaskConical, Bell, ShieldPlus, LayoutList, Camera, Sprout, GraduationCap, type LucideIcon,
 } from "lucide-react";
-import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, MARKET_LABELS, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS, ADMIN_DASHBOARD_ALERT_TYPES } from "@/types";
+import { ROLE_LABELS, LOT_STATUS_LABELS, ORDER_STATUS_LABELS, orderMarketLabel, isAdminRole, isKhoThanhPhamRole, MIN_BACKUP_INSTRUCTION_COUNT, INSPECTION_LANE_LABELS, ADMIN_DASHBOARD_ALERT_TYPES } from "@/types";
 import type { UserRole } from "@prisma/client";
 import { formatDistanceToNow, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays, subDays, addWeeks, subMonths, format, differenceInCalendarDays, eachDayOfInterval } from "date-fns";
 import TrialRoundTaskCard from "@/app/(dashboard)/rnd/trial-round-task-card";
@@ -237,6 +237,7 @@ async function getSaleStats(userId: string, workplaceWarehouseId: string | null)
       where: { saleId: userId, status: { in: ["HELD", "CONFIRMED"] } },
       orderBy: { createdAt: "desc" },
       take: 5,
+      include: { salesMarket: { select: { name: true } } },
     }),
     accessibleRooms.length > 0
       ? prisma.lot.count({ where: { status: "ACTIVE", roomId: { in: accessibleRooms.map((r) => r.id) } } })
@@ -872,7 +873,7 @@ function SaleDashboard({ stats, userName }: { stats: Awaited<ReturnType<typeof g
                 <div key={order.id} className="flex items-center justify-between p-3 bg-background rounded-lg">
                   <div>
                     <p className="text-sm font-medium">{order.code}</p>
-                    <p className="text-xs text-text-secondary">{order.customerCode} · {MARKET_LABELS[order.market]}</p>
+                    <p className="text-xs text-text-secondary">{order.customerCode} · {orderMarketLabel(order)}</p>
                   </div>
                   <Badge variant={order.status === "HELD" ? "secondary" : "default"}>
                     {ORDER_STATUS_LABELS[order.status]}

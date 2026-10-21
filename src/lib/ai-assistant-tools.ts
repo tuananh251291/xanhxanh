@@ -333,7 +333,7 @@ async function runTraCuuDonHang(input: { status?: string; customerCode?: string;
       where,
       orderBy: { createdAt: "desc" },
       take: 20,
-      select: { code: true, customerCode: true, status: true, market: true, createdAt: true, sale: { select: { name: true } } },
+      select: { code: true, customerCode: true, status: true, market: true, salesMarket: { select: { name: true } }, createdAt: true, sale: { select: { name: true } } },
     }),
   ]);
 
@@ -341,7 +341,7 @@ async function runTraCuuDonHang(input: { status?: string; customerCode?: string;
 
   const summary = statusCounts.map((s) => `${s.status}: ${s._count._all}`).join(", ");
   const lines = orders.map(
-    (o) => `${o.code} · KH ${o.customerCode} · ${o.status} · ${o.market} · Sale ${o.sale.name} · ${o.createdAt.toISOString().slice(0, 10)}`
+    (o) => `${o.code} · KH ${o.customerCode} · ${o.status} · ${o.salesMarket?.name ?? o.market ?? "—"} · Sale ${o.sale.name} · ${o.createdAt.toISOString().slice(0, 10)}`
   );
   return { content: `Tổng theo trạng thái (trong ${days} ngày): ${summary}\n\nDanh sách gần nhất:\n${lines.join("\n")}` };
 }

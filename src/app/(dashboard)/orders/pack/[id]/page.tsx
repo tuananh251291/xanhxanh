@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { isPageAllowed } from "@/lib/permissions";
-import { isAdminRole, isKhoThanhPhamRole, MARKET_LABELS } from "@/types";
+import { isAdminRole, isKhoThanhPhamRole, orderMarketLabel } from "@/types";
 import OrderPickTable from "./order-pick-table";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
 import { canEditOrderItems } from "@/lib/order-edit";
@@ -21,6 +21,7 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
     where: { id },
     include: {
       sale: { select: { name: true } },
+      salesMarket: { select: { name: true } },
       assignedTo: { select: { name: true, code: true } },
       items: {
         include: {
@@ -55,7 +56,7 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
           {canEditOrder && <OrderEditDialog orderId={order.id} orderCode={order.code} plantTypes={plantTypes} />}
         </div>
         <p className="text-text-secondary text-sm mt-1">
-          {order.customerCode} · {MARKET_LABELS[order.market]} · NV {order.sale.name}
+          {order.customerCode} · {orderMarketLabel(order)} · NV {order.sale.name}
           {order.assignedTo && ` · Giao cho ${order.assignedTo.name} (${order.assignedTo.code})`}
           {order.confirmedAt && ` · Xác nhận lúc ${order.confirmedAt.toLocaleString("vi-VN")}`}
         </p>

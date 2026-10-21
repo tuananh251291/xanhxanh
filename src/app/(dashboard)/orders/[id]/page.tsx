@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { isPageAllowed } from "@/lib/permissions";
-import { MARKET_LABELS, canAccessOrderPages } from "@/types";
+import { orderMarketLabel, canAccessOrderPages } from "@/types";
 import { getCustomerManager, canSaleViewOrder } from "@/lib/customer-manager";
 import { PrintButton } from "@/components/shared/print-button";
 import "./print-order.css";
@@ -50,6 +50,7 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
     include: {
       sale: { select: { name: true } },
       customer: { select: { marketId: true } },
+      salesMarket: { select: { name: true } },
       items: { include: { lot: { include: { plantType: { select: { code: true, name: true } } } } } },
     },
   });
@@ -87,7 +88,7 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
               </div>
               <div className="po-field">
                 <span className="po-label">Thị trường xuất:</span>
-                <span className="po-value">{MARKET_LABELS[order.market]}</span>
+                <span className="po-value">{orderMarketLabel(order)}</span>
               </div>
               <div className="po-field">
                 <span className="po-label">Ngày xuất:</span>

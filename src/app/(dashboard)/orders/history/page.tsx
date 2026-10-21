@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, History, Eye, Search } from "lucide-react";
-import { canAccessOrderPages, isAdminRole, MARKET_LABELS } from "@/types";
+import { canAccessOrderPages, isAdminRole, orderMarketLabel } from "@/types";
 
 // Lịch sử đơn ĐÃ XUẤT KHO (SHIPPED) — Quản lý kho thành phẩm (và Admin) xem theo tháng xuất (shippedAt, giờ VN).
 // Mặc định tháng hiện tại. Bấm mã đơn mở chi tiết /orders/list/[id].
@@ -31,7 +31,7 @@ export default async function ShippedOrdersHistoryPage({ searchParams }: { searc
     where: { status: "SHIPPED", shippedAt: { gte: start, lt: end } },
     orderBy: { shippedAt: "desc" },
     select: {
-      id: true, code: true, exportCode: true, customerCode: true, market: true, confirmedAt: true, shippedAt: true,
+      id: true, code: true, exportCode: true, customerCode: true, market: true, salesMarket: { select: { name: true } }, confirmedAt: true, shippedAt: true,
       sale: { select: { code: true, name: true } },
       assignedTo: { select: { code: true, name: true } },
       marketWarehouse: { select: { name: true } },
@@ -100,7 +100,7 @@ export default async function ShippedOrdersHistoryPage({ searchParams }: { searc
                       </td>
                       <td className="px-4 py-3">
                         {o.marketWarehouse ? o.marketWarehouse.name : o.customerCode}
-                        <div className="text-xs text-text-muted">{MARKET_LABELS[o.market]}</div>
+                        <div className="text-xs text-text-muted">{orderMarketLabel(o)}</div>
                       </td>
                       <td className="px-4 py-3">{o.sale.name} <span className="text-xs text-text-muted font-mono">{o.sale.code}</span></td>
                       <td className="px-4 py-3">{o.assignedTo ? `${o.assignedTo.name} (${o.assignedTo.code})` : "—"}</td>

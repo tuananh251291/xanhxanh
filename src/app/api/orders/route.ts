@@ -41,7 +41,8 @@ const createSchema = z.object({
   // customer.assignedToId), tránh giữ đơn nhầm khách của NV khác.
   saleUserId: z.string().optional(),
   marketWarehouseId: z.string().optional(),
-  market: z.enum(["NOI_DIA", "DONG_NAM_A", "EU", "US", "AUS", "NHAT", "HAN_QUOC"], { message: "Cần chọn thị trường" }),
+  // Thị trường (bảng Market) — đơn có khách: bỏ qua, lấy theo Customer.marketId; đơn Kho thị trường / khách gõ tay: bắt buộc.
+  marketId: z.string().optional(),
   // Bắt buộc — quyết định lô "ảo" nào (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts)
   // được tính vào khả dụng lúc giữ đơn, không chỉ để tham khảo như trước.
   expectedShipAt: z.string().min(1, "Cần chọn ngày xuất dự kiến"),
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { customerId, freeCustomerCode, saleUserId, marketWarehouseId, market, expectedShipAt, notes, exportCode, items } = parsed.data;
+  const { customerId, freeCustomerCode, saleUserId, marketWarehouseId, marketId, expectedShipAt, notes, exportCode, items } = parsed.data;
   // Giờ xuất mặc định 9:00 — chỉ Quản lý kho thành phẩm/Admin được chọn giờ khác (xem normalizeExpectedShipAt).
   const shipDate = normalizeExpectedShipAt(expectedShipAt, session.user.role);
   if (!shipDate) {
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
   // vai trò khách hàng, không có "NV bán hàng phụ trách" nào để suy ra saleId nên gán thẳng người đang
   // tạo đơn (session.user — Sale tự tạo hoặc Quản lý kho thành phẩm tạo hộ đều hợp lý như nhau ở đây, vì
   // không có 1 khách cụ thể nào bị "giữ hộ").
-  let customer: { id: string; code: string; customerGroup: string | null; assignedToId: string | null } | null = null;
+  let customer: { id: string; code: string; customerGroup: string | null; assignedToId: string | null; marketId: string } | null = null;
   let marketWarehouse: { id: string; code: string; type: string } | null = null;
   // Khách gõ tay ngoài danh mục (chỉ Quản lý kho thành phẩm tạo hộ) — NV bán hàng chọn ở ô "Mã NV bán
   // hàng" là saleId của đơn; không có CustomerGroup nên giữ đơn theo Năng lực giữ đơn của NV đó.
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
     // sau này NV bán hàng tự nhập bằng tài khoản riêng.
     customer = await prisma.customer.findUnique({
       where: { id: customerId },
-      select: { id: true, code: true, customerGroup: true, assignedToId: true },
+      select: { id: true, code: true, customerGroup: true, assignedToId: true, marketId: true },
     });
     if (!customer) return NextResponse.json({ message: "Không tìm thấy khách hàng" }, { status: 400 });
     if (session.user.role === "SALE" && customer.assignedToId !== session.user.id) {
@@ -159,6 +160,14 @@ export async function POST(req: NextRequest) {
     if (marketWarehouse.type !== "THI_TRUONG") {
       return NextResponse.json({ message: "Kho đã chọn không phải Kho thị trường" }, { status: 400 });
     }
+  }
+
+  let salesMarketId: string;
+  if (customer) salesMarketId = customer.marketId;
+  else {
+    const m = marketId ? await prisma.market.findUnique({ where: { id: marketId }, select: { id: true, isActive: true } }) : null;
+    if (!m?.isActive) return NextResponse.json({ message: "Cần chọn thị trường" }, { status: 400 });
+    salesMarketId = m.id;
   }
 
   // Năng lực giữ đơn (ngày) riêng từng NV Sale (Admin gõ tay ở /users) là NGOẠI LỆ — chỉ khi chưa cài đặt
@@ -199,7 +208,7 @@ export async function POST(req: NextRequest) {
             customerCode: customer ? customer.code : freeCustomer ? freeCustomer.code : marketWarehouse!.code,
             customerId: customer?.id,
             marketWarehouseId: marketWarehouse?.id,
-            market,
+            salesMarketId,
             expectedShipAt: shipDate,
             notes,
             status: "HELD",

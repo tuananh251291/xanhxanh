@@ -6,16 +6,16 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Eye, Printer } from "lucide-react";
-import { MARKET_LABELS, ORDER_STATUS_LABELS } from "@/types";
+import { ORDER_STATUS_LABELS } from "@/types";
 import OrderDetailContent, { type OrderDetailItem } from "@/components/shared/order-detail-content";
 
 export default function OrderDetailDialog({
-  id, code, customerCode, market, status, holdUntilLabel, createdAtLabel, notes, items,
+  id, code, customerCode, marketLabel, status, holdUntilLabel, createdAtLabel, notes, items,
 }: {
   id: string;
   code: string;
   customerCode: string;
-  market: keyof typeof MARKET_LABELS;
+  marketLabel: string;
   status: keyof typeof ORDER_STATUS_LABELS;
   holdUntilLabel: string;
   createdAtLabel: string;
@@ -41,7 +41,7 @@ export default function OrderDetailDialog({
 
         <OrderDetailContent
           customerCode={customerCode}
-          market={market}
+          marketLabel={marketLabel}
           status={status}
           holdUntilLabel={holdUntilLabel}
           createdAtLabel={createdAtLabel}

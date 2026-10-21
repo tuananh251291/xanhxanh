@@ -8,7 +8,7 @@ import { ClipboardList, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
-import { MARKET_LABELS, canAccessOrderPages } from "@/types";
+import { orderMarketLabel, canAccessOrderPages } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 import { getManagedOrderScope } from "@/lib/customer-manager";
@@ -22,6 +22,7 @@ import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } f
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
   assignedTo: Pick<User, "id" | "name"> | null;
+  salesMarket: { name: string } | null;
   invoices?: { id: string; invoiceNo: string; status: string }[];
   sale?: Pick<User, "code" | "name">;
   items: (Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
@@ -88,7 +89,7 @@ function OrdersTable({
                 <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
                   <td className="px-4 py-3 text-sm font-mono text-text-secondary">{o.code}</td>
                   {showSale && <td className="px-4 py-3 text-sm text-foreground">{o.sale ? `${o.sale.code} - ${o.sale.name}` : "—"}</td>}
-                  <td className="px-4 py-3 text-sm text-foreground">{o.customerCode} · {MARKET_LABELS[o.market]}</td>
+                  <td className="px-4 py-3 text-sm text-foreground">{o.customerCode} · {orderMarketLabel(o)}</td>
                   {showQuantity && (
                     <td className="px-4 py-3 text-sm text-foreground">{o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây</td>
                   )}
@@ -125,7 +126,7 @@ function OrdersTable({
                           id={o.id}
                           code={o.code}
                           customerCode={o.customerCode}
-                          market={o.market}
+                          marketLabel={orderMarketLabel(o)}
                           status={o.status}
                           holdUntilLabel={o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
                           createdAtLabel={format(o.createdAt, "HH:mm dd/MM/yyyy", { locale: vi })}
@@ -186,6 +187,7 @@ export default async function OrdersListPage() {
   const orderSelect = {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
       expectedShipAt: true, notes: true, createdAt: true,
+      salesMarket: { select: { name: true } },
       assignedTo: { select: { id: true, name: true } },
       items: {
         select: {

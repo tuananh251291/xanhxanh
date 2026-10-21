@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, MARKET_LABELS } from "@/types";
+import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from "@/types";
 
 export type OrderDetailItem = {
   id: string;
@@ -94,10 +94,10 @@ function StageRow({
 // /orders/list/[id] (trang riêng, đơn đã xác nhận — nội dung có thể dài nên không phù hợp popup nữa) bọc
 // trong Card. Tách riêng để không lặp lại groupByPlantType/StageRow ở 2 nơi.
 export default function OrderDetailContent({
-  customerCode, market, status, holdUntilLabel, createdAtLabel, notes, items,
+  customerCode, marketLabel, status, holdUntilLabel, createdAtLabel, notes, items,
 }: {
   customerCode: string;
-  market: keyof typeof MARKET_LABELS;
+  marketLabel: string;
   status: keyof typeof ORDER_STATUS_LABELS;
   holdUntilLabel: string;
   createdAtLabel: string;
@@ -111,7 +111,7 @@ export default function OrderDetailContent({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm text-text-secondary">
         <p>Khách hàng: <span className="text-foreground">{customerCode}</span></p>
-        <p>Thị trường: <span className="text-foreground">{MARKET_LABELS[market]}</span></p>
+        <p>Thị trường: <span className="text-foreground">{marketLabel}</span></p>
         <p>Ngày tạo: <span className="text-foreground">{createdAtLabel}</span></p>
         <p>Hết hạn tạm giữ: <span className="text-foreground">{holdUntilLabel}</span></p>
         <p className="col-span-2 flex items-center gap-1.5">
