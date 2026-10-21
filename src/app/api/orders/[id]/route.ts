@@ -127,7 +127,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM) {
     const approved = await prisma.invoice.count({ where: { orderId, status: "APPROVED" } });
     if (approved === 0) {
-      return NextResponse.json({ message: "Đơn cần có đơn đặt hàng đã duyệt trước khi xác nhận — lập đơn đặt hàng gắn đơn này ở mục Đơn đặt hàng" }, { status: 400 });
+      return NextResponse.json({ message: "Đơn cần có phiếu báo giá đã duyệt trước khi xác nhận — lập phiếu báo giá gắn đơn này ở mục Phiếu báo giá" }, { status: 400 });
     }
   }
 
@@ -225,8 +225,8 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   if (mediumOrderCount > 0) {
     await createAlert({
       type: "MEDIUM_ORDER_CREATED",
-      title: "Có đơn đặt hàng môi trường mới",
-      message: `Đơn ${order.code} cần ${mediumOrderCount} đơn môi trường mới cho việc xử lý tách/ghép túi — xem trang Đơn đặt hàng MT`,
+      title: "Có phiếu báo giá môi trường mới",
+      message: `Đơn ${order.code} cần ${mediumOrderCount} đơn môi trường mới cho việc xử lý tách/ghép túi — xem trang Phiếu báo giá MT`,
       targetRole: "MOI_TRUONG",
       relatedId: order.id,
       relatedType: "Order",

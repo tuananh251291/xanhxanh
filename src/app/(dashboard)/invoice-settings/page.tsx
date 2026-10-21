@@ -20,9 +20,9 @@ export default async function InvoiceSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Settings className="w-6 h-6 text-primary-strong" /> {canEdit ? "Cài đặt đơn đặt hàng" : "Lịch chuyến Mỹ"}</h1>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Settings className="w-6 h-6 text-primary-strong" /> {canEdit ? "Cài đặt phiếu báo giá" : "Lịch chuyến Mỹ"}</h1>
         <p className="text-text-secondary text-sm mt-1">
-          {canEdit ? "Phí ship, thuế, phụ thu theo từng thị trường — tick để bật/tắt từng khoản. Áp dụng cho đơn đặt hàng lập/sửa từ lúc lưu; đơn đặt hàng đã lưu giữ nguyên số." : "Lịch chuyến hàng Mỹ và mức cân (kg) dùng tính cước — NV bán hàng chọn chuyến khi lập đơn đặt hàng."}
+          {canEdit ? "Phí ship, thuế, phụ thu theo từng thị trường — tick để bật/tắt từng khoản. Áp dụng cho phiếu báo giá lập/sửa từ lúc lưu; phiếu báo giá đã lưu giữ nguyên số." : "Lịch chuyến hàng Mỹ và mức cân (kg) dùng tính cước — NV bán hàng chọn chuyến khi lập phiếu báo giá."}
         </p>
       </div>
       <InvoiceSettingsBoard markets={markets} canEdit={canEdit} />

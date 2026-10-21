@@ -23,7 +23,7 @@ export default async function PriceListsPage() {
         </p>
         </div>
         {(role === "SALE" || role === "SUPER_ADMIN") && (
-          <Link href="/price-check"><Button variant="outline"><FileCheck className="w-4 h-4 mr-1.5" /> Kiểm tra giá đơn đặt hàng PDF</Button></Link>
+          <Link href="/price-check"><Button variant="outline"><FileCheck className="w-4 h-4 mr-1.5" /> Kiểm tra giá file PDF</Button></Link>
         )}
       </div>
       <PriceListBoard canUpload={canUploadPriceList(role)} canApprove={canApprovePriceList(role)} />

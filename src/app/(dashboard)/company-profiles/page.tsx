@@ -14,7 +14,7 @@ export default async function CompanyProfilesPage() {
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
           <BookOpen className="w-6 h-6 text-primary-strong" /> Thông tin công ty
         </h1>
-        <p className="text-text-secondary text-sm mt-1">Các mẫu thông tin công ty in trên đơn đặt hàng — NV bán hàng chọn 1 mẫu khi lập đơn đặt hàng.</p>
+        <p className="text-text-secondary text-sm mt-1">Các mẫu thông tin công ty in trên phiếu báo giá — NV bán hàng chọn 1 mẫu khi lập phiếu báo giá.</p>
       </div>
       <CompanyProfileBoard />
     </div>

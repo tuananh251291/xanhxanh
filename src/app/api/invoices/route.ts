@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user || !canCreateInvoice(session.user.role)) return NextResponse.json({ message: "Không có quyền lập đơn đặt hàng" }, { status: 403 });
+  if (!session?.user || !canCreateInvoice(session.user.role)) return NextResponse.json({ message: "Không có quyền lập phiếu báo giá" }, { status: 403 });
   const parsed = invoiceSaveSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const out = await saveInvoice(session.user, parsed.data, null);

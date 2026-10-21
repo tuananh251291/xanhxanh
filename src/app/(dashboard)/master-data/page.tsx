@@ -28,7 +28,7 @@ export default async function MasterDataPage({ searchParams }: { searchParams: P
   // UserRole.ADMIN_KY_THUAT ở schema.prisma).
   if (!isAdminRole(role) || role === "ADMIN_KY_THUAT") redirect("/dashboard");
   const { tab } = await searchParams;
-  // Tab "Cài đặt đơn đặt hàng" cần danh sách thị trường (kiểu tính, đơn vị tiền) — chỉ tải khi là Admin cấp cao.
+  // Tab "Cài đặt phiếu báo giá" cần danh sách thị trường (kiểu tính, đơn vị tiền) — chỉ tải khi là Admin cấp cao.
   const markets = role === "SUPER_ADMIN"
     ? await prisma.market.findMany({ where: { isActive: true }, orderBy: { code: "asc" }, select: { code: true, name: true, currency: true, derivedCurrency: true, invoiceCalcKind: true } })
     : [];
@@ -40,7 +40,7 @@ export default async function MasterDataPage({ searchParams }: { searchParams: P
           <Database className="w-6 h-6 text-primary-strong" /> Cài đặt CSDL chung hệ thống
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Danh sách cây, môi trường{role === "SUPER_ADMIN" ? ", vật tư, nhà cung cấp, cài đặt Sale, cài đặt đơn đặt hàng, thông tin công ty" : ""}.
+          Danh sách cây, môi trường{role === "SUPER_ADMIN" ? ", vật tư, nhà cung cấp, cài đặt Sale, cài đặt phiếu báo giá, thông tin công ty" : ""}.
         </p>
       </div>
 
@@ -53,7 +53,7 @@ export default async function MasterDataPage({ searchParams }: { searchParams: P
               <TabsTrigger value="materials">Vật tư</TabsTrigger>
               <TabsTrigger value="suppliers">Nhà cung cấp</TabsTrigger>
               <TabsTrigger value="sale">Cài đặt Sale</TabsTrigger>
-              <TabsTrigger value="order-settings">Cài đặt đơn đặt hàng</TabsTrigger>
+              <TabsTrigger value="order-settings">Cài đặt phiếu báo giá</TabsTrigger>
               <TabsTrigger value="company-profiles">Thông tin công ty</TabsTrigger>
             </>
           )}

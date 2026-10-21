@@ -49,13 +49,13 @@ export default function InvoiceList({ canApprove }: { canApprove: boolean }) {
           {!rows ? (
             <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>
           ) : rows.length === 0 ? (
-            <p className="py-10 text-center text-text-muted">Không có đơn đặt hàng nào</p>
+            <p className="py-10 text-center text-text-muted">Không có phiếu báo giá nào</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-primary-light">
-                    {["Số đơn đặt hàng", "Ngày", "Khách hàng", "Thị trường", "Đơn hàng", "Tổng", "Trạng thái", "Người lập"].map((h) => (
+                    {["Số phiếu báo giá", "Ngày", "Khách hàng", "Thị trường", "Đơn hàng", "Tổng", "Trạng thái", "Người lập"].map((h) => (
                       <th key={h} className="text-left px-3 py-2 text-base text-primary-strong font-bold whitespace-nowrap">{h}</th>
                     ))}
                   </tr>

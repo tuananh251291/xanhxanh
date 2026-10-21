@@ -51,7 +51,7 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
   return (
     <div className="space-y-4">
       <div className="print:hidden space-y-3">
-        <Link href="/invoices" className="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-foreground"><ArrowLeft className="w-4 h-4" /> Danh sách đơn đặt hàng</Link>
+        <Link href="/invoices" className="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-foreground"><ArrowLeft className="w-4 h-4" /> Danh sách phiếu báo giá</Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold text-foreground font-mono">{inv.invoiceNo}</h1>
           <Badge variant={st?.variant ?? "outline"}>{st?.label ?? inv.status}</Badge>
@@ -64,7 +64,7 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
           {inv.decidedBy && ` · ${inv.status === "REJECTED" ? "Từ chối" : "Duyệt"} bởi ${inv.decidedBy}${inv.decidedAt ? " · " + new Date(inv.decidedAt).toLocaleString("vi-VN") : ""}`}
           {inv.note && ` · Ghi chú: ${inv.note}`}
         </p>
-        {inv.status === "PENDING_APPROVAL" && <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Đơn đặt hàng có giá nhập tay — chờ Admin cấp cao duyệt mới xuất PDF / xác nhận đơn được.</p>}
+        {inv.status === "PENDING_APPROVAL" && <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Phiếu báo giá có giá nhập tay — chờ Admin cấp cao duyệt mới xuất PDF / xác nhận đơn được.</p>}
         {inv.status === "REJECTED" && <p className="rounded-md bg-danger-light text-destructive text-sm px-4 py-2">Bị từ chối: {inv.rejectionReason ?? "(không ghi lý do)"} — sửa rồi lưu để gửi duyệt lại.</p>}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={view === "customer" ? "default" : "outline"} onClick={() => setView("customer")}>Bản gửi khách</Button>
@@ -72,17 +72,17 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
           <span className="flex-1" />
           {canApprove && inv.status === "PENDING_APPROVAL" && (
             <>
-              <Button size="sm" disabled={busy} onClick={() => act({ action: "approve" }, "Đã duyệt đơn đặt hàng")}><Check className="w-4 h-4 mr-1" /> Duyệt giá</Button>
+              <Button size="sm" disabled={busy} onClick={() => act({ action: "approve" }, "Đã duyệt phiếu báo giá")}><Check className="w-4 h-4 mr-1" /> Duyệt giá</Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setRejecting(true)}><X className="w-4 h-4 mr-1" /> Từ chối</Button>
             </>
           )}
           {canEdit && <Link href={`/invoices/${inv.id}/edit`}><Button size="sm" variant="outline"><PenLine className="w-4 h-4 mr-1" /> Sửa</Button></Link>}
           {canEdit && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (confirm(`Huỷ đơn đặt hàng ${inv.invoiceNo}?`)) act({ action: "cancel" }, "Đã huỷ đơn đặt hàng"); }}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (confirm(`Huỷ phiếu báo giá ${inv.invoiceNo}?`)) act({ action: "cancel" }, "Đã huỷ phiếu báo giá"); }}>
               <Ban className="w-4 h-4 mr-1" /> Huỷ
             </Button>
           )}
-          <Button size="sm" disabled={!approved} onClick={exportPdf} title={approved ? "" : "Chỉ xuất PDF khi đơn đặt hàng đã duyệt"}><FileDown className="w-4 h-4 mr-1" /> Xuất PDF</Button>
+          <Button size="sm" disabled={!approved} onClick={exportPdf} title={approved ? "" : "Chỉ xuất PDF khi phiếu báo giá đã duyệt"}><FileDown className="w-4 h-4 mr-1" /> Xuất PDF</Button>
         </div>
       </div>
 
@@ -99,7 +99,7 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
 
       <Dialog open={rejecting} onOpenChange={(o) => !busy && setRejecting(o)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Từ chối đơn đặt hàng {inv.invoiceNo}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Từ chối phiếu báo giá {inv.invoiceNo}</DialogTitle></DialogHeader>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Lý do (VD giá thấp hơn mức sàn)" />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejecting(false)} disabled={busy}>Huỷ</Button>

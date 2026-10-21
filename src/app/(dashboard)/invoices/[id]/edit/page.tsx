@@ -23,7 +23,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     <div className="space-y-6">
       <div>
         <Link href={`/invoices/${id}`} className="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-foreground"><ArrowLeft className="w-4 h-4" /> {inv.invoiceNo}</Link>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mt-1"><Wallet className="w-6 h-6 text-primary-strong" /> Sửa đơn đặt hàng {inv.invoiceNo}</h1>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mt-1"><Wallet className="w-6 h-6 text-primary-strong" /> Sửa phiếu báo giá {inv.invoiceNo}</h1>
       </div>
       <InvoiceForm
         {...data}

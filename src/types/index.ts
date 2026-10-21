@@ -568,8 +568,8 @@ export const ALERT_TYPE_LABELS = {
   SALES_MANAGER_IMPORT_PENDING: "Phân công NV quản lý chờ duyệt",
   SALES_MANAGER_IMPORT_DECIDED: "Kết quả duyệt phân công NV quản lý",
   TRANSFER_RECEIVE_FEEDBACK: "Góp ý của Kho thành phẩm khi nhận hàng",
-  INVOICE_APPROVAL_NEEDED: "Đơn đặt hàng chờ duyệt giá",
-  INVOICE_DECIDED: "Kết quả duyệt đơn đặt hàng",
+  INVOICE_APPROVAL_NEEDED: "Phiếu báo giá chờ duyệt giá",
+  INVOICE_DECIDED: "Kết quả duyệt phiếu báo giá",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -777,7 +777,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/price-lists", label: "Bảng giá tháng", icon: "DollarSign" },
     { href: "/exchange-rates", label: "Tỉ giá tháng", icon: "TrendingUp" },
-    { href: "/invoices", label: "Đơn đặt hàng", icon: "Wallet" },
+    { href: "/invoices", label: "Phiếu báo giá", icon: "Wallet" },
     { href: "/attendance/manage", label: "Bảng chấm công", icon: "CalendarCheck" },
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
@@ -960,7 +960,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
-    { href: "/invoices", label: "Đơn đặt hàng", icon: "Wallet" },
+    { href: "/invoices", label: "Phiếu báo giá", icon: "Wallet" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
     { href: "/reports/inventory-flow-summary", label: "Báo cáo Nhập - Xuất", icon: "BarChart3" },
     { href: "/reports/rooting-quality-evaluations", label: "Dự kiến hàng ra rễ về Kho TP", icon: "ClipboardCheck" },
@@ -978,7 +978,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     // "Kiểm tra đáp ứng" + "Danh sách đơn hàng" gộp chung 1 mục "Xử lý đơn hàng" (xem /orders, hub y
     // hệt /inventory — trang check/tạo đơn thật đã dời sang /orders/create).
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
-    { href: "/invoices", label: "Đơn đặt hàng", icon: "Wallet" },
+    { href: "/invoices", label: "Phiếu báo giá", icon: "Wallet" },
     { href: "/price-lists", label: "Bảng giá tháng", icon: "DollarSign" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],

@@ -3,7 +3,7 @@
 //
 // Khác bản gốc:
 // - Tỉ giá lấy từ Tỉ giá tháng (ExchangeRate: 1 đơn vị = ? VND, 1 USD = ? đơn vị) thay vì tự nhập trong công cụ.
-// - Mỗi khoản phí cài sẵn có ô bật/tắt + thêm "Phí khác" tuỳ thị trường (Admin cấp cao cài ở Cài đặt đơn đặt hàng).
+// - Mỗi khoản phí cài sẵn có ô bật/tắt + thêm "Phí khác" tuỳ thị trường (Admin cấp cao cài ở Cài đặt phiếu báo giá).
 // - Thị trường có đơn vị tự tạo (VD Thái Lan THB → USD): giá + phí đổi theo tỉ giá VND của tháng.
 import { tierRange } from "@/lib/price-list-shared";
 
@@ -138,7 +138,7 @@ export type InvoiceRate = { vndPerUnit: number; perUsd: number | null };
 export type InvoiceLine = { key: string; qty: number; bag: number; manualPrice: number | null; shipCat: ShipCat | ""; shipRate: number | null };
 export type InvoiceManualLine = { code: string; desc: string; spec: string; qty: number; unit: number; shipRate: number | null };
 export type InvoiceInput = {
-  currency: string; // đơn vị tiền đơn đặt hàng: Market.currency hoặc Market.derivedCurrency
+  currency: string; // đơn vị tiền phiếu báo giá: Market.currency hoặc Market.derivedCurrency
   lines: InvoiceLine[];
   manual: InvoiceManualLine[];
   us: { shipmentDate: string; state: string; resale: boolean; ups: boolean; boxMode: "auto" | "manual"; boxes: { boxId: string; count: number }[] };
@@ -374,7 +374,7 @@ type ShipCtx = {
 function shipUS({ ctx, O, res, fee, bags, cur, conv }: ShipCtx) {
   const U = ctx.settings.us, o = O.us;
   const sh = U.shipments.find((s) => s.date === o.shipmentDate);
-  if (!sh) { res.blockers.push("Chưa chọn chuyến hàng Mỹ (NV Quản lý thị trường Mỹ cập nhật lịch chuyến ở Cài đặt đơn đặt hàng)"); res.pending = true; return; }
+  if (!sh) { res.blockers.push("Chưa chọn chuyến hàng Mỹ (NV Quản lý thị trường Mỹ cập nhật lịch chuyến ở Cài đặt phiếu báo giá)"); res.pending = true; return; }
   const pk = `p${sh.kg}` as "p45" | "p100" | "p200" | "p300";
   const zone = o.state === "CA" ? "lmCA" : US_WEST.includes(o.state) ? "lmW" : US_EAST.includes(o.state) ? "lmE" : null;
   const zoneLabel = zone ? { lmCA: "California", lmW: "Central & Western States", lmE: "Eastern & Southeastern States" }[zone] : "";
@@ -418,7 +418,7 @@ function shipEU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
   const E = euSettingsFor(ctx.settings, ctx.market.code), o = O.eu;
   const isEU = ctx.market.code === "EU";
   const base = ctx.market.currency;
-  if (!o.nl) { res.warnings.push(isEU ? "Giao ngoài Hà Lan: đơn đặt hàng chỉ gồm tiền hàng, phí ship báo riêng." : "Không tính phí vận chuyển: đơn đặt hàng chỉ gồm tiền hàng, phí ship báo riêng."); return; }
+  if (!o.nl) { res.warnings.push(isEU ? "Giao ngoài Hà Lan: phiếu báo giá chỉ gồm tiền hàng, phí ship báo riêng." : "Không tính phí vận chuyển: phiếu báo giá chỉ gồm tiền hàng, phí ship báo riêng."); return; }
   const f = bags[1] / E.cap1 + bags[5] / E.cap5 + bags[10] / E.cap10;
   const autoTC = res.plants ? Math.max(1, Math.ceil(f - 1e-9)) : 0;
   const tcBoxes = o.tcBoxes ?? autoTC; const cutBoxes = +o.cutBoxes || 0;
@@ -434,7 +434,7 @@ function shipEU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
   if (o.insurance) fee(`${isEU ? "DHL last-mile" : "Shipping"} insurance ${E.insurancePct}% of goods value`, res.goods * E.insurancePct / 100, "fee");
   if (o.lastMile == null) { res.blockers.push(isEU ? "Nhập phí DHL chặng cuối (theo địa chỉ, cân nặng, kích thước thùng)" : "Nhập phí giao chặng cuối (theo địa chỉ, cân nặng, kích thước thùng)"); res.pending = true; }
   else fee(isEU ? "Last-mile shipping DHL 2 days (AMS → customer address)" : "Last-mile shipping (to customer address)", o.lastMile, "ship");
-  if (totalBoxes >= 5) res.warnings.push("Từ 5 thùng: giá cước \"đang cập nhật\" — kiểm tra lại ở Cài đặt đơn đặt hàng.");
+  if (totalBoxes >= 5) res.warnings.push("Từ 5 thùng: giá cước \"đang cập nhật\" — kiểm tra lại ở Cài đặt phiếu báo giá.");
 }
 
 function shipAU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
