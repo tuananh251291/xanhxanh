@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { ShoppingCart, ClipboardList, PackageOpen, ChevronRight } from "lucide-react";
+import { ShoppingCart, ClipboardList, PackageOpen, ChevronRight, History } from "lucide-react";
 import { isAdminRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 
@@ -39,6 +39,11 @@ export default async function OrdersHubPage() {
           icon: PackageOpen,
           title: "Sắp xếp đơn hàng",
           description: "Đơn đã xác nhận, chờ đóng gói/xuất kho.",
+        }, {
+          href: "/orders/history",
+          icon: History,
+          title: "Lịch sử đơn đã xuất",
+          description: "Đơn đã xuất kho, lọc theo tháng.",
         }]
       : []),
   ];
