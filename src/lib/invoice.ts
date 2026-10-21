@@ -35,7 +35,7 @@ export async function saveInvoiceSettings(s: InvoiceSettings) {
   const value = JSON.stringify(s);
   await prisma.systemConfig.upsert({
     where: { key: INVOICE_SETTINGS_KEY },
-    create: { key: INVOICE_SETTINGS_KEY, value, description: "Cài đặt phí ship/thuế invoice theo thị trường (JSON)" },
+    create: { key: INVOICE_SETTINGS_KEY, value, description: "Cài đặt phí ship/thuế đơn đặt hàng theo thị trường (JSON)" },
     update: { value },
   });
 }
@@ -63,10 +63,10 @@ export async function loadInvoiceContext(marketId: string, invoiceDate: string, 
   };
 }
 
-// Số invoice: INV-yyMMdd-NN theo ngày lập (giờ VN), NN tăng dần trong ngày.
+// Số đơn đặt hàng: DDH-yyMMdd-NN theo ngày lập (giờ VN), NN tăng dần trong ngày.
 export async function nextInvoiceNo(): Promise<string> {
   const d = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).replace(/-/g, "").slice(2);
-  const prefix = `INV-${d}-`;
+  const prefix = `DDH-${d}-`;
   const last = await prisma.invoice.findFirst({ where: { invoiceNo: { startsWith: prefix } }, orderBy: { invoiceNo: "desc" }, select: { invoiceNo: true } });
   const n = last ? Number(last.invoiceNo.slice(prefix.length)) + 1 : 1;
   return `${prefix}${String(n).padStart(2, "0")}`;

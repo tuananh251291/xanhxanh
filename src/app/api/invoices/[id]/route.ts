@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!session?.user) return NextResponse.json({ message: "Chưa đăng nhập" }, { status: 401 });
   const { id } = await params;
   const inv = await findVisible(id, session.user);
-  if (!inv) return NextResponse.json({ message: "Không tìm thấy invoice" }, { status: 404 });
+  if (!inv) return NextResponse.json({ message: "Không tìm thấy đơn đặt hàng" }, { status: 404 });
   return NextResponse.json(inv);
 }
 
@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = actionSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const inv = await findVisible(id, session.user);
-  if (!inv) return NextResponse.json({ message: "Không tìm thấy invoice" }, { status: 404 });
+  if (!inv) return NextResponse.json({ message: "Không tìm thấy đơn đặt hàng" }, { status: 404 });
   const body = parsed.data;
   const orderLocked = !!inv.order && inv.order.status !== "HELD" && inv.order.status !== "DRAFT" && inv.order.status !== "CANCELLED";
 
@@ -57,10 +57,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         rejectionReason: body.action === "reject" ? body.reason : null,
       },
     });
-    if (done.count === 0) return NextResponse.json({ message: "Invoice đã được xử lý hoặc vừa bị sửa — tải lại trang" }, { status: 409 });
+    if (done.count === 0) return NextResponse.json({ message: "Đơn đặt hàng đã được xử lý hoặc vừa bị sửa — tải lại trang" }, { status: 409 });
     await createAlert({
       type: "INVOICE_DECIDED",
-      title: body.action === "approve" ? `Invoice ${inv.invoiceNo} đã được duyệt giá` : `Invoice ${inv.invoiceNo} bị từ chối`,
+      title: body.action === "approve" ? `Đơn đặt hàng ${inv.invoiceNo} đã được duyệt giá` : `Đơn đặt hàng ${inv.invoiceNo} bị từ chối`,
       message: body.action === "approve" ? `Có thể in PDF${inv.order ? " và xác nhận đơn " + inv.order.code : ""}.` : `Lý do: ${body.reason} — sửa lại giá rồi lưu để gửi duyệt lại.`,
       userId: inv.createdBy.id,
       relatedId: id,
@@ -71,10 +71,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const isOwner = inv.createdBy.id === session.user.id;
   if (!(isOwner && canCreateInvoice(session.user.role)) && session.user.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ message: "Chỉ người lập invoice được sửa/huỷ" }, { status: 403 });
+    return NextResponse.json({ message: "Chỉ người lập đơn đặt hàng được sửa/huỷ" }, { status: 403 });
   }
-  if (orderLocked) return NextResponse.json({ message: `Đơn ${inv.order!.code} đã xác nhận — không sửa/huỷ invoice được nữa` }, { status: 400 });
-  if (inv.status === "CANCELLED") return NextResponse.json({ message: "Invoice đã huỷ" }, { status: 400 });
+  if (orderLocked) return NextResponse.json({ message: `Đơn ${inv.order!.code} đã xác nhận — không sửa/huỷ đơn đặt hàng được nữa` }, { status: 400 });
+  if (inv.status === "CANCELLED") return NextResponse.json({ message: "Đơn đặt hàng đã huỷ" }, { status: 400 });
 
   if (body.action === "cancel") {
     await prisma.invoice.update({ where: { id }, data: { status: "CANCELLED" } });

@@ -16,7 +16,7 @@ export default async function ExchangeRatesPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           NV Kế toán nhập tỉ giá tháng sau trước ngày cuối tháng. Dùng để quy đổi bảng giá (VD Thái Lan USD tự tạo từ bảng Baht) và tính phụ thu
-          túi 1 cây các thị trường Đông Nam Á khi lập invoice.
+          túi 1 cây các thị trường Đông Nam Á khi lập đơn đặt hàng.
         </p>
       </div>
       <ExchangeRateBoard canEdit={canEditExchangeRate(role)} />

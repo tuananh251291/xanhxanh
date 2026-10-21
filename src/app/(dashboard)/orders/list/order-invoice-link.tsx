@@ -8,7 +8,7 @@ export default function OrderInvoiceLink({ orderId, invoice }: { orderId: string
   if (!invoice) {
     return (
       <Link href={`/invoices/new?orderId=${orderId}`}>
-        <Button size="sm" variant="outline" className="h-8"><FileText className="w-3.5 h-3.5 mr-1.5" /> Lập invoice</Button>
+        <Button size="sm" variant="outline" className="h-8"><FileText className="w-3.5 h-3.5 mr-1.5" /> Lập đơn đặt hàng</Button>
       </Link>
     );
   }

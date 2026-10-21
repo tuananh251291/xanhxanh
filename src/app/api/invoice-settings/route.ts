@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest) {
     await saveInvoiceSettings(s);
     return NextResponse.json({ success: true });
   }
-  if (!canEditInvoiceSettings(session.user.role)) return NextResponse.json({ message: "Chỉ Admin cấp cao sửa cài đặt invoice" }, { status: 403 });
+  if (!canEditInvoiceSettings(session.user.role)) return NextResponse.json({ message: "Chỉ Admin cấp cao sửa cài đặt đơn đặt hàng" }, { status: 403 });
   if (!body?.settings || typeof body.settings !== "object") return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   // Lịch chuyến Mỹ chỉ sửa qua PUT { shipments } — giữ bản hiện tại, tránh ghi đè sửa song song của NV Quản lý.
   const merged = mergeInvoiceSettings(body.settings);

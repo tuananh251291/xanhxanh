@@ -43,8 +43,8 @@ export default function PriceCheckBoard({ markets }: { markets: MarketOpt[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleCheck = async () => {
-    if (!file) { toast.error("Vui lòng chọn file PDF invoice"); return; }
-    if (!marketId) { toast.error("Chọn thị trường của invoice"); return; }
+    if (!file) { toast.error("Vui lòng chọn file PDF đơn đặt hàng"); return; }
+    if (!marketId) { toast.error("Chọn thị trường của đơn đặt hàng"); return; }
     setLoading(true);
     setResult(null);
     try {
@@ -96,7 +96,7 @@ export default function PriceCheckBoard({ markets }: { markets: MarketOpt[] }) {
               Kiểm tra
             </Button>
           </div>
-          <p className="text-xs text-text-secondary">Chỉ hỗ trợ file PDF invoice xuất khẩu (không phải ảnh scan). Giá đối chiếu theo Bảng giá tháng đã duyệt của thị trường, theo bậc tổng số lượng từng mã.</p>
+          <p className="text-xs text-text-secondary">Chỉ hỗ trợ file PDF đơn đặt hàng xuất khẩu (không phải ảnh scan). Giá đối chiếu theo Bảng giá tháng đã duyệt của thị trường, theo bậc tổng số lượng từng mã.</p>
         </CardContent>
       </Card>
 
@@ -105,7 +105,7 @@ export default function PriceCheckBoard({ markets }: { markets: MarketOpt[] }) {
           <CardContent className="p-0">
             <div className="px-4 py-3 border-b border-divider flex items-center gap-2 text-sm text-text-secondary">
               <FileCheck className="w-4 h-4 text-info-foreground" />
-              {result.invoiceNo && <span>Invoice: <span className="font-medium text-foreground">{result.invoiceNo}</span></span>}
+              {result.invoiceNo && <span>Số đơn: <span className="font-medium text-foreground">{result.invoiceNo}</span></span>}
               {result.invoiceDate && <span>· Ngày: <span className="font-medium text-foreground">{result.invoiceDate}</span></span>}
               <span>· {result.rows.length} dòng sản phẩm · Bảng giá tháng {result.priceListMonth} ({result.currency})</span>
             </div>
@@ -114,9 +114,9 @@ export default function PriceCheckBoard({ markets }: { markets: MarketOpt[] }) {
                 <thead>
                   <tr className="bg-primary-light">
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã SP</th>
-                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên SP (invoice)</th>
+                    <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên SP (đơn đặt hàng)</th>
                     <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">SL</th>
-                    <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Giá invoice</th>
+                    <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Giá trên đơn</th>
                     <th className="text-right px-4 py-3 text-base text-primary-strong font-bold">Giá hệ thống</th>
                     <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trạng thái</th>
                   </tr>

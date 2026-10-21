@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { SHIP_CATS, US_MILESTONES, euSettingsFor, type EuSettings, type ExtraFee, type ExtraFeeKind, type InvoiceSettings } from "@/lib/invoice-engine";
 
 type Market = { code: string; name: string; currency: string; derivedCurrency: string | null; invoiceCalcKind: string };
-const FEE_KINDS: Record<ExtraFeeKind, string> = { PCT_GOODS: "% giá trị hàng", PCT_TOTAL: "% tổng (hàng + phí)", PER_PLANT: "Theo cây", FIXED: "Cố định / invoice" };
+const FEE_KINDS: Record<ExtraFeeKind, string> = { PCT_GOODS: "% giá trị hàng", PCT_TOTAL: "% tổng (hàng + phí)", PER_PLANT: "Theo cây", FIXED: "Cố định / đơn đặt hàng" };
 
 function Num({ value, onChange, className, disabled }: { value: number | null | undefined; onChange: (v: number | null) => void; className?: string; disabled?: boolean }) {
   const [t, setT] = useState(value == null ? "" : String(value));
@@ -52,7 +52,7 @@ export default function InvoiceSettingsBoard({ markets, canEdit }: { markets: Ma
       const res = await fetch("/api/invoice-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: s }) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(j.message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã lưu cài đặt invoice");
+      toast.success("Đã lưu cài đặt đơn đặt hàng");
     } finally { setSaving(false); }
   };
   const saveShips = async () => {
@@ -102,7 +102,7 @@ export default function InvoiceSettingsBoard({ markets, canEdit }: { markets: Ma
                 <Field label="Phí PayPal (%)"><Num value={s.paypalPct} onChange={(v) => up((d) => { d.paypalPct = n0(v); })} /></Field>
                 <Field label="Phụ thu túi 1 cây ĐNA (USD/túi)"><Num value={s.seaSurchargeUSD} onChange={(v) => up((d) => { d.seaSurchargeUSD = n0(v); })} /></Field>
               </div>
-              <p className="text-xs text-text-secondary">Phụ thu túi 1 cây theo thị trường (đơn vị tiền invoice). Thị trường ĐNA bán bằng tiền địa phương: USD/túi ở trên × tỉ giá &quot;1 USD = ?&quot; của tháng.</p>
+              <p className="text-xs text-text-secondary">Phụ thu túi 1 cây theo thị trường (đơn vị tiền đơn đặt hàng). Thị trường ĐNA bán bằng tiền địa phương: USD/túi ở trên × tỉ giá &quot;1 USD = ?&quot; của tháng.</p>
               <div className="flex flex-wrap gap-3">
                 {markets.map((m) => (
                   <Field key={m.code} label={`${m.code} (${m.currency}${m.derivedCurrency ? "/" + m.derivedCurrency : ""})`}>
@@ -245,7 +245,7 @@ export default function InvoiceSettingsBoard({ markets, canEdit }: { markets: Ma
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-text-secondary">Ô trống = chưa có giá — NV bán hàng phải nhập phí ship/cây tay khi lập invoice. Ship tối thiểu trống = không áp dụng.</p>
+              <p className="text-xs text-text-secondary">Ô trống = chưa có giá — NV bán hàng phải nhập phí ship/cây tay khi lập đơn đặt hàng. Ship tối thiểu trống = không áp dụng.</p>
             </CardContent>
           </Card>
 
@@ -253,7 +253,7 @@ export default function InvoiceSettingsBoard({ markets, canEdit }: { markets: Ma
             <CardHeader className="pb-2"><CardTitle className="text-base">Phí khác theo thị trường</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <p className="text-xs text-text-secondary">
-                Dùng cho thị trường chưa có công thức riêng (Hàn Quốc, Canada, Anh, Trung Quốc, Nội địa…) hoặc thêm khoản ngoài công thức. &quot;Tuỳ chọn&quot; = NV bán hàng tự tick khi lập invoice; không tick tuỳ chọn = luôn tính. Số tiền cố định/theo cây tính bằng đơn vị tiền gốc thị trường.
+                Thêm khoản phí ngoài công thức của từng thị trường. &quot;Tuỳ chọn&quot; = NV bán hàng tự tick khi lập đơn đặt hàng; không tick tuỳ chọn = luôn tính. Số tiền cố định/theo cây tính bằng đơn vị tiền gốc thị trường.
               </p>
               {markets.map((m) => {
                 const list = s.extraFees[m.code] ?? [];

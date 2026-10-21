@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   const parsedInvoice = parseInvoiceText(text);
   if (parsedInvoice.rows.length === 0) {
     return NextResponse.json(
-      { message: "Không nhận diện được dòng sản phẩm nào trong file — định dạng invoice này có thể khác mẫu hệ thống đang hỗ trợ" },
+      { message: "Không nhận diện được dòng sản phẩm nào trong file — định dạng đơn đặt hàng này có thể khác mẫu hệ thống đang hỗ trợ" },
       { status: 422 }
     );
   }

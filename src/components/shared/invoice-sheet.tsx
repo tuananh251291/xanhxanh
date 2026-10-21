@@ -26,7 +26,7 @@ export default function InvoiceSheet({
           )}
         </div>
         <div className="text-right">
-          <p className="text-xs uppercase tracking-wide text-text-muted">Invoice</p>
+          <p className="text-xs uppercase tracking-wide text-text-muted">Purchase Order</p>
           <p className="font-bold font-mono">{invoiceNo}</p>
           <p className="text-xs text-text-secondary">{date} · {marketName} · {cur}</p>
         </div>

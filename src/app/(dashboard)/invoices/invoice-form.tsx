@@ -157,7 +157,7 @@ export default function InvoiceForm({
               <Pick items={customerOpts} value={customerId} onChange={onCustomer} placeholder="Gõ mã hoặc tên khách hàng…" empty="Không tìm thấy khách bạn phụ trách" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Tên khách trên invoice *</Label>
+              <Label className="text-xs">Tên khách trên đơn đặt hàng *</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
             </div>
             <div className="space-y-1">
@@ -184,7 +184,7 @@ export default function InvoiceForm({
               </select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Ngày invoice</Label>
+              <Label className="text-xs">Ngày đặt hàng</Label>
               <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
             </div>
             <div className="space-y-1">
@@ -390,7 +390,7 @@ export default function InvoiceForm({
                 </label>
               ))}
               {settings.paypalEnabled && (
-                <label className="flex items-center gap-2"><Checkbox checked={input.paypal} onCheckedChange={(c) => setInput((v) => ({ ...v, paypal: !!c }))} /> Thanh toán PayPal (+{settings.paypalPct}% tổng invoice)</label>
+                <label className="flex items-center gap-2"><Checkbox checked={input.paypal} onCheckedChange={(c) => setInput((v) => ({ ...v, paypal: !!c }))} /> Thanh toán PayPal (+{settings.paypalPct}% tổng đơn đặt hàng)</label>
               )}
             </CardContent>
           </Card>
@@ -412,7 +412,7 @@ export default function InvoiceForm({
         </div>
         {result ? (
           <InvoiceSheet
-            invoiceNo={initial?.invoiceNo ?? "INV-(tự sinh khi lưu)"} date={invoiceDate} profile={profile}
+            invoiceNo={initial?.invoiceNo ?? "DDH-(tự sinh khi lưu)"} date={invoiceDate} profile={profile}
             customer={{ name: customerName, address: customerAddress || null, email: customerEmail || null }}
             marketName={ctx?.market.name ?? ""} kind={kind} result={result} view={view} provisional={result.pending}
           />
@@ -426,11 +426,11 @@ export default function InvoiceForm({
           </div>
         )}
         {result?.hasManualPrice && (
-          <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Invoice có giá nhập tay → sau khi lưu sẽ chờ Admin cấp cao duyệt mới in PDF / xác nhận đơn được.</p>
+          <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Đơn đặt hàng có giá nhập tay → sau khi lưu sẽ chờ Admin cấp cao duyệt mới in PDF / xác nhận đơn được.</p>
         )}
         <Button className="w-full" onClick={save} disabled={saving || !result || blockers.length > 0 || !customerName.trim() || !profileId}>
           {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-          {initial ? "Lưu thay đổi" : "Lưu invoice"}
+          {initial ? "Lưu thay đổi" : "Lưu đơn đặt hàng"}
         </Button>
       </div>
     </div>

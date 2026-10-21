@@ -127,7 +127,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM) {
     const approved = await prisma.invoice.count({ where: { orderId, status: "APPROVED" } });
     if (approved === 0) {
-      return NextResponse.json({ message: "Đơn cần có invoice đã duyệt trước khi xác nhận — lập invoice gắn đơn này ở mục Invoice" }, { status: 400 });
+      return NextResponse.json({ message: "Đơn cần có đơn đặt hàng đã duyệt trước khi xác nhận — lập đơn đặt hàng gắn đơn này ở mục Đơn đặt hàng" }, { status: 400 });
     }
   }
 

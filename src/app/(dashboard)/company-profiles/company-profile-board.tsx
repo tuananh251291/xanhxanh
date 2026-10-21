@@ -86,7 +86,7 @@ export default function CompanyProfileBoard() {
                 </div>
               ))}
               <div className="space-y-1">
-                <Label className="text-xs">Thông tin ngân hàng (in cuối invoice)</Label>
+                <Label className="text-xs">Thông tin ngân hàng (in cuối đơn đặt hàng)</Label>
                 <textarea className="w-full min-h-20 rounded-md border border-border bg-background px-3 py-2 text-sm" value={editing.form.bankInfo} onChange={(e) => set("bankInfo", e.target.value)} />
               </div>
               <div className="space-y-1">

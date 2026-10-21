@@ -11,6 +11,8 @@ export default async function InvoiceSettingsPage() {
   const canEdit = canEditInvoiceSettings(session.user.role);
   const canShip = await canEditUsShipments(session.user);
   if (!canEdit && !canShip) redirect("/dashboard");
+  // Admin cấp cao: trang đầy đủ nằm ở Cài đặt CSDL chung hệ thống; trang riêng này còn cho NV Quản lý thị trường Mỹ (lịch chuyến).
+  if (canEdit) redirect("/master-data?tab=order-settings");
   const markets = await prisma.market.findMany({
     where: { isActive: true }, orderBy: { code: "asc" },
     select: { code: true, name: true, currency: true, derivedCurrency: true, invoiceCalcKind: true },
@@ -18,9 +20,9 @@ export default async function InvoiceSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Settings className="w-6 h-6 text-primary-strong" /> {canEdit ? "Cài đặt invoice" : "Lịch chuyến Mỹ"}</h1>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Settings className="w-6 h-6 text-primary-strong" /> {canEdit ? "Cài đặt đơn đặt hàng" : "Lịch chuyến Mỹ"}</h1>
         <p className="text-text-secondary text-sm mt-1">
-          {canEdit ? "Phí ship, thuế, phụ thu theo từng thị trường — tick để bật/tắt từng khoản. Áp dụng cho invoice lập/sửa từ lúc lưu; invoice đã lưu giữ nguyên số." : "Lịch chuyến hàng Mỹ và mức cân (kg) dùng tính cước — NV bán hàng chọn chuyến khi lập invoice."}
+          {canEdit ? "Phí ship, thuế, phụ thu theo từng thị trường — tick để bật/tắt từng khoản. Áp dụng cho đơn đặt hàng lập/sửa từ lúc lưu; đơn đặt hàng đã lưu giữ nguyên số." : "Lịch chuyến hàng Mỹ và mức cân (kg) dùng tính cước — NV bán hàng chọn chuyến khi lập đơn đặt hàng."}
         </p>
       </div>
       <InvoiceSettingsBoard markets={markets} canEdit={canEdit} />

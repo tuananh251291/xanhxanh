@@ -19,10 +19,10 @@ export default async function PriceCheckPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <FileCheck className="w-6 h-6 text-secondary-foreground" /> Kiểm tra giá invoice
+          <FileCheck className="w-6 h-6 text-secondary-foreground" /> Kiểm tra giá đơn đặt hàng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Tải invoice PDF lên để đối chiếu với Bảng giá tháng đang áp dụng của thị trường
+          Tải đơn đặt hàng PDF lên để đối chiếu với Bảng giá tháng đang áp dụng của thị trường
         </p>
       </div>
 
