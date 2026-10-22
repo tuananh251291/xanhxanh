@@ -257,7 +257,8 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
   }
   const conv = (v: number) => v * fx;
 
-  if (!q) res.blockers.push(`Thị trường ${M.name} chưa có bảng giá đã duyệt — chỉ nhập được dòng nhập tay`);
+  // Chưa có bảng giá: vẫn lập được phiếu bằng dòng nhập tay (luôn chờ Admin cấp cao duyệt) — chỉ cảnh báo, không chặn.
+  if (!q) res.warnings.push(`Thị trường ${M.name} chưa có bảng giá đã duyệt — chỉ nhập được dòng nhập tay (cần Admin cấp cao duyệt giá)`);
   const byKey = new Map((q?.items ?? []).map((p) => [priceKey(p), p]));
 
   const agg = new Map<string, number>();
