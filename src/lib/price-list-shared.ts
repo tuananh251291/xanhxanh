@@ -38,8 +38,9 @@ export function tierRange(label: string): [number, number] | null {
 //   full pot / chậu 6 inch → L, cành lá đến 30cm → X, 31-40cm → Y, 40cm+ → Z, node thân đốt + lá mẹ → C
 //   (xem POT_SPEC_DESCRIPTIONS); "Tissue culture" (báo giá TC Mỹ/EU/Úc) → null = mọi loại túi; còn lại chưa có quy đổi → null.
 // Cành theo cỡ lá: đến 30cm → X (gồm 15-17, 16-18, 16-22, 18-25, 20-30cm — Admin cấp cao chốt 22/10/2026), 31-40cm → Y,
-// 40cm+ (41cm+) → Z. Không có cỡ (VD "mature form") → null = chưa quy đổi.
+// 40cm+ (41cm+) → Z. Cành "mature form" (không ghi cỡ) → X. Không có cỡ khác → null = chưa quy đổi.
 function cuttingStage(s: string): string | null {
+  if (/mature form/.test(s)) return "X";
   const plus = s.match(/(\d+)\s*cm\s*\+/);
   if (plus) return Number(plus[1]) >= 40 ? "Z" : null;
   const r = s.match(/(\d+)\s*-\s*(\d+)\s*cm/);
