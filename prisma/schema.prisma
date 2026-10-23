@@ -2345,8 +2345,47 @@ model ProductionGarden {
   goodsReceipts GoodsReceipt[]
   handovers     GardenHandover[]
   staff         GardenStaff[]
+  houses        GardenHouse[]
 
   @@map("production_gardens")
+}
+
+// "Bố trí vườn" — Quản lý vườn tự cài đặt ở /garden-layout: Nhà lưới (đánh số 1, 2, 3…) → Giàn kệ (A, B,
+// C…) → Dãy (1, 2, 3…). Mã vị trí = số nhà lưới + chữ giàn + số dãy, VD "1A1" = nhà lưới 1, giàn A, dãy 1.
+// Số/chữ luôn tăng dần liên tục — chỉ xoá được phần tử CUỐI (số/chữ lớn nhất) để không tạo lỗ hổng.
+model GardenHouse {
+  id        String           @id @default(cuid())
+  gardenId  String
+  garden    ProductionGarden @relation(fields: [gardenId], references: [id])
+  number    Int
+  createdAt DateTime         @default(now())
+  racks     GardenRack[]
+
+  @@unique([gardenId, number])
+  @@map("garden_houses")
+}
+
+model GardenRack {
+  id        String      @id @default(cuid())
+  houseId   String
+  house     GardenHouse @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  letter    String
+  createdAt DateTime    @default(now())
+  rows      GardenRow[]
+
+  @@unique([houseId, letter])
+  @@map("garden_racks")
+}
+
+model GardenRow {
+  id        String     @id @default(cuid())
+  rackId    String
+  rack      GardenRack @relation(fields: [rackId], references: [id], onDelete: Cascade)
+  number    Int
+  createdAt DateTime   @default(now())
+
+  @@unique([rackId, number])
+  @@map("garden_rows")
 }
 
 // Vị trí công việc của nhân sự vườn (không có tài khoản đăng nhập) — 1 người có thể kiêm nhiều vị trí.

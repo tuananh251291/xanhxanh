@@ -1021,6 +1021,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-handovers", label: "Nhận cây từ Kho thành phẩm", icon: "PackageCheck" },
     // Cài đặt nhân viên làm việc tại vườn (không có tài khoản), xem /garden-staff.
     { href: "/garden-staff", label: "Nhân sự vườn", icon: "Users" },
+    // Nhà lưới → Giàn kệ → Dãy (mã vị trí VD 1A1), xem /garden-layout.
+    { href: "/garden-layout", label: "Bố trí vườn", icon: "LayoutGrid" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Nhận hàng gửi từ Kho thành phẩm (xem /transfers/send-market, KHO_THANH_PHAM/QUAN_LY_KHO_THANH_PHAM) —
