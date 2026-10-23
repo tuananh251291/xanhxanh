@@ -451,3 +451,15 @@ export async function generateRoomMoveCode(client: Prisma.TransactionClient | ty
   const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
+
+// Mã phiếu bàn giao cây mô về Vườn sản xuất = "BGV-" + "YYYYMM" + số thứ tự 4 chữ số trong tháng.
+export async function generateGardenReceiptCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `BGV-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.gardenReceipt.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}

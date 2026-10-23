@@ -545,6 +545,9 @@ export const ALERT_TYPE_LABELS = {
   KTP_REPACK_CREATED: "Phiếu xử lý từ Kho thành phẩm",
   KTP_REPACK_RETURNED: "Phiếu xử lý chờ Kho TP nhận lại",
   GARDEN_HANDOVER_CREATED: "Phiếu bàn giao về Vườn sản xuất",
+  GARDEN_RECEIPT_CREATED: "Phiếu bàn giao cây mô về vườn",
+  GARDEN_RECEIPT_DISCREPANCY: "Phiếu bàn giao cây về vườn bị lệch số lượng",
+  GARDEN_RECEIPT_COMPLETED: "Vườn đã nhận đủ phiếu bàn giao cây",
   RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
   MOTHER_FORECAST_MONTHLY_DUE: "Nhiệm vụ Dự kiến đáp ứng mẫu mẹ đến hạn",
   MOTHER_OUTPUT_SHORTFALL: "Sản lượng mẫu mẹ tụt dưới kế hoạch",
@@ -602,6 +605,9 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   KTP_REPACK_CREATED: "/handover-in?tab=ktp-repack",
   KTP_REPACK_RETURNED: "/goods-receipts?tab=repack",
   GARDEN_HANDOVER_CREATED: "/garden-handovers",
+  GARDEN_RECEIPT_CREATED: "/garden-receipts",
+  GARDEN_RECEIPT_DISCREPANCY: "/garden-receipts",
+  GARDEN_RECEIPT_COMPLETED: "/garden-receipts",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -618,7 +624,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "ROOTING_FORECAST_MONTHLY_DUE", "ROOTING_FORECAST_EDIT_PROPOSAL",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
     "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
-    "SALES_MANAGER_IMPORT_PENDING",
+    "SALES_MANAGER_IMPORT_PENDING", "GARDEN_RECEIPT_DISCREPANCY",
   ],
   ADMIN: [
     "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED", "STOCK_LOW", "ORDER_PENDING_PACK",
@@ -766,6 +772,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
     { href: "/production-gardens", label: "Vườn sản xuất", icon: "Sprout" },
     { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "PackageCheck" },
+    { href: "/garden-receipts", label: "Phiếu bàn giao cây mô về vườn", icon: "Sprout" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
@@ -871,6 +878,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   KHO_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/garden-receipts", label: "Bàn giao cây mô về vườn", icon: "Sprout" },
     // "Chỉ định cấy xử lý" gộp vào tab trong hub này (xem instruction-quantity-edit/page.tsx) — route
     // /repack-instructions vẫn hoạt động độc lập, chỉ bỏ khỏi menu dọc KHO_MO.
     { href: "/instruction-quantity-edit", label: "Chỉ định cấy", icon: "ClipboardList" },
@@ -925,6 +933,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   KHO_THANH_PHAM: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/transfers/send", label: "Trả hàng Kho Sản xuất", icon: "PackageOpen" },
+    { href: "/garden-receipts", label: "Bàn giao cây mô về vườn", icon: "Sprout" },
     { href: "/ktp-handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory/dat-tieu-chuan", label: "Xem tồn đạt tiêu chuẩn", icon: "PackageCheck" },
@@ -966,6 +975,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/reports/rooting-quality-evaluations", label: "Dự kiến hàng ra rễ về Kho TP", icon: "ClipboardCheck" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
     { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "Sprout" },
+    // Phiếu bàn giao cây mô về Vườn sản xuất (lập tay, chọn vườn nhận) — xem /garden-receipts.
+    { href: "/garden-receipts", label: "Bàn giao cây mô về vườn", icon: "Sprout" },
     { href: "/attendance", label: "Chấm công", icon: "Fingerprint" },
     { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -1019,6 +1030,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   NHAN_VIEN_QUAN_LY_VUON: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/garden-handovers", label: "Nhận cây từ Kho thành phẩm", icon: "PackageCheck" },
+    // Nhận bàn giao cây mô (Kho TP/Khu sản xuất lập phiếu) — giao kiểm đếm, nhập số thực nhận; xem /garden-receipts.
+    { href: "/garden-receipts", label: "Nhận bàn giao cây mô", icon: "PackageCheck" },
+    { href: "/garden-stock", label: "Tồn kho vườn", icon: "Boxes" },
     // Cài đặt nhân viên làm việc tại vườn (không có tài khoản), xem /garden-staff.
     { href: "/garden-staff", label: "Nhân sự vườn", icon: "Users" },
     // Nhà lưới → Giàn kệ → Dãy (mã vị trí VD 1A1), xem /garden-layout.

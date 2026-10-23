@@ -299,6 +299,9 @@ enum AlertType {
   KTP_REPACK_RETURNED
   // Admin cấp cao duyệt đề xuất Trồng của Kho thành phẩm → tự tạo phiếu bàn giao về Vườn — báo Quản lý vườn.
   GARDEN_HANDOVER_CREATED
+  GARDEN_RECEIPT_CREATED
+  GARDEN_RECEIPT_DISCREPANCY
+  GARDEN_RECEIPT_COMPLETED
   // Admin bấm "Từ chối" 1 đề xuất Trồng/Hủy — báo cho đúng NV đã gửi đề xuất đó (userId) biết lý do (nếu
   // Admin có ghi) để sửa số lượng/loại/ghi chú rồi gửi lại — xem PATCH /api/contamination-proposals/[id]
   // nhánh reject + nhánh resubmit.
@@ -605,6 +608,10 @@ model User {
   outputDeviationResolutionsResolved    OutputDeviationResolution[]       @relation("OutputDeviationResolvedBy")
   managedGardens                        ProductionGarden[]                @relation("ProductionGardenManager")
   gardenStaffCreated                    GardenStaff[]                     @relation("GardenStaffCreatedBy")
+  gardenReceiptsCreated                 GardenReceipt[]                   @relation("GardenReceiptCreatedBy")
+  gardenReceiptsAssigned                GardenReceipt[]                   @relation("GardenReceiptAssignedUser")
+  gardenReceiptsCounted                 GardenReceipt[]                   @relation("GardenReceiptCountedBy")
+  gardenReceiptsApproved                GardenReceipt[]                   @relation("GardenReceiptApprovedBy")
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy   DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated                 ViolationType[]
@@ -941,6 +948,8 @@ model PlantType {
   contaminationStaffBalances       ContaminationStaffBalance[]
   processingTickets                ProcessingTicket[]
   roomMoveItems                    RoomMoveItem[]
+  gardenReceiptItems               GardenReceiptItem[]
+  gardenStocks                     GardenStock[]
   orderProcessingRequests          OrderProcessingRequest[]
   goodsReceiptItems                GoodsReceiptItem[]
   repackInstructions               RepackInstruction[]
@@ -1255,6 +1264,7 @@ model Warehouse {
   rootingQualityEvaluations    RootingQualityEvaluation[]
   marketOrders                 Order[]
   retailWarehouseAccess        RetailWarehouseAccess[]
+  gardenReceiptsOut            GardenReceipt[]               @relation("GardenReceiptFrom")
   rejectedGoodsClassifications RejectedGoodsClassification[]
   operationErrorTickets        OperationErrorTicket[]
   attendanceSite               AttendanceSite?
@@ -1299,6 +1309,7 @@ model Room {
   processingTickets               ProcessingTicket[]
   roomMovesFrom                   RoomMove[]                 @relation("RoomMoveFrom")
   roomMovesTo                     RoomMove[]                 @relation("RoomMoveTo")
+  gardenReceiptsOut               GardenReceipt[]            @relation("GardenReceiptFromRoom")
   orderProcessingRequests         OrderProcessingRequest[]
   orderProcessingRequestsAsTarget OrderProcessingRequest[]   @relation("OrderProcessingRequestTarget")
   goodsReceipts                   GoodsReceipt[]
@@ -2346,8 +2357,91 @@ model ProductionGarden {
   handovers     GardenHandover[]
   staff         GardenStaff[]
   houses        GardenHouse[]
+  receipts      GardenReceipt[]
+  stocks        GardenStock[]
 
   @@map("production_gardens")
+}
+
+// "Nhận bàn giao cây mô" về Vườn sản xuất — Kho thành phẩm (Phòng đạt tiêu chuẩn/Phòng chờ xử lý) hoặc Khu
+// sản xuất (thành phẩm Phòng ra rễ) lập phiếu chọn vườn nhận, tồn bên giao TRỪ NGAY lúc lập. Quản lý vườn giao
+// kiểm đếm cho chính mình hoặc 1 Nhân viên phân loại (GardenStaff, không có tài khoản — Quản lý vườn nhập số
+// thay), nhập số thực nhận → chênh lệch = thực nhận − bàn giao. Không lệch → cộng GardenStock (COMPLETED).
+// Lệch → DISCREPANCY, báo bên giao + Admin cấp cao; kiểm tra lại (COUNTING lần nữa) hết lệch thì cộng tồn, hoặc
+// Admin cấp cao duyệt số lệch → cộng đúng số thực nhận. Xem /api/garden-receipts.
+enum GardenReceiptStatus {
+  PENDING
+  COUNTING
+  DISCREPANCY
+  COMPLETED
+}
+
+model GardenReceipt {
+  id               String              @id @default(cuid())
+  code             String              @unique
+  gardenId         String
+  garden           ProductionGarden    @relation(fields: [gardenId], references: [id])
+  fromWarehouseId  String
+  fromWarehouse    Warehouse           @relation("GardenReceiptFrom", fields: [fromWarehouseId], references: [id])
+  // Phòng nguồn ở Kho thành phẩm (Phòng đạt tiêu chuẩn/Phòng chờ xử lý). NULL = từ Khu sản xuất (Phòng ra rễ).
+  fromRoomId       String?
+  fromRoom         Room?               @relation("GardenReceiptFromRoom", fields: [fromRoomId], references: [id])
+  status           GardenReceiptStatus @default(PENDING)
+  notes            String?
+  createdById      String
+  createdBy        User                @relation("GardenReceiptCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+  // Người kiểm đếm: Quản lý vườn tự làm (assignedUserId) HOẶC 1 Nhân viên phân loại (assignedStaffId).
+  assignedUserId   String?
+  assignedUser     User?               @relation("GardenReceiptAssignedUser", fields: [assignedUserId], references: [id])
+  assignedStaffId  String?
+  assignedStaff    GardenStaff?        @relation(fields: [assignedStaffId], references: [id])
+  assignedAt       DateTime?
+  // Số lần đã nhập số thực nhận (1 = lần đầu, 2+ = kiểm tra lại).
+  countRound       Int                 @default(0)
+  countedById      String?
+  countedBy        User?               @relation("GardenReceiptCountedBy", fields: [countedById], references: [id])
+  countedAt        DateTime?
+  // Admin cấp cao duyệt số lệch (ghi nhận số thực nhận dù còn lệch).
+  approvedById     String?
+  approvedBy       User?               @relation("GardenReceiptApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  completedAt      DateTime?
+  items            GardenReceiptItem[]
+
+  @@index([gardenId, status])
+  @@map("garden_receipts")
+}
+
+model GardenReceiptItem {
+  id                      String        @id @default(cuid())
+  receiptId               String
+  receipt                 GardenReceipt @relation(fields: [receiptId], references: [id])
+  plantTypeId             String
+  plantType               PlantType     @relation(fields: [plantTypeId], references: [id])
+  stageCode               String
+  quantity                Int
+  // Số thực nhận lần kiểm đếm ĐẦU TIÊN (giữ lại đối chiếu) và số mới nhất (sau kiểm tra lại, nếu có).
+  firstReceivedQuantity   Int?
+  receivedQuantity        Int?
+
+  @@map("garden_receipt_items")
+}
+
+// Tồn kho cây của 1 vườn theo mã cây + quy cách — cộng khi phiếu nhận bàn giao hoàn thành. Chưa phân bổ theo
+// giàn kệ/dãy (bước "phân bổ & chuyển tồn theo giàn kệ" làm sau).
+model GardenStock {
+  id          String           @id @default(cuid())
+  gardenId    String
+  garden      ProductionGarden @relation(fields: [gardenId], references: [id])
+  plantTypeId String
+  plantType   PlantType        @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+  quantity    Int              @default(0)
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([gardenId, plantTypeId, stageCode])
+  @@map("garden_stocks")
 }
 
 // "Bố trí vườn" — Quản lý vườn tự cài đặt ở /garden-layout: Nhà lưới (đánh số 1, 2, 3…) → Giàn kệ (A, B,
@@ -2410,6 +2504,7 @@ model GardenStaff {
   isActive    Boolean           @default(true)
   createdById String
   createdBy   User              @relation("GardenStaffCreatedBy", fields: [createdById], references: [id])
+  assignedReceipts GardenReceipt[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
