@@ -604,6 +604,7 @@ model User {
   probationEvaluationsAsManager         ProbationEvaluation[]             @relation("ProbationEvaluationManager")
   outputDeviationResolutionsResolved    OutputDeviationResolution[]       @relation("OutputDeviationResolvedBy")
   managedGardens                        ProductionGarden[]                @relation("ProductionGardenManager")
+  gardenStaffCreated                    GardenStaff[]                     @relation("GardenStaffCreatedBy")
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy   DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated                 ViolationType[]
@@ -2343,8 +2344,38 @@ model ProductionGarden {
   proposals     ContaminationProposal[]
   goodsReceipts GoodsReceipt[]
   handovers     GardenHandover[]
+  staff         GardenStaff[]
 
   @@map("production_gardens")
+}
+
+// Vị trí công việc của nhân sự vườn (không có tài khoản đăng nhập) — 1 người có thể kiêm nhiều vị trí.
+enum GardenStaffType {
+  PHAN_LOAI
+  CHAM_SOC_CAY_MO
+  CHAM_SOC_CAY_THANH_PHAM
+  DONG_HANG
+}
+
+// "Nhân sự vườn" — nhân viên làm việc tại 1 Vườn sản xuất, KHÔNG có tài khoản đăng nhập (khác User). Quản lý
+// vườn (NHAN_VIEN_QUAN_LY_VUON, ProductionGarden.managerId) tự thêm/sửa/xoá ở /garden-staff. Xoá = ẩn
+// (isActive=false), giữ bản ghi để các bước phân công nhiệm vụ sau này còn tra được lịch sử.
+model GardenStaff {
+  id          String            @id @default(cuid())
+  gardenId    String
+  garden      ProductionGarden  @relation(fields: [gardenId], references: [id])
+  name        String
+  phone       String?
+  types       GardenStaffType[]
+  notes       String?
+  isActive    Boolean           @default(true)
+  createdById String
+  createdBy   User              @relation("GardenStaffCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([gardenId, isActive])
+  @@map("garden_staff")
 }
 
 enum RejectedGoodsClassificationStatus {
