@@ -11,6 +11,11 @@ import {
 export const INVOICE_SETTINGS_KEY = "invoice_settings";
 // Đơn bán cho khách tạo từ mốc này phải có invoice APPROVED gắn đơn mới Xác nhận được (đơn cũ giữ luồng cũ).
 export const INVOICE_REQUIRED_FROM = new Date("2026-10-22T00:00:00+07:00");
+// Tạm thời (yêu cầu 24/10/2026, 1 tuần): Quản lý kho TP tạo + xác nhận đơn hộ Sale thì KHÔNG cần invoice
+// đã duyệt — đơn chuyển thẳng sang Sắp xếp đơn hàng. Hết mốc này tự áp dụng lại yêu cầu invoice.
+export const QLK_INVOICE_EXEMPT_UNTIL = new Date("2026-11-01T00:00:00+07:00");
+export const isInvoiceExemptForConfirm = (role: string | null | undefined, now: Date = new Date()) =>
+  role === "QUAN_LY_KHO_THANH_PHAM" && now < QLK_INVOICE_EXEMPT_UNTIL;
 
 // Lập invoice: NV bán hàng + Quản lý kho TP (lập hộ như tạo đơn hộ) + Admin cấp cao. Duyệt giá nhập tay: Admin cấp cao.
 export const canCreateInvoice = (role: string | null | undefined) => role === "SALE" || role === "QUAN_LY_KHO_THANH_PHAM" || role === "SUPER_ADMIN";

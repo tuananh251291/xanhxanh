@@ -6,7 +6,7 @@ import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
 import { canEditShipTime } from "@/lib/order-ship-time";
-import { INVOICE_REQUIRED_FROM } from "@/lib/invoice";
+import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
 
 const patchSchema = z.object({
   action: z.enum(["confirm", "ship", "cancel", "assign", "ack", "reschedule"]),
@@ -124,7 +124,8 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ — không thể xác nhận" }, { status: 400 });
   }
   // Đơn bán cho khách (không phải gửi Kho thị trường) tạo từ INVOICE_REQUIRED_FROM phải có invoice đã duyệt gắn đơn.
-  if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM) {
+  // Quản lý kho TP xác nhận hộ được miễn tạm thời tới QLK_INVOICE_EXEMPT_UNTIL.
+  if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM && !isInvoiceExemptForConfirm(user.role)) {
     const approved = await prisma.invoice.count({ where: { orderId, status: "APPROVED" } });
     if (approved === 0) {
       return NextResponse.json({ message: "Đơn cần có phiếu báo giá đã duyệt trước khi xác nhận — lập phiếu báo giá gắn đơn này ở mục Phiếu báo giá" }, { status: 400 });
