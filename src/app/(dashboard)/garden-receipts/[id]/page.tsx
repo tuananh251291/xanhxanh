@@ -13,7 +13,8 @@ export default async function GardenReceiptDetailPage({ params }: { params: Prom
   const receipt = await prisma.gardenReceipt.findUnique({
     where: { id },
     select: {
-      id: true, code: true, status: true, notes: true, createdAt: true, countRound: true, countedAt: true, approvedAt: true, completedAt: true, assignedAt: true,
+      id: true, code: true, status: true, notes: true, createdAt: true, orderType: true, expectedDeliveryDate: true, orderNotes: true,
+      saleUser: { select: { name: true, code: true } }, countRound: true, countedAt: true, approvedAt: true, completedAt: true, assignedAt: true,
       gardenId: true, fromWarehouseId: true,
       garden: { select: { name: true, managerId: true } },
       fromWarehouse: { select: { name: true } }, fromRoom: { select: { name: true } },
@@ -21,7 +22,10 @@ export default async function GardenReceiptDetailPage({ params }: { params: Prom
       assignedUser: { select: { name: true } }, assignedStaff: { select: { name: true } },
       items: {
         orderBy: { id: "asc" },
-        select: { id: true, stageCode: true, quantity: true, firstReceivedQuantity: true, receivedQuantity: true, plantType: { select: { code: true, name: true } } },
+        select: {
+          id: true, stageCode: true, quantity: true, firstReceivedQuantity: true, receivedQuantity: true, plantType: { select: { code: true, name: true } },
+          outputs: { select: { stageCode: true, quantity: true }, orderBy: { stageCode: "asc" } },
+        },
       },
     },
   });
@@ -38,6 +42,7 @@ export default async function GardenReceiptDetailPage({ params }: { params: Prom
       receipt={{
         ...receipt,
         createdAt: receipt.createdAt.toISOString(),
+        expectedDeliveryDate: receipt.expectedDeliveryDate?.toISOString() ?? null,
         countedAt: receipt.countedAt?.toISOString() ?? null,
         approvedAt: receipt.approvedAt?.toISOString() ?? null,
         completedAt: receipt.completedAt?.toISOString() ?? null,

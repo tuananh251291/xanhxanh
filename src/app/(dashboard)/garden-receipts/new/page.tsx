@@ -30,7 +30,11 @@ export default async function NewGardenReceiptPage() {
   const sender = await getGardenReceiptSender(session.user);
   if (!sender) redirect("/garden-receipts");
 
-  const gardens = await prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } });
+  const [gardens, sales] = await Promise.all([
+    prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    // NV bán hàng đặt hàng — chọn khi lệnh sản xuất có kế hoạch.
+    prisma.user.findMany({ where: { role: "SALE", isActive: true }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
 
   let sources: SourceOption[];
   if (sender.kind === "KTP") {
@@ -42,5 +46,5 @@ export default async function NewGardenReceiptPage() {
     sources = [{ roomId: null, label: "Phòng ra rễ (thành phẩm)", stock: await toOptions(summarizeMovable(await getSenderMovableLots(sender, null))) }];
   }
 
-  return <GardenReceiptForm warehouseName={sender.warehouseName} gardens={gardens} sources={sources} />;
+  return <GardenReceiptForm warehouseName={sender.warehouseName} gardens={gardens} sources={sources} sales={sales} />;
 }

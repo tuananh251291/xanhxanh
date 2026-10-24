@@ -42,7 +42,7 @@ export default async function GardenReceiptsPage({ searchParams }: { searchParam
       orderBy: { createdAt: "desc" },
       take: 100,
       select: {
-        id: true, code: true, status: true, createdAt: true,
+        id: true, code: true, status: true, createdAt: true, orderType: true, expectedDeliveryDate: true, saleUser: { select: { name: true } },
         garden: { select: { name: true } }, fromWarehouse: { select: { name: true } }, fromRoom: { select: { name: true } },
         createdBy: { select: { name: true } },
         items: { select: { quantity: true, receivedQuantity: true } },
@@ -86,6 +86,7 @@ export default async function GardenReceiptsPage({ searchParams }: { searchParam
                 <thead>
                   <tr className="bg-primary-light">
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Mã phiếu</th>
+                    <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Lệnh sản xuất</th>
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Bên giao</th>
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Vườn nhận</th>
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Ngày lập</th>
@@ -102,6 +103,12 @@ export default async function GardenReceiptsPage({ searchParams }: { searchParam
                     return (
                       <tr key={r.id} className="border-b border-divider last:border-0 even:bg-primary-light/30">
                         <td className="px-4 py-2"><Link href={`/garden-receipts/${r.id}`} className="font-mono text-primary-strong underline underline-offset-2">{r.code}</Link></td>
+                        <td className="px-4 py-2">
+                          <Badge variant={r.orderType === "PLANNED" ? "info" : "in-progress"}>{r.orderType === "PLANNED" ? "Có kế hoạch" : "Cây nhiễm"}</Badge>
+                          {r.orderType === "PLANNED" && (
+                            <p className="text-xs text-text-secondary mt-0.5">{r.saleUser?.name}{r.expectedDeliveryDate ? ` · giao ${format(r.expectedDeliveryDate, "dd/MM")}` : ""}</p>
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-foreground">{r.fromWarehouse.name}{r.fromRoom ? ` · ${r.fromRoom.name}` : " · Phòng ra rễ"}</td>
                         <td className="px-4 py-2 text-foreground">{r.garden.name}</td>
                         <td className="px-4 py-2 text-text-secondary whitespace-nowrap">{format(r.createdAt, "dd/MM/yyyy HH:mm")} · {r.createdBy.name}</td>

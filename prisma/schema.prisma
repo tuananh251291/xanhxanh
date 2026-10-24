@@ -612,6 +612,7 @@ model User {
   gardenReceiptsAssigned                GardenReceipt[]                   @relation("GardenReceiptAssignedUser")
   gardenReceiptsCounted                 GardenReceipt[]                   @relation("GardenReceiptCountedBy")
   gardenReceiptsApproved                GardenReceipt[]                   @relation("GardenReceiptApprovedBy")
+  gardenReceiptsOrderedBy               GardenReceipt[]                   @relation("GardenReceiptSale")
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy   DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated                 ViolationType[]
@@ -2369,6 +2370,15 @@ model ProductionGarden {
 // thay), nhập số thực nhận → chênh lệch = thực nhận − bàn giao. Không lệch → cộng GardenStock (COMPLETED).
 // Lệch → DISCREPANCY, báo bên giao + Admin cấp cao; kiểm tra lại (COUNTING lần nữa) hết lệch thì cộng tồn, hoặc
 // Admin cấp cao duyệt số lệch → cộng đúng số thực nhận. Xem /api/garden-receipts.
+// Lệnh sản xuất đi kèm phiếu bàn giao cây mô về vườn — bên giao bắt buộc chọn 1 loại lúc lập phiếu.
+enum GardenOrderType {
+  // Có kế hoạch — mỗi dòng chọn 1 hoặc nhiều quy cách đầu ra + số lượng (tổng = số bàn giao của dòng), kèm NV
+  // bán hàng đặt hàng + ngày giao dự kiến + ghi chú.
+  PLANNED
+  // Cây nhiễm — đầu ra mặc định quy cách B (cây trồng trong vỉ) cho toàn bộ số cây.
+  CONTAMINATED
+}
+
 enum GardenReceiptStatus {
   PENDING
   COUNTING
@@ -2388,6 +2398,12 @@ model GardenReceipt {
   fromRoom         Room?               @relation("GardenReceiptFromRoom", fields: [fromRoomId], references: [id])
   status           GardenReceiptStatus @default(PENDING)
   notes            String?
+  // Lệnh sản xuất — xem GardenOrderType. saleUserId/expectedDeliveryDate chỉ có với lệnh có kế hoạch.
+  orderType            GardenOrderType   @default(CONTAMINATED)
+  saleUserId           String?
+  saleUser             User?             @relation("GardenReceiptSale", fields: [saleUserId], references: [id])
+  expectedDeliveryDate DateTime?
+  orderNotes           String?
   createdById      String
   createdBy        User                @relation("GardenReceiptCreatedBy", fields: [createdById], references: [id])
   createdAt        DateTime            @default(now())
@@ -2424,8 +2440,21 @@ model GardenReceiptItem {
   // Số thực nhận lần kiểm đếm ĐẦU TIÊN (giữ lại đối chiếu) và số mới nhất (sau kiểm tra lại, nếu có).
   firstReceivedQuantity   Int?
   receivedQuantity        Int?
+  outputs                 GardenReceiptOutput[]
 
   @@map("garden_receipt_items")
+}
+
+// Quy cách đầu ra của lệnh sản xuất cho 1 dòng phiếu (VD 600 cây → 400 chậu S + 200 vỉ B). Lệnh cây nhiễm luôn 1
+// dòng quy cách B = toàn bộ số bàn giao. Xem GARDEN_OUTPUT_SPEC_LABELS (src/lib/garden-receipt-constants.ts).
+model GardenReceiptOutput {
+  id        String            @id @default(cuid())
+  itemId    String
+  item      GardenReceiptItem @relation(fields: [itemId], references: [id])
+  stageCode String
+  quantity  Int
+
+  @@map("garden_receipt_outputs")
 }
 
 // Tồn kho cây của 1 vườn theo mã cây + quy cách — cộng khi phiếu nhận bàn giao hoàn thành. Chưa phân bổ theo

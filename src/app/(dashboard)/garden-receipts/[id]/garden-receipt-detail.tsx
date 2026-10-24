@@ -13,12 +13,17 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ArrowLeft, Loader2, UserCheck, ClipboardCheck, ShieldCheck, TriangleAlert, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { GARDEN_RECEIPT_STATUS_LABELS } from "@/lib/garden-receipt-constants";
+import { GARDEN_RECEIPT_STATUS_LABELS, GARDEN_ORDER_TYPE_LABELS, GARDEN_OUTPUT_SPEC_LABELS } from "@/lib/garden-receipt-constants";
 
 type Status = keyof typeof GARDEN_RECEIPT_STATUS_LABELS;
-type Item = { id: string; stageCode: string; quantity: number; firstReceivedQuantity: number | null; receivedQuantity: number | null; plantType: { code: string; name: string } };
+type Item = {
+  id: string; stageCode: string; quantity: number; firstReceivedQuantity: number | null; receivedQuantity: number | null; plantType: { code: string; name: string };
+  outputs: { stageCode: string; quantity: number }[];
+};
+const outputLabel = (code: string) => (GARDEN_OUTPUT_SPEC_LABELS as Record<string, string>)[code] ?? code;
 type Receipt = {
   id: string; code: string; status: Status; notes: string | null; createdAt: string; countRound: number;
+  orderType: keyof typeof GARDEN_ORDER_TYPE_LABELS; expectedDeliveryDate: string | null; orderNotes: string | null; saleUser: { name: string; code: string } | null;
   countedAt: string | null; approvedAt: string | null; completedAt: string | null; assignedAt: string | null; assigneeName: string | null;
   garden: { name: string }; fromWarehouse: { name: string }; fromRoom: { name: string } | null;
   createdBy: { name: string }; countedBy: { name: string } | null; approvedBy: { name: string } | null;
@@ -91,6 +96,21 @@ export default function GardenReceiptDetail({ receipt, canManage, canApprove, so
       </div>
 
       <Card>
+        <CardHeader><CardTitle className="text-base">{GARDEN_ORDER_TYPE_LABELS[receipt.orderType]}</CardTitle></CardHeader>
+        <CardContent className="grid gap-2 sm:grid-cols-2 text-sm">
+          {receipt.orderType === "PLANNED" ? (
+            <>
+              <p><span className="text-text-secondary">NV bán hàng đặt hàng:</span> {receipt.saleUser ? `${receipt.saleUser.name} (${receipt.saleUser.code})` : "—"}</p>
+              <p><span className="text-text-secondary">Ngày giao dự kiến:</span> {receipt.expectedDeliveryDate ? format(new Date(receipt.expectedDeliveryDate), "dd/MM/yyyy") : "—"}</p>
+            </>
+          ) : (
+            <p className="sm:col-span-2"><span className="text-text-secondary">Đầu ra:</span> {outputLabel("B")} cho toàn bộ số cây</p>
+          )}
+          {receipt.orderNotes && <p className="sm:col-span-2"><span className="text-text-secondary">Ghi chú lệnh:</span> {receipt.orderNotes}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardContent className="pt-6 grid gap-2 sm:grid-cols-2 text-sm">
           <p><span className="text-text-secondary">Lập phiếu:</span> {receipt.createdBy.name} · {dt(receipt.createdAt)}</p>
           <p><span className="text-text-secondary">Người kiểm đếm:</span> {receipt.assigneeName ? `${receipt.assigneeName} · giao ${dt(receipt.assignedAt)}` : "Chưa giao"}</p>
@@ -144,6 +164,7 @@ export default function GardenReceiptDetail({ receipt, canManage, canApprove, so
                   <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Mã cây</th>
                   <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Quy cách</th>
                   <th className="text-right px-4 py-2 text-base text-primary-strong font-bold">Bàn giao</th>
+                  <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Quy cách đầu ra</th>
                   {showReceived && <th className="text-right px-4 py-2 text-base text-primary-strong font-bold">Thực nhận</th>}
                   {showReceived && <th className="text-right px-4 py-2 text-base text-primary-strong font-bold">Chênh lệch</th>}
                 </tr>
@@ -157,6 +178,9 @@ export default function GardenReceiptDetail({ receipt, canManage, canApprove, so
                       <td className="px-4 py-2"><span className="font-mono text-text-secondary mr-1.5">{it.plantType.code}</span>{it.plantType.name}</td>
                       <td className="px-4 py-2">{it.stageCode}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmt(it.quantity)}</td>
+                      <td className="px-4 py-2 text-xs text-text-secondary">
+                        {it.outputs.length === 0 ? "—" : it.outputs.map((o) => <p key={o.stageCode}>{outputLabel(o.stageCode)}: <span className="font-medium text-foreground">{fmt(o.quantity)}</span></p>)}
+                      </td>
                       {showReceived && (
                         <td className="px-4 py-2 text-right">
                           {isCounting && canManage ? (
