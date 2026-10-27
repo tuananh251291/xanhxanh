@@ -47,6 +47,9 @@ enum UserRole {
   // NVQLV — quản lý 1 (hoặc nhiều) Vườn sản xuất (xem ProductionGarden.managerId). Không dùng
   // User.workplaceWarehouseId (field đó gắn với Warehouse, không áp dụng cho Vườn).
   NHAN_VIEN_QUAN_LY_VUON
+  // NV chăm sóc cây mô tại Vườn sản xuất — có tài khoản để tự lập/gửi phiếu ghi nhận cây hỏng (xem
+  // GardenDamageReport). Thuộc vườn nào suy ra từ hồ sơ Nhân sự vườn liên kết (GardenStaff.userId).
+  NV_CHAM_SOC_CAY_MO
   // Đối tác vận hành — quản lý 1 Kho thị trường (WarehouseType.THI_TRUONG, xem User.workplaceWarehouseId)
   // qua Warehouse.type = THI_TRUONG, KHÁC với "Phòng thị trường" (RoomType.PHONG_THI_TRUONG) vốn nằm
   // trong Kho thành phẩm cho NV bán hàng xem — 2 khái niệm không liên quan dù cùng tên gọi "thị trường".
@@ -302,6 +305,9 @@ enum AlertType {
   GARDEN_RECEIPT_CREATED
   GARDEN_RECEIPT_DISCREPANCY
   GARDEN_RECEIPT_COMPLETED
+  GARDEN_DAMAGE_SUBMITTED
+  GARDEN_DAMAGE_RETURNED
+  GARDEN_DAMAGE_CONFIRMED
   // Admin bấm "Từ chối" 1 đề xuất Trồng/Hủy — báo cho đúng NV đã gửi đề xuất đó (userId) biết lý do (nếu
   // Admin có ghi) để sửa số lượng/loại/ghi chú rồi gửi lại — xem PATCH /api/contamination-proposals/[id]
   // nhánh reject + nhánh resubmit.
@@ -613,6 +619,10 @@ model User {
   gardenReceiptsCounted                 GardenReceipt[]                   @relation("GardenReceiptCountedBy")
   gardenReceiptsApproved                GardenReceipt[]                   @relation("GardenReceiptApprovedBy")
   gardenReceiptsOrderedBy               GardenReceipt[]                   @relation("GardenReceiptSale")
+  gardenStaffProfile                    GardenStaff?                      @relation("GardenStaffUser")
+  gardenDamageCreated                   GardenDamageReport[]              @relation("GardenDamageCreatedBy")
+  gardenDamageConfirmed                 GardenDamageReport[]              @relation("GardenDamageConfirmedBy")
+  gardenDamageLogs                      GardenDamageLog[]
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy   DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated                 ViolationType[]
@@ -950,6 +960,7 @@ model PlantType {
   processingTickets                ProcessingTicket[]
   roomMoveItems                    RoomMoveItem[]
   gardenReceiptItems               GardenReceiptItem[]
+  gardenDamageItems                GardenDamageItem[]
   gardenStocks                     GardenStock[]
   orderProcessingRequests          OrderProcessingRequest[]
   goodsReceiptItems                GoodsReceiptItem[]
@@ -2359,6 +2370,7 @@ model ProductionGarden {
   staff         GardenStaff[]
   houses        GardenHouse[]
   receipts      GardenReceipt[]
+  damageReports GardenDamageReport[]
   stocks        GardenStock[]
 
   @@map("production_gardens")
@@ -2424,6 +2436,7 @@ model GardenReceipt {
   approvedAt       DateTime?
   completedAt      DateTime?
   items            GardenReceiptItem[]
+  damageReports    GardenDamageReport[]
 
   @@index([gardenId, status])
   @@map("garden_receipts")
@@ -2441,6 +2454,7 @@ model GardenReceiptItem {
   firstReceivedQuantity   Int?
   receivedQuantity        Int?
   outputs                 GardenReceiptOutput[]
+  damageItems             GardenDamageItem[]
 
   @@map("garden_receipt_items")
 }
@@ -2466,11 +2480,84 @@ model GardenStock {
   plantTypeId String
   plantType   PlantType        @relation(fields: [plantTypeId], references: [id])
   stageCode   String
+  // Kho trong vườn: CONTAMINATED = Kho nhiễm (nhận từ lệnh cây nhiễm), PLANNED = Kho cây trồng (lệnh có kế hoạch).
+  pool        GardenOrderType  @default(PLANNED)
   quantity    Int              @default(0)
   updatedAt   DateTime         @updatedAt
 
-  @@unique([gardenId, plantTypeId, stageCode])
+  @@unique([gardenId, pool, plantTypeId, stageCode])
   @@map("garden_stocks")
+}
+
+// "Phân loại cây và ghi nhận cây hỏng" — Luồng A (cây nhiễm, trừ Kho nhiễm) / Luồng B (cây khỏe theo kế
+// hoạch, trừ Kho cây trồng); loại luồng = loại lệnh của phiếu bàn giao ban đầu (receipt.orderType), 2 luồng
+// là 2 loại phiếu riêng. NV chăm sóc cây mô lập phiếu (DRAFT) → nhập số hỏng → gửi (SUBMITTED) → QLV sửa số
+// (nếu cần) rồi xác nhận (CONFIRMED, trừ tồn ĐÚNG 1 lần) hoặc trả lại (RETURNED → NV kiểm tra, gửi lại).
+// Không trừ tồn trước khi QLV xác nhận. Lịch sử mọi thao tác ở GardenDamageLog.
+enum GardenDamageStatus {
+  DRAFT
+  SUBMITTED
+  RETURNED
+  CONFIRMED
+}
+
+model GardenDamageReport {
+  id            String             @id @default(cuid())
+  code          String             @unique
+  gardenId      String
+  garden        ProductionGarden   @relation(fields: [gardenId], references: [id])
+  receiptId     String
+  receipt       GardenReceipt      @relation(fields: [receiptId], references: [id])
+  flow          GardenOrderType
+  status        GardenDamageStatus @default(DRAFT)
+  notes         String?
+  // Lý do QLV trả lại lần gần nhất.
+  returnReason  String?
+  createdById   String
+  createdBy     User               @relation("GardenDamageCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime           @default(now())
+  submittedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?              @relation("GardenDamageConfirmedBy", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+  items         GardenDamageItem[]
+  logs          GardenDamageLog[]
+
+  @@index([gardenId, status])
+  @@map("garden_damage_reports")
+}
+
+model GardenDamageItem {
+  id                String            @id @default(cuid())
+  reportId          String
+  report            GardenDamageReport @relation(fields: [reportId], references: [id])
+  receiptItemId     String
+  receiptItem       GardenReceiptItem @relation(fields: [receiptItemId], references: [id])
+  plantTypeId       String
+  plantType         PlantType         @relation(fields: [plantTypeId], references: [id])
+  stageCode         String
+  // Số lượng ban đầu = số thực nhận của dòng phiếu bàn giao.
+  initialQuantity   Int
+  // Số hỏng NV báo (lần gửi gần nhất) và số QLV chốt khi xác nhận (khác = QLV đã sửa).
+  reportedQuantity  Int               @default(0)
+  confirmedQuantity Int?
+  notes             String?
+
+  @@map("garden_damage_items")
+}
+
+model GardenDamageLog {
+  id        String             @id @default(cuid())
+  reportId  String
+  report    GardenDamageReport @relation(fields: [reportId], references: [id])
+  // SUBMIT / RETURN / CONFIRM — detail: tóm tắt số lượng từng dòng (và chỉnh sửa của QLV) tại thời điểm đó.
+  action    String
+  detail    String
+  byId      String
+  by        User               @relation(fields: [byId], references: [id])
+  at        DateTime           @default(now())
+
+  @@map("garden_damage_logs")
 }
 
 // "Bố trí vườn" — Quản lý vườn tự cài đặt ở /garden-layout: Nhà lưới (đánh số 1, 2, 3…) → Giàn kệ (A, B,
@@ -2534,6 +2621,9 @@ model GardenStaff {
   createdById String
   createdBy   User              @relation("GardenStaffCreatedBy", fields: [createdById], references: [id])
   assignedReceipts GardenReceipt[]
+  // Tài khoản đăng nhập của nhân viên (chỉ NV chăm sóc cây mô, role NV_CHAM_SOC_CAY_MO) — NULL = không có tài khoản.
+  userId           String?           @unique
+  user             User?             @relation("GardenStaffUser", fields: [userId], references: [id])
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 

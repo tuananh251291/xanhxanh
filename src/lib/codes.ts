@@ -20,6 +20,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   HANH_CHINH_NHAN_SU: { prefix: "NVHC", pad: 2 },
   NHAN_VIEN_SAN_XUAT: { prefix: "NVSX", pad: 2 },
   NHAN_VIEN_QUAN_LY_VUON: { prefix: "NVQLV", pad: 2 },
+  NV_CHAM_SOC_CAY_MO: { prefix: "NVCS", pad: 2 },
   DOI_TAC_VAN_HANH: { prefix: "DTVH", pad: 2 },
   KE_TOAN: { prefix: "NVKTO", pad: 2 },
   ADMIN_HOA_LAN: { prefix: "ADHL", pad: 2 },
@@ -457,6 +458,18 @@ export async function generateGardenReceiptCode(client: Prisma.TransactionClient
   const today = new Date();
   const prefix = `BGV-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
   const last = await client.gardenReceipt.findFirst({
+    where: { code: { startsWith: prefix } },
+    orderBy: { code: "desc" },
+  });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// Mã phiếu ghi nhận cây hỏng tại vườn = "PHH-" + "YYYYMM" + số thứ tự 4 chữ số trong tháng.
+export async function generateGardenDamageCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `PHH-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.gardenDamageReport.findFirst({
     where: { code: { startsWith: prefix } },
     orderBy: { code: "desc" },
   });

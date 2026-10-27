@@ -14,13 +14,14 @@ import { toast } from "sonner";
 import { GARDEN_STAFF_TYPE_LABELS, GARDEN_STAFF_TYPES, type GardenStaffTypeKey } from "@/lib/garden-staff-constants";
 
 type Garden = { id: string; code: string; name: string };
-type Staff = { id: string; name: string; phone: string | null; types: GardenStaffTypeKey[]; notes: string | null };
-type FormState = { id: string | null; name: string; phone: string; types: GardenStaffTypeKey[]; notes: string };
+type Staff = { id: string; name: string; phone: string | null; types: GardenStaffTypeKey[]; notes: string | null; user: { id: string; code: string; name: string } | null };
+type FormState = { id: string | null; name: string; phone: string; types: GardenStaffTypeKey[]; notes: string; userId: string };
+type Account = { id: string; code: string; name: string; linkedStaffId: string | null };
 
-const emptyForm: FormState = { id: null, name: "", phone: "", types: [], notes: "" };
+const emptyForm: FormState = { id: null, name: "", phone: "", types: [], notes: "", userId: "" };
 const ALL = "ALL";
 
-export default function GardenStaffBoard({ gardens }: { gardens: Garden[] }) {
+export default function GardenStaffBoard({ gardens, accounts }: { gardens: Garden[]; accounts: Account[] }) {
   const [gardenId, setGardenId] = useState(gardens[0].id);
   const [staff, setStaff] = useState<Staff[]>([]);
   // Đang tải = danh sách hiện có chưa phải của đúng vườn + lần tải mới nhất (đổi vườn hoặc vừa thêm/sửa/xoá).
@@ -59,7 +60,11 @@ export default function GardenStaffBoard({ gardens }: { gardens: Garden[] }) {
     if (form.types.length === 0) { toast.error("Chọn ít nhất 1 vị trí"); return; }
     setSaving(true);
     try {
-      const body = { name: form.name.trim(), phone: form.phone.trim() || undefined, types: form.types, notes: form.notes.trim() || undefined };
+      const body = {
+        name: form.name.trim(), phone: form.phone.trim() || undefined, types: form.types, notes: form.notes.trim() || undefined,
+        // Tài khoản chỉ giữ khi còn vị trí Chăm sóc cây mô; "" = không liên kết.
+        userId: form.types.includes("CHAM_SOC_CAY_MO") ? form.userId : "",
+      };
       const res = await fetch(form.id ? `/api/garden-staff/${form.id}` : "/api/garden-staff", {
         method: form.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -145,7 +150,10 @@ export default function GardenStaffBoard({ gardens }: { gardens: Garden[] }) {
                 <tbody>
                   {shown.map((s) => (
                     <tr key={s.id} className="border-b border-divider last:border-0 even:bg-primary-light/30 align-top">
-                      <td className="px-4 py-2 font-medium text-foreground whitespace-nowrap">{s.name}</td>
+                      <td className="px-4 py-2 font-medium text-foreground whitespace-nowrap">
+                        {s.name}
+                        {s.user && <p className="text-xs font-normal text-text-secondary">Tài khoản: {s.user.name} ({s.user.code})</p>}
+                      </td>
                       <td className="px-4 py-2 text-text-secondary whitespace-nowrap">{s.phone || "—"}</td>
                       <td className="px-4 py-2">
                         <div className="flex flex-wrap gap-1">
@@ -156,7 +164,7 @@ export default function GardenStaffBoard({ gardens }: { gardens: Garden[] }) {
                       <td className="px-4 py-2">
                         <div className="flex justify-end gap-1">
                           <Button size="icon-sm" variant="ghost" title="Sửa"
-                            onClick={() => setForm({ id: s.id, name: s.name, phone: s.phone ?? "", types: s.types, notes: s.notes ?? "" })}>
+                            onClick={() => setForm({ id: s.id, name: s.name, phone: s.phone ?? "", types: s.types, notes: s.notes ?? "", userId: s.user?.id ?? "" })}>
                             <Pencil className="w-3.5 h-3.5 text-text-muted" />
                           </Button>
                           <Button size="icon-sm" variant="ghost" title="Xoá" className="text-destructive hover:bg-danger-light" onClick={() => setDeleting(s)}>
@@ -197,6 +205,25 @@ export default function GardenStaffBoard({ gardens }: { gardens: Garden[] }) {
                   ))}
                 </div>
               </div>
+              {form.types.includes("CHAM_SOC_CAY_MO") && (
+                <div className="space-y-1">
+                  <Label>Tài khoản đăng nhập <span className="text-text-muted font-normal">(NV chăm sóc cây mô)</span></Label>
+                  <Select
+                    items={[{ value: "", label: "Không liên kết" }, ...accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.code})` }))]}
+                    value={form.userId}
+                    onValueChange={(v) => setForm({ ...form, userId: (v as string) ?? "" })}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Chọn tài khoản" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Không liên kết</SelectItem>
+                      {accounts
+                        .filter((a) => !a.linkedStaffId || a.linkedStaffId === form.id)
+                        .map((a) => <SelectItem key={a.id} value={a.id}>{a.name} ({a.code})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-text-muted">Tài khoản vai trò &quot;NV Chăm sóc cây mô&quot; do Admin/NV Hành chính nhân sự tạo ở trang Người dùng.</p>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label>Ghi chú <span className="text-text-muted font-normal">(tuỳ chọn)</span></Label>
                 <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} maxLength={500} />

@@ -17,4 +17,6 @@ export const gardenStaffSchema = z.object({
   phone: z.string().trim().max(20).optional(),
   types: z.array(z.enum(["PHAN_LOAI", "CHAM_SOC_CAY_MO", "CHAM_SOC_CAY_THANH_PHAM", "DONG_HANG"])).min(1, "Chọn ít nhất 1 vị trí"),
   notes: z.string().trim().max(500).optional(),
+  // Tài khoản đăng nhập (chỉ NV có vị trí Chăm sóc cây mô, user role NV_CHAM_SOC_CAY_MO). "" = gỡ liên kết.
+  userId: z.string().optional(),
 });

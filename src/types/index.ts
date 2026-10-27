@@ -18,6 +18,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   HANH_CHINH_NHAN_SU: "NV Hành chính nhân sự",
   NHAN_VIEN_SAN_XUAT: "NV Sản xuất",
   NHAN_VIEN_QUAN_LY_VUON: "NV Quản lý vườn",
+  NV_CHAM_SOC_CAY_MO: "NV Chăm sóc cây mô",
   DOI_TAC_VAN_HANH: "Đối tác vận hành",
   KE_TOAN: "NV Kế toán",
   ADMIN_HOA_LAN: "Admin hoa lan",
@@ -42,6 +43,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   HANH_CHINH_NHAN_SU: "bg-indigo-100 text-indigo-800",
   NHAN_VIEN_SAN_XUAT: "bg-lime-100 text-lime-800",
   NHAN_VIEN_QUAN_LY_VUON: "bg-teal-100 text-teal-800",
+  NV_CHAM_SOC_CAY_MO: "bg-primary-light text-primary-strong",
   DOI_TAC_VAN_HANH: "bg-sky-100 text-sky-800",
   KE_TOAN: "bg-info-light text-info-foreground",
   ADMIN_HOA_LAN: "bg-primary-light text-primary-strong",
@@ -182,7 +184,7 @@ export function canEditSaleMarkets(role: UserRole | null | undefined): boolean {
 export const ALL_ASSIGNABLE_ROLES: UserRole[] = [
   "ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM",
   "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON",
-  "DOI_TAC_VAN_HANH", "KE_TOAN", "ADMIN_HOA_LAN", "TRO_LY_HOA_LAN",
+  "NV_CHAM_SOC_CAY_MO", "DOI_TAC_VAN_HANH", "KE_TOAN", "ADMIN_HOA_LAN", "TRO_LY_HOA_LAN",
 ];
 export const STAFF_ONLY_ROLES: UserRole[] = ALL_ASSIGNABLE_ROLES.filter((r) => r !== "ADMIN" && r !== "ADMIN_KY_THUAT" && r !== "ADMIN_HOA_LAN");
 
@@ -548,6 +550,9 @@ export const ALERT_TYPE_LABELS = {
   GARDEN_RECEIPT_CREATED: "Phiếu bàn giao cây mô về vườn",
   GARDEN_RECEIPT_DISCREPANCY: "Phiếu bàn giao cây về vườn bị lệch số lượng",
   GARDEN_RECEIPT_COMPLETED: "Vườn đã nhận đủ phiếu bàn giao cây",
+  GARDEN_DAMAGE_SUBMITTED: "Phiếu ghi nhận cây hỏng chờ xác nhận",
+  GARDEN_DAMAGE_RETURNED: "Phiếu ghi nhận cây hỏng bị trả lại",
+  GARDEN_DAMAGE_CONFIRMED: "Phiếu ghi nhận cây hỏng đã xác nhận",
   RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
   MOTHER_FORECAST_MONTHLY_DUE: "Nhiệm vụ Dự kiến đáp ứng mẫu mẹ đến hạn",
   MOTHER_OUTPUT_SHORTFALL: "Sản lượng mẫu mẹ tụt dưới kế hoạch",
@@ -608,6 +613,9 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   GARDEN_RECEIPT_CREATED: "/garden-receipts",
   GARDEN_RECEIPT_DISCREPANCY: "/garden-receipts",
   GARDEN_RECEIPT_COMPLETED: "/garden-receipts",
+  GARDEN_DAMAGE_SUBMITTED: "/garden-damage",
+  GARDEN_DAMAGE_RETURNED: "/garden-damage",
+  GARDEN_DAMAGE_CONFIRMED: "/garden-damage",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -1027,12 +1035,20 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   ],
   // Chưa có trang nghiệp vụ riêng (xem Vườn sản xuất được gán ở /production-gardens, chỉ SUPER_ADMIN
   // sửa) — menu tối thiểu, mở rộng sau nếu NVQLV cần tự thao tác trên Vườn của mình.
+  // NV chăm sóc cây mô (Vườn sản xuất) — lập/gửi phiếu ghi nhận cây hỏng (xem /garden-damage).
+  NV_CHAM_SOC_CAY_MO: [
+    { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
+    { href: "/garden-damage", label: "Phiếu ghi nhận cây hỏng", icon: "ClipboardCheck" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
   NHAN_VIEN_QUAN_LY_VUON: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/garden-handovers", label: "Nhận cây từ Kho thành phẩm", icon: "PackageCheck" },
     // Nhận bàn giao cây mô (Kho TP/Khu sản xuất lập phiếu) — giao kiểm đếm, nhập số thực nhận; xem /garden-receipts.
     { href: "/garden-receipts", label: "Nhận bàn giao cây mô", icon: "PackageCheck" },
     { href: "/garden-stock", label: "Tồn kho vườn", icon: "Boxes" },
+    // Phân loại cây & ghi nhận cây hỏng (Luồng A nhiễm / Luồng B khỏe) — xác nhận phiếu NV gửi, xem /garden-damage.
+    { href: "/garden-damage", label: "Phiếu ghi nhận cây hỏng", icon: "ClipboardCheck" },
     // Cài đặt nhân viên làm việc tại vườn (không có tài khoản), xem /garden-staff.
     { href: "/garden-staff", label: "Nhân sự vườn", icon: "Users" },
     // Nhà lưới → Giàn kệ → Dãy (mã vị trí VD 1A1), xem /garden-layout.

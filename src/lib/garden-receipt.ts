@@ -1,4 +1,4 @@
-import type { Prisma, UserRole } from "@prisma/client";
+import type { GardenOrderType, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/types";
 import { getMovableLots, type MovableLot } from "@/lib/room-move";
@@ -58,11 +58,12 @@ export async function getSenderMovableLots(sender: GardenReceiptSender, roomId: 
   return getMovableLots(roomId, room.type === "PHONG_DAT_TIEU_CHUAN", client);
 }
 
-export async function addGardenStock(tx: Prisma.TransactionClient, gardenId: string, plantTypeId: string, stageCode: string, quantity: number) {
+// pool = kho trong vườn theo loại lệnh của phiếu bàn giao: CONTAMINATED → Kho nhiễm, PLANNED → Kho cây trồng.
+export async function addGardenStock(tx: Prisma.TransactionClient, gardenId: string, pool: GardenOrderType, plantTypeId: string, stageCode: string, quantity: number) {
   if (quantity <= 0) return;
   await tx.gardenStock.upsert({
-    where: { gardenId_plantTypeId_stageCode: { gardenId, plantTypeId, stageCode } },
-    create: { gardenId, plantTypeId, stageCode, quantity },
+    where: { gardenId_pool_plantTypeId_stageCode: { gardenId, pool, plantTypeId, stageCode } },
+    create: { gardenId, pool, plantTypeId, stageCode, quantity },
     update: { quantity: { increment: quantity } },
   });
 }

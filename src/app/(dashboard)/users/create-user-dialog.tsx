@@ -26,7 +26,7 @@ const schema = z.object({
   password: z.string().min(6, "Mật khẩu tối thiểu 6 ký tự"),
   // Danh sách đầy đủ vai trò gán được qua UI (trừ SUPER_ADMIN) — dropdown chỉ HIỆN đúng các lựa chọn
   // trong assignableRoles (xem prop dưới), server (POST /api/users) validate lại đúng theo người tạo.
-  role: z.enum(["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON", "DOI_TAC_VAN_HANH", "KE_TOAN", "ADMIN_HOA_LAN", "TRO_LY_HOA_LAN"]),
+  role: z.enum(["ADMIN", "ADMIN_KY_THUAT", "KY_THUAT", "CAY_MO", "KHO_MO", "TRO_LY", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "SALE", "MOI_TRUONG", "DIEU_PHOI", "HANH_CHINH_NHAN_SU", "NHAN_VIEN_SAN_XUAT", "NHAN_VIEN_QUAN_LY_VUON", "NV_CHAM_SOC_CAY_MO", "DOI_TAC_VAN_HANH", "KE_TOAN", "ADMIN_HOA_LAN", "TRO_LY_HOA_LAN"]),
   code: z.string().min(1, "Nhập mã nhân viên"),
   workplaceWarehouseId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),

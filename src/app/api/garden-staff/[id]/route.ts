@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { canManageGarden } from "@/lib/garden-staff";
+import { canManageGarden, resolveStaffUserLink } from "@/lib/garden-staff";
 import { gardenStaffSchema } from "@/lib/garden-staff-constants";
 
 async function loadEditable(id: string, user: Parameters<typeof canManageGarden>[0]) {
@@ -21,12 +21,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const parsed = gardenStaffSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
-  const { name, phone, types, notes } = parsed.data;
+  const { name, phone, types, notes, userId } = parsed.data;
+  const link = await resolveStaffUserLink(userId, types, id);
+  if ("error" in link) return NextResponse.json({ message: link.error }, { status: 400 });
+  if (link.userId) await prisma.gardenStaff.updateMany({ where: { userId: link.userId, isActive: false, id: { not: id } }, data: { userId: null } });
 
   const updated = await prisma.gardenStaff.update({
     where: { id },
-    data: { name, phone: phone || null, notes: notes || null, types: [...new Set(types)] },
-    select: { id: true, name: true, phone: true, types: true, notes: true, createdAt: true },
+    data: { name, phone: phone || null, notes: notes || null, types: [...new Set(types)], userId: link.userId },
+    select: { id: true, name: true, phone: true, types: true, notes: true, createdAt: true, user: { select: { id: true, code: true, name: true } } },
   });
   return NextResponse.json(updated);
 }
@@ -39,6 +42,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const check = await loadEditable(id, session.user);
   if (check.error) return check.error;
 
-  await prisma.gardenStaff.update({ where: { id }, data: { isActive: false } });
+  // Gỡ liên kết tài khoản khi xoá để tài khoản đó gắn được cho hồ sơ khác.
+  await prisma.gardenStaff.update({ where: { id }, data: { isActive: false, userId: null } });
   return NextResponse.json({ success: true });
 }

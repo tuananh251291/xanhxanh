@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole } from "@/types";
 import { getManageableGardens } from "@/lib/garden-staff";
+import { prisma } from "@/lib/prisma";
 import GardenStaffBoard from "./garden-staff-board";
 
 // "Nhân sự vườn" — Quản lý vườn cài đặt nhân viên làm việc tại vườn mình (không có tài khoản đăng nhập), mỗi
@@ -18,5 +19,16 @@ export default async function GardenStaffPage() {
   if (gardens.length === 0) {
     return <p className="text-sm text-text-muted">Bạn chưa được gán quản lý vườn nào — liên hệ Admin cấp cao.</p>;
   }
-  return <GardenStaffBoard gardens={gardens} />;
+  // Tài khoản NV chăm sóc cây mô (tạo ở trang Người dùng) để liên kết vào hồ sơ — kèm hồ sơ đang gắn (nếu có).
+  const accounts = await prisma.user.findMany({
+    where: { role: "NV_CHAM_SOC_CAY_MO", isActive: true },
+    select: { id: true, code: true, name: true, gardenStaffProfile: { select: { id: true, isActive: true } } },
+    orderBy: { name: "asc" },
+  });
+  return (
+    <GardenStaffBoard
+      gardens={gardens}
+      accounts={accounts.map((a) => ({ id: a.id, code: a.code, name: a.name, linkedStaffId: a.gardenStaffProfile?.isActive ? a.gardenStaffProfile.id : null }))}
+    />
+  );
 }

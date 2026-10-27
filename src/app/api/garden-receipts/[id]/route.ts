@@ -28,7 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const receipt = await prisma.gardenReceipt.findUnique({
     where: { id },
     select: {
-      id: true, code: true, status: true, gardenId: true, fromWarehouseId: true, fromRoomId: true, createdById: true,
+      id: true, code: true, status: true, gardenId: true, orderType: true, fromWarehouseId: true, fromRoomId: true, createdById: true,
       garden: { select: { name: true } }, fromWarehouse: { select: { name: true } },
       items: { select: { id: true, quantity: true, plantTypeId: true, stageCode: true, receivedQuantity: true, firstReceivedQuantity: true, plantType: { select: { code: true } } } },
     },
@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { status: "COMPLETED", approvedById: session.user.id, approvedAt: new Date(), completedAt: new Date() },
         });
         if (locked.count === 0) throw new FlowError("Phiếu không còn ở trạng thái lệch");
-        for (const it of receipt.items) await addGardenStock(tx, receipt.gardenId, it.plantTypeId, it.stageCode, it.receivedQuantity ?? 0);
+        for (const it of receipt.items) await addGardenStock(tx, receipt.gardenId, receipt.orderType, it.plantTypeId, it.stageCode, it.receivedQuantity ?? 0);
       });
       const recipients = await getDiscrepancyRecipients(receipt);
       for (const userId of recipients.filter((u) => u !== session.user.id)) {
@@ -102,7 +102,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           where: { id: it.id },
           data: { receivedQuantity: received, ...(it.firstReceivedQuantity === null ? { firstReceivedQuantity: received } : {}) },
         });
-        if (!hasDiff) await addGardenStock(tx, receipt.gardenId, it.plantTypeId, it.stageCode, received);
+        if (!hasDiff) await addGardenStock(tx, receipt.gardenId, receipt.orderType, it.plantTypeId, it.stageCode, received);
       }
     });
 
