@@ -8,6 +8,7 @@ import { Loader2, Sprout, ClipboardCheck, History } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import TrialRoundResultDialog, { type DueTrialRound } from "@/components/shared/trial-round-result-dialog";
+import AssignRndStaffButton from "./assign-rnd-staff-button";
 
 type VarietyRow = {
   id: string;
@@ -84,11 +85,16 @@ export default function ProductionProgressTracker() {
                     </div>
                   </div>
                   {r.instructionId ? (
-                    <Link href={`/rnd-production/${r.instructionId}`} className="shrink-0">
-                      <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover">
-                        <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Nhập dữ liệu cấy (chỉ định)
-                      </Button>
-                    </Link>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      {!r.instruction?._count?.dailyRecords && (
+                        <AssignRndStaffButton instructionId={r.instructionId} currentAssigneeId={r.instruction?.assignedTo?.role === "CAY_MO" ? r.instruction.assignedTo.id : null} onDone={load} />
+                      )}
+                      <Link href={`/rnd-production/${r.instructionId}`}>
+                        <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover">
+                          <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Nhập dữ liệu cấy (chỉ định)
+                        </Button>
+                      </Link>
+                    </div>
                   ) : (
                     <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover shrink-0" onClick={() => setActiveRound(r)}>
                       <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Cập nhật dữ liệu cấy

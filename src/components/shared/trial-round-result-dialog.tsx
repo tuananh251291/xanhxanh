@@ -23,7 +23,10 @@ export type DueTrialRound = {
   // Có giá trị = lượt cấy là 1 chỉ định cấy R&D thật — nhập kết quả ở trang chỉ định (/rnd-production/[id]),
   // KHÔNG mở dialog này nữa. null = lượt cũ chưa liên kết (vẫn nhập ở đây như trước).
   instructionId?: string | null;
-  instruction?: { assignedTo: { code: string; name: string; role: string | null } | null } | null;
+  instruction?: {
+    assignedTo: { id: string; code: string; name: string; role: string | null } | null;
+    _count?: { dailyRecords: number };
+  } | null;
 };
 
 // Bảng "Cập nhật dữ liệu cấy" cho 1 lượt cấy giống thử nghiệm — CỐ TÌNH giống hệt giao diện Nhập dữ liệu

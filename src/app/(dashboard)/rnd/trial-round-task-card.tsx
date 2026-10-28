@@ -9,6 +9,7 @@ import { Sprout, ClipboardCheck } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import TrialRoundResultDialog, { type DueTrialRound } from "@/components/shared/trial-round-result-dialog";
+import AssignRndStaffButton from "./assign-rnd-staff-button";
 
 // Thẻ "Nhiệm vụ cần hoàn thành" trên Dashboard Admin kỹ thuật — lượt cấy giống thử nghiệm sắp/đã đến hạn
 // cấy (trong 3 ngày tới, xem GET /api/trial-varieties/due-rounds, cùng nguồn dữ liệu với tab "Cập nhật
@@ -47,11 +48,16 @@ export default function TrialRoundTaskCard({ rounds }: { rounds: DueTrialRound[]
               </p>
             </div>
             {r.instructionId ? (
-              <Link href={`/rnd-production/${r.instructionId}`} className="shrink-0">
-                <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover">
-                  <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện nhiệm vụ
-                </Button>
-              </Link>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                {!r.instruction?._count?.dailyRecords && (
+                  <AssignRndStaffButton instructionId={r.instructionId} currentAssigneeId={r.instruction?.assignedTo?.role === "CAY_MO" ? r.instruction.assignedTo.id : null} onDone={() => router.refresh()} />
+                )}
+                <Link href={`/rnd-production/${r.instructionId}`}>
+                  <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover">
+                    <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện nhiệm vụ
+                  </Button>
+                </Link>
+              </div>
             ) : (
               <Button type="button" size="sm" className="bg-primary hover:bg-primary-hover shrink-0" onClick={() => setActiveRound(r)}>
                 <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" /> Thực hiện nhiệm vụ
