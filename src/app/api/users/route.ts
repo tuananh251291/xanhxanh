@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assignCareStaffGarden } from "@/lib/garden-staff";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { creatableRolesFor } from "@/types";
@@ -17,6 +18,8 @@ const createSchema = z.object({
   // Chỉ áp dụng khi tạo tài khoản SALE — gán sẵn kho thành phẩm làm việc (Phòng đạt tiêu chuẩn xem mặc định)
   // và các Phòng thị trường được cấp quyền xem thêm, tránh phải cấu hình lại ở 2 chỗ khác sau khi tạo.
   workplaceWarehouseId: z.string().optional(),
+  // Vườn sản xuất làm việc — chỉ NV chăm sóc cây mô (tạo kèm hồ sơ Nhân sự vườn, xem assignCareStaffGarden).
+  gardenId: z.string().optional(),
   marketRoomIds: z.array(z.string()).optional(),
   // "Quản lý bán lẻ" — chỉ áp dụng khi tạo tài khoản SALE, gán sẵn quyền xem tồn kho 1 hoặc nhiều Kho
   // thị trường (xem User.isRetailManager, RetailWarehouseAccess).
@@ -59,7 +62,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, isRetailManager, retailWarehouseIds, probationStartDate, responsibleKhoMoId } = parsed.data;
+  const { name, email, password, role, code, workplaceWarehouseId, marketRoomIds, isRetailManager, retailWarehouseIds, probationStartDate, responsibleKhoMoId, gardenId } = parsed.data;
 
   // NV Hành chính nhân sự chỉ tạo được tài khoản vị trí nhân viên, không tạo được tài khoản Admin.
   if (!allowedRoles.includes(role)) {
@@ -80,6 +83,13 @@ export async function POST(req: NextRequest) {
   }
   if (responsibleKhoMoId !== undefined && role !== "CAY_MO") {
     return NextResponse.json({ message: "NV Kho phụ trách chỉ áp dụng khi tạo tài khoản NV cấy mô" }, { status: 400 });
+  }
+  if (gardenId !== undefined && role !== "NV_CHAM_SOC_CAY_MO") {
+    return NextResponse.json({ message: "Vườn sản xuất chỉ áp dụng khi tạo tài khoản NV chăm sóc cây mô" }, { status: 400 });
+  }
+  if (gardenId) {
+    const garden = await prisma.productionGarden.findFirst({ where: { id: gardenId, isActive: true }, select: { id: true } });
+    if (!garden) return NextResponse.json({ message: "Vườn sản xuất không hợp lệ" }, { status: 400 });
   }
   let khoMoWarehouseId: string | null = null;
   if (responsibleKhoMoId) {
@@ -143,6 +153,7 @@ export async function POST(req: NextRequest) {
     if (retailWarehouseIds && retailWarehouseIds.length > 0) {
       await tx.retailWarehouseAccess.createMany({ data: retailWarehouseIds.map((warehouseId) => ({ userId: created.id, warehouseId })) });
     }
+    if (gardenId) await assignCareStaffGarden(tx, { userId: created.id, userName: created.name, gardenId, actorId: session!.user!.id });
     return created;
   });
 

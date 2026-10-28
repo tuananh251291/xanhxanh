@@ -37,6 +37,7 @@ export default function UserEditableFields({
   isWorkplaceRole,
   workplaceWarehouseId,
   workplaceWarehouse,
+  workplaceField = "workplaceWarehouseId",
   responsibleKhoMoId,
   responsibleKhoMo,
   khoMoOptions,
@@ -72,6 +73,9 @@ export default function UserEditableFields({
   isWorkplaceRole: boolean;
   workplaceWarehouseId: string | null;
   workplaceWarehouse: { code: string; name: string } | null;
+  // Trường PATCH khi lưu Vị trí làm việc — "gardenId" với NV chăm sóc cây mô (vị trí làm việc là Vườn sản xuất,
+  // warehouseOptions khi đó là danh sách vườn), còn lại là kho.
+  workplaceField?: "workplaceWarehouseId" | "gardenId";
   // Chỉ dùng cho NV cấy mô — NV Kho mô phụ trách (User.responsibleKhoMoId), sửa cùng quyền với Vị trí làm việc.
   responsibleKhoMoId: string | null;
   responsibleKhoMo: { code: string; name: string } | null;
@@ -193,7 +197,7 @@ export default function UserEditableFields({
     setSaving(true);
     try {
       if (wpDirty) {
-        const res = await patch({ workplaceWarehouseId: wp === "NONE" ? null : wp });
+        const res = await patch({ [workplaceField]: wp === "NONE" ? null : wp });
         if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
       }
       if (kmDirty) {

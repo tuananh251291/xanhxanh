@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assignCareStaffGarden } from "@/lib/garden-staff";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getOrCreatePersonalDarkRoom } from "@/lib/dark-room";
@@ -25,6 +26,8 @@ const patchSchema = z.union([
   z.object({ status: z.literal("APPROVED"), role: z.enum(ROLES), code: z.string().min(1, "Nhập mã nhân viên") }),
   z.object({ status: z.literal("REJECTED") }),
   z.object({ workplaceWarehouseId: z.string().nullable() }),
+  // Vườn sản xuất làm việc của NV chăm sóc cây mô (lưu qua hồ sơ Nhân sự vườn, xem assignCareStaffGarden).
+  z.object({ gardenId: z.string().nullable() }),
   // NV Kho mô phụ trách 1 NV cấy mô (User.responsibleKhoMoId) — cùng quyền với gán địa điểm làm việc.
   z.object({ responsibleKhoMoId: z.string().nullable() }),
   // true = đánh dấu "Nghỉ việc" (khoá đăng nhập ngay, giữ dữ liệu lịch sử), false = khôi phục "Đang làm
@@ -127,6 +130,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     return NextResponse.json(updated);
+  }
+
+  if ("gardenId" in parsed.data) {
+    if (!canAssignWorkplace(session?.user?.role)) {
+      return NextResponse.json({ message: "Chỉ Admin cao nhất/NV Hành chính nhân sự mới có quyền gán vườn làm việc" }, { status: 403 });
+    }
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true, name: true } });
+    if (!target) return NextResponse.json({ message: "Không tìm thấy nhân viên" }, { status: 404 });
+    if (target.role !== "NV_CHAM_SOC_CAY_MO") {
+      return NextResponse.json({ message: "Vườn sản xuất chỉ áp dụng cho NV chăm sóc cây mô" }, { status: 400 });
+    }
+    const { gardenId } = parsed.data;
+    if (gardenId) {
+      const garden = await prisma.productionGarden.findFirst({ where: { id: gardenId, isActive: true }, select: { id: true } });
+      if (!garden) return NextResponse.json({ message: "Vườn sản xuất không hợp lệ" }, { status: 400 });
+    }
+    await prisma.$transaction((tx) => assignCareStaffGarden(tx, { userId: id, userName: target.name, gardenId, actorId: session!.user!.id }));
+    return NextResponse.json({ success: true });
   }
 
   if ("responsibleKhoMoId" in parsed.data) {

@@ -1,4 +1,4 @@
-import type { UserRole } from "@prisma/client";
+import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/types";
 
@@ -39,4 +39,30 @@ export async function resolveStaffUserLink(
     return { error: "Tài khoản này đã liên kết với nhân viên khác" };
   }
   return { userId: user.id };
+}
+
+// Gắn tài khoản NV chăm sóc cây mô vào 1 Vườn sản xuất (từ trang Người dùng — tạo/sửa tài khoản): hồ sơ Nhân sự
+// vườn đang liên kết tài khoản này được chuyển sang vườn mới (thêm vị trí Chăm sóc cây mô nếu thiếu), chưa có thì
+// tự tạo hồ sơ (tên = tên tài khoản, vị trí Chăm sóc cây mô). gardenId null = gỡ khỏi vườn (giữ hồ sơ, chỉ bỏ liên
+// kết tài khoản). Hồ sơ là nơi DUY NHẤT lưu "NV thuộc vườn nào" (xem getCareStaffGarden).
+export async function assignCareStaffGarden(
+  tx: Prisma.TransactionClient,
+  params: { userId: string; userName: string; gardenId: string | null; actorId: string }
+): Promise<void> {
+  const { userId, userName, gardenId, actorId } = params;
+  const profile = await tx.gardenStaff.findUnique({ where: { userId }, select: { id: true, isActive: true, types: true } });
+  if (!gardenId) {
+    if (profile) await tx.gardenStaff.update({ where: { id: profile.id }, data: { userId: null } });
+    return;
+  }
+  if (profile && profile.isActive) {
+    await tx.gardenStaff.update({
+      where: { id: profile.id },
+      data: { gardenId, ...(profile.types.includes("CHAM_SOC_CAY_MO") ? {} : { types: [...profile.types, "CHAM_SOC_CAY_MO"] }) },
+    });
+    return;
+  }
+  // Hồ sơ cũ đã xoá (ẩn) còn giữ tài khoản — gỡ để tạo hồ sơ mới.
+  if (profile) await tx.gardenStaff.update({ where: { id: profile.id }, data: { userId: null } });
+  await tx.gardenStaff.create({ data: { gardenId, name: userName, types: ["CHAM_SOC_CAY_MO"], userId, createdById: actorId } });
 }

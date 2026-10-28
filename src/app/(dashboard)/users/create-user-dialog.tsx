@@ -34,7 +34,9 @@ const schema = z.object({
   retailWarehouseIds: z.array(z.string()).optional(),
   probationStartDate: z.string().optional(),
   responsibleKhoMoId: z.string().optional(),
-});
+  // Vườn sản xuất làm việc — bắt buộc khi tạo NV chăm sóc cây mô (tạo kèm hồ sơ Nhân sự vườn).
+  gardenId: z.string().optional(),
+}).refine((d) => d.role !== "NV_CHAM_SOC_CAY_MO" || !!d.gardenId, { path: ["gardenId"], message: "Chọn vườn sản xuất làm việc" });
 
 type FormData = z.infer<typeof schema>;
 
@@ -42,8 +44,9 @@ type MarketRoom = { id: string; name: string; warehouseName: string };
 type ThanhPhamWarehouse = { id: string; code: string; name: string; rooms: { id: string; name: string; type: string }[] };
 type ThiTruongWarehouse = { id: string; code: string; name: string };
 type KhoMoOption = { id: string; code: string; name: string; warehouseName: string };
+type GardenOption = { id: string; code: string; name: string };
 
-export default function CreateUserDialog({ assignableRoles, khoMoOptions }: { assignableRoles: UserRole[]; khoMoOptions: KhoMoOption[] }) {
+export default function CreateUserDialog({ assignableRoles, khoMoOptions, gardenOptions }: { assignableRoles: UserRole[]; khoMoOptions: KhoMoOption[]; gardenOptions: GardenOption[] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [thanhPhamWarehouses, setThanhPhamWarehouses] = useState<ThanhPhamWarehouse[]>([]);
@@ -127,6 +130,7 @@ export default function CreateUserDialog({ assignableRoles, khoMoOptions }: { as
         retailWarehouseIds: data.role === "SALE" ? data.retailWarehouseIds : undefined,
         probationStartDate: data.role === "CAY_MO" ? data.probationStartDate : undefined,
         responsibleKhoMoId: data.role === "CAY_MO" && data.responsibleKhoMoId ? data.responsibleKhoMoId : undefined,
+        gardenId: data.role === "NV_CHAM_SOC_CAY_MO" ? data.gardenId : undefined,
       };
       const res = await fetch("/api/users", {
         method: "POST",
@@ -195,6 +199,27 @@ export default function CreateUserDialog({ assignableRoles, khoMoOptions }: { as
             <Input {...register("code")} placeholder="VD: NVCM070" />
             {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
           </div>
+
+          {role === "NV_CHAM_SOC_CAY_MO" && (
+            <div className="space-y-1">
+              <Label>Vườn sản xuất làm việc</Label>
+              <Select
+                items={gardenOptions.map((g) => ({ value: g.id, label: `${g.name} (${g.code})` }))}
+                onValueChange={(v) => setValue("gardenId", v as string, { shouldValidate: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn vườn sản xuất" />
+                </SelectTrigger>
+                <SelectContent>
+                  {gardenOptions.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>{g.name} ({g.code})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-text-muted">Tự tạo hồ sơ trong Nhân sự vườn của vườn này (vị trí Chăm sóc cây mô, đã liên kết tài khoản).</p>
+              {errors.gardenId && <p className="text-xs text-destructive">{errors.gardenId.message}</p>}
+            </div>
+          )}
 
           {role === "SALE" && (
             <div className="space-y-3 rounded-lg border border-border p-3">

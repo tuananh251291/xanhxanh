@@ -22,7 +22,7 @@ import UserInlineFieldCell from "./user-inline-field-cell";
 
 // NV/Quản lý kho thành phẩm gán được nhưng chỉ mang tính hiển thị/lưu trữ, không giới hạn phạm vi thao
 // tác — xem thêm ghi chú ở src/app/api/users/[id]/route.ts.
-const WORKPLACE_ROLES = ["KHO_MO", "TRO_LY", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH"] as const;
+const WORKPLACE_ROLES = ["KHO_MO", "TRO_LY", "CAY_MO", "MOI_TRUONG", "KY_THUAT", "SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM", "NHAN_VIEN_SAN_XUAT", "DOI_TAC_VAN_HANH", "NV_CHAM_SOC_CAY_MO"] as const;
 const THANH_PHAM_WORKPLACE_ROLES = ["SALE", "KHO_THANH_PHAM", "QUAN_LY_KHO_THANH_PHAM"] as const;
 // Đối tác vận hành làm việc với 1 Kho THỊ TRƯỜNG (WarehouseType.THI_TRUONG), khác cả kho sản xuất lẫn
 // kho thành phẩm — xem nhánh validate loại kho ở PATCH /api/users/[id].
@@ -77,6 +77,8 @@ export default async function UsersPage({
         workplaceWarehouse: { select: { code: true, name: true } },
         retailWarehouseAccess: { select: { warehouseId: true } },
         responsibleKhoMo: { select: { code: true, name: true } },
+        // NV chăm sóc cây mô — vườn làm việc lấy từ hồ sơ Nhân sự vườn đang liên kết.
+        gardenStaffProfile: { select: { isActive: true, garden: { select: { id: true, code: true, name: true } } } },
       },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -93,6 +95,8 @@ export default async function UsersPage({
       orderBy: { name: "asc" },
     }),
   ]);
+  // Vườn sản xuất — lựa chọn "Vị trí làm việc" của NV chăm sóc cây mô.
+  const gardenOptions = await prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } });
   const khoMoOptions = khoMoUsers.map((u) => ({ id: u.id, code: u.code, name: u.name, workplaceWarehouseId: u.workplaceWarehouseId!, warehouseName: u.workplaceWarehouse?.name ?? "" }));
   const defaultHoldDays = parseInt(defaultHoldDaysStr, 10) || 3;
 
@@ -111,7 +115,7 @@ export default async function UsersPage({
           <h1 className="text-2xl font-bold text-foreground">Quản lý người dùng</h1>
           <p className="text-text-secondary text-sm mt-1">{totalAllUsers} tài khoản</p>
         </div>
-        {assignableRoles.length > 0 && <CreateUserDialog assignableRoles={assignableRoles} khoMoOptions={khoMoOptions} />}
+        {assignableRoles.length > 0 && <CreateUserDialog assignableRoles={assignableRoles} khoMoOptions={khoMoOptions} gardenOptions={gardenOptions} />}
       </div>
 
       <Tabs defaultValue="accounts">
@@ -225,13 +229,16 @@ export default async function UsersPage({
                           canEditInspectionLane={canEditInspectionLane}
                           canEditWorkplace={canEditWorkplace}
                           isWorkplaceRole={!!user.role && WORKPLACE_ROLES.includes(user.role as (typeof WORKPLACE_ROLES)[number])}
-                          workplaceWarehouseId={user.workplaceWarehouseId}
-                          workplaceWarehouse={user.workplaceWarehouse}
+                          workplaceWarehouseId={user.role === "NV_CHAM_SOC_CAY_MO" ? (user.gardenStaffProfile?.isActive ? user.gardenStaffProfile.garden.id : null) : user.workplaceWarehouseId}
+                          workplaceWarehouse={user.role === "NV_CHAM_SOC_CAY_MO" ? (user.gardenStaffProfile?.isActive ? user.gardenStaffProfile.garden : null) : user.workplaceWarehouse}
+                          workplaceField={user.role === "NV_CHAM_SOC_CAY_MO" ? "gardenId" : "workplaceWarehouseId"}
                           responsibleKhoMoId={user.responsibleKhoMoId}
                           responsibleKhoMo={user.responsibleKhoMo}
                           khoMoOptions={khoMoOptions}
                           warehouseOptions={
-                            user.role && THI_TRUONG_WORKPLACE_ROLES.includes(user.role as (typeof THI_TRUONG_WORKPLACE_ROLES)[number])
+                            user.role === "NV_CHAM_SOC_CAY_MO"
+                              ? gardenOptions
+                              : user.role && THI_TRUONG_WORKPLACE_ROLES.includes(user.role as (typeof THI_TRUONG_WORKPLACE_ROLES)[number])
                               ? thiTruongWarehouses
                               : user.role && THANH_PHAM_WORKPLACE_ROLES.includes(user.role as (typeof THANH_PHAM_WORKPLACE_ROLES)[number])
                                 ? thanhPhamWarehouses
