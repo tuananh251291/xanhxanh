@@ -41,6 +41,9 @@ export default function TrialRoundTaskCard({ rounds }: { rounds: DueTrialRound[]
               <p className="text-xs text-text-secondary mt-0.5">
                 Cấy ngày {format(new Date(r.plantedAt), "dd/MM/yyyy", { locale: vi })} — chờ {r.waitWeeks} tuần
                 {" "}(mẫu mẹ đưa vào: {r.motherInputQuantity.toLocaleString("vi-VN")})
+                {r.instruction?.assignedTo?.role === "CAY_MO" && (
+                  <> — giao cho NV cấy mô <span className="font-medium text-foreground">{r.instruction.assignedTo.name} ({r.instruction.assignedTo.code})</span></>
+                )}
               </p>
             </div>
             {r.instructionId ? (

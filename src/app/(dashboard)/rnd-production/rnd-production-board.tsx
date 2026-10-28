@@ -173,7 +173,7 @@ export default function RndProductionBoard({ currentUser }: { currentUser: Curre
 type ComboOption = { value: string; label: string };
 type PlantType = { id: string; code: string; name: string };
 type MediumType = { id: string; code: string; name: string };
-type RndStaff = { id: string; code: string; name: string };
+type RndStaff = { id: string; code: string; name: string; warehouseName: string | null };
 
 function CreateInstructionDialog({
   open, currentUser, onOpenChange, onCreated,
@@ -198,15 +198,15 @@ function CreateInstructionDialog({
     if (!open) return;
     fetch("/api/plant-types").then((r) => r.json()).then((data: PlantType[]) => setPlantTypes(Array.isArray(data) ? data : []));
     fetch("/api/medium-types").then((r) => r.json()).then((data: MediumType[]) => setMediumTypes(Array.isArray(data) ? data : []));
-    // NV cấy mô thật đã được gán làm việc tại Kho sản xuất R&D (canAssignWorkplace, trang Người dùng) — có thể
-    // rỗng nếu chưa NV nào được gán, khi đó chỉ còn lựa chọn "Chính mình". assignedToOption đã tự về lại
+    // NV cấy mô đang làm việc ở mọi khu sản xuất (NV Kho R&D xếp trước, xem listRndAssignableStaff) — NV được
+    // giao nhập dữ liệu cấy ở trang Nhập dữ liệu cấy như mọi chỉ định khác. assignedToOption đã tự về lại
     // selfOption mỗi lần đóng dialog (xem reset(), gọi trong onOpenChange) nên không cần set lại ở đây.
     fetch("/api/rnd-production/staff").then((r) => r.json()).then((data: RndStaff[]) => setRndStaff(Array.isArray(data) ? data : []));
   }, [open]);
 
   const plantTypeOptions: ComboOption[] = plantTypes.map((p) => ({ value: p.id, label: `${p.code} — ${p.name}` }));
   const mediumTypeOptions: ComboOption[] = mediumTypes.map((m) => ({ value: m.id, label: `${m.code} — ${m.name}` }));
-  const assignedToOptions: ComboOption[] = [selfOption, ...rndStaff.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}` }))];
+  const assignedToOptions: ComboOption[] = [selfOption, ...rndStaff.map((s) => ({ value: s.id, label: `${s.code} — ${s.name}${s.warehouseName ? ` (${s.warehouseName})` : ""}` }))];
 
   const reset = () => { setPlantTypeOption(null); setMediumTypeOption(null); setQuantity(""); setAssignedToOption(selfOption); };
 

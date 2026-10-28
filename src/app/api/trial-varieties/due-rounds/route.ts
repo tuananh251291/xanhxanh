@@ -28,6 +28,8 @@ export async function GET() {
       trialVariety: { select: { id: true, code: true, name: true } },
       // Lượt cấy có chỉ định cấy R&D (mỗi lượt = 1 chỉ định) — kết quả nhập theo chỉ định, không qua form lượt cấy.
       instructionId: true,
+      // Người được giao lượt cấy (Admin kỹ thuật hoặc NV cấy mô — xem validateRndAssignee).
+      instruction: { select: { assignedTo: { select: { code: true, name: true, role: true } } } },
     },
     orderBy: { expectedReadyAt: "asc" },
   });

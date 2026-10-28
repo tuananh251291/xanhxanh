@@ -9,6 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import PhotoCaptureSlot from "@/components/shared/photo-capture-slot";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxInputGroup,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { ArrowLeft, Camera, Loader2, Play, Sprout, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -242,14 +252,32 @@ function AddPhotoDialog({ varietyId, onAdded }: { varietyId: string; onAdded: ()
   );
 }
 
+type AssigneeOption = { value: string; label: string };
+// "" = Chính mình (người bắt đầu lượt) — giống ô "Giao cho" ở Cấy sản xuất R&D (rnd-production-board.tsx).
+const SELF_ASSIGNEE: AssigneeOption = { value: "", label: "Chính mình" };
+
 function StartRoundDialog({ varietyId, onStarted }: { varietyId: string; onStarted: () => void }) {
   const [open, setOpen] = useState(false);
   const [motherInputQuantity, setMotherInputQuantity] = useState("");
   const [waitWeeks, setWaitWeeks] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [assigneeOptions, setAssigneeOptions] = useState<AssigneeOption[]>([SELF_ASSIGNEE]);
+  const [assignee, setAssignee] = useState<AssigneeOption>(SELF_ASSIGNEE);
 
-  const reset = () => { setMotherInputQuantity(""); setWaitWeeks(""); setNotes(""); };
+  // NV cấy mô đang làm việc (mọi khu sản xuất, NV Kho R&D trước) — giao lượt cấy cho NV thì NV nhập dữ liệu
+  // cấy ở trang Nhập dữ liệu cấy như các chỉ định khác (xem validateRndAssignee).
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/rnd-production/staff")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: { id: string; code: string; name: string; warehouseName: string | null }[]) =>
+        setAssigneeOptions([SELF_ASSIGNEE, ...(Array.isArray(data) ? data : []).map((s) => ({ value: s.id, label: `${s.code} — ${s.name}${s.warehouseName ? ` (${s.warehouseName})` : ""}` }))])
+      )
+      .catch(() => {});
+  }, [open]);
+
+  const reset = () => { setMotherInputQuantity(""); setWaitWeeks(""); setNotes(""); setAssignee(SELF_ASSIGNEE); };
 
   const submit = async () => {
     const mother = Number(motherInputQuantity);
@@ -261,7 +289,7 @@ function StartRoundDialog({ varietyId, onStarted }: { varietyId: string; onStart
       const res = await fetch(`/api/trial-varieties/${varietyId}/rounds`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motherInputQuantity: mother, waitWeeks: weeks, notes: notes.trim() || undefined }),
+        body: JSON.stringify({ motherInputQuantity: mother, waitWeeks: weeks, notes: notes.trim() || undefined, assignedToId: assignee.value || undefined }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.message ?? "Bắt đầu lượt cấy thất bại"); return; }
@@ -287,6 +315,27 @@ function StartRoundDialog({ varietyId, onStarted }: { varietyId: string; onStart
           <div className="space-y-1">
             <Label className="text-xs">Số lượng mẫu mẹ đưa vào cấy <span className="text-destructive">*</span></Label>
             <Input type="number" min={1} value={motherInputQuantity} onChange={(e) => setMotherInputQuantity(e.target.value)} placeholder="VD: 10" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Giao cho</Label>
+            <Combobox
+              items={assigneeOptions}
+              value={assignee}
+              isItemEqualToValue={(a: AssigneeOption, b: AssigneeOption) => a.value === b.value}
+              onValueChange={(val) => setAssignee((val as AssigneeOption | null) ?? SELF_ASSIGNEE)}
+            >
+              <ComboboxInputGroup>
+                <ComboboxInput placeholder="Gõ tên/mã NV…" />
+                <ComboboxTrigger />
+              </ComboboxInputGroup>
+              <ComboboxContent>
+                <ComboboxEmpty>Không tìm thấy NV</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: AssigneeOption) => <ComboboxItem key={item.value || "self"} value={item}>{item.label}</ComboboxItem>}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            {assignee.value && <p className="text-xs text-text-secondary">NV nhập dữ liệu cấy ở trang Nhập dữ liệu cấy của mình.</p>}
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Số tuần chờ đến tuổi cấy <span className="text-destructive">*</span></Label>

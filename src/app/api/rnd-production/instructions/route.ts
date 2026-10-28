@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { getOrCreateRndWarehouse } from "@/lib/rnd-instruction-warehouse";
-import { prepareRndInstruction, insertRndInstruction } from "@/lib/rnd-instruction-create";
+import { prepareRndInstruction, insertRndInstruction, validateRndAssignee } from "@/lib/rnd-instruction-create";
 import { z } from "zod";
 
 // "Tạo chỉ định cấy R&D" — Admin kỹ thuật tạo 1 chỉ định cấy THẬT tại "Kho sản xuất R&D" (xem
 // src/lib/rnd-instruction-warehouse.ts), dùng mã cây/môi trường CÓ SẴN (không phải giống mới, khác hẳn
 // TrialVariety/TrialCultivationRound — feature đó tách biệt hoàn toàn khỏi kho thật). Giao cho CHÍNH MÌNH
-// (mặc định, không truyền assignedToId) hoặc cho 1 NV cấy mô THẬT đã được gán làm việc tại R&D (sửa
-// 23/09/2026 — trước đây chỉ tự giao cho chính mình). Gộp cả 3 bước "tạo → bàn giao → nhận mẫu mẹ" thành 1
+// (mặc định, không truyền assignedToId) hoặc cho 1 NV cấy mô THẬT đang làm việc ở bất kỳ khu sản xuất nào
+// (28/10/2026 — trước đó chỉ NV gán làm việc tại Kho sản xuất R&D, xem validateRndAssignee). Gộp cả 3 bước "tạo → bàn giao → nhận mẫu mẹ" thành 1
 // hành động duy nhất trong 1 transaction — kể cả khi giao cho NV khác, Admin kỹ thuật vẫn tự chịu trách
 // nhiệm xác nhận đã bàn giao thật (giống hệt Kho mô bàn giao mẫu mẹ cho NV ở luồng cấy thường), NV chỉ cần
 // vào nhập dữ liệu cấy ngay, không phải tự xác nhận nhận lại lần nữa.
@@ -57,23 +56,14 @@ export async function POST(req: NextRequest) {
   const { plantTypeId, mediumTypeId, quantity, assignedToId: requestedAssignedToId } = parsed.data;
   const assignedToId = requestedAssignedToId ?? session.user.id;
 
-  const rndWarehouse = await getOrCreateRndWarehouse();
-
-  const [plantType, mediumType, assignedStaff] = await Promise.all([
+  const [plantType, mediumType, assigneeError] = await Promise.all([
     prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { code: true } }),
     prisma.mediumType.findUnique({ where: { id: mediumTypeId }, select: { id: true } }),
-    prisma.user.findUnique({ where: { id: assignedToId }, select: { code: true, role: true, isActive: true, workplaceWarehouseId: true } }),
+    validateRndAssignee(assignedToId, session.user.id),
   ]);
   if (!plantType) return NextResponse.json({ message: "Không tìm thấy mã cây" }, { status: 400 });
   if (!mediumType) return NextResponse.json({ message: "Không tìm thấy môi trường" }, { status: 400 });
-  if (!assignedStaff) return NextResponse.json({ message: "Không tìm thấy NV được giao" }, { status: 400 });
-  // Tự giao cho chính mình luôn hợp lệ (Admin kỹ thuật) — giao cho người khác thì bắt buộc là NV cấy mô
-  // THẬT, đang hoạt động, và đã được gán làm việc tại đúng Kho sản xuất R&D (qua trang Người dùng).
-  if (assignedToId !== session.user.id) {
-    if (!assignedStaff.isActive || assignedStaff.role !== "CAY_MO" || assignedStaff.workplaceWarehouseId !== rndWarehouse.id) {
-      return NextResponse.json({ message: "NV được giao không hợp lệ — cần là NV cấy mô đang làm việc tại Kho sản xuất R&D" }, { status: 400 });
-    }
-  }
+  if (assigneeError) return NextResponse.json({ message: assigneeError }, { status: 400 });
 
   const prep = await prepareRndInstruction({ plantTypeCode: plantType.code, assignedToId });
   const instruction = await prisma.$transaction((tx) =>
