@@ -6,6 +6,21 @@ import { differenceInCalendarDays, format } from "date-fns";
 export const ASSISTANT_TASK_CATEGORY_LABELS = { CO_DINH: "Cố định", PHAT_SINH: "Phát sinh" } as const;
 export const ASSISTANT_TASK_STATUS_LABELS = { CHUA_LAM: "Chưa làm", DANG_XU_LY: "Đang xử lý", HOAN_THANH: "Hoàn thành" } as const;
 
+// Lặp lại — xem ensureAssistantTaskRepeats (src/lib/assistant-task-repeat.ts).
+export const ASSISTANT_TASK_REPEAT_LABELS = {
+  NONE: "Không lặp lại",
+  DAILY: "Hằng ngày",
+  WEEKLY: "Hằng tuần",
+  MONTHLY: "Hằng tháng",
+  YEARLY: "Hằng năm",
+} as const;
+export type AssistantTaskRepeat = keyof typeof ASSISTANT_TASK_REPEAT_LABELS;
+// 1 = Thứ 2 … 7 = Chủ nhật (khớp AssistantTask.repeatWeekdays).
+export const ASSISTANT_TASK_WEEKDAY_LABELS: { value: number; label: string }[] = [
+  { value: 1, label: "T2" }, { value: 2, label: "T3" }, { value: 3, label: "T4" }, { value: 4, label: "T5" },
+  { value: 5, label: "T6" }, { value: 6, label: "T7" }, { value: 7, label: "CN" },
+];
+
 export type AssistantTaskCategory = keyof typeof ASSISTANT_TASK_CATEGORY_LABELS;
 export type AssistantTaskStatus = keyof typeof ASSISTANT_TASK_STATUS_LABELS;
 

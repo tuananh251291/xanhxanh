@@ -4338,6 +4338,16 @@ enum AssistantTaskStatus {
   HOAN_THANH
 }
 
+// "Lặp lại" của 1 công việc — đến kỳ kế tiếp tự tạo công việc mới giống hệt (xem
+// ensureAssistantTaskRepeats, src/lib/assistant-task-repeat.ts).
+enum AssistantTaskRepeat {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
 // "Theo dõi công việc" — NV Trợ lý (TRO_LY) ghi lại việc Giám đốc giao cho từng người và theo dõi hạn
 // (trang /assistant-tasks, dựng theo bảng "Bảng điều khiển công việc của Giám đốc"). "Còn lại / Trễ" và
 // "Nhắc nhở" KHÔNG lưu — tính lúc hiển thị từ deadline/status/completedAt. assignedDate/deadline lưu
@@ -4355,6 +4365,16 @@ model AssistantTask {
   completedAt   DateTime?
   // Vướng mắc — NV Trợ lý điền tay.
   blocker       String?               @db.Text
+  // Lặp lại: NONE = như cũ. WEEKLY lặp vào các thứ trong repeatWeekdays (1 = Thứ 2 … 7 = Chủ nhật; rỗng =
+  // cùng thứ với ngày bàn giao). MONTHLY/YEARLY lặp theo ngày của repeatAnchorDate (ngày bàn giao gốc của
+  // chuỗi — giữ để tháng ngắn không làm trôi ngày, VD 31/01 → 28/02 → 31/03).
+  repeat           AssistantTaskRepeat   @default(NONE)
+  repeatWeekdays   Int[]                 @default([])
+  repeatAnchorDate DateTime?
+  // Đã tạo công việc kỳ kế tiếp từ dòng này chưa — mỗi chuỗi chỉ dòng mới nhất (null) mới sinh tiếp.
+  repeatSpawnedAt  DateTime?
+  // Công việc kỳ trước đã sinh ra dòng này (null = dòng tạo tay).
+  repeatSourceId   String?
   createdById   String
   createdBy     User                  @relation("AssistantTaskCreatedBy", fields: [createdById], references: [id])
   createdAt     DateTime              @default(now())

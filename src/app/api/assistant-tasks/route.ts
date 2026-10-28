@@ -3,10 +3,13 @@ import { assistantTaskSchema, assistantTaskInclude } from "@/lib/assistant-task-
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canUseAssistantTasks } from "@/lib/assistant-task";
+import { ensureAssistantTaskRepeats } from "@/lib/assistant-task-repeat";
 
 export async function GET() {
   const session = await auth();
   if (!canUseAssistantTasks(session?.user?.role)) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
+  // Tới kỳ kế tiếp của công việc lặp lại thì tạo công việc mới trước khi trả danh sách.
+  await ensureAssistantTaskRepeats();
   const tasks = await prisma.assistantTask.findMany({ include: assistantTaskInclude, orderBy: [{ deadline: "asc" }, { createdAt: "asc" }] });
   return NextResponse.json(tasks);
 }
@@ -30,6 +33,9 @@ export async function POST(req: NextRequest) {
       status: d.status,
       completedAt: d.status === "HOAN_THANH" ? new Date() : null,
       blocker: d.blocker || null,
+      repeat: d.repeat,
+      repeatWeekdays: d.repeat === "WEEKLY" ? [...new Set(d.repeatWeekdays)].sort() : [],
+      repeatAnchorDate: d.repeat === "NONE" ? null : new Date(d.assignedDate),
       createdById: session.user.id,
     },
     include: assistantTaskInclude,

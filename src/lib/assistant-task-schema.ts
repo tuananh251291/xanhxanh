@@ -13,6 +13,9 @@ export const assistantTaskSchema = z
     deadline: z.string().regex(DATE, "Chọn deadline"),
     status: z.enum(["CHUA_LAM", "DANG_XU_LY", "HOAN_THANH"]).default("CHUA_LAM"),
     blocker: z.string().trim().max(2000).optional().nullable(),
+    repeat: z.enum(["NONE", "DAILY", "WEEKLY", "MONTHLY", "YEARLY"]).default("NONE"),
+    // Chỉ dùng với WEEKLY — 1 = Thứ 2 … 7 = Chủ nhật.
+    repeatWeekdays: z.array(z.number().int().min(1).max(7)).max(7).default([]),
   })
   .refine((d) => d.deadline >= d.assignedDate, { message: "Deadline không được trước ngày bàn giao", path: ["deadline"] });
 

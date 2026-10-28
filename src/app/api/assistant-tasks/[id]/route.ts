@@ -21,6 +21,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     deadline: existing.deadline.toISOString().slice(0, 10),
     status: existing.status,
     blocker: existing.blocker,
+    repeat: existing.repeat,
+    repeatWeekdays: existing.repeatWeekdays,
     ...((await req.json().catch(() => ({}))) as object),
   };
   const parsed = assistantTaskSchema.safeParse(merged);
@@ -30,6 +32,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const responsible = await prisma.user.findUnique({ where: { id: d.responsibleId }, select: { isActive: true } });
     if (!responsible?.isActive) return NextResponse.json({ message: "Người chịu trách nhiệm không tồn tại hoặc đã nghỉ" }, { status: 400 });
   }
+
+  // Đổi cài đặt lặp hoặc ngày bàn giao → mốc lặp (ngày gốc của chuỗi) tính lại từ ngày bàn giao hiện tại.
+  const weekdays = d.repeat === "WEEKLY" ? [...new Set(d.repeatWeekdays)].sort() : [];
+  const repeatChanged =
+    d.repeat !== existing.repeat ||
+    weekdays.join(",") !== existing.repeatWeekdays.join(",") ||
+    d.assignedDate !== existing.assignedDate.toISOString().slice(0, 10);
+  const repeatAnchorDate =
+    d.repeat === "NONE" ? null : repeatChanged || !existing.repeatAnchorDate ? new Date(d.assignedDate) : existing.repeatAnchorDate;
 
   const task = await prisma.assistantTask.update({
     where: { id },
@@ -43,6 +54,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Giữ nguyên lúc hoàn thành gốc nếu vẫn Hoàn thành; mới chuyển sang Hoàn thành thì ghi bây giờ.
       completedAt: d.status === "HOAN_THANH" ? (existing.completedAt ?? new Date()) : null,
       blocker: d.blocker || null,
+      repeat: d.repeat,
+      repeatWeekdays: weekdays,
+      repeatAnchorDate,
     },
     include: assistantTaskInclude,
   });

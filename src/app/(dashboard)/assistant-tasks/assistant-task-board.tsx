@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Repeat, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,9 @@ import {
   ASSISTANT_TASK_TONE_LABELS,
   describeAssistantTask,
   taskDateKey,
+  ASSISTANT_TASK_REPEAT_LABELS,
   type AssistantTaskCategory,
+  type AssistantTaskRepeat,
   type AssistantTaskStatus,
   type AssistantTaskTone,
 } from "@/lib/assistant-task";
@@ -45,6 +47,8 @@ export type AssistantTaskRow = {
   status: AssistantTaskStatus;
   completedAt: string | null;
   blocker: string | null;
+  repeat: AssistantTaskRepeat;
+  repeatWeekdays: number[];
 };
 
 const TONE_ORDER: AssistantTaskTone[] = ["overdue", "due-soon", "in-progress", "done"];
@@ -133,6 +137,10 @@ export default function AssistantTaskBoard({ staffOptions }: { staffOptions: Sta
     if (!res.ok) { toast.error(json.message ?? "Lưu thất bại"); return false; }
     toast.success(id ? "Đã cập nhật công việc" : "Đã thêm công việc");
     setTasks((prev) => (id ? (prev ?? []).map((t) => (t.id === id ? json : t)) : [...(prev ?? []), json]));
+    // Công việc lặp lại có ngày bàn giao đã qua → tải lại để thấy các kỳ hệ thống vừa tự tạo.
+    if (json.repeat && json.repeat !== "NONE") {
+      fetch("/api/assistant-tasks").then((r) => (r.ok ? r.json() : null)).then((data) => { if (data) setTasks(data); }).catch(() => {});
+    }
     return true;
   };
 
@@ -263,7 +271,14 @@ export default function AssistantTaskBoard({ staffOptions }: { staffOptions: Sta
                         {ASSISTANT_TASK_CATEGORY_LABELS[task.category]}
                       </Badge>
                     </td>
-                    <td className="px-3 py-2 whitespace-pre-wrap text-foreground">{task.title}</td>
+                    <td className="px-3 py-2 whitespace-pre-wrap text-foreground">
+                      {task.title}
+                      {task.repeat !== "NONE" && (
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 align-middle text-xs text-text-secondary" title={`Lặp lại: ${ASSISTANT_TASK_REPEAT_LABELS[task.repeat]}`}>
+                          <Repeat className="w-3 h-3" /> {ASSISTANT_TASK_REPEAT_LABELS[task.repeat]}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap">{task.responsible.name}</td>
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">{fmtDay(taskDateKey(task.assignedDate))}</td>
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">{fmtDay(taskDateKey(task.deadline))}</td>
