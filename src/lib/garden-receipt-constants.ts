@@ -40,3 +40,13 @@ export const GARDEN_DAMAGE_STATUS_LABELS = {
   RETURNED: "QLV trả lại — kiểm tra lại",
   CONFIRMED: "Đã xác nhận",
 } as const;
+
+// Phiếu Nghiệp vụ 4 — Chăm sóc cây mô (GardenCareTicketType).
+export const GARDEN_CARE_TICKET_LABELS = {
+  PLACE: "Phiếu sắp xếp/điều chuyển vị trí",
+  DAMAGE: "Phiếu ghi nhận cây hỏng khi chăm sóc",
+  SIZE_S: "Phiếu cập nhật cây đạt size S",
+} as const;
+// Quy cách cây đạt sau chăm sóc cây mô — nhập Kho thành phẩm vườn.
+export const GARDEN_SIZE_S_STAGE = "S";
+export const GARDEN_SIZE_S_LABEL = "S (1.7 inch)";

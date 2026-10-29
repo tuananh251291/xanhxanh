@@ -48,9 +48,9 @@ export default async function GardenDamagePage({ searchParams }: { searchParams:
         items: { select: { initialQuantity: true, reportedQuantity: true, confirmedQuantity: true } },
       },
     }),
-    // Phiếu bàn giao đã nhận xong, chưa có phiếu hỏng đang mở — để mở phiếu mới.
+    // Phiếu bàn giao đã nhận xong, chưa có phiếu hỏng NV3 nào (mỗi phiếu bàn giao 1 phiếu NV3) — để mở phiếu mới.
     prisma.gardenReceipt.findMany({
-      where: { gardenId: { in: gardenIds }, status: "COMPLETED", damageReports: { none: { status: { not: "CONFIRMED" } } } },
+      where: { gardenId: { in: gardenIds }, status: "COMPLETED", damageReports: { none: {} } },
       orderBy: { completedAt: "desc" },
       take: 100,
       select: { id: true, code: true, orderType: true, completedAt: true, fromWarehouse: { select: { name: true } }, garden: { select: { name: true } } },

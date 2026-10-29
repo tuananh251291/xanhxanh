@@ -23,7 +23,7 @@ export default async function GardenStockPage() {
   }
   const gardens = await getManageableGardens(session.user);
   const gardenIds = gardens.map((g) => g.id);
-  const [stocks, damaged] = await Promise.all([
+  const [stocks, damaged, finished] = await Promise.all([
     prisma.gardenStock.findMany({
       where: { gardenId: { in: gardenIds } },
       select: { gardenId: true, pool: true, plantTypeId: true, stageCode: true, quantity: true, plantType: { select: { code: true, name: true } } },
@@ -32,6 +32,12 @@ export default async function GardenStockPage() {
     prisma.gardenDamageItem.findMany({
       where: { report: { gardenId: { in: gardenIds }, status: "CONFIRMED" }, confirmedQuantity: { gt: 0 } },
       select: { plantTypeId: true, stageCode: true, confirmedQuantity: true, report: { select: { gardenId: true, flow: true } } },
+    }),
+    // Kho thành phẩm vườn — cây đạt size S sau Chăm sóc cây mô (không còn phân biệt nhiễm/khỏe).
+    prisma.gardenFinishedStock.findMany({
+      where: { gardenId: { in: gardenIds }, quantity: { gt: 0 } },
+      select: { gardenId: true, stageCode: true, quantity: true, plantType: { select: { code: true, name: true } } },
+      orderBy: [{ plantType: { code: "asc" } }, { stageCode: "asc" }],
     }),
   ]);
   const damagedBy = new Map<string, number>();
@@ -46,11 +52,47 @@ export default async function GardenStockPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Boxes className="w-6 h-6 text-primary-strong" /> Tồn kho vườn</h1>
         <p className="text-text-secondary text-sm mt-1">
-          Kho nhiễm (Luồng A) và Kho cây trồng (Luồng B) — tồn hiện tại và số cây hỏng đã được QLV xác nhận (xem{" "}
+          Kho thành phẩm vườn (cây đạt size S), Kho nhiễm (Luồng A) và Kho cây trồng (Luồng B) — tồn hiện tại và số cây hỏng đã được QLV xác nhận (xem{" "}
           <Link href="/garden-damage" className="text-primary-strong underline underline-offset-2">Phiếu ghi nhận cây hỏng</Link>). Chưa phân bổ theo giàn kệ.
         </p>
       </div>
       {gardens.length === 0 && <p className="text-sm text-text-muted">Bạn chưa được gán quản lý vườn nào — liên hệ Admin cấp cao.</p>}
+      {gardens.map((g) => {
+        const rows = finished.filter((r) => r.gardenId === g.id);
+        return (
+          <Card key={`${g.id}:finished`}>
+            <CardHeader><CardTitle className="text-base">{g.name} — Kho thành phẩm vườn: {fmt(rows.reduce((s, r) => s + r.quantity, 0))} cây</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              {rows.length === 0 ? (
+                <p className="text-sm text-text-muted text-center py-6">Chưa có cây đạt quy cách</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-primary-light">
+                        <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Mã cây</th>
+                        <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Tên cây</th>
+                        <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Quy cách</th>
+                        <th className="text-right px-4 py-2 text-base text-primary-strong font-bold">Số lượng</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={`${r.plantType.code}:${r.stageCode}`} className="border-b border-divider last:border-0 even:bg-primary-light/30">
+                          <td className="px-4 py-2 font-mono text-text-secondary">{r.plantType.code}</td>
+                          <td className="px-4 py-2 text-foreground">{r.plantType.name}</td>
+                          <td className="px-4 py-2">{r.stageCode}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{fmt(r.quantity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
       {gardens.flatMap((g) =>
         POOLS.map((pool) => {
           const rows = stocks.filter((s) => s.gardenId === g.id && s.pool === pool && (s.quantity > 0 || damagedBy.has(`${g.id}:${pool}:${s.plantTypeId}:${s.stageCode}`)));

@@ -553,6 +553,9 @@ export const ALERT_TYPE_LABELS = {
   GARDEN_DAMAGE_SUBMITTED: "Phiếu ghi nhận cây hỏng chờ xác nhận",
   GARDEN_DAMAGE_RETURNED: "Phiếu ghi nhận cây hỏng bị trả lại",
   GARDEN_DAMAGE_CONFIRMED: "Phiếu ghi nhận cây hỏng đã xác nhận",
+  GARDEN_CARE_SUBMITTED: "Phiếu chăm sóc cây mô chờ duyệt",
+  GARDEN_CARE_RETURNED: "Phiếu chăm sóc cây mô bị trả lại",
+  GARDEN_CARE_CONFIRMED: "Phiếu chăm sóc cây mô đã duyệt",
   RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
   MOTHER_FORECAST_MONTHLY_DUE: "Nhiệm vụ Dự kiến đáp ứng mẫu mẹ đến hạn",
   MOTHER_OUTPUT_SHORTFALL: "Sản lượng mẫu mẹ tụt dưới kế hoạch",
@@ -616,6 +619,9 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   GARDEN_DAMAGE_SUBMITTED: "/garden-damage",
   GARDEN_DAMAGE_RETURNED: "/garden-damage",
   GARDEN_DAMAGE_CONFIRMED: "/garden-damage",
+  GARDEN_CARE_SUBMITTED: "/garden-care",
+  GARDEN_CARE_RETURNED: "/garden-care",
+  GARDEN_CARE_CONFIRMED: "/garden-care",
 };
 
 // Loại cảnh báo hiện trong widget "Cảnh báo chưa đọc" ở Dashboard tổng quan — theo TỪNG vai trò Admin
@@ -1039,6 +1045,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   NV_CHAM_SOC_CAY_MO: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/garden-damage", label: "Phiếu ghi nhận cây hỏng", icon: "ClipboardCheck" },
+    { href: "/garden-care", label: "Chăm sóc cây mô", icon: "Sprout" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   NHAN_VIEN_QUAN_LY_VUON: [
@@ -1049,6 +1056,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-stock", label: "Tồn kho vườn", icon: "Boxes" },
     // Phân loại cây & ghi nhận cây hỏng (Luồng A nhiễm / Luồng B khỏe) — xác nhận phiếu NV gửi, xem /garden-damage.
     { href: "/garden-damage", label: "Phiếu ghi nhận cây hỏng", icon: "ClipboardCheck" },
+    // Nghiệp vụ 4 — lô chăm sóc cây mô: sắp xếp vị trí, duyệt cây hỏng/đạt size S, xem /garden-care.
+    { href: "/garden-care", label: "Chăm sóc cây mô", icon: "Sprout" },
     // Cài đặt nhân viên làm việc tại vườn (không có tài khoản), xem /garden-staff.
     { href: "/garden-staff", label: "Nhân sự vườn", icon: "Users" },
     // Nhà lưới → Giàn kệ → Dãy (mã vị trí VD 1A1), xem /garden-layout.

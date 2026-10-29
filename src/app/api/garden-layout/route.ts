@@ -82,6 +82,18 @@ export async function POST(req: NextRequest) {
 
 const deleteSchema = z.object({ type: z.enum(["house", "rack", "row"]), id: z.string().min(1) });
 
+// Vị trí đang có cây của lô chăm sóc (GardenCarePlacement) thì không cho xoá — phải điều chuyển cây đi trước.
+async function hasPlants(where: { rowId?: string; rackId?: string; houseId?: string }) {
+  const count = await prisma.gardenCarePlacement.count({
+    where: {
+      quantity: { gt: 0 },
+      row: where.rowId ? { id: where.rowId } : where.rackId ? { rackId: where.rackId } : { rack: { houseId: where.houseId } },
+    },
+  });
+  return count > 0;
+}
+const HAS_PLANTS_MESSAGE = "Vị trí đang có cây — điều chuyển cây sang dãy khác (mục Chăm sóc cây mô) trước khi xoá";
+
 // Chỉ xoá được phần tử CUỐI (số/chữ lớn nhất) để dãy số/chữ luôn liên tục — xoá nhà lưới/giàn xoá luôn mọi
 // giàn/dãy bên trong (onDelete Cascade).
 export async function DELETE(req: NextRequest) {
@@ -97,6 +109,7 @@ export async function DELETE(req: NextRequest) {
     if (!(await canManageGarden(session.user, house.gardenId))) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     const last = await prisma.gardenHouse.findFirst({ where: { gardenId: house.gardenId }, orderBy: { number: "desc" }, select: { id: true } });
     if (last?.id !== id) return NextResponse.json({ message: "Chỉ xoá được nhà lưới có số lớn nhất" }, { status: 400 });
+    if (await hasPlants({ houseId: id })) return NextResponse.json({ message: HAS_PLANTS_MESSAGE }, { status: 400 });
     await prisma.gardenHouse.delete({ where: { id } });
     return NextResponse.json({ message: `Đã xoá Nhà lưới ${house.number}` });
   }
@@ -107,6 +120,7 @@ export async function DELETE(req: NextRequest) {
     if (!(await canManageGarden(session.user, rack.house.gardenId))) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
     const last = [...rack.house.racks].sort((a, b) => LETTERS.indexOf(b.letter) - LETTERS.indexOf(a.letter))[0];
     if (last?.id !== id) return NextResponse.json({ message: "Chỉ xoá được giàn cuối cùng của nhà lưới" }, { status: 400 });
+    if (await hasPlants({ rackId: id })) return NextResponse.json({ message: HAS_PLANTS_MESSAGE }, { status: 400 });
     await prisma.gardenRack.delete({ where: { id } });
     return NextResponse.json({ message: `Đã xoá giàn ${rack.house.number}${rack.letter}` });
   }
@@ -116,6 +130,7 @@ export async function DELETE(req: NextRequest) {
   if (!(await canManageGarden(session.user, row.rack.house.gardenId))) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
   const last = await prisma.gardenRow.findFirst({ where: { rackId: row.rackId }, orderBy: { number: "desc" }, select: { id: true } });
   if (last?.id !== id) return NextResponse.json({ message: "Chỉ xoá được dãy cuối cùng của giàn" }, { status: 400 });
+  if (await hasPlants({ rowId: id })) return NextResponse.json({ message: HAS_PLANTS_MESSAGE }, { status: 400 });
   await prisma.gardenRow.delete({ where: { id } });
   return NextResponse.json({ message: `Đã xoá dãy ${row.rack.house.number}${row.rack.letter}${row.number}` });
 }

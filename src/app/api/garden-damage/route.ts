@@ -9,7 +9,7 @@ const schema = z.object({ receiptId: z.string().min(1, "Chưa chọn phiếu bà
 
 // Mở phiếu ghi nhận cây hỏng (DRAFT) từ 1 phiếu bàn giao cây mô ĐÃ NHẬN (COMPLETED) — luồng A/B theo loại lệnh
 // của phiếu bàn giao, mỗi dòng = 1 dòng phiếu bàn giao (số lượng ban đầu = số thực nhận). Mỗi phiếu bàn giao
-// chỉ có tối đa 1 phiếu hỏng đang mở (chưa xác nhận) cùng lúc.
+// chỉ có 1 phiếu hỏng NV3 (xác nhận xong thì cây chuyển sang Chăm sóc cây mô, xem createCareLotsForReceipt).
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -23,6 +23,9 @@ export async function POST(req: NextRequest) {
   if (!receipt || receipt.status !== "COMPLETED") return NextResponse.json({ message: "Phiếu bàn giao chưa nhận xong vào kho vườn" }, { status: 400 });
   if (!(await canCreateDamageReport(session.user, receipt.gardenId))) return NextResponse.json({ message: "Không có quyền" }, { status: 403 });
 
+  // Phiếu NV3 đã xác nhận = cây đã chuyển sang Chăm sóc cây mô (NV4) — cây hỏng phát sinh sau đó ghi ở NV4.
+  const done = await prisma.gardenDamageReport.findFirst({ where: { receiptId: receipt.id, status: "CONFIRMED" }, select: { code: true } });
+  if (done) return NextResponse.json({ message: `Phiếu bàn giao ${receipt.code} đã xác nhận cây hỏng (${done.code}) và chuyển sang Chăm sóc cây mô — cây hỏng phát sinh ghi ở mục Chăm sóc cây mô` }, { status: 409 });
   const open = await prisma.gardenDamageReport.findFirst({ where: { receiptId: receipt.id, status: { not: "CONFIRMED" } }, select: { id: true, code: true } });
   if (open) return NextResponse.json({ message: `Phiếu bàn giao ${receipt.code} đang có phiếu hỏng ${open.code} chưa xác nhận`, id: open.id }, { status: 409 });
 

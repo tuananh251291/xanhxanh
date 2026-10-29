@@ -476,3 +476,21 @@ export async function generateGardenDamageCode(client: Prisma.TransactionClient 
   const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
+
+// Mã lô chăm sóc cây mô (Vườn sản xuất, Nghiệp vụ 4) = "LCS-" + "YYYYMM" + số thứ tự 4 chữ số trong tháng.
+export async function generateGardenCareLotCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `LCS-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.gardenCareLot.findFirst({ where: { code: { startsWith: prefix } }, orderBy: { code: "desc" } });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// Mã phiếu Nghiệp vụ 4 (sắp xếp vị trí / cây hỏng / đạt size S) = "PCS-" + "YYYYMM" + số thứ tự 4 chữ số.
+export async function generateGardenCareTicketCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `PCS-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.gardenCareTicket.findFirst({ where: { code: { startsWith: prefix } }, orderBy: { code: "desc" } });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
