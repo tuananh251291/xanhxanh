@@ -788,6 +788,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "PackageCheck" },
     { href: "/garden-receipts", label: "Phiếu bàn giao cây mô về vườn", icon: "Sprout" },
     { href: "/garden-stock", label: "Tồn kho & điều phối vườn", icon: "Boxes" },
+    { href: "/garden-finished-care", label: "Chăm sóc cây thành phẩm vườn", icon: "Flower2" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
@@ -1060,6 +1061,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-damage", label: "Phiếu ghi nhận cây hỏng", icon: "ClipboardCheck" },
     // Nghiệp vụ 4 — lô chăm sóc cây mô: sắp xếp vị trí, duyệt cây hỏng/đạt size S, xem /garden-care.
     { href: "/garden-care", label: "Chăm sóc cây mô", icon: "Sprout" },
+    // Nghiệp vụ 6 — cây Kho thành phẩm (S/M/L): ghi nhận cây hỏng, chuyển Kho thanh lý, xem /garden-finished-care.
+    { href: "/garden-finished-care", label: "Chăm sóc cây thành phẩm", icon: "Flower2" },
     // Cài đặt nhân viên làm việc tại vườn (không có tài khoản), xem /garden-staff.
     { href: "/garden-staff", label: "Nhân sự vườn", icon: "Users" },
     // Nhà lưới → Giàn kệ → Dãy (mã vị trí VD 1A1), xem /garden-layout.

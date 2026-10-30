@@ -19,6 +19,7 @@ const POOL_LABELS: Record<Pool, string> = { CONTAMINATED: "Kho nhiễm", PLANNED
 const ALLOCATABLE: Pool[] = ["FINISHED", "LIQUIDATION"];
 const LOG_LABELS: Record<string, string> = {
   RECEIVE: "Nhận vào lô (sau NV3)", PLACE: "Sắp xếp vị trí", DAMAGE: "Cây hỏng", SIZE_S: "Đạt size S", MOVE: "Điều phối",
+  FINISHED_DAMAGE: "Cây thành phẩm hỏng", TO_LIQUIDATION: "Chuyển Kho thanh lý",
   ALLOCATE: "Phân bổ đơn hàng", CANCEL_ALLOCATION: "Huỷ phân bổ", SHIP: "Xuất kho",
 };
 const NONE = "__none__";

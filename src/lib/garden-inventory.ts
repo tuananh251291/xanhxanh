@@ -53,14 +53,21 @@ export async function addToLine(tx: Tx, key: LineKey, quantity: number): Promise
 
 // Trừ q cây khỏi 1 dòng tồn — mặc định chỉ được lấy phần KHẢ DỤNG (không đụng phần đang giữ chỗ cho đơn hàng).
 // Xuất kho (allowReserved) được lấy cả phần giữ chỗ của chính phân bổ đó.
-export async function takeFromLine(tx: Tx, lineId: string, quantity: number, opts: { allowReserved?: number } = {}) {
+// expectedQuantity: tồn người dùng đang thấy khi thao tác — lệch (tồn vừa đổi, hoặc gửi trùng 2 lần) thì từ chối, không ghi đôi.
+export async function takeFromLine(tx: Tx, lineId: string, quantity: number, opts: { allowReserved?: number; expectedQuantity?: number } = {}) {
   if (!Number.isInteger(quantity) || quantity <= 0) throw new InventoryError("Số lượng phải lớn hơn 0");
   const line = await tx.gardenStockLine.findUnique({ where: { id: lineId }, select: { quantity: true } });
   if (!line) throw new InventoryError("Không tìm thấy dòng tồn");
+  if (opts.expectedQuantity !== undefined && line.quantity !== opts.expectedQuantity) {
+    throw new InventoryError(`Tồn vừa thay đổi (${fmt(opts.expectedQuantity)} → ${fmt(line.quantity)}) — có thể thao tác đã được ghi nhận, tải lại trang để kiểm tra`);
+  }
   const reserved = (await reservedByLine(tx, [lineId])).get(lineId) ?? 0;
   const available = line.quantity - reserved + (opts.allowReserved ?? 0);
   if (quantity > available) throw new InventoryError(`Chỉ còn ${fmt(Math.max(0, available))} cây khả dụng (tồn ${fmt(line.quantity)}, giữ chỗ ${fmt(reserved)})`);
-  const dec = await tx.gardenStockLine.updateMany({ where: { id: lineId, quantity: { gte: quantity } }, data: { quantity: { decrement: quantity } } });
+  const dec = await tx.gardenStockLine.updateMany({
+    where: { id: lineId, quantity: opts.expectedQuantity !== undefined ? opts.expectedQuantity : { gte: quantity } },
+    data: { quantity: { decrement: quantity } },
+  });
   if (dec.count !== 1) throw new InventoryError("Tồn vừa thay đổi — tải lại trang");
 }
 
@@ -93,7 +100,7 @@ async function staffNameOf(tx: Tx, staffId: string | null) {
 // undefined = giữ nguyên; rowId/staffId null = bỏ vị trí / bỏ NV. Tổng số cây không đổi.
 export async function moveStock(tx: Tx, params: {
   lineId: string; quantity: number; toPool?: GardenPool; toStage?: string; toRowId?: string | null; toStaffId?: string | null;
-  type?: string; note?: string | null; byId: string;
+  type?: string; note?: string | null; byId: string; expectedQuantity?: number;
 }) {
   const line = await tx.gardenStockLine.findUnique({
     where: { id: params.lineId },
@@ -118,7 +125,7 @@ export async function moveStock(tx: Tx, params: {
     const staff = await tx.gardenStaff.findFirst({ where: { id: to.staffId, gardenId: line.gardenId, isActive: true }, select: { id: true } });
     if (!staff) throw new InventoryError("Nhân viên không thuộc vườn này");
   }
-  await takeFromLine(tx, params.lineId, params.quantity);
+  await takeFromLine(tx, params.lineId, params.quantity, { expectedQuantity: params.expectedQuantity });
   await addToLine(tx, to, params.quantity);
   await logMovement(tx, {
     gardenId: line.gardenId, type: params.type ?? "MOVE", lotCode: line.lot?.code ?? null, plantTypeId: line.plantTypeId, quantity: params.quantity,
@@ -130,13 +137,13 @@ export async function moveStock(tx: Tx, params: {
 }
 
 // Trừ hẳn cây khỏi dòng tồn (cây hỏng) — kèm lịch sử.
-export async function removeStock(tx: Tx, params: { lineId: string; quantity: number; type: string; note?: string | null; byId: string }) {
+export async function removeStock(tx: Tx, params: { lineId: string; quantity: number; type: string; note?: string | null; byId: string; expectedQuantity?: number }) {
   const line = await tx.gardenStockLine.findUnique({
     where: { id: params.lineId },
     select: { gardenId: true, pool: true, plantTypeId: true, stageCode: true, rowId: true, staffId: true, lot: { select: { code: true } } },
   });
   if (!line) throw new InventoryError("Không tìm thấy dòng tồn");
-  await takeFromLine(tx, params.lineId, params.quantity);
+  await takeFromLine(tx, params.lineId, params.quantity, { expectedQuantity: params.expectedQuantity });
   await logMovement(tx, {
     gardenId: line.gardenId, type: params.type, lotCode: line.lot?.code ?? null, plantTypeId: line.plantTypeId, quantity: params.quantity,
     fromPool: line.pool, fromStage: line.stageCode, fromRow: await rowLabelOf(tx, line.rowId), fromStaff: await staffNameOf(tx, line.staffId),
