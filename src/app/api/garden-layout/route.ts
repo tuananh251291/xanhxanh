@@ -82,9 +82,9 @@ export async function POST(req: NextRequest) {
 
 const deleteSchema = z.object({ type: z.enum(["house", "rack", "row"]), id: z.string().min(1) });
 
-// Vị trí đang có cây của lô chăm sóc (GardenCarePlacement) thì không cho xoá — phải điều chuyển cây đi trước.
+// Vị trí đang có cây (dòng tồn vườn ở bất kỳ kho nào, GardenStockLine) thì không cho xoá — điều chuyển cây đi trước.
 async function hasPlants(where: { rowId?: string; rackId?: string; houseId?: string }) {
-  const count = await prisma.gardenCarePlacement.count({
+  const count = await prisma.gardenStockLine.count({
     where: {
       quantity: { gt: 0 },
       row: where.rowId ? { id: where.rowId } : where.rackId ? { rackId: where.rackId } : { rack: { houseId: where.houseId } },
@@ -92,7 +92,7 @@ async function hasPlants(where: { rowId?: string; rackId?: string; houseId?: str
   });
   return count > 0;
 }
-const HAS_PLANTS_MESSAGE = "Vị trí đang có cây — điều chuyển cây sang dãy khác (mục Chăm sóc cây mô) trước khi xoá";
+const HAS_PLANTS_MESSAGE = "Vị trí đang có cây — điều chuyển cây sang dãy khác (Chăm sóc cây mô / Điều phối tồn vườn) trước khi xoá";
 
 // Chỉ xoá được phần tử CUỐI (số/chữ lớn nhất) để dãy số/chữ luôn liên tục — xoá nhà lưới/giàn xoá luôn mọi
 // giàn/dãy bên trong (onDelete Cascade).

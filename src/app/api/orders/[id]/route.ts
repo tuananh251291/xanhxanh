@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { releaseGardenAllocationsForOrders } from "@/lib/garden-inventory";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode, generateTransferCode } from "@/lib/codes";
@@ -258,6 +259,8 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
   }
 
   await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+  // Phân bổ cây Vườn sản xuất của đơn — tự giải phóng phần chưa xuất về kho nguồn, báo Quản lý vườn dừng đóng gói.
+  await releaseGardenAllocationsForOrders([order.id], user.id);
 
   return NextResponse.json({ success: true });
 }

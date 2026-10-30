@@ -5,6 +5,7 @@ import { createAlert } from "@/lib/inventory";
 import { canManageGarden } from "@/lib/garden-staff";
 import { getRemainingByReceiptItem, getPoolStock } from "@/lib/garden-damage";
 import { createCareLotsForReceipt } from "@/lib/garden-care";
+import { InventoryError } from "@/lib/garden-inventory";
 import { GARDEN_STOCK_POOL_LABELS } from "@/lib/garden-receipt-constants";
 import { z } from "zod";
 
@@ -140,7 +141,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       for (const row of data.items) await tx.gardenDamageItem.update({ where: { id: row.itemId }, data: { confirmedQuantity: row.quantity } });
       // Nghiệp vụ 4: số cây còn lại (thực nhận − hỏng đã duyệt) tự chuyển thành lô chăm sóc cây mô.
-      await createCareLotsForReceipt(tx, report.receiptId);
+      await createCareLotsForReceipt(tx, report.receiptId, session.user.id);
       await tx.gardenDamageLog.create({
         data: {
           reportId: id, action: "CONFIRM",
@@ -156,7 +157,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     return NextResponse.json({ success: true, message: `Đã xác nhận — trừ số cây hỏng khỏi ${GARDEN_STOCK_POOL_LABELS[report.flow]}, số cây còn lại chuyển sang Chăm sóc cây mô` });
   } catch (err) {
-    if (err instanceof FlowError) return NextResponse.json({ message: err.message }, { status: 400 });
+    if (err instanceof FlowError || err instanceof InventoryError) return NextResponse.json({ message: err.message }, { status: 400 });
     throw err;
   }
 }

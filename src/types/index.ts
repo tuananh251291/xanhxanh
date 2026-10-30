@@ -787,6 +787,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/production-gardens", label: "Vườn sản xuất", icon: "Sprout" },
     { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "PackageCheck" },
     { href: "/garden-receipts", label: "Phiếu bàn giao cây mô về vườn", icon: "Sprout" },
+    { href: "/garden-stock", label: "Tồn kho & điều phối vườn", icon: "Boxes" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
@@ -1053,7 +1054,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-handovers", label: "Nhận cây từ Kho thành phẩm", icon: "PackageCheck" },
     // Nhận bàn giao cây mô (Kho TP/Khu sản xuất lập phiếu) — giao kiểm đếm, nhập số thực nhận; xem /garden-receipts.
     { href: "/garden-receipts", label: "Nhận bàn giao cây mô", icon: "PackageCheck" },
-    { href: "/garden-stock", label: "Tồn kho vườn", icon: "Boxes" },
+    // Nghiệp vụ 5 — tồn 4 kho, điều phối, phân bổ đơn hàng Sale, xuất kho, lịch sử.
+    { href: "/garden-stock", label: "Tồn kho & điều phối", icon: "Boxes" },
     // Phân loại cây & ghi nhận cây hỏng (Luồng A nhiễm / Luồng B khỏe) — xác nhận phiếu NV gửi, xem /garden-damage.
     { href: "/garden-damage", label: "Phiếu ghi nhận cây hỏng", icon: "ClipboardCheck" },
     // Nghiệp vụ 4 — lô chăm sóc cây mô: sắp xếp vị trí, duyệt cây hỏng/đạt size S, xem /garden-care.

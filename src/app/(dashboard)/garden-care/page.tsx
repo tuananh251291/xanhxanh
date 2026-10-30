@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isPageAllowed } from "@/lib/permissions";
 import { getManageableGardens } from "@/lib/garden-staff";
-import { careLotScope, getCareStaffProfile, rowLabel } from "@/lib/garden-care";
+import { careLotScope, getCareStaffProfile, rowLabel, CARE_POOLS } from "@/lib/garden-care";
 import { GARDEN_CARE_TICKET_LABELS, GARDEN_DAMAGE_STATUS_LABELS, GARDEN_STOCK_POOL_LABELS } from "@/lib/garden-receipt-constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,14 +40,18 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
     : { lot: scope };
 
   const [lots, tickets, rows, staff] = await Promise.all([
+    // Lô còn cây ở kho đang chăm sóc (Kho nhiễm/Kho cây trồng) — lọc luồng theo kho của dòng tồn.
     prisma.gardenCareLot.findMany({
-      where: { ...scope, quantity: { gt: 0 }, ...(pool ? { pool } : {}) },
+      where: { ...scope, stockLines: { some: { pool: pool ? pool : { in: [...CARE_POOLS] }, quantity: { gt: 0 } } } },
       orderBy: { createdAt: "desc" },
       select: {
-        id: true, code: true, pool: true, gardenId: true, stageCode: true, initialQuantity: true, quantity: true, staffId: true, createdAt: true,
+        id: true, code: true, gardenId: true, stageCode: true, initialQuantity: true, staffId: true, createdAt: true,
         garden: { select: { name: true } }, plantType: { select: { code: true, name: true } }, staff: { select: { name: true } },
         receiptItem: { select: { receipt: { select: { id: true, code: true } } } },
-        placements: { where: { quantity: { gt: 0 } }, select: { rowId: true, quantity: true, row: { select: { number: true, rack: { select: { letter: true, house: { select: { number: true } } } } } } } },
+        stockLines: {
+          where: { pool: pool ? pool : { in: [...CARE_POOLS] }, quantity: { gt: 0 } },
+          select: { id: true, pool: true, rowId: true, quantity: true, row: { select: { number: true, rack: { select: { letter: true, house: { select: { number: true } } } } } } },
+        },
         tickets: { where: { status: { not: "CONFIRMED" }, type: { in: ["DAMAGE", "SIZE_S"] } }, select: { id: true, code: true, type: true } },
       },
     }),
@@ -123,8 +127,9 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
                 </thead>
                 <tbody>
                   {lots.map((l) => {
-                    const placed = l.placements.reduce((s, p) => s + p.quantity, 0);
-                    const unplaced = l.quantity - placed;
+                    const careQty = l.stockLines.reduce((s, x) => s + x.quantity, 0);
+                    const unplaced = l.stockLines.filter((x) => !x.rowId).reduce((s, x) => s + x.quantity, 0);
+                    const linePools = [...new Set(l.stockLines.map((x) => x.pool))];
                     const canPlace = managedIds.has(l.gardenId);
                     const canReport = canPlace || (!!profile && profile.id === l.staffId);
                     return (
@@ -134,15 +139,17 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
                           <Link href={`/garden-receipts/${l.receiptItem.receipt.id}`} className="text-xs text-text-secondary underline underline-offset-2">{l.receiptItem.receipt.code}</Link>
                         </td>
                         <td className="px-4 py-2"><span className="font-mono text-text-secondary mr-1.5">{l.plantType.code}</span>{l.plantType.name} ({l.stageCode})</td>
-                        <td className="px-4 py-2"><Badge variant={l.pool === "CONTAMINATED" ? "in-progress" : "info"}>{GARDEN_STOCK_POOL_LABELS[l.pool]}</Badge></td>
+                        <td className="px-4 py-2">
+                          {linePools.map((p) => <Badge key={p} variant={p === "CONTAMINATED" ? "in-progress" : "info"} className="mr-1">{GARDEN_STOCK_POOL_LABELS[p as Pool]}</Badge>)}
+                        </td>
                         <td className="px-4 py-2 text-right tabular-nums">
-                          {fmt(l.quantity)}
-                          {l.quantity !== l.initialQuantity && <span className="block text-xs text-text-muted">ban đầu {fmt(l.initialQuantity)}</span>}
+                          {fmt(careQty)}
+                          {careQty !== l.initialQuantity && <span className="block text-xs text-text-muted">ban đầu {fmt(l.initialQuantity)}</span>}
                         </td>
                         <td className="px-4 py-2">
                           <div className="flex flex-wrap gap-1">
-                            {l.placements.map((p) => (
-                              <span key={p.rowId} className="rounded-md bg-primary-light text-primary-strong font-mono text-xs px-2 py-0.5">{rowLabel(p.row)}: {fmt(p.quantity)}</span>
+                            {l.stockLines.filter((x) => x.row).map((x) => (
+                              <span key={x.id} className="rounded-md bg-primary-light text-primary-strong font-mono text-xs px-2 py-0.5">{rowLabel(x.row!)}: {fmt(x.quantity)}</span>
                             ))}
                             {unplaced > 0 && <span className="rounded-md bg-warning-light text-warning-foreground text-xs px-2 py-0.5">Chưa xếp: {fmt(unplaced)}</span>}
                           </div>
@@ -151,8 +158,8 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
                         <td className="px-4 py-2">
                           <CareLotActions
                             lot={{
-                              id: l.id, code: l.code, unplaced, staffId: l.staffId,
-                              placements: l.placements.map((p) => ({ rowId: p.rowId, label: rowLabel(p.row), quantity: p.quantity })),
+                              id: l.id, code: l.code, staffId: l.staffId,
+                              lines: l.stockLines.map((x) => ({ id: x.id, rowId: x.rowId, label: x.row ? rowLabel(x.row) : "Chưa xếp", quantity: x.quantity })),
                               openTickets: l.tickets,
                             }}
                             placeOptions={canPlace ? placeOptions[l.gardenId] : null}

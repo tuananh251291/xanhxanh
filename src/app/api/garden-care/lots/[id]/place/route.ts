@@ -3,20 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canManageGarden } from "@/lib/garden-staff";
 import { generateGardenCareTicketCode } from "@/lib/codes";
+import { CARE_POOLS } from "@/lib/garden-care";
+import { moveStock, cleanupEmptyLines, InventoryError } from "@/lib/garden-inventory";
 import { z } from "zod";
 
 const schema = z.object({
   // NV chăm sóc cây mô phụ trách lô (GardenStaff) — bỏ trống = giữ nguyên.
   staffId: z.string().optional(),
-  // fromRowId null = lấy từ phần chưa xếp của lô; khác null = điều chuyển từ dãy đó sang toRowId.
-  items: z.array(z.object({ fromRowId: z.string().nullable(), toRowId: z.string().min(1), quantity: z.number().int().positive() })).default([]),
+  // Lấy từ 1 dòng tồn của lô (chưa xếp hoặc đang ở 1 dãy) → dãy đích.
+  items: z.array(z.object({ fromLineId: z.string().min(1), toRowId: z.string().min(1), quantity: z.number().int().positive() })).default([]),
   notes: z.string().trim().max(500).optional(),
 });
 
-class FlowError extends Error {}
-
-// Phiếu sắp xếp/điều chuyển vị trí cây của 1 lô chăm sóc — QLV lập và duyệt luôn (status CONFIRMED ngay), chỉ
-// cập nhật số cây theo dãy (GardenCarePlacement) + NV phụ trách, KHÔNG đổi tồn kho. Xem model GardenCareTicket.
+// Phiếu sắp xếp/điều chuyển vị trí cây của 1 lô chăm sóc — QLV lập và duyệt luôn (CONFIRMED ngay): chuyển số cây
+// giữa các dòng tồn của lô (đổi vị trí dãy) + đổi NV phụ trách, KHÔNG đổi tồn kho (xem moveStock).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -28,64 +28,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const lot = await prisma.gardenCareLot.findUnique({ where: { id }, select: { id: true, code: true, gardenId: true, staffId: true } });
   if (!lot) return NextResponse.json({ message: "Không tìm thấy lô" }, { status: 404 });
   if (!(await canManageGarden(session.user, lot.gardenId))) return NextResponse.json({ message: "Chỉ Quản lý vườn được sắp xếp vị trí" }, { status: 403 });
-  if (items.length === 0 && (!staffId || staffId === lot.staffId)) return NextResponse.json({ message: "Chưa có thay đổi nào" }, { status: 400 });
-  if (items.some((i) => i.fromRowId === i.toRowId)) return NextResponse.json({ message: "Dãy nguồn và dãy đích trùng nhau" }, { status: 400 });
-
+  const staffChanged = !!staffId && staffId !== lot.staffId;
+  if (items.length === 0 && !staffChanged) return NextResponse.json({ message: "Chưa có thay đổi nào" }, { status: 400 });
   if (staffId) {
     const staff = await prisma.gardenStaff.findFirst({ where: { id: staffId, gardenId: lot.gardenId, isActive: true, types: { has: "CHAM_SOC_CAY_MO" } }, select: { id: true } });
     if (!staff) return NextResponse.json({ message: "NV chăm sóc cây mô không hợp lệ" }, { status: 400 });
   }
-  const rowIds = [...new Set(items.flatMap((i) => [i.toRowId, ...(i.fromRowId ? [i.fromRowId] : [])]))];
-  const rows = await prisma.gardenRow.findMany({
-    where: { id: { in: rowIds }, rack: { house: { gardenId: lot.gardenId } } },
-    select: { id: true, number: true, rack: { select: { letter: true, house: { select: { number: true } } } } },
-  });
-  if (rows.length !== rowIds.length) return NextResponse.json({ message: "Dãy không thuộc vườn này" }, { status: 400 });
-  const labelOf = new Map(rows.map((r) => [r.id, `${r.rack.house.number}${r.rack.letter}${r.number}`]));
 
   try {
     const ticket = await prisma.$transaction(async (tx) => {
-      // Đọc lại số cây theo dãy trong transaction, kiểm tra đủ nguồn rồi mới chuyển.
-      const current = await tx.gardenCareLot.findUniqueOrThrow({ where: { id }, select: { quantity: true, placements: { select: { rowId: true, quantity: true } } } });
-      const byRow = new Map(current.placements.map((p) => [p.rowId, p.quantity]));
-      let unplaced = current.quantity - current.placements.reduce((s, p) => s + p.quantity, 0);
+      const lines = await tx.gardenStockLine.findMany({ where: { lotId: id, pool: { in: [...CARE_POOLS] } }, select: { id: true, rowId: true } });
+      const lineById = new Map(lines.map((l) => [l.id, l]));
       for (const it of items) {
-        if (it.fromRowId === null) {
-          if (it.quantity > unplaced) throw new FlowError(`Phần chưa xếp chỉ còn ${unplaced.toLocaleString("vi-VN")} cây`);
-          unplaced -= it.quantity;
-        } else {
-          const have = byRow.get(it.fromRowId) ?? 0;
-          if (it.quantity > have) throw new FlowError(`Dãy ${labelOf.get(it.fromRowId)} chỉ có ${have.toLocaleString("vi-VN")} cây của lô`);
-          byRow.set(it.fromRowId, have - it.quantity);
-        }
-        byRow.set(it.toRowId, (byRow.get(it.toRowId) ?? 0) + it.quantity);
+        const src = lineById.get(it.fromLineId);
+        if (!src) throw new InventoryError("Dòng tồn nguồn không thuộc lô đang chăm sóc");
+        if (src.rowId === it.toRowId) throw new InventoryError("Dãy nguồn và dãy đích trùng nhau");
+        await moveStock(tx, { lineId: it.fromLineId, quantity: it.quantity, toRowId: it.toRowId, type: "PLACE", note: notes ?? null, byId: session.user.id });
       }
-      for (const [rowId, quantity] of byRow) {
-        if (quantity > 0) {
-          await tx.gardenCarePlacement.upsert({ where: { lotId_rowId: { lotId: id, rowId } }, create: { lotId: id, rowId, quantity }, update: { quantity } });
-        } else {
-          await tx.gardenCarePlacement.deleteMany({ where: { lotId: id, rowId } });
+      // Đổi NV phụ trách lô: mọi dòng tồn của lô đang chăm sóc chuyển sang NV mới.
+      if (staffChanged) {
+        await tx.gardenCareLot.update({ where: { id }, data: { staffId } });
+        const current = await tx.gardenStockLine.findMany({ where: { lotId: id, pool: { in: [...CARE_POOLS] }, quantity: { gt: 0 } }, select: { id: true, quantity: true, staffId: true } });
+        for (const l of current) {
+          if (l.staffId === staffId) continue;
+          await moveStock(tx, { lineId: l.id, quantity: l.quantity, toStaffId: staffId, type: "PLACE", note: "Đổi NV phụ trách lô", byId: session.user.id });
         }
       }
-      if (staffId && staffId !== lot.staffId) await tx.gardenCareLot.update({ where: { id }, data: { staffId } });
+      await cleanupEmptyLines(tx, lot.gardenId);
       const now = new Date();
-      const created = await tx.gardenCareTicket.create({
+      return tx.gardenCareTicket.create({
         data: {
           code: await generateGardenCareTicketCode(tx), gardenId: lot.gardenId, lotId: id, type: "PLACE", status: "CONFIRMED",
           staffId: staffId ?? lot.staffId, notes: notes || null, createdById: session.user.id, submittedAt: now, confirmedById: session.user.id, confirmedAt: now,
-          items: { create: items.map((i) => ({ rowId: i.toRowId, fromRowId: i.fromRowId, reportedQuantity: i.quantity, confirmedQuantity: i.quantity })) },
+          items: { create: items.map((i) => ({ rowId: i.toRowId, fromRowId: lineById.get(i.fromLineId)!.rowId, reportedQuantity: i.quantity, confirmedQuantity: i.quantity })) },
+          logs: { create: { action: "CONFIRM", detail: `QLV sắp xếp & duyệt ${items.length} dòng${staffChanged ? " (đổi NV phụ trách)" : ""}`, byId: session.user.id } },
         },
-        select: { id: true, code: true },
+        select: { code: true },
       });
-      const detail = items.map((i) => `${i.fromRowId ? labelOf.get(i.fromRowId) : "chưa xếp"} → ${labelOf.get(i.toRowId)}: ${i.quantity.toLocaleString("vi-VN")}`).join("; ");
-      await tx.gardenCareLog.create({
-        data: { ticketId: created.id, action: "CONFIRM", detail: `QLV sắp xếp & duyệt${detail ? ` — ${detail}` : ""}${staffId && staffId !== lot.staffId ? " (đổi NV phụ trách)" : ""}`, byId: session.user.id },
-      });
-      return created;
-    });
+    }, { timeout: 30000 });
     return NextResponse.json({ success: true, message: `Đã duyệt phiếu sắp xếp ${ticket.code}` }, { status: 201 });
   } catch (err) {
-    if (err instanceof FlowError) return NextResponse.json({ message: err.message }, { status: 400 });
+    if (err instanceof InventoryError) return NextResponse.json({ message: err.message }, { status: 400 });
     throw err;
   }
 }

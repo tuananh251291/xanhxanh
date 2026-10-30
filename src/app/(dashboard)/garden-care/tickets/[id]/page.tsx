@@ -21,11 +21,11 @@ export default async function GardenCareTicketPage({ params }: { params: Promise
       garden: { select: { name: true } }, staff: { select: { name: true } }, createdBy: { select: { name: true } }, confirmedBy: { select: { name: true } },
       lot: {
         select: {
-          code: true, pool: true, stageCode: true, quantity: true, staffId: true, plantType: { select: { code: true, name: true } },
+          code: true, pool: true, stageCode: true, initialQuantity: true, staffId: true, plantType: { select: { code: true, name: true } },
           receiptItem: { select: { receipt: { select: { id: true, code: true } } } },
         },
       },
-      items: { orderBy: { id: "asc" }, select: { id: true, rowId: true, reportedQuantity: true, confirmedQuantity: true, notes: true, row: { select: rowSelect }, fromRow: { select: rowSelect } } },
+      items: { orderBy: { id: "asc" }, select: { id: true, rowId: true, lineId: true, line: { select: { quantity: true } }, reportedQuantity: true, confirmedQuantity: true, notes: true, row: { select: rowSelect }, fromRow: { select: rowSelect } } },
       logs: { orderBy: { at: "asc" }, select: { id: true, action: true, detail: true, at: true, by: { select: { name: true } } } },
     },
   });
@@ -36,10 +36,6 @@ export default async function GardenCareTicketPage({ params }: { params: Promise
   const isCreator = t.createdById === session.user.id;
   if (!isCreator && !canManage && !isAdminRole(session.user.role) && !(profile && profile.id === t.lot.staffId)) redirect("/garden-care");
 
-  // Số cây hiện có của lô ở từng dãy — giới hạn khi nhập.
-  const placements = await prisma.gardenCarePlacement.findMany({ where: { lotId: t.lotId }, select: { rowId: true, quantity: true } });
-  const haveByRow = new Map(placements.map((p) => [p.rowId, p.quantity]));
-
   return (
     <GardenCareTicketDetail
       ticket={{
@@ -49,7 +45,7 @@ export default async function GardenCareTicketPage({ params }: { params: Promise
         confirmedAt: t.confirmedAt?.toISOString() ?? null,
         items: t.items.map((i) => ({
           id: i.id, reportedQuantity: i.reportedQuantity, confirmedQuantity: i.confirmedQuantity, notes: i.notes,
-          rowLabel: rowLabel(i.row), fromRowLabel: i.fromRow ? rowLabel(i.fromRow) : null, available: haveByRow.get(i.rowId) ?? 0,
+          rowLabel: rowLabel(i.row), fromRowLabel: i.fromRow ? rowLabel(i.fromRow) : null, available: i.line?.quantity ?? 0,
         })),
         logs: t.logs.map((l) => ({ ...l, at: l.at.toISOString() })),
       }}

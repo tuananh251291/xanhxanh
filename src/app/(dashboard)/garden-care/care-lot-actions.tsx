@@ -12,13 +12,12 @@ import { toast } from "sonner";
 
 export type GardenPlaceOptions = { rows: { id: string; label: string }[]; staff: { id: string; name: string }[] };
 type Lot = {
-  id: string; code: string; unplaced: number; staffId: string | null;
-  placements: { rowId: string; label: string; quantity: number }[];
+  id: string; code: string; staffId: string | null;
+  // Dòng tồn của lô ở kho đang chăm sóc — rowId null = chưa xếp.
+  lines: { id: string; rowId: string | null; label: string; quantity: number }[];
   openTickets: { id: string; code: string; type: "PLACE" | "DAMAGE" | "SIZE_S" }[];
 };
-type Line = { key: number; fromRowId: string; toRowId: string; quantity: string };
-
-const UNPLACED = "__unplaced__";
+type Line = { key: number; fromLineId: string; toRowId: string; quantity: string };
 const fmt = (n: number) => n.toLocaleString("vi-VN");
 
 // Thao tác trên 1 lô chăm sóc: QLV "Sắp xếp vị trí" (nhiều dòng: từ phần chưa xếp/dãy cũ → dãy mới, kèm NV phụ
@@ -29,12 +28,10 @@ export default function CareLotActions({ lot, placeOptions, canReport }: { lot: 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [staffId, setStaffId] = useState(lot.staffId ?? "");
-  const [lines, setLines] = useState<Line[]>([{ key: 0, fromRowId: UNPLACED, toRowId: "", quantity: lot.unplaced > 0 ? String(lot.unplaced) : "" }]);
+  const firstUnplaced = lot.lines.find((l) => !l.rowId);
+  const [lines, setLines] = useState<Line[]>([{ key: 0, fromLineId: (firstUnplaced ?? lot.lines[0])?.id ?? "", toRowId: "", quantity: firstUnplaced ? String(firstUnplaced.quantity) : "" }]);
 
-  const fromOptions = [
-    ...(lot.unplaced > 0 ? [{ value: UNPLACED, label: `Chưa xếp (${fmt(lot.unplaced)} cây)` }] : []),
-    ...lot.placements.map((p) => ({ value: p.rowId, label: `${p.label} (${fmt(p.quantity)} cây)` })),
-  ];
+  const fromOptions = lot.lines.map((l) => ({ value: l.id, label: `${l.label} (${fmt(l.quantity)} cây)` }));
   const update = (key: number, patch: Partial<Line>) => setLines((p) => p.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   const openTicket = async (type: "DAMAGE" | "SIZE_S") => {
@@ -52,9 +49,7 @@ export default function CareLotActions({ lot, placeOptions, canReport }: { lot: 
   };
 
   const savePlace = async () => {
-    const items = lines.filter((l) => l.toRowId || l.quantity).map((l) => ({
-      fromRowId: l.fromRowId === UNPLACED ? null : l.fromRowId, toRowId: l.toRowId, quantity: Number(l.quantity),
-    }));
+    const items = lines.filter((l) => l.toRowId || l.quantity).map((l) => ({ fromLineId: l.fromLineId, toRowId: l.toRowId, quantity: Number(l.quantity) }));
     for (const it of items) {
       if (!it.toRowId) { toast.error("Chọn dãy đích cho mọi dòng"); return; }
       if (!Number.isInteger(it.quantity) || it.quantity <= 0) { toast.error("Nhập số cây cho mọi dòng"); return; }
@@ -85,7 +80,7 @@ export default function CareLotActions({ lot, placeOptions, canReport }: { lot: 
           <MapPin className="w-3.5 h-3.5 mr-1" /> Sắp xếp vị trí
         </Button>
       )}
-      {canReport && lot.placements.length > 0 && (
+      {canReport && lot.lines.some((l) => l.rowId) && (
         <>
           <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => openTicket("DAMAGE")}>
             <AlertTriangle className="w-3.5 h-3.5 mr-1" /> {openDamage ? `Phiếu hỏng ${openDamage.code}` : "Ghi nhận cây hỏng"}
@@ -122,7 +117,7 @@ export default function CareLotActions({ lot, placeOptions, canReport }: { lot: 
                   <p className="text-xs text-text-muted">Vườn chưa có dãy nào — tạo ở Bố trí vườn.</p>
                 ) : lines.map((l) => (
                   <div key={l.key} className="grid grid-cols-[1fr_1fr_6rem_2rem] gap-2 items-center">
-                    <Select items={fromOptions} value={l.fromRowId} onValueChange={(v) => update(l.key, { fromRowId: v as string })}>
+                    <Select items={fromOptions} value={l.fromLineId || null} onValueChange={(v) => update(l.key, { fromLineId: v as string })}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Lấy từ" /></SelectTrigger>
                       <SelectContent>{fromOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                     </Select>
@@ -139,7 +134,7 @@ export default function CareLotActions({ lot, placeOptions, canReport }: { lot: 
                 ))}
                 {placeOptions.rows.length > 0 && (
                   <Button type="button" size="sm" variant="ghost" className="h-7 text-xs"
-                    onClick={() => setLines((p) => [...p, { key: keyRef.current++, fromRowId: fromOptions[0]?.value ?? UNPLACED, toRowId: "", quantity: "" }])}>
+                    onClick={() => setLines((p) => [...p, { key: keyRef.current++, fromLineId: fromOptions[0]?.value ?? "", toRowId: "", quantity: "" }])}>
                     <Plus className="w-3 h-3 mr-1" /> Thêm dòng
                   </Button>
                 )}

@@ -22,7 +22,7 @@ type Ticket = {
   id: string; code: string; type: keyof typeof GARDEN_CARE_TICKET_LABELS; status: Status; notes: string | null; returnReason: string | null;
   createdAt: string; submittedAt: string | null; confirmedAt: string | null;
   garden: { name: string }; staff: { name: string } | null; createdBy: { name: string }; confirmedBy: { name: string } | null;
-  lot: { code: string; pool: keyof typeof GARDEN_STOCK_POOL_LABELS; stageCode: string; quantity: number; plantType: { code: string; name: string }; receiptItem: { receipt: { id: string; code: string } } };
+  lot: { code: string; pool: keyof typeof GARDEN_STOCK_POOL_LABELS; stageCode: string; initialQuantity: number; plantType: { code: string; name: string }; receiptItem: { receipt: { id: string; code: string } } };
   items: Item[];
   logs: { id: string; action: string; detail: string; at: string; by: { name: string } }[];
 };
@@ -90,7 +90,7 @@ export default function GardenCareTicketDetail({ ticket, canEdit, canReview }: {
         <CardContent className="pt-6 grid gap-2 sm:grid-cols-2 text-sm">
           <p><span className="text-text-secondary">Mã lô:</span> <span className="font-mono">{ticket.lot.code}</span> (phiếu bàn giao <Link href={`/garden-receipts/${ticket.lot.receiptItem.receipt.id}`} className="font-mono underline underline-offset-2">{ticket.lot.receiptItem.receipt.code}</Link>)</p>
           <p><span className="text-text-secondary">Mã cây:</span> {ticket.lot.plantType.code} — {ticket.lot.plantType.name} ({ticket.lot.stageCode})</p>
-          <p><span className="text-text-secondary">Kho:</span> {pool} · còn {fmt(ticket.lot.quantity)} cây trong lô</p>
+          <p><span className="text-text-secondary">Kho ban đầu:</span> {pool} · lô ban đầu {fmt(ticket.lot.initialQuantity)} cây</p>
           {isSize && <p><span className="text-text-secondary">Quy cách đạt:</span> {GARDEN_SIZE_S_LABEL} → Kho thành phẩm vườn</p>}
           <p><span className="text-text-secondary">NV phụ trách:</span> {ticket.staff?.name ?? "—"}</p>
           <p><span className="text-text-secondary">Người lập:</span> {ticket.createdBy.name} · {dt(ticket.createdAt)}</p>

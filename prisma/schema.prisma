@@ -311,6 +311,7 @@ enum AlertType {
   GARDEN_CARE_SUBMITTED
   GARDEN_CARE_RETURNED
   GARDEN_CARE_CONFIRMED
+  GARDEN_ALLOCATION_CANCELLED
   // Admin bấm "Từ chối" 1 đề xuất Trồng/Hủy — báo cho đúng NV đã gửi đề xuất đó (userId) biết lý do (nếu
   // Admin có ghi) để sửa số lượng/loại/ghi chú rồi gửi lại — xem PATCH /api/contamination-proposals/[id]
   // nhánh reject + nhánh resubmit.
@@ -629,6 +630,8 @@ model User {
   gardenCareCreated                     GardenCareTicket[]                @relation("GardenCareCreatedBy")
   gardenCareConfirmed                   GardenCareTicket[]                @relation("GardenCareConfirmedBy")
   gardenCareLogs                        GardenCareLog[]
+  gardenAllocationsCreated              GardenAllocation[]                @relation("GardenAllocationCreatedBy")
+  gardenMovementLogs                    GardenMovementLog[]
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy   DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckedBy")
   violationTypesCreated                 ViolationType[]
@@ -969,6 +972,9 @@ model PlantType {
   gardenDamageItems                GardenDamageItem[]
   gardenCareLots                   GardenCareLot[]
   gardenFinishedStocks             GardenFinishedStock[]
+  gardenStockLines                 GardenStockLine[]
+  gardenAllocations                GardenAllocation[]
+  gardenMovementLogs               GardenMovementLog[]
   gardenStocks                     GardenStock[]
   orderProcessingRequests          OrderProcessingRequest[]
   goodsReceiptItems                GoodsReceiptItem[]
@@ -2382,6 +2388,9 @@ model ProductionGarden {
   careLots      GardenCareLot[]
   careTickets   GardenCareTicket[]
   finishedStocks GardenFinishedStock[]
+  stockLines     GardenStockLine[]
+  allocations    GardenAllocation[]
+  movementLogs   GardenMovementLog[]
   stocks        GardenStock[]
 
   @@map("production_gardens")
@@ -2608,6 +2617,7 @@ model GardenRow {
   placements      GardenCarePlacement[]
   careItemsTo     GardenCareTicketItem[] @relation("GardenCareItemRow")
   careItemsFrom   GardenCareTicketItem[] @relation("GardenCareItemFromRow")
+  stockLines      GardenStockLine[]
 
   @@unique([rackId, number])
   @@map("garden_rows")
@@ -2639,6 +2649,8 @@ model GardenCareLot {
   createdAt       DateTime          @default(now())
   placements      GardenCarePlacement[]
   tickets         GardenCareTicket[]
+  stockLines      GardenStockLine[]
+  allocations     GardenAllocation[]
 
   @@index([gardenId, pool])
   @@map("garden_care_lots")
@@ -2704,6 +2716,9 @@ model GardenCareTicketItem {
   // Chỉ PLACE: dãy nguồn khi điều chuyển; NULL = lấy từ phần chưa xếp của lô.
   fromRowId         String?
   fromRow           GardenRow?       @relation("GardenCareItemFromRow", fields: [fromRowId], references: [id])
+  // Dòng tồn (GardenStockLine) cụ thể của mục này (DAMAGE/SIZE_S) — từ Nghiệp vụ 5 tồn lưu theo dòng tồn.
+  lineId            String?
+  line              GardenStockLine? @relation(fields: [lineId], references: [id])
   reportedQuantity  Int
   confirmedQuantity Int?
   notes             String?
@@ -2726,6 +2741,119 @@ model GardenCareLog {
 
 // Kho thành phẩm của vườn — cây đã đạt quy cách (S) sau Nghiệp vụ 4, quản lý CHUNG (không còn phân biệt cây
 // nhiễm/cây khỏe). Nguồn cho Nghiệp vụ 5 (điều phối) / 7 (đóng gói).
+// ============================================================
+// Nghiệp vụ 5 — QLV điều phối cây: tồn chi tiết 4 kho của vườn
+// ============================================================
+// 4 kho của vườn. CONTAMINATED/PLANNED = Kho nhiễm/Kho cây trồng (đang chăm sóc), FINISHED = Kho thành phẩm
+// (đạt quy cách), LIQUIDATION = Kho thanh lý.
+enum GardenPool {
+  CONTAMINATED
+  PLANNED
+  FINISHED
+  LIQUIDATION
+}
+
+// Dòng tồn — đơn vị tồn kho vật lý của vườn SAU khi cây đã thành lô (từ lúc QLV xác nhận NV3): 1 dòng = (kho,
+// lô, mã cây, size, vị trí dãy, NV phụ trách) + số lượng vật lý. Mọi thao tác (sắp xếp, cây hỏng, đạt size S,
+// điều phối chuyển kho/đổi size/vị trí/NV, xuất kho) đều chỉ trừ/cộng giữa các dòng. Giữ chỗ = phân bổ đơn
+// hàng còn hiệu lực (GardenAllocation); khả dụng = quantity − giữ chỗ. GardenStock (theo kho, chưa có lô)
+// chỉ còn giữ phần cây đã nhận nhưng chưa qua NV3. rowId NULL = chưa xếp vị trí.
+model GardenStockLine {
+  id          String            @id @default(cuid())
+  gardenId    String
+  garden      ProductionGarden  @relation(fields: [gardenId], references: [id])
+  pool        GardenPool
+  lotId       String?
+  lot         GardenCareLot?    @relation(fields: [lotId], references: [id])
+  plantTypeId String
+  plantType   PlantType         @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+  rowId       String?
+  row         GardenRow?        @relation(fields: [rowId], references: [id])
+  staffId     String?
+  staff       GardenStaff?      @relation(fields: [staffId], references: [id])
+  quantity    Int
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  allocations GardenAllocation[]
+  careItems   GardenCareTicketItem[]
+
+  @@index([gardenId, pool])
+  @@index([lotId])
+  @@map("garden_stock_lines")
+}
+
+enum GardenAllocationStatus {
+  // Chờ đóng gói — còn số chưa xuất (quantity − shipped − cancelled > 0).
+  ACTIVE
+  // Đã xuất hết phần được phân bổ.
+  DONE
+  // Đã huỷ phần chưa xuất (huỷ đơn / QLV huỷ).
+  CANCELLED
+}
+
+// Phân bổ cây từ Kho thành phẩm/Kho thanh lý cho 1 đơn hàng Sale — giữ chỗ trên đúng dòng tồn nguồn (chưa trừ
+// tồn vật lý). Xuất kho: trừ dòng tồn + cộng shippedQuantity (mỗi cây xuất 1 lần). Huỷ: chỉ giải phóng phần
+// chưa xuất (cancelledQuantity), phần đã xuất không quay lại tồn.
+model GardenAllocation {
+  id                String                 @id @default(cuid())
+  gardenId          String
+  garden            ProductionGarden       @relation(fields: [gardenId], references: [id])
+  orderId           String
+  order             Order                  @relation(fields: [orderId], references: [id])
+  lineId            String
+  line              GardenStockLine        @relation(fields: [lineId], references: [id])
+  lotId             String?
+  lot               GardenCareLot?         @relation(fields: [lotId], references: [id])
+  plantTypeId       String
+  plantType         PlantType              @relation(fields: [plantTypeId], references: [id])
+  stageCode         String
+  pool              GardenPool
+  quantity          Int
+  shippedQuantity   Int                    @default(0)
+  cancelledQuantity Int                    @default(0)
+  status            GardenAllocationStatus @default(ACTIVE)
+  notes             String?
+  createdById       String
+  createdBy         User                   @relation("GardenAllocationCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([orderId])
+  @@index([lineId, status])
+  @@map("garden_allocations")
+}
+
+// Lịch sử mọi thao tác làm đổi thông tin/số lượng tồn vườn (không xoá). Vị trí/NV lưu dạng chữ (VD "1A1",
+// tên NV) để vẫn đọc được kể cả khi dãy/NV bị xoá sau này.
+model GardenMovementLog {
+  id          String           @id @default(cuid())
+  gardenId    String
+  garden      ProductionGarden @relation(fields: [gardenId], references: [id])
+  // RECEIVE (NV3 → lô), PLACE, DAMAGE, SIZE_S, MOVE (điều phối), ALLOCATE, CANCEL_ALLOCATION, SHIP.
+  type        String
+  lotCode     String?
+  plantTypeId String
+  plantType   PlantType        @relation(fields: [plantTypeId], references: [id])
+  quantity    Int
+  fromPool    GardenPool?
+  toPool      GardenPool?
+  fromStage   String?
+  toStage     String?
+  fromRow     String?
+  toRow       String?
+  fromStaff   String?
+  toStaff     String?
+  orderCode   String?
+  note        String?
+  byId        String
+  by          User             @relation(fields: [byId], references: [id])
+  at          DateTime         @default(now())
+
+  @@index([gardenId, at])
+  @@map("garden_movement_logs")
+}
+
 model GardenFinishedStock {
   id          String           @id @default(cuid())
   gardenId    String
@@ -2765,6 +2893,7 @@ model GardenStaff {
   assignedReceipts GardenReceipt[]
   careLots         GardenCareLot[]
   careTickets      GardenCareTicket[]
+  stockLines       GardenStockLine[]
   // Tài khoản đăng nhập của nhân viên (chỉ NV chăm sóc cây mô, role NV_CHAM_SOC_CAY_MO) — NULL = không có tài khoản.
   userId           String?           @unique
   user             User?             @relation("GardenStaffUser", fields: [userId], references: [id])
@@ -3394,6 +3523,7 @@ model Order {
 
   items              OrderItem[]
   processingRequests OrderProcessingRequest[]
+  gardenAllocations  GardenAllocation[]
   transfers          Transfer[]
   invoices           Invoice[]
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { releaseGardenAllocationsForOrders } from "@/lib/garden-inventory";
 
 // Không có tiến trình chạy nền (cron) trong app này — theo đúng pattern ở
 // src/lib/instruction-lifecycle.ts. Đơn "Tạm giữ" (HELD) quá hạn holdUntil phải tự động CANCELLED để
@@ -8,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 export async function ensureExpiredOrdersCancelled(): Promise<void> {
   const expired = await prisma.order.findMany({
     where: { status: "HELD", holdUntil: { lt: new Date() } },
-    select: { id: true },
+    select: { id: true, saleId: true },
   });
   if (expired.length === 0) return;
   const expiredIds = expired.map((o) => o.id);
@@ -23,4 +24,8 @@ export async function ensureExpiredOrdersCancelled(): Promise<void> {
       data: { status: "CANCELLED" },
     }),
   ]);
+
+  // Phân bổ cây Vườn sản xuất (Nghiệp vụ 5) của đơn hết hạn — tự giải phóng phần chưa xuất về kho nguồn. Lịch sử
+  // ghi theo NV bán hàng của đơn (không có người thao tác thật khi hệ thống tự huỷ).
+  for (const o of expired) await releaseGardenAllocationsForOrders([o.id], o.saleId);
 }
