@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { startOfWeek } from "date-fns";
+import { toStoredWeekStart } from "@/lib/week-rotation";
 import { detachInstructionFromMediumOrder } from "@/lib/instruction-medium-order";
 
 // Không có tiến trình chạy nền (cron) trong app này — trước đây chỉ định chỉ chuyển ENDED/TIME_UP khi
@@ -20,6 +21,19 @@ export async function ensureInstructionsEnded(): Promise<void> {
       trialRound: { is: null },
     },
     data: { status: "ENDED", endReason: "TIME_UP" },
+  });
+
+  // Chỉ định lượt cấy thử R&D đang chạy đã giao cho NV cấy mô — không kết thúc theo tuần (xem trên) nhưng trang
+  // Nhập dữ liệu cấy + POST /api/daily-records chỉ nhận chỉ định thuộc TUẦN HIỆN TẠI, nên dời weekStart sang tuần
+  // này để NV luôn thấy và nhập được cho tới khi dùng hết mẫu mẹ (chỉ định Admin tự giữ thì nhập ở form R&D riêng).
+  await prisma.plantingInstruction.updateMany({
+    where: {
+      status: "ACTIVE",
+      weekStart: { lt: currentWeekStart },
+      trialRound: { isNot: null },
+      assignedTo: { role: "CAY_MO" },
+    },
+    data: { weekStart: toStoredWeekStart(currentWeekStart) },
   });
 }
 
