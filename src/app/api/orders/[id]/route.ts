@@ -324,36 +324,96 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
   const plainItems = order.items.filter((i) => !i.processingRequest);
   const firstPlainItem = plainItems[0];
 
-  // Cộng dồn số cần theo LÔ (nhiều dòng của đơn có thể cùng 1 lô) rồi so tồn thực — báo đủ từng dòng thiếu
-  // (mã cây, quy cách, lô, cần/còn/thiếu) thay vì 1 câu chung chung, để Kho TP biết kiểm tra lô nào.
-  const needByLot = new Map<string, { lot: (typeof plainItems)[number]["lot"]; need: number }>();
-  for (const item of plainItems) {
-    const e = needByLot.get(item.lot.id) ?? { lot: item.lot, need: 0 };
-    e.need += item.quantity;
-    needByLot.set(item.lot.id, e);
+  // Phân bổ lô để trừ: mỗi dòng lấy trước từ ĐÚNG lô đã gắn lúc tạo đơn; lô đó không đủ (VD đơn khác xuất trước
+  // đã lấy bớt từ cùng lô — DHKT-202610-0033/0034, 10/2026) thì lấy phần thiếu từ các lô KHÁC cùng mã cây + quy
+  // cách + phòng, lô nhập sớm trước, chỉ trong phần CÒN TRỐNG của lô đó (tồn − số các đơn HELD/CONFIRMED khác
+  // đang giữ, trừ dòng đã Hoàn thành xử lý vì tồn thực đã giảm thật — khớp quy tắc "Tồn đạt tiêu chuẩn").
+  const remainingByLot = new Map(plainItems.map((i) => [i.lot.id, i.lot.quantity]));
+  const shortItems = (() => {
+    const left = new Map(remainingByLot);
+    return plainItems.filter((i) => {
+      const take = Math.min(left.get(i.lot.id) ?? 0, i.quantity);
+      left.set(i.lot.id, (left.get(i.lot.id) ?? 0) - take);
+      return take < i.quantity;
+    });
+  })();
+  type Candidate = { id: string; code: string; free: number };
+  const candidatesByKey = new Map<string, Candidate[]>();
+  if (shortItems.length > 0) {
+    const keys = [...new Map(shortItems.map((i) => [`${i.lot.roomId}|${i.lot.plantTypeId}|${i.lot.stageCode}`, i.lot])).values()];
+    const candidateLots = await prisma.lot.findMany({
+      where: {
+        status: "ACTIVE", quantity: { gt: 0 }, id: { notIn: [...remainingByLot.keys()] },
+        OR: keys.map((l) => ({ roomId: l.roomId, plantTypeId: l.plantTypeId, stageCode: l.stageCode })),
+      },
+      orderBy: { enteredAt: "asc" },
+      select: { id: true, code: true, quantity: true, roomId: true, plantTypeId: true, stageCode: true },
+    });
+    const held = await prisma.orderItem.findMany({
+      where: {
+        lotId: { in: candidateLots.map((l) => l.id) }, orderId: { not: order.id },
+        order: { status: { in: ["HELD", "CONFIRMED"] } },
+        OR: [{ processingRequest: { is: null } }, { processingRequest: { is: { status: { not: "COMPLETED" } } } }],
+      },
+      select: { lotId: true, quantity: true },
+    });
+    const heldByLot = new Map<string, number>();
+    for (const h of held) heldByLot.set(h.lotId, (heldByLot.get(h.lotId) ?? 0) + h.quantity);
+    for (const l of candidateLots) {
+      const free = l.quantity - (heldByLot.get(l.id) ?? 0);
+      if (free <= 0) continue;
+      const key = `${l.roomId}|${l.plantTypeId}|${l.stageCode}`;
+      candidatesByKey.set(key, [...(candidatesByKey.get(key) ?? []), { id: l.id, code: l.code, free }]);
+    }
   }
-  const shortages = [...needByLot.values()]
-    .filter((e) => e.lot.quantity < e.need)
-    .map((e) => ({
-      plantCode: e.lot.plantType.code, plantName: e.lot.plantType.name, stageCode: e.lot.stageCode, lotCode: e.lot.code,
-      roomName: e.lot.room?.name ?? null, needed: e.need, available: e.lot.quantity, missing: e.need - e.lot.quantity,
-    }))
-    .sort((a, b) => a.plantCode.localeCompare(b.plantCode) || (a.stageCode ?? "").localeCompare(b.stageCode ?? ""));
+
+  // allocations: từng phần (dòng đơn → lô thực trừ). Dùng để trừ tồn và ghi phiếu gửi Kho thị trường.
+  const allocations: { itemId: string; lotId: string; quantity: number }[] = [];
+  const shortages: { plantCode: string; plantName: string; stageCode: string; lotCode: string; roomName: string | null; needed: number; available: number; missing: number }[] = [];
+  for (const item of plainItems) {
+    const own = Math.min(remainingByLot.get(item.lot.id) ?? 0, item.quantity);
+    if (own > 0) {
+      allocations.push({ itemId: item.id, lotId: item.lot.id, quantity: own });
+      remainingByLot.set(item.lot.id, (remainingByLot.get(item.lot.id) ?? 0) - own);
+    }
+    let missing = item.quantity - own;
+    const key = `${item.lot.roomId}|${item.lot.plantTypeId}|${item.lot.stageCode}`;
+    const candidates = candidatesByKey.get(key) ?? [];
+    for (const c of candidates) {
+      if (missing <= 0) break;
+      const take = Math.min(c.free, missing);
+      if (take <= 0) continue;
+      allocations.push({ itemId: item.id, lotId: c.id, quantity: take });
+      c.free -= take;
+      missing -= take;
+    }
+    if (missing > 0) {
+      shortages.push({
+        plantCode: item.lot.plantType.code, plantName: item.lot.plantType.name, stageCode: item.lot.stageCode, lotCode: item.lot.code,
+        roomName: item.lot.room?.name ?? null, needed: item.quantity, available: item.quantity - missing, missing,
+      });
+    }
+  }
   if (shortages.length > 0) {
-    const list = shortages.map((s) => `${s.plantCode} ${s.stageCode} thiếu ${s.missing} (cần ${s.needed}, còn ${s.available})`).join("; ");
+    shortages.sort((a, b) => a.plantCode.localeCompare(b.plantCode) || (a.stageCode ?? "").localeCompare(b.stageCode ?? ""));
+    const list = shortages.map((s) => `${s.plantCode} ${s.stageCode} thiếu ${s.missing} (cần ${s.needed}, lấy được ${s.available} kể cả lô khác còn trống)`).join("; ");
     return NextResponse.json(
       { message: `Không đủ tồn thực để xuất kho — ${shortages.length} dòng: ${list}`, shortages },
       { status: 400 }
     );
   }
+  const deductByLot = new Map<string, number>();
+  for (const a of allocations) deductByLot.set(a.lotId, (deductByLot.get(a.lotId) ?? 0) + a.quantity);
+  const itemById = new Map(plainItems.map((i) => [i.id, i]));
 
   try {
     await prisma.$transaction(async (tx) => {
       // Trừ theo lô, có điều kiện tồn >= số cần — phòng trường hợp tồn vừa đổi giữa lúc kiểm tra và lúc trừ.
-      for (const { lot, need } of needByLot.values()) {
-        const done = await tx.lot.updateMany({ where: { id: lot.id, quantity: { gte: need } }, data: { quantity: { decrement: need } } });
+      for (const [lotId, need] of deductByLot) {
+        const done = await tx.lot.updateMany({ where: { id: lotId, quantity: { gte: need } }, data: { quantity: { decrement: need } } });
         if (done.count === 0) {
-          throw new Error(`${lot.plantType.code} ${lot.stageCode} (lô ${lot.code}) vừa thay đổi tồn, không đủ ${need} cây để xuất — tải lại trang và kiểm tra tồn kho`);
+          const item = itemById.get(allocations.find((a) => a.lotId === lotId)!.itemId)!;
+          throw new Error(`${item.lot.plantType.code} ${item.lot.stageCode} vừa thay đổi tồn, không đủ ${need} cây để xuất — tải lại trang và kiểm tra tồn kho`);
         }
       }
 
@@ -371,7 +431,8 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
             orderId: order.id,
             notes: `Tự động tạo khi xuất đơn hàng ${order.code}`,
             items: {
-              create: plainItems.map((item) => ({ lotId: item.lot.id, quantity: item.quantity })),
+              // Đúng lô THỰC trừ (có thể gồm lô khác bù phần thiếu của lô gắn với dòng đơn).
+              create: allocations.map((a) => ({ lotId: a.lotId, quantity: a.quantity })),
             },
           },
         });
