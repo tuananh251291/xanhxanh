@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { validateRndAssignee } from "@/lib/rnd-instruction-create";
 import { getOrCreateRndInputShelf } from "@/lib/rnd-instruction-warehouse";
+import { toStoredWeekStart } from "@/lib/week-rotation";
+import { startOfWeek } from "date-fns";
 import { z } from "zod";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -72,7 +74,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   await prisma.$transaction(async (tx) => {
     const shelf = await getOrCreateRndInputShelf(warehouseId, assignedToId, tx);
-    await tx.plantingInstruction.update({ where: { id }, data: { assignedToId } });
+    // Giao cho NV cấy mô (không phải chính Admin) → "Tuần thực hiện" theo đúng lúc giao: trang Nhập dữ liệu
+    // cấy của NV chỉ hiện chỉ định thuộc TUẦN HIỆN TẠI, lượt cấy tạo từ tuần trước mà giữ weekStart cũ thì NV
+    // không thấy để nhập (giống assignExtraWorkRequestId ở PATCH /api/instructions/[id]).
+    const weekStart = assignedToId !== session.user.id
+      ? toStoredWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+      : undefined;
+    await tx.plantingInstruction.update({ where: { id }, data: { assignedToId, ...(weekStart ? { weekStart } : {}) } });
     await tx.plantingInstructionItem.updateMany({ where: { instructionId: id }, data: { shelfId: shelf.id } });
     const lotIds = instruction.items.map((i) => i.lotId).filter((x): x is string => !!x);
     if (lotIds.length > 0) await tx.lot.updateMany({ where: { id: { in: lotIds } }, data: { shelfId: shelf.id } });
