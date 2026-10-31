@@ -10,6 +10,46 @@ import ShipOrderButton from "@/components/shared/ship-order-button";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 
+// Chi tiết đơn: gộp các dòng cùng mã cây + quy cách (nhiều lô), sắp theo mã — bảng 3 cột thẳng hàng
+// Mã cây | Quy cách | Số lượng, chia nhiều khối cạnh nhau trên màn rộng cho đơn dài.
+function OrderLinesGrid({ items }: { items: { quantity: number; lot: { stageCode: string | null; plantType: { code: string; name: string } } }[] }) {
+  const map = new Map<string, { code: string; name: string; stage: string; qty: number }>();
+  for (const i of items) {
+    const stage = i.lot.stageCode ?? "—";
+    const k = `${i.lot.plantType.code}|${stage}`;
+    const e = map.get(k) ?? { code: i.lot.plantType.code, name: i.lot.plantType.name, stage, qty: 0 };
+    e.qty += i.quantity;
+    map.set(k, e);
+  }
+  const rows = [...map.values()].sort((a, b) => a.code.localeCompare(b.code) || a.stage.localeCompare(b.stage));
+  const perCol = Math.ceil(rows.length / 3) || 1;
+  const cols = rows.length > 8 ? [rows.slice(0, perCol), rows.slice(perCol, perCol * 2), rows.slice(perCol * 2)].filter((c) => c.length) : [rows];
+  return (
+    <div className={`grid grid-cols-1 gap-3 ${cols.length > 1 ? "lg:grid-cols-3" : ""}`}>
+      {cols.map((col, ci) => (
+        <table key={ci} className="w-full text-sm border border-divider rounded-lg self-start">
+          <thead>
+            <tr className="bg-primary-light">
+              <th className="text-left px-3 py-1.5 text-base text-primary-strong font-bold">Mã cây</th>
+              <th className="text-left px-3 py-1.5 text-base text-primary-strong font-bold">Quy cách</th>
+              <th className="text-right px-3 py-1.5 text-base text-primary-strong font-bold">Số lượng</th>
+            </tr>
+          </thead>
+          <tbody>
+            {col.map((r) => (
+              <tr key={`${r.code}|${r.stage}`} className="border-b border-divider last:border-0">
+                <td className="px-3 py-1 font-mono" title={r.name}>{r.code}</td>
+                <td className="px-3 py-1 font-mono">{r.stage}</td>
+                <td className="px-3 py-1 text-right tabular-nums">{r.qty.toLocaleString("vi-VN")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
+    </div>
+  );
+}
+
 // Chỉ hiện đơn CONFIRMED đã "Đã sắp xếp xong" (nhặt đủ số lượng ở /orders/pack) — đơn chưa nhặt xong
 // KHÔNG xuất kho được ở đây nữa (tách hẳn 2 bước: Nhặt hàng ở /orders/pack, Xuất kho ở đây).
 export default async function ShippingOrdersPage() {
@@ -32,7 +72,7 @@ export default async function ShippingOrdersPage() {
         salesMarket: { select: { name: true } },
         items: {
           include: {
-            lot: { select: { stageCode: true } },
+            lot: { select: { stageCode: true, plantType: { select: { code: true, name: true } } } },
             processingRequest: { select: { status: true } },
           },
         },
@@ -96,17 +136,11 @@ export default async function ShippingOrdersPage() {
                         canAssign={canAssign}
                         confirmedAt={order.assignmentConfirmedAt}
                       />
-                      <ShipOrderButton orderId={order.id} disabled={pendingCount > 0} />
+                      <ShipOrderButton orderId={order.id} orderCode={order.code} disabled={pendingCount > 0} />
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {order.items.map((item) => (
-                      <Badge key={item.id} variant="completed">
-                        {item.lot.stageCode} · {item.quantity.toLocaleString("vi-VN")} cây
-                      </Badge>
-                    ))}
-                  </div>
+                  <OrderLinesGrid items={order.items} />
                 </CardContent>
               </Card>
             );

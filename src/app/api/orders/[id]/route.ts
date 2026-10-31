@@ -282,8 +282,9 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
         include: {
           lot: {
             select: {
-              id: true, stageCode: true, quantity: true, status: true, roomId: true, plantTypeId: true,
-              room: { select: { warehouseId: true } },
+              id: true, code: true, stageCode: true, quantity: true, status: true, roomId: true, plantTypeId: true,
+              room: { select: { warehouseId: true, name: true } },
+              plantType: { select: { code: true, name: true } },
             },
           },
           processingRequest: { select: { status: true } },
@@ -323,15 +324,37 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
   const plainItems = order.items.filter((i) => !i.processingRequest);
   const firstPlainItem = plainItems[0];
 
+  // Cộng dồn số cần theo LÔ (nhiều dòng của đơn có thể cùng 1 lô) rồi so tồn thực — báo đủ từng dòng thiếu
+  // (mã cây, quy cách, lô, cần/còn/thiếu) thay vì 1 câu chung chung, để Kho TP biết kiểm tra lô nào.
+  const needByLot = new Map<string, { lot: (typeof plainItems)[number]["lot"]; need: number }>();
+  for (const item of plainItems) {
+    const e = needByLot.get(item.lot.id) ?? { lot: item.lot, need: 0 };
+    e.need += item.quantity;
+    needByLot.set(item.lot.id, e);
+  }
+  const shortages = [...needByLot.values()]
+    .filter((e) => e.lot.quantity < e.need)
+    .map((e) => ({
+      plantCode: e.lot.plantType.code, plantName: e.lot.plantType.name, stageCode: e.lot.stageCode, lotCode: e.lot.code,
+      roomName: e.lot.room?.name ?? null, needed: e.need, available: e.lot.quantity, missing: e.need - e.lot.quantity,
+    }))
+    .sort((a, b) => a.plantCode.localeCompare(b.plantCode) || (a.stageCode ?? "").localeCompare(b.stageCode ?? ""));
+  if (shortages.length > 0) {
+    const list = shortages.map((s) => `${s.plantCode} ${s.stageCode} thiếu ${s.missing} (cần ${s.needed}, còn ${s.available})`).join("; ");
+    return NextResponse.json(
+      { message: `Không đủ tồn thực để xuất kho — ${shortages.length} dòng: ${list}`, shortages },
+      { status: 400 }
+    );
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
-      for (const item of order.items) {
-        if (item.processingRequest) continue; // đã trừ tồn thực ở bước "Hoàn thành xử lý"
-
-        if (item.lot.quantity < item.quantity) {
-          throw new Error(`Lô ${item.lot.stageCode} không đủ tồn thực để xuất kho — vui lòng kiểm tra lại tồn kho`);
+      // Trừ theo lô, có điều kiện tồn >= số cần — phòng trường hợp tồn vừa đổi giữa lúc kiểm tra và lúc trừ.
+      for (const { lot, need } of needByLot.values()) {
+        const done = await tx.lot.updateMany({ where: { id: lot.id, quantity: { gte: need } }, data: { quantity: { decrement: need } } });
+        if (done.count === 0) {
+          throw new Error(`${lot.plantType.code} ${lot.stageCode} (lô ${lot.code}) vừa thay đổi tồn, không đủ ${need} cây để xuất — tải lại trang và kiểm tra tồn kho`);
         }
-        await tx.lot.update({ where: { id: item.lot.id }, data: { quantity: { decrement: item.quantity } } });
       }
 
       await tx.order.update({ where: { id: order.id }, data: { status: "SHIPPED", shippedAt: new Date() } });
