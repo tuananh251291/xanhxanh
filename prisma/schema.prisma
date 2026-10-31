@@ -409,6 +409,11 @@ enum AlertType {
   // Kho TP; QL Kho TP xác nhận nguyên nhân xong báo lại NV bán hàng + Admin kỹ thuật (ORDER_FEEDBACK_EXPLAINED).
   ORDER_FEEDBACK_DEFECT
   ORDER_FEEDBACK_EXPLAINED
+  // Nghiệp vụ 7 — phiếu giao vườn đóng gói (relatedId = GardenPackRequest.id): NV Điều phối gửi → báo QLV; NV
+  // Điều phối huỷ / đơn Sale huỷ → báo QLV dừng; xuất kho đủ toàn phiếu → báo NV Điều phối + NV bán hàng.
+  GARDEN_PACK_REQUEST_SENT
+  GARDEN_PACK_REQUEST_CANCELLED
+  GARDEN_PACK_REQUEST_DONE
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -636,6 +641,8 @@ model User {
   gardenCareLogs                        GardenCareLog[]
   gardenAllocationsCreated              GardenAllocation[]                @relation("GardenAllocationCreatedBy")
   orderFeedbacksCreated                 OrderFeedback[]                   @relation("OrderFeedbackCreatedBy")
+  gardenPackRequestsCreated             GardenPackRequest[]               @relation("GardenPackRequestCreatedBy")
+  gardenPackRequestsCancelled           GardenPackRequest[]               @relation("GardenPackRequestCancelledBy")
   orderFeedbacksExplained               OrderFeedback[]                   @relation("OrderFeedbackCauseBy")
   gardenMovementLogs                    GardenMovementLog[]
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
@@ -981,6 +988,7 @@ model PlantType {
   gardenStockLines                 GardenStockLine[]
   gardenAllocations                GardenAllocation[]
   gardenMovementLogs               GardenMovementLog[]
+  gardenPackItems                  GardenPackRequestItem[]
   gardenStocks                     GardenStock[]
   orderProcessingRequests          OrderProcessingRequest[]
   goodsReceiptItems                GoodsReceiptItem[]
@@ -2397,6 +2405,7 @@ model ProductionGarden {
   stockLines     GardenStockLine[]
   allocations    GardenAllocation[]
   movementLogs   GardenMovementLog[]
+  packRequests   GardenPackRequest[]
   stocks        GardenStock[]
 
   @@map("production_gardens")
@@ -2818,6 +2827,12 @@ model GardenAllocation {
   quantity          Int
   shippedQuantity   Int                    @default(0)
   cancelledQuantity Int                    @default(0)
+  // Nghiệp vụ 7 — số NV đóng gói đã đóng xong (QLV ghi nhận), shipped ≤ packed ≤ quantity − cancelled. Xuất kho
+  // chỉ được tối đa phần đã đóng gói chưa xuất.
+  packedQuantity    Int                    @default(0)
+  // Dòng phiếu giao vườn (NV Điều phối) mà phân bổ này đáp ứng — null = phân bổ trực tiếp ở Tồn kho & điều phối.
+  packItemId        String?
+  packItem          GardenPackRequestItem? @relation(fields: [packItemId], references: [id])
   status            GardenAllocationStatus @default(ACTIVE)
   notes             String?
   createdById       String
@@ -2827,6 +2842,7 @@ model GardenAllocation {
 
   @@index([orderId])
   @@index([lineId, status])
+  @@index([packItemId])
   @@map("garden_allocations")
 }
 
@@ -2905,6 +2921,8 @@ model GardenStaff {
   user             User?             @relation("GardenStaffUser", fields: [userId], references: [id])
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  packRequests     GardenPackRequest[]
 
   @@index([gardenId, isActive])
   @@map("garden_staff")
@@ -3533,6 +3551,7 @@ model Order {
   transfers          Transfer[]
   invoices           Invoice[]
   feedback           OrderFeedback?
+  gardenPackRequests GardenPackRequest[]
 
   @@index([customerId])
   @@index([marketWarehouseId])
@@ -5489,4 +5508,57 @@ model OrderFeedback {
 
   @@index([rating, cause])
   @@map("order_feedbacks")
+}
+
+// Nghiệp vụ 7 — Đóng gói đơn hàng. NV Điều phối nhận đơn hàng Sale (HELD/CONFIRMED), xác nhận số lượng giao cho
+// từng Vườn sản xuất đóng gói → 1 phiếu giao vườn / (đơn, vườn) gồm các dòng mã cây + size + số lượng. QLV vườn đó
+// phân bổ từ Kho thành phẩm/Kho thanh lý (GardenAllocation.packItemId), gán NV đóng gói (Nhân sự vườn, không có tài
+// khoản — QLV giao việc trực tiếp), ghi nhận số đã đóng gói, xác nhận xuất kho (lúc này mới trừ tồn vật lý). Trạng
+// thái: SENT → DONE (xuất đủ mọi dòng) / CANCELLED (NV Điều phối huỷ, hoặc đơn Sale huỷ). Xem src/lib/garden-packing.ts.
+enum GardenPackStatus {
+  SENT
+  DONE
+  CANCELLED
+}
+
+model GardenPackRequest {
+  id            String                  @id @default(cuid())
+  code          String                  @unique
+  orderId       String
+  order         Order                   @relation(fields: [orderId], references: [id])
+  gardenId      String
+  garden        ProductionGarden        @relation(fields: [gardenId], references: [id])
+  status        GardenPackStatus        @default(SENT)
+  notes         String?
+  // NV đóng gói QLV giao việc (Nhân sự vườn có loại DONG_HANG).
+  packerId      String?
+  packer        GardenStaff?            @relation(fields: [packerId], references: [id])
+  createdById   String
+  createdBy     User                    @relation("GardenPackRequestCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  doneAt        DateTime?
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelledBy   User?                   @relation("GardenPackRequestCancelledBy", fields: [cancelledById], references: [id])
+  cancelReason  String?
+  items         GardenPackRequestItem[]
+
+  @@index([gardenId, status])
+  @@index([orderId])
+  @@map("garden_pack_requests")
+}
+
+model GardenPackRequestItem {
+  id          String             @id @default(cuid())
+  requestId   String
+  request     GardenPackRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  plantTypeId String
+  plantType   PlantType          @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+  quantity    Int
+  notes       String?
+  allocations GardenAllocation[]
+
+  @@map("garden_pack_request_items")
 }

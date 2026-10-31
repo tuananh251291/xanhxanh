@@ -494,3 +494,12 @@ export async function generateGardenCareTicketCode(client: Prisma.TransactionCli
   const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
+
+// Mã phiếu giao vườn đóng gói (Nghiệp vụ 7) = "DGV-" + "YYYYMM" + số thứ tự 4 chữ số.
+export async function generateGardenPackRequestCode(client: Prisma.TransactionClient | typeof prisma = prisma): Promise<string> {
+  const today = new Date();
+  const prefix = `DGV-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const last = await client.gardenPackRequest.findFirst({ where: { code: { startsWith: prefix } }, orderBy: { code: "desc" } });
+  const seq = last ? parseInt(last.code.slice(-4)) + 1 : 1;
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}

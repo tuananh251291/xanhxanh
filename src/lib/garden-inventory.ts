@@ -185,14 +185,22 @@ export async function allocateToOrder(tx: Tx, params: { lineId: string; orderId:
 export async function shipAllocation(tx: Tx, params: { allocationId: string; quantity: number; byId: string }) {
   const a = await tx.gardenAllocation.findUnique({
     where: { id: params.allocationId },
-    select: { id: true, gardenId: true, lineId: true, status: true, quantity: true, shippedQuantity: true, cancelledQuantity: true, plantTypeId: true, pool: true, stageCode: true, lot: { select: { code: true } }, order: { select: { code: true } } },
+    select: {
+      id: true, gardenId: true, lineId: true, status: true, quantity: true, shippedQuantity: true, cancelledQuantity: true, packedQuantity: true, packItemId: true,
+      plantTypeId: true, pool: true, stageCode: true, lot: { select: { code: true } }, order: { select: { code: true } },
+    },
   });
   if (!a || a.status !== "ACTIVE") throw new InventoryError("Phân bổ không còn chờ đóng gói");
-  const remaining = a.quantity - a.shippedQuantity - a.cancelledQuantity;
+  // Phân bổ theo phiếu giao vườn (Nghiệp vụ 7): chỉ xuất tối đa phần ĐÃ ĐÓNG GÓI chưa xuất.
+  const remaining = a.packItemId ? a.packedQuantity - a.shippedQuantity : a.quantity - a.shippedQuantity - a.cancelledQuantity;
+  if (a.packItemId && remaining <= 0) throw new InventoryError("Chưa có cây đã đóng gói chờ xuất — ghi nhận số đã đóng gói trước");
   if (!Number.isInteger(params.quantity) || params.quantity <= 0 || params.quantity > remaining) throw new InventoryError(`Số xuất phải từ 1 đến ${fmt(remaining)}`);
   const locked = await tx.gardenAllocation.updateMany({
-    where: { id: a.id, status: "ACTIVE", shippedQuantity: a.shippedQuantity, cancelledQuantity: a.cancelledQuantity },
-    data: { shippedQuantity: { increment: params.quantity }, ...(params.quantity === remaining ? { status: "DONE" } : {}) },
+    where: { id: a.id, status: "ACTIVE", shippedQuantity: a.shippedQuantity, cancelledQuantity: a.cancelledQuantity, packedQuantity: a.packedQuantity },
+    data: {
+      shippedQuantity: { increment: params.quantity },
+      ...(a.shippedQuantity + params.quantity === a.quantity - a.cancelledQuantity ? { status: "DONE" } : {}),
+    },
   });
   if (locked.count !== 1) throw new InventoryError("Phân bổ vừa thay đổi — tải lại trang");
   // Lấy từ phần giữ chỗ của chính phân bổ này (đã cập nhật shipped trước nên giữ chỗ hiện tại đã giảm đúng số xuất).
@@ -228,6 +236,24 @@ export async function cancelAllocation(tx: Tx, params: { allocationId: string; b
 // đơn, báo Quản lý vườn dừng đóng gói. Gọi SAU khi đơn đã chuyển CANCELLED; lỗi không chặn việc huỷ đơn.
 export async function releaseGardenAllocationsForOrders(orderIds: string[], byId: string) {
   if (orderIds.length === 0) return;
+  // Phiếu giao vườn đóng gói (Nghiệp vụ 7) đang chờ của đơn — huỷ theo đơn, báo QLV (phân bổ giải phóng ở dưới).
+  const packRequests = await prisma.gardenPackRequest.findMany({
+    where: { orderId: { in: orderIds }, status: "SENT" },
+    select: { id: true, code: true, garden: { select: { managerId: true } }, order: { select: { code: true } } },
+  });
+  for (const r of packRequests) {
+    const locked = await prisma.gardenPackRequest.updateMany({
+      where: { id: r.id, status: "SENT" },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: byId, cancelReason: `Đơn ${r.order.code} đã huỷ` },
+    });
+    if (locked.count === 1 && r.garden.managerId) {
+      await createAlert({
+        type: "GARDEN_PACK_REQUEST_CANCELLED", title: `Phiếu giao vườn ${r.code} đã huỷ — dừng đóng gói`,
+        message: `Đơn ${r.order.code} đã huỷ nên phiếu giao vườn ${r.code} tự huỷ — phần chưa xuất được giải phóng về kho nguồn.`,
+        userId: r.garden.managerId, relatedId: r.id, relatedType: "GardenPackRequest",
+      });
+    }
+  }
   const allocations = await prisma.gardenAllocation.findMany({
     where: { orderId: { in: orderIds }, status: "ACTIVE" },
     select: { id: true, garden: { select: { managerId: true } }, order: { select: { code: true } }, plantType: { select: { code: true } }, stageCode: true },

@@ -583,6 +583,9 @@ export const ALERT_TYPE_LABELS = {
   INVOICE_DECIDED: "Kết quả duyệt phiếu báo giá",
   ORDER_FEEDBACK_DEFECT: "Đơn hàng bị khách đánh giá có lỗi",
   ORDER_FEEDBACK_EXPLAINED: "Đã xác nhận nguyên nhân đơn hàng lỗi",
+  GARDEN_PACK_REQUEST_SENT: "Phiếu giao vườn đóng gói mới",
+  GARDEN_PACK_REQUEST_CANCELLED: "Phiếu giao vườn đóng gói đã huỷ",
+  GARDEN_PACK_REQUEST_DONE: "Vườn đã xuất đủ phiếu giao vườn",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -599,6 +602,9 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   // Trang Thông báo tự nối ?feedback={relatedId} để mở thẳng chi tiết phản hồi (xem alerts/page.tsx).
   ORDER_FEEDBACK_DEFECT: "/defect-orders",
   ORDER_FEEDBACK_EXPLAINED: "/defect-orders",
+  GARDEN_PACK_REQUEST_SENT: "/garden-packing",
+  GARDEN_PACK_REQUEST_CANCELLED: "/garden-packing",
+  GARDEN_PACK_REQUEST_DONE: "/garden-pack-requests",
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
   OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "/output-deviation-response",
   REJECTED_GOODS_CLASSIFICATION_PENDING: "/market-receive/reject-classification",
@@ -794,6 +800,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-receipts", label: "Phiếu bàn giao cây mô về vườn", icon: "Sprout" },
     { href: "/garden-stock", label: "Tồn kho & điều phối vườn", icon: "Boxes" },
     { href: "/garden-finished-care", label: "Chăm sóc cây thành phẩm vườn", icon: "Flower2" },
+    { href: "/garden-pack-requests", label: "Phiếu giao vườn đóng gói", icon: "PackageOpen" },
+    { href: "/garden-packing", label: "Đóng gói đơn hàng vườn", icon: "PackageOpen" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
     { href: "/rooting-forecast-requests", label: "Duyệt đề xuất cây ra rễ", icon: "PackageCheck" },
@@ -1031,6 +1039,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/all", label: "Tồn kho tổng", icon: "Warehouse" },
     { href: "/purchase-orders", label: "Đặt hàng NCC", icon: "ShoppingBag" },
+    // Nghiệp vụ 7 — nhận đơn Sale, xác nhận số lượng giao từng Vườn sản xuất đóng gói, xem /garden-pack-requests.
+    { href: "/garden-pack-requests", label: "Phiếu giao vườn đóng gói", icon: "PackageOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   HANH_CHINH_NHAN_SU: [
@@ -1074,6 +1084,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/garden-care", label: "Chăm sóc cây mô", icon: "Sprout" },
     // Nghiệp vụ 6 — cây Kho thành phẩm (S/M/L): ghi nhận cây hỏng, chuyển Kho thanh lý, xem /garden-finished-care.
     { href: "/garden-finished-care", label: "Chăm sóc cây thành phẩm", icon: "Flower2" },
+    // Nghiệp vụ 7 — phiếu giao vườn NV Điều phối gửi: phân bổ, giao NV đóng gói, ghi nhận đóng gói, xuất kho.
+    { href: "/garden-packing", label: "Đóng gói đơn hàng", icon: "PackageOpen" },
     // Cài đặt nhân viên làm việc tại vườn (không có tài khoản), xem /garden-staff.
     { href: "/garden-staff", label: "Nhân sự vườn", icon: "Users" },
     // Nhà lưới → Giàn kệ → Dãy (mã vị trí VD 1A1), xem /garden-layout.

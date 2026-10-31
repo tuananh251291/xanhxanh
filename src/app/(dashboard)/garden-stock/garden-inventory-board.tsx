@@ -20,7 +20,7 @@ const ALLOCATABLE: Pool[] = ["FINISHED", "LIQUIDATION"];
 const LOG_LABELS: Record<string, string> = {
   RECEIVE: "Nhận vào lô (sau NV3)", PLACE: "Sắp xếp vị trí", DAMAGE: "Cây hỏng", SIZE_S: "Đạt size S", MOVE: "Điều phối",
   FINISHED_DAMAGE: "Cây thành phẩm hỏng", TO_LIQUIDATION: "Chuyển Kho thanh lý",
-  ALLOCATE: "Phân bổ đơn hàng", CANCEL_ALLOCATION: "Huỷ phân bổ", SHIP: "Xuất kho",
+  PACK: "Đóng gói", ALLOCATE: "Phân bổ đơn hàng", CANCEL_ALLOCATION: "Huỷ phân bổ", SHIP: "Xuất kho",
 };
 const NONE = "__none__";
 const fmt = (n: number) => n.toLocaleString("vi-VN");
@@ -32,6 +32,8 @@ type Line = {
 type Allocation = {
   id: string; status: "ACTIVE" | "DONE" | "CANCELLED"; pool: Pool; stageCode: string; quantity: number; shipped: number; cancelled: number; createdAt: string;
   orderCode: string; customerCode: string; orderStatus: string; saleName: string; plantCode: string; plantName: string; lotCode: string | null; rowLabel: string | null; createdBy: string;
+  // Phân bổ theo phiếu giao vườn (Nghiệp vụ 7) — đóng gói/xuất kho thao tác ở trang Đóng gói đơn hàng.
+  packCode: string | null; packed: number;
 };
 type Log = {
   id: string; type: string; lotCode: string | null; quantity: number; fromPool: Pool | null; toPool: Pool | null; fromStage: string | null; toStage: string | null;
@@ -196,7 +198,10 @@ export default function GardenInventoryBoard({ gardens, gardenId, lines, pending
                         <td className="px-3 py-2 text-right tabular-nums">{fmt(a.cancelled)}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">{a.status === "ACTIVE" ? fmt(remaining) : <Badge variant={a.status === "DONE" ? "completed" : "overdue"}>{a.status === "DONE" ? "Xong" : "Đã huỷ"}</Badge>}</td>
                         <td className="px-3 py-2">
-                          {a.status === "ACTIVE" && (
+                          {a.status === "ACTIVE" && a.packCode && (
+                            <a href="/garden-packing" className="text-xs text-info-foreground hover:underline whitespace-nowrap">Phiếu {a.packCode} · đã đóng gói {fmt(a.packed)} → Đóng gói đơn hàng</a>
+                          )}
+                          {a.status === "ACTIVE" && !a.packCode && (
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => setShip({ a, qty: String(remaining) })}><Truck className="w-3.5 h-3.5 mr-1" /> Xuất kho</Button>
                               <Button size="sm" variant="ghost" className="h-7 text-destructive hover:bg-danger-light" disabled={busy} onClick={() => setCancel({ a, reason: "" })}><XCircle className="w-3.5 h-3.5 mr-1" /> Huỷ</Button>

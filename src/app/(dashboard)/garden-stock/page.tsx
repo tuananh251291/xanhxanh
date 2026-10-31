@@ -49,6 +49,7 @@ export default async function GardenStockPage({ searchParams }: { searchParams: 
         order: { select: { code: true, customerCode: true, status: true, sale: { select: { name: true } } } },
         plantType: { select: { code: true, name: true } }, lot: { select: { code: true } },
         line: { select: { row: { select: rowSelect } } }, createdBy: { select: { name: true } },
+        packedQuantity: true, packItem: { select: { request: { select: { code: true } } } },
       },
     }),
     prisma.gardenMovementLog.findMany({
@@ -92,6 +93,7 @@ export default async function GardenStockPage({ searchParams }: { searchParams: 
         id: a.id, status: a.status, pool: a.pool, stageCode: a.stageCode, quantity: a.quantity, shipped: a.shippedQuantity, cancelled: a.cancelledQuantity,
         createdAt: a.createdAt.toISOString(), orderCode: a.order.code, customerCode: a.order.customerCode, orderStatus: a.order.status, saleName: a.order.sale.name,
         plantCode: a.plantType.code, plantName: a.plantType.name, lotCode: a.lot?.code ?? null, rowLabel: a.line.row ? rowLabel(a.line.row) : null, createdBy: a.createdBy.name,
+        packCode: a.packItem?.request.code ?? null, packed: a.packedQuantity,
       }))}
       logs={logs.map((l) => ({ ...l, at: l.at.toISOString(), plantCode: l.plantType.code, plantName: l.plantType.name, byName: l.by.name }))}
       rows={rows.map((r) => ({ id: r.id, label: rowLabel(r) }))}

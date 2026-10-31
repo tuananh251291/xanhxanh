@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canManageGarden } from "@/lib/garden-staff";
 import { shipAllocation, cancelAllocation, cleanupEmptyLines, InventoryError } from "@/lib/garden-inventory";
+import { completePackRequestIfDone, notifyPackRequestDone, recordPacked } from "@/lib/garden-packing";
 import { z } from "zod";
 
 const schema = z.discriminatedUnion("action", [
@@ -10,6 +11,8 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("ship"), quantity: z.number().int().positive() }),
   // Huỷ phân bổ (kể cả khi đang đóng gói) — chỉ giải phóng phần chưa xuất về đúng dòng tồn nguồn.
   z.object({ action: z.literal("cancel"), reason: z.string().trim().max(500).optional() }),
+  // Nghiệp vụ 7 — QLV ghi nhận TỔNG số NV đóng gói đã đóng xong (phân bổ theo phiếu giao vườn), không đổi tồn.
+  z.object({ action: z.literal("pack"), packedQuantity: z.number().int().nonnegative() }),
 ]);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,11 +29,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     if (parsed.data.action === "ship") {
       const quantity = parsed.data.quantity;
-      await prisma.$transaction(async (tx) => {
+      const done = await prisma.$transaction(async (tx) => {
         await shipAllocation(tx, { allocationId: id, quantity, byId: session.user.id });
         await cleanupEmptyLines(tx, allocation.gardenId);
+        return completePackRequestIfDone(tx, id);
       });
-      return NextResponse.json({ success: true, message: `Đã xác nhận xuất kho ${quantity.toLocaleString("vi-VN")} cây` });
+      if (done) await notifyPackRequestDone(done);
+      return NextResponse.json({ success: true, message: `Đã xác nhận xuất kho ${quantity.toLocaleString("vi-VN")} cây${done ? ` — phiếu ${done.code} đã xuất đủ` : ""}` });
+    }
+    if (parsed.data.action === "pack") {
+      const packedQuantity = parsed.data.packedQuantity;
+      await prisma.$transaction((tx) => recordPacked(tx, { allocationId: id, packedQuantity, byId: session.user.id }));
+      return NextResponse.json({ success: true, message: `Đã ghi nhận ${packedQuantity.toLocaleString("vi-VN")} cây đã đóng gói` });
     }
     const reason = parsed.data.reason;
     const released = await prisma.$transaction((tx) => cancelAllocation(tx, { allocationId: id, byId: session.user.id, reason: reason || "QLV huỷ phân bổ" }));
