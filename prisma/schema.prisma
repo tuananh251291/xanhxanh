@@ -405,6 +405,10 @@ enum AlertType {
   // Invoice có giá nhập tay chờ Admin cấp cao duyệt (relatedId = Invoice.id) / đã duyệt-từ chối (báo người lập).
   INVOICE_APPROVAL_NEEDED
   INVOICE_DECIDED
+  // Phản hồi khách hàng dưới 5 sao cho 1 đơn đã xuất (relatedId = OrderFeedback.id) — báo Admin kỹ thuật + QL
+  // Kho TP; QL Kho TP xác nhận nguyên nhân xong báo lại NV bán hàng + Admin kỹ thuật (ORDER_FEEDBACK_EXPLAINED).
+  ORDER_FEEDBACK_DEFECT
+  ORDER_FEEDBACK_EXPLAINED
 }
 
 // Đề xuất Kho mô gửi Admin xử lý số lượng đang nằm ở Phòng nhiễm — Trồng lại hoặc Hủy bỏ.
@@ -631,6 +635,8 @@ model User {
   gardenCareConfirmed                   GardenCareTicket[]                @relation("GardenCareConfirmedBy")
   gardenCareLogs                        GardenCareLog[]
   gardenAllocationsCreated              GardenAllocation[]                @relation("GardenAllocationCreatedBy")
+  orderFeedbacksCreated                 OrderFeedback[]                   @relation("OrderFeedbackCreatedBy")
+  orderFeedbacksExplained               OrderFeedback[]                   @relation("OrderFeedbackCauseBy")
   gardenMovementLogs                    GardenMovementLog[]
   darkRoomInspectionChecksAsStaff       DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckStaff")
   darkRoomInspectionChecksAsCheckedBy   DarkRoomInspectionCheck[]         @relation("DarkRoomInspectionCheckedBy")
@@ -3526,6 +3532,7 @@ model Order {
   gardenAllocations  GardenAllocation[]
   transfers          Transfer[]
   invoices           Invoice[]
+  feedback           OrderFeedback?
 
   @@index([customerId])
   @@index([marketWarehouseId])
@@ -5451,4 +5458,35 @@ model Invoice {
   @@index([createdById])
   @@index([status])
   @@map("invoices")
+}
+
+// Nguyên nhân lỗi đơn hàng — QL Kho thành phẩm chọn đúng 1 khi giải trình phản hồi dưới 5 sao.
+enum OrderFeedbackCause {
+  FINISHED_WAREHOUSE
+  PRODUCTION
+}
+
+// Phản hồi đánh giá chất lượng của khách cho 1 đơn ĐÃ XUẤT KHO — NV bán hàng của đơn ghi nhận (1 đơn = 1 phản
+// hồi): 1–5 sao, nội dung, link video, tối đa 5 ảnh. Dưới 5 sao = "đơn hàng có lỗi" (xem isDefectRating,
+// src/lib/order-feedback.ts): báo Admin kỹ thuật + QL Kho TP, QL Kho TP xác nhận nguyên nhân (Kho thành phẩm /
+// Phòng sản xuất) + nội dung giải trình. Danh sách ở /defect-orders.
+model OrderFeedback {
+  id               String              @id @default(cuid())
+  orderId          String              @unique
+  order            Order               @relation(fields: [orderId], references: [id])
+  rating           Int
+  content          String?
+  videoUrl         String?
+  photoUrls        String[]            @default([])
+  createdById      String
+  createdBy        User                @relation("OrderFeedbackCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+  cause            OrderFeedbackCause?
+  causeExplanation String?
+  causeById        String?
+  causeBy          User?               @relation("OrderFeedbackCauseBy", fields: [causeById], references: [id])
+  causeAt          DateTime?
+
+  @@index([rating, cause])
+  @@map("order_feedbacks")
 }

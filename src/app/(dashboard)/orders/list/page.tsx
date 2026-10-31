@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ClipboardList, Eye } from "lucide-react";
+import { ClipboardList, Eye, MessageSquareText } from "lucide-react";
+import { StarRating } from "@/components/shared/order-feedback-form";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
@@ -30,6 +31,8 @@ type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status"
     processingRequest: Pick<OrderProcessingRequest, "status"> | null;
   })[];
 };
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
 function OrdersTable({
   title,
@@ -217,6 +220,16 @@ export default async function OrdersListPage() {
       })
     : [];
 
+  // Đơn đã xuất 90 ngày gần nhất của chính NV bán hàng — ghi nhận phản hồi đánh giá của khách (trang chi tiết đơn).
+  const shippedSince = daysAgo(90);
+  const shippedOrders = role === "SALE" && session?.user?.id
+    ? await prisma.order.findMany({
+        where: { status: "SHIPPED", saleId: session.user.id, shippedAt: { gte: shippedSince } },
+        orderBy: { shippedAt: "desc" },
+        select: { id: true, code: true, customerCode: true, shippedAt: true, marketWarehouse: { select: { name: true } }, feedback: { select: { rating: true, cause: true } } },
+      })
+    : [];
+
   const editPlantTypes = isActingForSale
     ? await prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } })
     : undefined;
@@ -264,6 +277,53 @@ export default async function OrdersListPage() {
         canEditShipAt={isActingForSale}
         editPlantTypes={editPlantTypes}
       />
+
+      {role === "SALE" && (
+        <Card>
+          <div className="px-4 pt-4">
+            <h2 className="text-lg font-bold text-foreground">Đơn đã xuất — phản hồi khách hàng</h2>
+            <p className="text-text-secondary text-sm mt-0.5">Đơn đã xuất kho 90 ngày gần nhất — ghi nhận đánh giá chất lượng của khách (dưới 5 sao là đơn có lỗi, báo Kho thành phẩm xác nhận nguyên nhân).</p>
+          </div>
+          <CardContent className="p-0 mt-3">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-primary-light">
+                    {["Mã đơn", "Khách hàng", "Xuất kho", "Đánh giá của khách", "Thao tác"].map((h) => <th key={h} className="text-left px-4 py-3 text-base text-primary-strong font-bold">{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shippedOrders.map((o) => (
+                    <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
+                      <td className="px-4 py-3 text-sm font-mono text-text-secondary">{o.code}</td>
+                      <td className="px-4 py-3 text-sm text-foreground">{o.marketWarehouse?.name ?? o.customerCode}</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">{o.shippedAt ? format(o.shippedAt, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {o.feedback ? (
+                          <div className="flex items-center gap-2">
+                            <StarRating value={o.feedback.rating} size="w-4 h-4" />
+                            {o.feedback.rating < 5 && <Badge variant={o.feedback.cause ? "info" : "overdue"}>{o.feedback.cause ? "Đã xác nhận nguyên nhân" : "Chờ xác nhận nguyên nhân"}</Badge>}
+                          </div>
+                        ) : <span className="text-text-muted">Chưa phản hồi</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link href={`/orders/list/${o.id}#feedback`}>
+                          <Button size="sm" variant={o.feedback ? "outline" : "default"} className="h-8">
+                            {o.feedback ? <><Eye className="w-3.5 h-3.5 mr-1.5" /> Xem phản hồi</> : <><MessageSquareText className="w-3.5 h-3.5 mr-1.5" /> Phản hồi</>}
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                  {shippedOrders.length === 0 && (
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-text-muted">Chưa có đơn nào xuất kho trong 90 ngày gần nhất</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {managedScope.length > 0 && (
         <OrdersTable

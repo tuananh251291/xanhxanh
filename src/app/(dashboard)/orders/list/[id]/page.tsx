@@ -4,13 +4,16 @@ import { canSaleViewOrder } from "@/lib/customer-manager";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
 import OrderDetailContent from "@/components/shared/order-detail-content";
+import OrderFeedbackForm from "@/components/shared/order-feedback-form";
+import OrderFeedbackDetail from "@/components/shared/order-feedback-detail";
+import { canExplainDefect } from "@/lib/order-feedback";
 
 // Trang chi tiết đơn hàng (thay cho popup OrderDetailDialog ở mục "Đơn đã xác nhận" — nội dung nhiều
 // dòng loại cây/quy cách sau này sẽ dài, không hợp popup) — dùng chung OrderDetailContent với
@@ -29,6 +32,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     select: {
       id: true, code: true, customerCode: true, market: true, salesMarket: { select: { name: true } }, status: true, holdUntil: true,
       notes: true, createdAt: true, saleId: true,
+      feedback: {
+        select: {
+          id: true, rating: true, content: true, videoUrl: true, photoUrls: true, createdAt: true, cause: true, causeExplanation: true, causeAt: true,
+          createdBy: { select: { name: true } }, causeBy: { select: { name: true } },
+        },
+      },
       items: {
         select: {
           id: true, quantity: true, notes: true,
@@ -84,6 +93,28 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           />
         </CardContent>
       </Card>
+
+      {/* Phản hồi đánh giá của khách sau khi xuất kho — NV bán hàng của đơn ghi nhận (1 lần), dưới 5 sao là đơn lỗi. */}
+      {order.status === "SHIPPED" && (order.feedback || order.saleId === session!.user.id) && (
+        <Card id="feedback">
+          <CardHeader><CardTitle className="text-base">Phản hồi khách hàng</CardTitle></CardHeader>
+          <CardContent>
+            {order.feedback ? (
+              <OrderFeedbackDetail
+                canExplain={canExplainDefect(role)}
+                feedback={{
+                  id: order.feedback.id, rating: order.feedback.rating, content: order.feedback.content, videoUrl: order.feedback.videoUrl,
+                  photoUrls: order.feedback.photoUrls, createdAt: order.feedback.createdAt.toISOString(), createdByName: order.feedback.createdBy.name,
+                  cause: order.feedback.cause, causeExplanation: order.feedback.causeExplanation,
+                  causeAt: order.feedback.causeAt?.toISOString() ?? null, causeByName: order.feedback.causeBy?.name ?? null,
+                }}
+              />
+            ) : (
+              <OrderFeedbackForm orderId={order.id} />
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

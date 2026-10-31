@@ -581,6 +581,8 @@ export const ALERT_TYPE_LABELS = {
   TRANSFER_RECEIVE_FEEDBACK: "Góp ý của Kho thành phẩm khi nhận hàng",
   INVOICE_APPROVAL_NEEDED: "Phiếu báo giá chờ duyệt giá",
   INVOICE_DECIDED: "Kết quả duyệt phiếu báo giá",
+  ORDER_FEEDBACK_DEFECT: "Đơn hàng bị khách đánh giá có lỗi",
+  ORDER_FEEDBACK_EXPLAINED: "Đã xác nhận nguyên nhân đơn hàng lỗi",
 } as const;
 
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
@@ -594,6 +596,9 @@ export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, 
   EXCHANGE_RATE_MONTHLY_DUE: "/exchange-rates",
   INVOICE_APPROVAL_NEEDED: "/invoices",
   INVOICE_DECIDED: "/invoices",
+  // Trang Thông báo tự nối ?feedback={relatedId} để mở thẳng chi tiết phản hồi (xem alerts/page.tsx).
+  ORDER_FEEDBACK_DEFECT: "/defect-orders",
+  ORDER_FEEDBACK_EXPLAINED: "/defect-orders",
   CONTAMINATION_PROPOSAL: "/production-management?tab=contamination",
   OUTPUT_DEVIATION_STAFF_RESPONSE_NEEDED: "/output-deviation-response",
   REJECTED_GOODS_CLASSIFICATION_PENDING: "/market-receive/reject-classification",
@@ -638,7 +643,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "ROOTING_FORECAST_MONTHLY_DUE", "ROOTING_FORECAST_EDIT_PROPOSAL",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
     "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
-    "SALES_MANAGER_IMPORT_PENDING", "GARDEN_RECEIPT_DISCREPANCY",
+    "SALES_MANAGER_IMPORT_PENDING", "GARDEN_RECEIPT_DISCREPANCY", "ORDER_FEEDBACK_DEFECT",
   ],
   ADMIN: [
     "ORDER_PROCESSING_SHORTFALL", "ORDER_EXPIRING", "ORDER_EXPIRED", "STOCK_LOW", "ORDER_PENDING_PACK",
@@ -648,7 +653,7 @@ export const ADMIN_DASHBOARD_ALERT_TYPES: Record<"SUPER_ADMIN" | "ADMIN" | "ADMI
     "CONTAMINATION_HIGH", "OUTPUT_DEVIATION", "OUTPUT_DEVIATION_RESOLVED", "OUTPUT_DEVIATION_DISAGREED", "LOT_READY_TRANSFER", "MEDIUM_HANDOVER_READY", "INSPECTION_RESULT_READY",
     "MOTHER_CONTAMINATION_HIGH", "MOTHER_WAREHOUSE_TRANSFER_SHORTFALL", "MOTHER_WAREHOUSE_TRANSFER_INCOMING", "NV_VIOLATION", "ROOTING_FORECAST_MONTHLY_DUE",
     "MOTHER_FORECAST_MONTHLY_DUE", "MOTHER_OUTPUT_SHORTFALL", "MOTHER_FORECAST_EDIT_PROPOSAL",
-    "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY",
+    "ROOTING_QUALITY_EVALUATION_DUE", "ROOTING_QUALITY_EVALUATION_READY", "ORDER_FEEDBACK_DEFECT",
   ],
 };
 
@@ -805,6 +810,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/attendance/approvals", label: "Duyệt đơn chấm công", icon: "ClipboardCheck" },
     { href: "/assistant-tasks", label: "Theo dõi công việc", icon: "ListChecks" },
     { href: "/stock-counts", label: "Đối chiếu tồn kho cuối tháng", icon: "ClipboardCheck" },
+    { href: "/defect-orders", label: "Đơn hàng có lỗi", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   ADMIN: [
@@ -843,6 +849,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/rnd", label: "R&D", icon: "FlaskConical" },
     { href: "/rnd-production", label: "Cấy sản xuất R&D", icon: "Sprout" },
     { href: "/rnd-handover", label: "Bàn giao", icon: "Send" },
+    { href: "/defect-orders", label: "Đơn hàng có lỗi", icon: "AlertTriangle" },
     { href: "/mother-photo-update/view", label: "Xem dữ liệu hình ảnh", icon: "Images" },
     { href: "/settings", label: "Cài đặt", icon: "Settings" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -987,6 +994,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/invoices", label: "Phiếu báo giá", icon: "Wallet" },
     { href: "/shipping", label: "Xuất hàng", icon: "Send" },
+    // Đơn đã xuất bị khách đánh giá dưới 5 sao — QL Kho TP xác nhận nguyên nhân, xem /defect-orders.
+    { href: "/defect-orders", label: "Đơn hàng có lỗi", icon: "AlertTriangle" },
     { href: "/reports/inventory-flow-summary", label: "Báo cáo Nhập - Xuất", icon: "BarChart3" },
     { href: "/reports/rooting-quality-evaluations", label: "Dự kiến hàng ra rễ về Kho TP", icon: "ClipboardCheck" },
     { href: "/contamination-proposals", label: "Đề xuất Trồng/Hủy", icon: "AlertTriangle" },
@@ -1007,6 +1016,8 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
     { href: "/invoices", label: "Phiếu báo giá", icon: "Wallet" },
     { href: "/price-lists", label: "Bảng giá tháng", icon: "DollarSign" },
+    // Đơn lỗi của chính mình (+ của NV mình quản lý nếu là người quản lý), xem /defect-orders.
+    { href: "/defect-orders", label: "Đơn hàng có lỗi", icon: "AlertTriangle" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   MOI_TRUONG: [

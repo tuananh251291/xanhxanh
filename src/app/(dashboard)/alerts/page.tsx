@@ -22,6 +22,8 @@ type Alert = {
   actionLink?: string | null;
   // Ảnh bằng chứng của thông báo vi phạm (NV_VIOLATION) — chỉ còn trong 14 ngày lưu trữ.
   photoUrls?: string[];
+  relatedId?: string | null;
+  relatedType?: string | null;
 };
 
 export default function AlertsPage() {
@@ -85,7 +87,9 @@ export default function AlertsPage() {
       ) : (
         <div className="space-y-2">
           {alerts.map((a) => {
-            const detailLink = ALERT_DETAIL_LINKS[a.type];
+            const baseLink = ALERT_DETAIL_LINKS[a.type];
+            // Phản hồi đơn hàng lỗi — mở thẳng chi tiết đúng phản hồi ở /defect-orders.
+            const detailLink = baseLink && a.relatedType === "OrderFeedback" && a.relatedId ? `${baseLink}?feedback=${a.relatedId}` : baseLink;
             const actionLink = a.actionLink ?? null;
             return (
               <Card key={a.id} className="border-l-4 border-l-destructive">
