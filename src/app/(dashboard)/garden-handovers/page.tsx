@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sprout } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { isAdminRole, isKhoThanhPhamRole } from "@/types";
+import { isGardenAdmin, isKhoThanhPhamRole } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import ConfirmGardenHandoverButton from "./confirm-garden-handover-button";
 
@@ -21,7 +21,7 @@ export default async function GardenHandoversPage() {
 
   const where: Prisma.GardenHandoverWhereInput = {};
   if (isKhoThanhPhamRole(role)) where.warehouseId = session.user.workplaceWarehouseId ?? "";
-  else if (!isAdminRole(role)) where.productionGarden = { managerId: session.user.id };
+  else if (!isGardenAdmin(role)) where.productionGarden = { managerId: session.user.id };
 
   const handovers = await prisma.gardenHandover.findMany({
     where,
@@ -55,7 +55,7 @@ export default async function GardenHandoversPage() {
       ) : (
         handovers.map((h) => {
           const total = h.proposals.reduce((s, p) => s + p.quantity, 0);
-          const canConfirm = h.status === "PENDING" && (h.productionGarden.managerId === session.user.id || isAdminRole(role));
+          const canConfirm = h.status === "PENDING" && (h.productionGarden.managerId === session.user.id || isGardenAdmin(role));
           return (
             <Card key={h.id}>
               <CardHeader className="pb-2">

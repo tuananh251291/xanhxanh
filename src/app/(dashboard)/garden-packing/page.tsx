@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import { getManageableGardens } from "@/lib/garden-staff";
 import { rowLabel } from "@/lib/garden-care";
@@ -16,7 +16,7 @@ const rowSelect = { number: true, rack: { select: { letter: true, house: { selec
 export default async function GardenPackingPage({ searchParams }: { searchParams: Promise<{ garden?: string }> }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isAdminRole(role)) || !(await isPageAllowed(role, "/garden-packing"))) redirect("/dashboard");
+  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isGardenAdmin(role)) || !(await isPageAllowed(role, "/garden-packing"))) redirect("/dashboard");
   const gardens = await getManageableGardens(session.user);
   if (gardens.length === 0) return <p className="text-sm text-text-muted">Bạn chưa được gán quản lý vườn nào — liên hệ Admin cấp cao.</p>;
   const sp = await searchParams;

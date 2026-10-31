@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import { getManageableGardens } from "@/lib/garden-staff";
 import { rowLabel } from "@/lib/garden-care";
@@ -18,7 +18,7 @@ const rowSelect = { number: true, rack: { select: { letter: true, house: { selec
 export default async function GardenStockPage({ searchParams }: { searchParams: Promise<{ garden?: string }> }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isAdminRole(role)) || !(await isPageAllowed(role, "/garden-stock"))) {
+  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isGardenAdmin(role)) || !(await isPageAllowed(role, "/garden-stock"))) {
     redirect("/dashboard");
   }
   const gardens = await getManageableGardens(session.user);

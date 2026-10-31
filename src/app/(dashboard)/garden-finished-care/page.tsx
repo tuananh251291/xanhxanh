@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import { getManageableGardens } from "@/lib/garden-staff";
 import { rowLabel } from "@/lib/garden-care";
@@ -17,7 +17,7 @@ const CARE_LOG_TYPES = ["FINISHED_DAMAGE", "TO_LIQUIDATION"];
 export default async function GardenFinishedCarePage({ searchParams }: { searchParams: Promise<{ garden?: string }> }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isAdminRole(role)) || !(await isPageAllowed(role, "/garden-finished-care"))) {
+  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isGardenAdmin(role)) || !(await isPageAllowed(role, "/garden-finished-care"))) {
     redirect("/dashboard");
   }
   const gardens = await getManageableGardens(session.user);

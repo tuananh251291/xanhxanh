@@ -1,6 +1,6 @@
 import type { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { canManageGarden } from "@/lib/garden-staff";
 import { generateGardenCareLotCode } from "@/lib/codes";
 import { addToLine, logMovement, InventoryError } from "@/lib/garden-inventory";
@@ -65,7 +65,7 @@ export async function getCareStaffProfile(userId: string) {
 
 // Phạm vi lô xem được: NV chăm sóc cây mô = lô mình phụ trách; QLV = lô các vườn mình quản lý; Admin = tất cả.
 export async function careLotScope(user: Viewer): Promise<Prisma.GardenCareLotWhereInput | null> {
-  if (isAdminRole(user.role)) return {};
+  if (isGardenAdmin(user.role)) return {};
   if (user.role === "NHAN_VIEN_QUAN_LY_VUON") return { garden: { managerId: user.id } };
   if (user.role === "NV_CHAM_SOC_CAY_MO") {
     const profile = await getCareStaffProfile(user.id);

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { canManageGarden } from "@/lib/garden-staff";
 import { getRemainingByReceiptItem } from "@/lib/garden-damage";
 import GardenDamageDetail from "./garden-damage-detail";
@@ -29,7 +29,7 @@ export default async function GardenDamageDetailPage({ params }: { params: Promi
 
   const canManage = await canManageGarden(session.user, report.gardenId);
   const isCreator = report.createdById === session.user.id;
-  if (!isCreator && !canManage && !isAdminRole(session.user.role)) redirect("/garden-damage");
+  if (!isCreator && !canManage && !isGardenAdmin(session.user.role)) redirect("/garden-damage");
 
   // Số còn ghi hỏng được của từng dòng (thực nhận − đã ghi hỏng ở phiếu khác) — gợi ý giới hạn khi nhập.
   const remaining = await getRemainingByReceiptItem(report.items.map((i) => i.receiptItemId), report.id);

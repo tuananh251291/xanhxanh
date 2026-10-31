@@ -74,6 +74,12 @@ export function isAdminRole(role: UserRole | null | undefined): boolean {
   return role === "ADMIN" || role === "SUPER_ADMIN" || role === "ADMIN_KY_THUAT";
 }
 
+// Vườn sản xuất: CHỈ Admin cấp cao xem/thao tác thay Quản lý vườn ở mọi vườn — Admin thường / Admin kỹ thuật
+// KHÔNG có quyền ở các trang/nghiệp vụ vườn (khác isAdminRole).
+export function isGardenAdmin(role: UserRole | null | undefined): boolean {
+  return role === "SUPER_ADMIN";
+}
+
 // Các trang đơn hàng (/orders/list, /orders/list/[id], /orders/[id], /orders/pack, /orders/create) — CHỈ NV bán
 // hàng, NV điều phối, NV/Quản lý kho thành phẩm và các Admin; mọi vai trò khác bị chặn hẳn (isPageAllowed mặc
 // định cho phép nếu chưa cấu hình nên không đủ). Phạm vi đơn từng vai trò thấy vẫn lọc riêng ở từng trang.

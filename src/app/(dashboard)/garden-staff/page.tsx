@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { isPageAllowed } from "@/lib/permissions";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { getManageableGardens } from "@/lib/garden-staff";
 import { prisma } from "@/lib/prisma";
 import GardenStaffBoard from "./garden-staff-board";
@@ -11,7 +11,7 @@ import GardenStaffBoard from "./garden-staff-board";
 export default async function GardenStaffPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isAdminRole(role)) || !(await isPageAllowed(role, "/garden-staff"))) {
+  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isGardenAdmin(role)) || !(await isPageAllowed(role, "/garden-staff"))) {
     redirect("/dashboard");
   }
 

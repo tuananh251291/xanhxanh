@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { isPageAllowed } from "@/lib/permissions";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { getManageableGardens } from "@/lib/garden-staff";
 import GardenLayoutBoard from "./garden-layout-board";
 
@@ -10,7 +10,7 @@ import GardenLayoutBoard from "./garden-layout-board";
 export default async function GardenLayoutPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isAdminRole(role)) || !(await isPageAllowed(role, "/garden-layout"))) {
+  if (!session?.user || (role !== "NHAN_VIEN_QUAN_LY_VUON" && !isGardenAdmin(role)) || !(await isPageAllowed(role, "/garden-layout"))) {
     redirect("/dashboard");
   }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { z } from "zod";
 
 const schema = z.object({ action: z.literal("confirm") });
@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!handover) return NextResponse.json({ message: "Không tìm thấy phiếu" }, { status: 404 });
   const isManager = handover.productionGarden.managerId === session.user.id;
-  if (!isManager && !isAdminRole(session.user.role)) {
+  if (!isManager && !isGardenAdmin(session.user.role)) {
     return NextResponse.json({ message: "Chỉ Quản lý vườn nhận cây mới xác nhận được" }, { status: 403 });
   }
   if (handover.status !== "PENDING") return NextResponse.json({ message: "Phiếu đã được xác nhận" }, { status: 400 });

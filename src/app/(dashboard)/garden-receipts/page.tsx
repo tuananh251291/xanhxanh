@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { isPageAllowed } from "@/lib/permissions";
 import { getGardenReceiptSender, GARDEN_RECEIPT_STATUS_LABELS } from "@/lib/garden-receipt";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +27,7 @@ export default async function GardenReceiptsPage({ searchParams }: { searchParam
 
   const sender = await getGardenReceiptSender(session.user);
   let scope: Prisma.GardenReceiptWhereInput;
-  if (isAdminRole(role)) scope = {};
+  if (isGardenAdmin(role)) scope = {};
   else if (role === "NHAN_VIEN_QUAN_LY_VUON") scope = { garden: { managerId: session.user.id } };
   else if (sender) scope = { fromWarehouseId: sender.warehouseId };
   else redirect("/dashboard");

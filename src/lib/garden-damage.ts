@@ -1,6 +1,6 @@
 import type { GardenOrderType, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { canManageGarden } from "@/lib/garden-staff";
 
 type Client = Prisma.TransactionClient | typeof prisma;
@@ -26,7 +26,7 @@ export async function canCreateDamageReport(user: Viewer, gardenId: string): Pro
 // Phạm vi xem danh sách phiếu: NV chăm sóc cây mô chỉ thấy phiếu mình tạo; QLV thấy phiếu các vườn mình quản lý;
 // Admin thấy tất cả. null = không có quyền.
 export async function damageReportScope(user: Viewer): Promise<Prisma.GardenDamageReportWhereInput | null> {
-  if (isAdminRole(user.role)) return {};
+  if (isGardenAdmin(user.role)) return {};
   if (user.role === "NV_CHAM_SOC_CAY_MO") return { createdById: user.id };
   if (user.role === "NHAN_VIEN_QUAN_LY_VUON") return { garden: { managerId: user.id } };
   return null;

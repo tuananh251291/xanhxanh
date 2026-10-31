@@ -1,6 +1,6 @@
 import type { GardenOrderType, Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/types";
+import { isGardenAdmin } from "@/types";
 import { getMovableLots, type MovableLot } from "@/lib/room-move";
 
 type Client = Prisma.TransactionClient | typeof prisma;
@@ -73,7 +73,7 @@ export async function canViewGardenReceipt(
   user: { id: string; role: UserRole | null | undefined; workplaceWarehouseId?: string | null },
   receipt: { fromWarehouseId: string; garden: { managerId: string | null } }
 ): Promise<boolean> {
-  if (isAdminRole(user.role)) return true;
+  if (isGardenAdmin(user.role)) return true;
   if (user.role === "NHAN_VIEN_QUAN_LY_VUON" && receipt.garden.managerId === user.id) return true;
   return !!user.workplaceWarehouseId && user.workplaceWarehouseId === receipt.fromWarehouseId;
 }
