@@ -38,9 +38,11 @@ export default async function ThanhPhamRoomPage({
 
   const room = await prisma.room.findUnique({
     where: { id: roomId },
-    select: { id: true, name: true, type: true },
+    select: { id: true, name: true, type: true, warehouseId: true },
   });
   if (!room || !FINISHED_ROOM_TYPES.includes(room.type)) notFound();
+  // QL Kho thành phẩm chỉ xem phòng thuộc kho thành phẩm mình quản lý.
+  if (role === "QUAN_LY_KHO_THANH_PHAM" && room.warehouseId !== session?.user?.workplaceWarehouseId) notFound();
 
   const lots = await prisma.lot.findMany({
     where: { roomId, status: "ACTIVE" },

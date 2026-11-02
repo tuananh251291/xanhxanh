@@ -45,6 +45,8 @@ export default async function AllInventoryPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/all"))) redirect("/dashboard");
+  // Tồn kho tổng (mọi kho) — QL Kho thành phẩm chỉ được xem tồn kho thành phẩm mình quản lý (/inventory/thanh-pham).
+  if (role === "QUAN_LY_KHO_THANH_PHAM") redirect("/inventory/thanh-pham");
 
   const lotSelect = {
     id: true,

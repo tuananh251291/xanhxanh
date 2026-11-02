@@ -24,10 +24,18 @@ export default async function ThanhPhamInventoryPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/thanh-pham"))) redirect("/dashboard");
 
+  // QL Kho thành phẩm chỉ xem tồn của kho thành phẩm mình quản lý (kho làm việc) — chưa gán kho thì không thấy gì.
+  const ownWarehouseOnly = role === "QUAN_LY_KHO_THANH_PHAM";
+  const ownWarehouseId = session?.user?.workplaceWarehouseId ?? null;
+  if (ownWarehouseOnly && !ownWarehouseId) {
+    return <p className="text-sm text-text-muted">Tài khoản chưa được gán kho thành phẩm làm việc — liên hệ Admin cấp cao.</p>;
+  }
+
   const rooms = await prisma.room.findMany({
     where: {
       type: { in: ["PHONG_DAT_TIEU_CHUAN", "PHONG_CHO_XU_LY", "PHONG_THI_TRUONG"] },
       isActive: true,
+      ...(ownWarehouseOnly ? { warehouseId: ownWarehouseId! } : {}),
     },
     include: {
       lots: {
