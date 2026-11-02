@@ -23,6 +23,10 @@ import { ensureMonthlyInspectionLaneUpdate, ensureInspectionLaneOverridesApplied
 import { ensureExpiredExtraWorkReadinessAlertsRead, ensureExpiredExtraWorkRequestsCleaned } from "@/lib/extra-work-lifecycle";
 import { ensureMissedDailyRecordViolations } from "@/lib/missed-daily-record";
 import AiAssistantWidget from "@/components/shared/ai-assistant-widget";
+import Link from "next/link";
+import { CalendarDays } from "lucide-react";
+import { vnDateKey } from "@/lib/attendance";
+import { getAnnualLeaveUsage } from "@/lib/attendance-server";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -126,6 +130,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ];
   }
 
+  // NV cấy mô: số phép năm còn lại (tổng − đã duyệt − đang chờ duyệt, năm hiện tại giờ VN) ở góc dưới phải mọi
+  // trang. Lỗi tính phép không được chặn render trang.
+  let leaveRemaining: { remaining: number; total: number; pending: number } | null = null;
+  if (role === "CAY_MO") {
+    try {
+      leaveRemaining = await getAnnualLeaveUsage(session.user.id, Number(vnDateKey(new Date()).slice(0, 4)));
+    } catch (err) {
+      console.error("[layout] getAnnualLeaveUsage lỗi:", err);
+    }
+  }
+
   // Người duyệt đơn chấm công cấp 1 ("quản lý khu", HCNS chọn ở Bảng chấm công → Cài đặt khu) không cố
   // định theo vai trò — chèn động mục duyệt cho đúng người đang được gán ở ít nhất 1 khu.
   if (!navItems.some((item) => item.href === "/attendance/approvals")) {
@@ -156,6 +171,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
         </main>
         <Toaster richColors position="top-right" />
+        {leaveRemaining && (
+          <Link
+            href="/attendance"
+            className="fixed bottom-3 right-3 z-30 flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm shadow-md hover:bg-primary-light transition-colors"
+            title="Phép năm còn lại (đã trừ đơn đã duyệt và đang chờ duyệt) — bấm để xem Chấm công"
+          >
+            <CalendarDays className="w-4 h-4 text-primary-strong" />
+            <span className="text-text-secondary">Phép năm còn</span>
+            <span className={`font-bold tabular-nums ${leaveRemaining.remaining > 0 ? "text-primary-strong" : "text-destructive"}`}>
+              {leaveRemaining.remaining.toLocaleString("vi-VN")}/{leaveRemaining.total.toLocaleString("vi-VN")}
+            </span>
+            <span className="text-text-secondary">ngày</span>
+            {leaveRemaining.pending > 0 && <span className="text-xs text-warning-foreground">(chờ duyệt {leaveRemaining.pending.toLocaleString("vi-VN")})</span>}
+          </Link>
+        )}
         {/* Giai đoạn 1 — chỉ SUPER_ADMIN/ADMIN_KY_THUAT, cố tình hẹp hơn isAdminRole (không có ADMIN
             thường). Server (/api/ai-assistant) cũng tự chặn lại, đây chỉ là ẩn UI. */}
         {(role === "SUPER_ADMIN" || role === "ADMIN_KY_THUAT") && <AiAssistantWidget />}
