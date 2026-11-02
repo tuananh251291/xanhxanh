@@ -215,7 +215,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
 
       return { evalTotal, evalPassed };
-    });
+      // Nhóm tuần ra rễ có thể vài trăm lô, mỗi lô không đạt phải tách + sinh mã lô + dời kệ tuần tự — vượt
+      // timeout mặc định 5s (P2028, DGCL-202610-0011 Kim Động 02/11/2026: rollback toàn bộ, NV bấm mãi không lưu được).
+    }, { maxWait: 10_000, timeout: 60_000 });
 
     await notifyRootingQualityEvaluationReady({
       warehouseId: evaluation.warehouseId,

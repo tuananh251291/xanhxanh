@@ -54,10 +54,13 @@ export default function RootingQualityEvaluationForm({
           reason: reason.trim(),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      // Server lỗi 500 trả body không phải JSON — không để res.json() ném lỗi nuốt mất thông báo.
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(json.message ?? "Gửi đánh giá thất bại — vui lòng thử lại"); return; }
       toast.success("Đã hoàn thành đánh giá — phần không đạt đã lùi sang tuần sau");
       router.push("/rooting-quality-evaluation");
+    } catch {
+      toast.error("Không kết nối được máy chủ — vui lòng thử lại");
     } finally {
       setSubmitting(false);
     }
