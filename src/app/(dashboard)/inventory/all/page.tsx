@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Warehouse, Moon, Sun, Sprout, Package, PackageCheck, Eye, Globe, AlertTriangle, Hourglass } from "lucide-react";
-import { ROOM_TYPE_LABELS, ROOM_TYPE_COLORS } from "@/types";
+import { ROOM_TYPE_LABELS, ROOM_TYPE_COLORS, isKhoThanhPhamRole } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import { isNearExpiry } from "@/lib/report-utils";
@@ -45,8 +45,8 @@ export default async function AllInventoryPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/all"))) redirect("/dashboard");
-  // Tồn kho tổng (mọi kho) — QL Kho thành phẩm chỉ được xem tồn kho thành phẩm mình quản lý (/inventory/thanh-pham).
-  if (role === "QUAN_LY_KHO_THANH_PHAM") redirect("/inventory/thanh-pham");
+  // Tồn kho tổng (mọi kho) — QL/NV Kho thành phẩm chỉ được xem tồn kho thành phẩm mình làm việc (/inventory/thanh-pham).
+  if (isKhoThanhPhamRole(role)) redirect("/inventory/thanh-pham");
 
   const lotSelect = {
     id: true,

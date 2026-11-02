@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Package, PackageCheck, Eye, Globe, ArrowLeft, ChevronLeft, ChevronRight, Hourglass } from "lucide-react";
 import Link from "next/link";
-import { ROOM_TYPE_LABELS, FINISHED_STAGE_COLUMNS } from "@/types";
+import { ROOM_TYPE_LABELS, FINISHED_STAGE_COLUMNS, isKhoThanhPhamRole } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 
@@ -41,8 +41,8 @@ export default async function ThanhPhamRoomPage({
     select: { id: true, name: true, type: true, warehouseId: true },
   });
   if (!room || !FINISHED_ROOM_TYPES.includes(room.type)) notFound();
-  // QL Kho thành phẩm chỉ xem phòng thuộc kho thành phẩm mình quản lý.
-  if (role === "QUAN_LY_KHO_THANH_PHAM" && room.warehouseId !== session?.user?.workplaceWarehouseId) notFound();
+  // QL Kho thành phẩm / NV Kho thành phẩm chỉ xem phòng thuộc kho thành phẩm mình làm việc.
+  if (isKhoThanhPhamRole(role) && room.warehouseId !== session?.user?.workplaceWarehouseId) notFound();
 
   const lots = await prisma.lot.findMany({
     where: { roomId, status: "ACTIVE" },

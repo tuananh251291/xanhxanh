@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Package, PackageCheck, Eye, Globe, Layers, Search, Hourglass } from "lucide-react";
 import Link from "next/link";
-import { ROOM_TYPE_LABELS, FINISHED_STAGE_COLUMNS } from "@/types";
+import { ROOM_TYPE_LABELS, FINISHED_STAGE_COLUMNS, isKhoThanhPhamRole } from "@/types";
 import type { RoomType } from "@prisma/client";
 import { isPageAllowed } from "@/lib/permissions";
 import PlantTypeSummary from "./plant-type-summary";
@@ -24,8 +24,8 @@ export default async function ThanhPhamInventoryPage() {
   const role = session?.user?.role ?? null;
   if (!(await isPageAllowed(role, "/inventory/thanh-pham"))) redirect("/dashboard");
 
-  // QL Kho thành phẩm chỉ xem tồn của kho thành phẩm mình quản lý (kho làm việc) — chưa gán kho thì không thấy gì.
-  const ownWarehouseOnly = role === "QUAN_LY_KHO_THANH_PHAM";
+  // QL Kho thành phẩm / NV Kho thành phẩm chỉ xem tồn của kho thành phẩm mình làm việc — chưa gán kho thì không thấy gì.
+  const ownWarehouseOnly = isKhoThanhPhamRole(role);
   const ownWarehouseId = session?.user?.workplaceWarehouseId ?? null;
   if (ownWarehouseOnly && !ownWarehouseId) {
     return <p className="text-sm text-text-muted">Tài khoản chưa được gán kho thành phẩm làm việc — liên hệ Admin cấp cao.</p>;
