@@ -39,7 +39,7 @@ export default async function ThanhPhamInventoryPage() {
     },
     include: {
       lots: {
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", quantity: { gt: 0 } },
         select: { quantity: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } } },
       },
     },

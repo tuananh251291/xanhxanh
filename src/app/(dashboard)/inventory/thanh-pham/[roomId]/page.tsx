@@ -45,7 +45,7 @@ export default async function ThanhPhamRoomPage({
   if (isKhoThanhPhamRole(role) && room.warehouseId !== session?.user?.workplaceWarehouseId) notFound();
 
   const lots = await prisma.lot.findMany({
-    where: { roomId, status: "ACTIVE" },
+    where: { roomId, status: "ACTIVE", quantity: { gt: 0 } },
     select: { quantity: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } } },
   });
 

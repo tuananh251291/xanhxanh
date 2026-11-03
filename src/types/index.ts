@@ -1003,6 +1003,9 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
+    // Xem lại mọi phiếu bàn giao thành phẩm từ Phòng ra rễ các khu sản xuất + xuất Excel (xem
+    // src/lib/finished-handover-history.ts) — tab "Nhận bàn giao thành phẩm" ở /goods-receipts chỉ hiện phiếu chờ nhận.
+    { href: "/transfers/finished-history", label: "Lịch sử bàn giao thành phẩm", icon: "History" },
     { href: "/rnd-warehouse-handover", label: "Nhận bàn giao R&D", icon: "FlaskConical" },
     { href: "/processing", label: "Xử lý cây", icon: "Recycle" },
     { href: "/orders", label: "Xử lý đơn hàng", icon: "ShoppingCart" },
