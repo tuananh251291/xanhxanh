@@ -125,7 +125,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ — không thể xác nhận" }, { status: 400 });
   }
   // Đơn bán cho khách (không phải gửi Kho thị trường) tạo từ INVOICE_REQUIRED_FROM phải có invoice đã duyệt gắn đơn.
-  // Quản lý kho TP xác nhận hộ được miễn tạm thời tới QLK_INVOICE_EXEMPT_UNTIL.
+  // Miễn tạm thời: mọi vai trò tới ALL_INVOICE_EXEMPT_UNTIL, Quản lý kho TP xác nhận hộ tới QLK_INVOICE_EXEMPT_UNTIL.
   if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM && !isInvoiceExemptForConfirm(user.role)) {
     const approved = await prisma.invoice.count({ where: { orderId, status: "APPROVED" } });
     if (approved === 0) {
