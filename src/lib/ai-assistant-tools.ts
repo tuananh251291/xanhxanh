@@ -54,15 +54,34 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "tra_cuu_chi_dinh_cay",
     description:
-      "Tra cứu chỉ định cấy (PlantingInstruction) theo trạng thái, mã cây, NV cấy mô được giao, hoặc tuần thực hiện. Trả về mã chỉ định, mã cây, NV, trạng thái, số mẫu mẹ đầu vào, sản lượng dự kiến mẫu mẹ/thành phẩm.",
+      "Tra cứu danh sách chỉ định cấy (PlantingInstruction) ở MỌI khu sản xuất, lọc theo khu sản xuất, trạng thái, mã cây, NV cấy mô được giao, NV kỹ thuật tạo, mã chỉ định, chỉ định dự phòng hay tuần thực hiện. Trả về tổng số theo trạng thái + từng chỉ định: khu sản xuất, mã cây, NV, trạng thái, tuần, MM đầu vào, dự kiến MM/TP, thực tế đã cấy ra, tình trạng bàn giao/nhận mẫu mẹ, lý do kết thúc. Cần xem sâu 1 chỉ định thì dùng tra_cuu_chi_tiet_chi_dinh.",
     input_schema: {
       type: "object",
       properties: {
+        warehouseCode: { type: "string", description: "Mã khu sản xuất HOẶC tên khu sản xuất (tìm theo cả 2, không phân biệt hoa thường) — xác định theo kệ mẫu mẹ nguồn của chỉ định. Bỏ trống = mọi khu sản xuất." },
         status: { type: "string", enum: ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED", "ENDED"], description: "Trạng thái chỉ định. Bỏ trống = mọi trạng thái." },
         plantTypeCode: { type: "string", description: "Mã cây HOẶC tên cây (tìm theo cả 2). Bỏ trống = mọi mã cây." },
         staffCode: { type: "string", description: "Mã NV cấy mô được giao (assignedTo) HOẶC tên NV (tìm theo cả 2, không phân biệt hoa thường). Bỏ trống = mọi NV." },
-        days: { type: "number", description: "Chỉ lấy chỉ định có tuần thực hiện (weekStart) trong N ngày gần nhất. Mặc định 30 ngày." },
+        createdByCode: { type: "string", description: "Mã HOẶC tên NV kỹ thuật đã tạo chỉ định. Bỏ trống = mọi người tạo." },
+        instructionCode: { type: "string", description: "Mã chỉ định cụ thể hoặc 1 phần mã." },
+        isBackup: { type: "boolean", description: "true = chỉ chỉ định dự phòng, false = chỉ chỉ định thường. Bỏ trống = cả 2." },
+        handover: { type: "string", enum: ["CHUA_BAN_GIAO", "DA_BAN_GIAO_CHUA_NHAN", "DA_NHAN_MAU_ME"], description: "Lọc theo tình trạng bàn giao mẫu mẹ. Bỏ trống = mọi tình trạng." },
+        weekDate: { type: "string", description: "Ngày yyyy-MM-dd bất kỳ — chỉ lấy chỉ định có tuần thực hiện là tuần (Thứ 2 - Chủ nhật) chứa ngày này. Có tham số này thì bỏ qua 'days'." },
+        days: { type: "number", description: "Chỉ lấy chỉ định có tuần thực hiện (weekStart) trong N ngày gần nhất (kể cả tuần tương lai đã lên lịch). Mặc định 30 ngày, tối đa 730." },
+        limit: { type: "number", description: "Số chỉ định tối đa liệt kê chi tiết, mặc định 40, tối đa 100." },
       },
+    },
+  },
+  {
+    name: "tra_cuu_chi_tiet_chi_dinh",
+    description:
+      "Xem TOÀN BỘ thông tin 1 chỉ định cấy cụ thể (ở bất kỳ khu sản xuất nào): người tạo, NV cấy mô, khu sản xuất, trạng thái/lý do kết thúc, ghi chú, từng dòng nguồn (kệ, lô mẫu mẹ, quy cách, số lượng, tỉ lệ nhân, môi trường, dự kiến), kế hoạch T01/T05, bàn giao/nhận mẫu mẹ, bàn giao MM dư, hoàn lại, đơn môi trường, nhật ký cấy từng ngày, các lô đã cấy ra (tồn hiện tại), cảnh báo lệch chỉ định, chỉ định trước/sau trong chuỗi R&D.",
+    input_schema: {
+      type: "object",
+      properties: {
+        instructionCode: { type: "string", description: "Mã chỉ định (đầy đủ hoặc 1 phần mã — nếu khớp nhiều sẽ trả về danh sách để chọn) — bắt buộc." },
+      },
+      required: ["instructionCode"],
     },
   },
   {
@@ -100,6 +119,7 @@ export const AI_ASSISTANT_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
+        warehouseCode: { type: "string", description: "Mã khu sản xuất HOẶC tên khu sản xuất (tìm theo cả 2). Bỏ trống = mọi khu sản xuất." },
         plantTypeCode: { type: "string", description: "Mã cây HOẶC tên cây (tìm theo cả 2). Bỏ trống = mọi mã cây." },
         instructionCode: { type: "string", description: "Mã chỉ định cụ thể hoặc 1 phần mã. Bỏ trống = mọi chỉ định." },
         days: { type: "number", description: "Chỉ lấy chỉ định tạo trong N ngày gần nhất. Mặc định 60 ngày." },
@@ -359,37 +379,297 @@ async function runTraCuuCanhBao(input: { status?: "UNREAD" | "READ"; limit?: num
   return { content: lines.join("\n") };
 }
 
-async function runTraCuuChiDinhCay(input: { status?: string; plantTypeCode?: string; staffCode?: string; days?: number }): Promise<ToolResult> {
-  const days = Math.min(Math.max(input.days ?? 30, 1), 365);
-  const since = new Date(Date.now() - days * 86400000);
+const END_REASON_LABEL: Record<string, string> = {
+  TIME_UP: "hết thời gian tuần chỉ định",
+  MOTHER_USED_UP: "đã dùng hết mẫu mẹ",
+  EARLY_END_BY_STAFF: "NV cấy mô kết thúc sớm",
+};
 
-  const instructions = await prisma.plantingInstruction.findMany({
-    where: {
-      weekStart: { gte: since },
-      ...(input.status ? { status: input.status as never } : {}),
-      ...(input.plantTypeCode ? { plantType: nameOrCodeFilter(input.plantTypeCode) } : {}),
-      ...(input.staffCode ? { assignedTo: nameOrCodeFilter(input.staffCode) } : {}),
-    },
-    orderBy: { weekStart: "desc" },
-    take: 30,
+function fmtDate(d: Date | null | undefined): string {
+  return d ? format(d, "dd/MM/yyyy") : "—";
+}
+
+function fmtDateTime(d: Date | null | undefined): string {
+  return d ? format(d, "dd/MM/yyyy HH:mm") : "—";
+}
+
+function handoverLabel(ins: { handedOverAt: Date | null; motherReceivedAt: Date | null }): string {
+  if (!ins.handedOverAt) return "chưa bàn giao MM";
+  if (!ins.motherReceivedAt) return `đã bàn giao MM ${fmtDate(ins.handedOverAt)}, NV chưa xác nhận nhận`;
+  return `đã nhận MM ${fmtDate(ins.motherReceivedAt)}`;
+}
+
+// Khu sản xuất của 1 chỉ định suy theo kệ mẫu mẹ nguồn (PlantingInstructionItem.shelf.warehouse) — giống
+// cách trang /instructions/list lọc theo kho cho KHO_MO/KY_THUAT.
+function instructionWarehouseLabel(items: { shelf: { warehouse: { code: string; name: string } } }[]): string {
+  const codes = Array.from(new Set(items.map((i) => `${i.shelf.warehouse.code} (${i.shelf.warehouse.name})`)));
+  return codes.length > 0 ? codes.join(", ") : "—";
+}
+
+async function runTraCuuChiDinhCay(input: {
+  warehouseCode?: string;
+  status?: string;
+  plantTypeCode?: string;
+  staffCode?: string;
+  createdByCode?: string;
+  instructionCode?: string;
+  isBackup?: boolean;
+  handover?: "CHUA_BAN_GIAO" | "DA_BAN_GIAO_CHUA_NHAN" | "DA_NHAN_MAU_ME";
+  weekDate?: string;
+  days?: number;
+  limit?: number;
+}): Promise<ToolResult> {
+  const limit = Math.min(Math.max(input.limit ?? 40, 1), 100);
+  let weekFilter: { gte: Date; lte?: Date };
+  let periodLabel: string;
+  if (input.weekDate) {
+    const ref = new Date(`${input.weekDate}T00:00:00`);
+    if (Number.isNaN(ref.getTime())) return { content: `Ngày "${input.weekDate}" không hợp lệ — dùng dạng yyyy-MM-dd.`, is_error: true };
+    const ws = startOfWeek(ref, { weekStartsOn: 1 });
+    const we = endOfWeek(ref, { weekStartsOn: 1 });
+    weekFilter = { gte: ws, lte: we };
+    periodLabel = `tuần ${fmtDate(ws)} – ${fmtDate(we)}`;
+  } else {
+    const days = Math.min(Math.max(input.days ?? 30, 1), 730);
+    weekFilter = { gte: new Date(Date.now() - days * 86400000) };
+    periodLabel = `${days} ngày gần nhất`;
+  }
+
+  const where = {
+    // Lọc theo mã chỉ định cụ thể thì không giới hạn thời gian — tra được cả chỉ định cũ.
+    ...(input.instructionCode ? { code: { contains: input.instructionCode, mode: "insensitive" as const } } : { weekStart: weekFilter }),
+    ...(input.status ? { status: input.status as never } : {}),
+    ...(input.plantTypeCode ? { plantType: nameOrCodeFilter(input.plantTypeCode) } : {}),
+    ...(input.staffCode ? { assignedTo: nameOrCodeFilter(input.staffCode) } : {}),
+    ...(input.createdByCode ? { createdBy: nameOrCodeFilter(input.createdByCode) } : {}),
+    ...(input.isBackup !== undefined ? { isBackup: input.isBackup } : {}),
+    ...(input.warehouseCode ? { items: { some: { shelf: { warehouse: nameOrCodeFilter(input.warehouseCode) } } } } : {}),
+    ...(input.handover === "CHUA_BAN_GIAO"
+      ? { handedOverAt: null }
+      : input.handover === "DA_BAN_GIAO_CHUA_NHAN"
+        ? { handedOverAt: { not: null }, motherReceivedAt: null }
+        : input.handover === "DA_NHAN_MAU_ME"
+          ? { motherReceivedAt: { not: null } }
+          : {}),
+  };
+
+  const [statusCounts, instructions] = await Promise.all([
+    prisma.plantingInstruction.groupBy({ by: ["status"], where, _count: { _all: true } }),
+    prisma.plantingInstruction.findMany({
+      where,
+      orderBy: [{ weekStart: "desc" }, { code: "desc" }],
+      take: limit,
+      select: {
+        code: true,
+        status: true,
+        endReason: true,
+        isBackup: true,
+        weekStart: true,
+        inputMotherQuantity: true,
+        expectedMotherOutput: true,
+        expectedFinishedOutput: true,
+        handedOverAt: true,
+        motherReceivedAt: true,
+        plantType: { select: { code: true, name: true } },
+        assignedTo: { select: { code: true, name: true } },
+        createdBy: { select: { name: true } },
+        items: { select: { shelf: { select: { warehouse: { select: { code: true, name: true } } } } } },
+        dailyRecords: { select: { motherUsed: true, items: { select: { stage: true, quantityCreated: true } } } },
+      },
+    }),
+  ]);
+
+  if (instructions.length === 0) return { content: `Không tìm thấy chỉ định cấy nào khớp bộ lọc${input.instructionCode ? "" : ` trong ${periodLabel}`}.` };
+
+  const total = statusCounts.reduce((s, c) => s + c._count._all, 0);
+  const summary = statusCounts.map((s) => `${s.status}: ${s._count._all}`).join(", ");
+  const lines = instructions.map((ins) => {
+    let motherUsed = 0;
+    let actualMother = 0;
+    let actualFinished = 0;
+    for (const rec of ins.dailyRecords) {
+      motherUsed += rec.motherUsed;
+      for (const item of rec.items) {
+        if (item.stage === "MAU_ME") actualMother += item.quantityCreated;
+        else actualFinished += item.quantityCreated;
+      }
+    }
+    return [
+      `${ins.code}${ins.isBackup ? " [dự phòng]" : ""}`,
+      `khu ${instructionWarehouseLabel(ins.items)}`,
+      `${ins.plantType.code} (${ins.plantType.name})`,
+      `NV ${ins.assignedTo ? `${ins.assignedTo.name} (${ins.assignedTo.code})` : "chưa gán"}`,
+      `KT tạo: ${ins.createdBy.name}`,
+      `${ins.status}${ins.endReason ? ` (${END_REASON_LABEL[ins.endReason] ?? ins.endReason})` : ""}`,
+      `tuần ${ins.weekStart ? fmtDate(ins.weekStart) : "chưa đặt"}`,
+      handoverLabel(ins),
+      `MM đầu vào ${fmtQty(ins.inputMotherQuantity)}, đã dùng ${fmtQty(motherUsed)}`,
+      `MM dự kiến ${ins.expectedMotherOutput != null ? fmtQty(ins.expectedMotherOutput) : "—"}/thực tế ${fmtQty(actualMother)}`,
+      `TP dự kiến ${ins.expectedFinishedOutput != null ? fmtQty(ins.expectedFinishedOutput) : "—"}/thực tế ${fmtQty(actualFinished)}`,
+    ].join(" · ");
+  });
+  return {
+    content: `Tổng ${total} chỉ định khớp bộ lọc${input.instructionCode ? "" : ` (${periodLabel})`} — theo trạng thái: ${summary}${total > instructions.length ? `\nChỉ liệt kê ${instructions.length} chỉ định mới nhất (tăng 'limit' hoặc lọc hẹp hơn để xem thêm).` : ""}\n\n${lines.join("\n")}`,
+  };
+}
+
+async function runTraCuuChiTietChiDinh(input: { instructionCode: string }): Promise<ToolResult> {
+  if (!input.instructionCode?.trim()) return { content: "Cần nhập mã chỉ định.", is_error: true };
+  const q = input.instructionCode.trim();
+  const matches = await prisma.plantingInstruction.findMany({
+    where: { code: { contains: q, mode: "insensitive" } },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: { id: true, code: true, status: true, weekStart: true, plantType: { select: { code: true } } },
+  });
+  if (matches.length === 0) return { content: `Không tìm thấy chỉ định nào có mã khớp "${q}".` };
+  const exact = matches.find((m) => m.code.toLowerCase() === q.toLowerCase());
+  if (!exact && matches.length > 1) {
+    return {
+      content: `Có ${matches.length} chỉ định khớp "${q}", cần chọn 1 mã cụ thể:\n${matches.map((m) => `${m.code} · ${m.plantType.code} · ${m.status} · tuần ${fmtDate(m.weekStart)}`).join("\n")}`,
+    };
+  }
+  const id = (exact ?? matches[0]).id;
+
+  const ins = await prisma.plantingInstruction.findUnique({
+    where: { id },
     select: {
       code: true,
       status: true,
+      endReason: true,
+      isBackup: true,
       weekStart: true,
+      notes: true,
       inputMotherQuantity: true,
       expectedMotherOutput: true,
       expectedFinishedOutput: true,
+      plannedT01Quantity: true,
+      plannedT05Quantity: true,
+      handedOverAt: true,
+      motherReceivedAt: true,
+      surplusHandedOverAt: true,
+      returnedAt: true,
+      createdAt: true,
+      updatedAt: true,
       plantType: { select: { code: true, name: true } },
-      assignedTo: { select: { code: true, name: true } },
+      createdBy: { select: { code: true, name: true } },
+      assignedTo: { select: { code: true, name: true, workplaceWarehouse: { select: { code: true } } } },
+      handedOverBy: { select: { code: true, name: true } },
+      returnedBy: { select: { name: true } },
+      mediumOrder: { select: { code: true } },
+      previousInstruction: { select: { code: true } },
+      nextInstruction: { select: { code: true } },
+      items: {
+        select: {
+          stageCode: true,
+          quantity: true,
+          motherSampleRatio: true,
+          rootingRatio: true,
+          preRootingMotherRatio: true,
+          expectedMotherOutput: true,
+          expectedFinishedOutput: true,
+          expectedPreRootingMotherOutput: true,
+          shelf: { select: { code: true, name: true, warehouse: { select: { code: true, name: true } } } },
+          lot: { select: { code: true, quantity: true } },
+          motherMedium: { select: { code: true, name: true } },
+          finishedMedium: { select: { code: true, name: true } },
+          preRootingMotherMedium: { select: { code: true, name: true } },
+        },
+      },
+      dailyRecords: {
+        orderBy: { recordDate: "asc" },
+        select: {
+          recordDate: true,
+          motherUsed: true,
+          motherChecked: true,
+          motherContaminatedM05: true,
+          notes: true,
+          staff: { select: { code: true, name: true } },
+          items: { select: { stage: true, quantityCreated: true, lot: { select: { code: true, stageCode: true } } } },
+        },
+      },
+      lots: {
+        orderBy: { createdAt: "asc" },
+        select: { code: true, stage: true, stageCode: true, initialQuantity: true, quantity: true, status: true },
+      },
     },
   });
+  if (!ins) return { content: `Không tìm thấy chỉ định "${q}".` };
 
-  if (instructions.length === 0) return { content: `Không tìm thấy chỉ định cấy nào khớp bộ lọc trong ${days} ngày gần nhất.` };
-  const lines = instructions.map(
-    (ins) =>
-      `${ins.code} · ${ins.plantType.code} (${ins.plantType.name}) · NV ${ins.assignedTo ? `${ins.assignedTo.name} (${ins.assignedTo.code})` : "chưa gán"} · ${ins.status} · tuần ${ins.weekStart ? ins.weekStart.toISOString().slice(0, 10) : "chưa đặt"} · MM đầu vào ${fmtQty(ins.inputMotherQuantity)} · dự kiến MM ${ins.expectedMotherOutput != null ? fmtQty(ins.expectedMotherOutput) : "—"} · dự kiến TP ${ins.expectedFinishedOutput != null ? fmtQty(ins.expectedFinishedOutput) : "—"}`
+  const deviationAlerts = await prisma.alert.findMany({
+    where: { type: "OUTPUT_DEVIATION", relatedType: "PlantingInstruction", relatedId: id },
+    orderBy: { createdAt: "desc" },
+    select: { cause: true, message: true, createdAt: true },
+  });
+
+  const out: string[] = [];
+  out.push(`Chỉ định ${ins.code}${ins.isBackup ? " [dự phòng]" : ""} — ${ins.plantType.code} (${ins.plantType.name})`);
+  out.push(`Khu sản xuất: ${instructionWarehouseLabel(ins.items)}`);
+  out.push(`Trạng thái: ${ins.status}${ins.endReason ? ` (lý do kết thúc: ${END_REASON_LABEL[ins.endReason] ?? ins.endReason})` : ""} · tuần thực hiện ${ins.weekStart ? fmtDate(ins.weekStart) : "chưa đặt"}`);
+  out.push(`NV kỹ thuật tạo: ${ins.createdBy.name} (${ins.createdBy.code}) lúc ${fmtDateTime(ins.createdAt)} · cập nhật lần cuối ${fmtDateTime(ins.updatedAt)}`);
+  out.push(`NV cấy mô: ${ins.assignedTo ? `${ins.assignedTo.name} (${ins.assignedTo.code}${ins.assignedTo.workplaceWarehouse ? `, khu ${ins.assignedTo.workplaceWarehouse.code}` : ""})` : "chưa gán"}`);
+  out.push(
+    `Bàn giao MM: ${ins.handedOverAt ? `${fmtDateTime(ins.handedOverAt)} bởi ${ins.handedOverBy?.name ?? "—"}` : "chưa bàn giao"} · NV xác nhận nhận MM: ${fmtDateTime(ins.motherReceivedAt)}` +
+      `${ins.surplusHandedOverAt ? ` · đã bàn giao MM dư ${fmtDateTime(ins.surplusHandedOverAt)}` : ""}` +
+      `${ins.returnedAt ? ` · Kho mô hoàn lại cho KT ${fmtDateTime(ins.returnedAt)}${ins.returnedBy ? ` (${ins.returnedBy.name})` : ""}` : ""}`
   );
-  return { content: lines.join("\n") };
+  out.push(
+    `Tổng: MM đầu vào ${fmtQty(ins.inputMotherQuantity)} · dự kiến MM ${ins.expectedMotherOutput != null ? fmtQty(ins.expectedMotherOutput) : "—"} · dự kiến TP ${ins.expectedFinishedOutput != null ? fmtQty(ins.expectedFinishedOutput) : "—"}` +
+      `${ins.plannedT01Quantity != null || ins.plannedT05Quantity != null ? ` · kế hoạch T01 ${ins.plannedT01Quantity ?? "—"}, T05 ${ins.plannedT05Quantity ?? "—"}` : ""}`
+  );
+  if (ins.mediumOrder) out.push(`Đơn môi trường: ${ins.mediumOrder.code}`);
+  if (ins.previousInstruction || ins.nextInstruction) out.push(`Chuỗi R&D: kì trước ${ins.previousInstruction?.code ?? "—"}, kì sau ${ins.nextInstruction?.code ?? "—"}`);
+  if (ins.notes) out.push(`Ghi chú: ${ins.notes}`);
+
+  out.push("", "Dòng nguồn:");
+  for (const it of ins.items) {
+    const parts = [
+      `kệ ${it.shelf.code} (${it.shelf.warehouse.code})`,
+      `lô ${it.lot ? `${it.lot.code} (tồn hiện tại ${fmtQty(it.lot.quantity)})` : "—"}`,
+      `${it.stageCode ?? "—"} SL ${fmtQty(it.quantity)}`,
+      `nhân MM x${it.motherSampleRatio ?? "—"} → ${it.expectedMotherOutput != null ? fmtQty(it.expectedMotherOutput) : "—"} (môi trường ${it.motherMedium?.code ?? "—"})`,
+      `ra rễ x${it.rootingRatio ?? "—"} → ${it.expectedFinishedOutput != null ? fmtQty(it.expectedFinishedOutput) : "—"} (môi trường ${it.finishedMedium?.code ?? "—"})`,
+    ];
+    if (it.preRootingMotherRatio != null) {
+      parts.push(`MM tiền ra rễ x${it.preRootingMotherRatio} → ${it.expectedPreRootingMotherOutput != null ? fmtQty(it.expectedPreRootingMotherOutput) : "—"} (môi trường ${it.preRootingMotherMedium?.code ?? "—"})`);
+    }
+    out.push(`- ${parts.join(" · ")}`);
+  }
+
+  let sumUsed = 0;
+  let sumMother = 0;
+  let sumFinished = 0;
+  let sumContaminated = 0;
+  out.push("", `Nhật ký cấy (${ins.dailyRecords.length} ngày):`);
+  for (const rec of ins.dailyRecords) {
+    const mother = rec.items.filter((i) => i.stage === "MAU_ME").reduce((s, i) => s + i.quantityCreated, 0);
+    const finished = rec.items.filter((i) => i.stage === "THANH_PHAM").reduce((s, i) => s + i.quantityCreated, 0);
+    sumUsed += rec.motherUsed;
+    sumMother += mother;
+    sumFinished += finished;
+    sumContaminated += rec.motherContaminatedM05;
+    out.push(
+      `- ${fmtDate(rec.recordDate)} · ${rec.staff.name}: dùng ${fmtQty(rec.motherUsed)} MM (kiểm tra ${fmtQty(rec.motherChecked)}, MM nhiễm ${fmtQty(rec.motherContaminatedM05)}) → MM ${fmtQty(mother)}, TP ${fmtQty(finished)}${rec.notes ? ` · ghi chú: ${rec.notes}` : ""}`
+    );
+  }
+  if (ins.dailyRecords.length > 0) {
+    out.push(`TỔNG nhật ký: dùng ${fmtQty(sumUsed)}/${fmtQty(ins.inputMotherQuantity)} MM, MM nhiễm ${fmtQty(sumContaminated)}, cấy ra MM ${fmtQty(sumMother)}, TP ${fmtQty(sumFinished)}`);
+  }
+
+  if (ins.lots.length > 0) {
+    out.push("", `Lô đã cấy ra (${ins.lots.length}):`);
+    for (const lot of ins.lots.slice(0, 60)) {
+      out.push(`- ${lot.code} · ${lot.stage} ${lot.stageCode} · ban đầu ${fmtQty(lot.initialQuantity)}, tồn hiện tại ${fmtQty(lot.quantity)} · ${lot.status}`);
+    }
+    if (ins.lots.length > 60) out.push(`... và ${ins.lots.length - 60} lô khác`);
+  }
+
+  if (deviationAlerts.length > 0) {
+    out.push("", "Cảnh báo lệch chỉ định:");
+    for (const a of deviationAlerts) out.push(`- ${fmtDate(a.createdAt)} · ${a.cause ?? "chưa kết luận nguyên nhân"} · ${a.message}`);
+  }
+
+  return { content: out.join("\n") };
 }
 
 async function runTraCuuTyLeNhiem(input: { warehouseCode?: string; staffCode?: string; days?: number }): Promise<ToolResult> {
@@ -486,13 +766,14 @@ async function runTraCuuDuKienSanLuong(input: { loai: "MAU_ME" | "THANH_PHAM"; w
   return { content: `Dự kiến sản lượng ${input.loai === "MAU_ME" ? "mẫu mẹ" : "thành phẩm ra rễ"} (mỗi dòng là 1 lộ trình 3 tháng nộp gần nhất):\n${lines.join("\n")}` };
 }
 
-async function runTraCuuKeHoachVsThucTeChiDinh(input: { plantTypeCode?: string; instructionCode?: string; days?: number }): Promise<ToolResult> {
+async function runTraCuuKeHoachVsThucTeChiDinh(input: { warehouseCode?: string; plantTypeCode?: string; instructionCode?: string; days?: number }): Promise<ToolResult> {
   const days = Math.min(Math.max(input.days ?? 60, 1), 365);
   const since = new Date(Date.now() - days * 86400000);
 
   const instructions = await prisma.plantingInstruction.findMany({
     where: {
       createdAt: { gte: since },
+      ...(input.warehouseCode ? { items: { some: { shelf: { warehouse: nameOrCodeFilter(input.warehouseCode) } } } } : {}),
       ...(input.plantTypeCode ? { plantType: nameOrCodeFilter(input.plantTypeCode) } : {}),
       ...(input.instructionCode ? { code: { contains: input.instructionCode, mode: "insensitive" } } : {}),
     },
@@ -942,6 +1223,8 @@ export async function runAiAssistantTool(name: string, rawInput: unknown): Promi
         return await runTraCuuCanhBao(input as never);
       case "tra_cuu_chi_dinh_cay":
         return await runTraCuuChiDinhCay(input as never);
+      case "tra_cuu_chi_tiet_chi_dinh":
+        return await runTraCuuChiTietChiDinh(input as never);
       case "tra_cuu_ty_le_nhiem":
         return await runTraCuuTyLeNhiem(input as never);
       case "tra_cuu_du_kien_san_luong":
@@ -996,4 +1279,8 @@ Vai trò chính: KY_THUAT (tạo chỉ định cấy, theo dõi khu sản xuất
 nhiễm), CAY_MO (nhập dữ liệu cấy hàng ngày), KHO_THANH_PHAM (nhận/phân loại/xuất kho thành phẩm), SALE
 (tạo và theo dõi đơn hàng), HANH_CHINH_NHAN_SU (quản lý nhân sự, lương), DOI_TAC_VAN_HANH (đối tác vận
 hành kho thị trường). ADMIN/SUPER_ADMIN/ADMIN_KY_THUAT quản trị toàn hệ thống.
+
+Người dùng trợ lý (Admin cấp cao/Admin kỹ thuật) được xem chỉ định cấy ở TẤT CẢ khu sản xuất — không từ
+chối vì lý do phạm vi. Câu hỏi về danh sách/thống kê chỉ định → tra_cuu_chi_dinh_cay; về 1 chỉ định cụ
+thể (nguồn, tỉ lệ, môi trường, bàn giao, nhật ký cấy, lô cấy ra) → tra_cuu_chi_tiet_chi_dinh.
 `.trim();
