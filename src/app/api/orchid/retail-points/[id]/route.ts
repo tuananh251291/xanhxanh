@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOrchidStaff, badRequest, handleOrchidError, parseDateVN } from "@/lib/orchid/server";
 import { orchidPointSchema } from "@/lib/orchid/schemas";
-import { upsertOrchidLogin } from "@/lib/orchid/accounts";
+import { upsertExternalLogin } from "@/lib/orchid/accounts";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireOrchidStaff();
@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const point = await prisma.$transaction(async (tx) => {
       const current = await tx.orchidRetailPoint.findUniqueOrThrow({ where: { id }, select: { userId: true } });
       // Điểm bán đã đóng thì khoá luôn tài khoản đăng nhập.
-      const userId = await upsertOrchidLogin(tx, {
+      const userId = await upsertExternalLogin(tx, {
         userId: current.userId,
         role: "DIEM_BAN_LAN",
         name: data.name,

@@ -59,14 +59,18 @@ enum UserRole {
   KE_TOAN
   // Dự án hoa lan — 2 tài khoản quản trị riêng (KHÔNG dùng SUPER_ADMIN/TRO_LY): Admin hoa lan toàn quyền
   // module, Trợ lý hoa lan vận hành (không có Chi phí/Báo cáo/Cấu hình). Chỉ vào được khu /orchid — proxy.ts
-  // chặn mọi trang/API nội bộ khác (xem ORCHID_SCOPED_HOME, src/types/index.ts). Tạo ở Quản lý người dùng.
+  // chặn mọi trang/API nội bộ khác (xem SCOPED_ROLE_HOME, src/types/index.ts). Tạo ở Quản lý người dùng.
   ADMIN_HOA_LAN
   TRO_LY_HOA_LAN
   // Dự án hoa lan — 2 loại tài khoản BÊN NGOÀI (khác hẳn khách mua cây mô / Customer). Chỉ thấy đúng
   // khu /orchid-shop (khách) hoặc /orchid-point (điểm bán lẻ) — proxy.ts chặn mọi trang/API khác (xem
-  // ORCHID_SCOPED_HOME, src/types/index.ts). Tài khoản do Admin/Trợ lý hoa lan tạo ở Dự án hoa lan.
+  // SCOPED_ROLE_HOME, src/types/index.ts). Tài khoản do Admin/Trợ lý hoa lan tạo ở Dự án hoa lan.
   KHACH_HANG_LAN
   DIEM_BAN_LAN
+  // Nhà cung cấp cây mô — tài khoản BÊN NGOÀI, gắn 1-1 với Supplier (Supplier.userId), do Admin cấp cao tạo ở
+  // trang Nhà cung cấp. Chỉ thấy khu /supplier-portal — proxy.ts chặn mọi trang/API nội bộ khác (xem
+  // SCOPED_ROLE_HOME, src/types/index.ts).
+  NHA_CUNG_CAP
 }
 
 enum WarehouseType {
@@ -691,6 +695,7 @@ model User {
   finishedGoodsCheckLines               FinishedGoodsCheckLine[]          @relation("FinishedGoodsCheckLineCreatedBy")
   orchidCustomer                        OrchidCustomer?
   orchidRetailPoint                     OrchidRetailPoint?
+  supplier                              Supplier?
 
   transferQualityChecks TransferQualityCheck[] @relation("TransferQualityCheckBy")
 
@@ -1100,6 +1105,9 @@ model Supplier {
   allowsReturn     Boolean  @default(false)
   returnWindowDays Int?
   isActive         Boolean  @default(true)
+  // Tài khoản đăng nhập của NCC (role NHA_CUNG_CAP) — để trống = NCC chưa có tài khoản.
+  userId           String?  @unique
+  user             User?    @relation(fields: [userId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

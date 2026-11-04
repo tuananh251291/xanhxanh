@@ -27,6 +27,7 @@ const USER_CODE_FORMAT: Record<UserRole, { prefix: string; pad: number }> = {
   TRO_LY_HOA_LAN: { prefix: "TLHL", pad: 2 },
   KHACH_HANG_LAN: { prefix: "KHL", pad: 3 },
   DIEM_BAN_LAN: { prefix: "DBL", pad: 2 },
+  NHA_CUNG_CAP: { prefix: "TKNCC", pad: 2 },
 };
 
 // Chỉ dùng để GỢI Ý mã kế tiếp (xem /api/users/next-code) — Admin luôn nhập/sửa tay mã thật lúc tạo,

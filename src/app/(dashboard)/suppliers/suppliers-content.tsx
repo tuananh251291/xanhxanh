@@ -8,7 +8,11 @@ import DeleteSupplierButton from "./delete-supplier-button";
 // Tách khỏi page.tsx để dùng lại được y hệt ở cả route gốc (/suppliers) lẫn tab "Nhà cung cấp" trong
 // hub /master-data — xem plan gộp menu Admin, tránh trùng lặp logic.
 export default async function SuppliersContent() {
-  const suppliers = await prisma.supplier.findMany({ where: { isActive: true }, orderBy: { code: "asc" } });
+  const suppliers = await prisma.supplier.findMany({
+    where: { isActive: true },
+    orderBy: { code: "asc" },
+    include: { user: { select: { email: true, isActive: true } } },
+  });
 
   return (
     <div className="space-y-6">
@@ -31,12 +35,13 @@ export default async function SuppliersContent() {
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Mã NCC</th>
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tên nhà cung cấp</th>
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Trả hàng</th>
+                  <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Tài khoản đăng nhập</th>
                   <th className="text-left px-4 py-3 text-base text-primary-strong font-bold">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {suppliers.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-12 text-center text-text-muted">Chưa có nhà cung cấp nào</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-12 text-center text-text-muted">Chưa có nhà cung cấp nào</td></tr>
                 ) : suppliers.map((s) => (
                   <tr key={s.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60">
                     <td className="px-4 py-3 text-sm font-mono font-medium text-info-foreground">{s.code}</td>
@@ -48,9 +53,19 @@ export default async function SuppliersContent() {
                         <Badge variant="outline">Không được trả hàng</Badge>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-sm">
+                      {s.user ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-foreground">{s.user.email}</span>
+                          {!s.user.isActive && <Badge variant="overdue">Đã khoá</Badge>}
+                        </div>
+                      ) : (
+                        <span className="text-text-muted">Chưa có</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        <SupplierDialog item={{ id: s.id, code: s.code, name: s.name, isActive: s.isActive, allowsReturn: s.allowsReturn, returnWindowDays: s.returnWindowDays }} />
+                        <SupplierDialog item={{ id: s.id, code: s.code, name: s.name, isActive: s.isActive, allowsReturn: s.allowsReturn, returnWindowDays: s.returnWindowDays, login: s.user }} />
                         <DeleteSupplierButton id={s.id} code={s.code} name={s.name} />
                       </div>
                     </td>

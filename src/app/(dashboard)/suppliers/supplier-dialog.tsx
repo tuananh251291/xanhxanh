@@ -18,11 +18,19 @@ const RETURN_OPTIONS = [
   { value: "yes", label: "Được trả hàng" },
 ];
 
+const LOGIN_ACTIVE_OPTIONS = [
+  { value: "yes", label: "Cho phép đăng nhập" },
+  { value: "no", label: "Khoá đăng nhập" },
+];
+
 const schema = z
   .object({
     name: z.string().min(2),
     allowsReturn: z.enum(["yes", "no"]),
     returnWindowDays: z.string().optional(),
+    loginEmail: z.union([z.literal(""), z.string().trim().email("Email đăng nhập không hợp lệ")]).optional(),
+    loginPassword: z.union([z.literal(""), z.string().min(6, "Mật khẩu đăng nhập tối thiểu 6 ký tự")]).optional(),
+    loginActive: z.enum(["yes", "no"]),
   })
   .refine((d) => d.allowsReturn === "no" || (!!d.returnWindowDays && Number(d.returnWindowDays) > 0), {
     message: "Cần nhập số ngày được phép trả hàng (lớn hơn 0)",
@@ -30,7 +38,7 @@ const schema = z
   });
 
 type FormData = z.infer<typeof schema>;
-type Supplier = { id: string; code: string; name: string; isActive: boolean; allowsReturn: boolean; returnWindowDays: number | null };
+type Supplier = { id: string; code: string; name: string; isActive: boolean; allowsReturn: boolean; returnWindowDays: number | null; login: { email: string | null; isActive: boolean } | null };
 
 export default function SupplierDialog({ item }: { item?: Supplier }) {
   const [open, setOpen] = useState(false);
@@ -45,8 +53,11 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
           name: item.name,
           allowsReturn: item.allowsReturn ? "yes" : "no",
           returnWindowDays: item.returnWindowDays ? String(item.returnWindowDays) : "",
+          loginEmail: item.login?.email ?? "",
+          loginPassword: "",
+          loginActive: item.login && !item.login.isActive ? "no" : "yes",
         }
-      : { allowsReturn: "no" },
+      : { allowsReturn: "no", loginEmail: "", loginPassword: "", loginActive: "yes" },
   });
   const allowsReturn = watch("allowsReturn");
 
@@ -57,6 +68,9 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
         name: data.name,
         allowsReturn: data.allowsReturn === "yes",
         returnWindowDays: data.allowsReturn === "yes" ? Number(data.returnWindowDays) : null,
+        loginEmail: data.loginEmail,
+        loginPassword: data.loginPassword,
+        ...(item?.login ? { loginActive: data.loginActive === "yes" } : {}),
       };
       const res = await fetch(isEdit ? `/api/suppliers/${item!.id}` : "/api/suppliers", {
         method: isEdit ? "PATCH" : "POST",
@@ -117,6 +131,38 @@ export default function SupplierDialog({ item }: { item?: Supplier }) {
               {errors.returnWindowDays && <p className="text-xs text-destructive">{errors.returnWindowDays.message}</p>}
             </div>
           )}
+          <div className="space-y-3 border-t border-divider pt-3">
+            <p className="text-xs text-text-secondary">
+              Tài khoản đăng nhập của nhà cung cấp. {item?.login ? "Để trống mật khẩu nếu không đổi." : "Để trống nếu chưa cần tạo tài khoản."}
+            </p>
+            <div className="space-y-1">
+              <Label>Email đăng nhập</Label>
+              <Input type="email" autoComplete="off" {...register("loginEmail")} placeholder="VD: ncc@example.com" />
+              {errors.loginEmail && <p className="text-xs text-destructive">{errors.loginEmail.message}</p>}
+            </div>
+            <div className="space-y-1">
+              <Label>{item?.login ? "Mật khẩu mới" : "Mật khẩu"}</Label>
+              <Input type="password" autoComplete="new-password" {...register("loginPassword")} />
+              {errors.loginPassword && <p className="text-xs text-destructive">{errors.loginPassword.message}</p>}
+            </div>
+            {item?.login && (
+              <div className="space-y-1">
+                <Label>Trạng thái tài khoản</Label>
+                <Controller
+                  control={control}
+                  name="loginActive"
+                  render={({ field }) => (
+                    <Select items={LOGIN_ACTIVE_OPTIONS} value={field.value} onValueChange={(v) => field.onChange(v as string)}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {LOGIN_ACTIVE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            )}
+          </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>Hủy</Button>
             <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" disabled={loading}>

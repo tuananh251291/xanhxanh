@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOrchidStaff, badRequest, handleOrchidError, ORCHID_CODE, withCodeRetry } from "@/lib/orchid/server";
 import { orchidCustomerSchema } from "@/lib/orchid/schemas";
-import { upsertOrchidLogin } from "@/lib/orchid/accounts";
+import { upsertExternalLogin } from "@/lib/orchid/accounts";
 
 // Admin hoa lan/Trợ lý hoa lan tạo khách hàng lan — kèm tài khoản đăng nhập (role KHACH_HANG_LAN) nếu nhập email.
 export async function POST(req: NextRequest) {
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   return handleOrchidError(async () => {
     const customer = await withCodeRetry(() =>
       prisma.$transaction(async (tx) => {
-        const userId = await upsertOrchidLogin(tx, { userId: null, role: "KHACH_HANG_LAN", name: data.name, email: loginEmail, password: loginPassword });
+        const userId = await upsertExternalLogin(tx, { userId: null, role: "KHACH_HANG_LAN", name: data.name, email: loginEmail, password: loginPassword });
         return tx.orchidCustomer.create({
           data: {
             ...data,

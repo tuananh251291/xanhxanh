@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateSupplierCode } from "@/lib/codes";
+import { upsertExternalLogin } from "@/lib/orchid/accounts";
+import { badRequest, handleOrchidError } from "@/lib/orchid/server";
 import { z } from "zod";
 
 const schema = z
@@ -9,6 +11,8 @@ const schema = z
     name: z.string().min(2),
     allowsReturn: z.boolean(),
     returnWindowDays: z.number().int().positive().nullable(),
+    loginEmail: z.union([z.literal(""), z.string().trim().email("Email đăng nhập không hợp lệ")]).optional(),
+    loginPassword: z.union([z.literal(""), z.string().min(6, "Mật khẩu đăng nhập tối thiểu 6 ký tự")]).optional(),
   })
   .refine((d) => !d.allowsReturn || (d.returnWindowDays !== null && d.returnWindowDays > 0), {
     message: "Cần nhập số ngày được phép trả hàng (lớn hơn 0)",
@@ -33,10 +37,16 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   }
-  const { name, allowsReturn, returnWindowDays } = parsed.data;
+  const { name, allowsReturn, returnWindowDays, loginEmail, loginPassword } = parsed.data;
+  if (loginPassword && !loginEmail) return badRequest("Cần nhập email đăng nhập để tạo tài khoản cho nhà cung cấp");
   const code = await generateSupplierCode();
-  const item = await prisma.supplier.create({
-    data: { code, name, allowsReturn, returnWindowDays: allowsReturn ? returnWindowDays : null },
+  return handleOrchidError(async () => {
+    const item = await prisma.$transaction(async (tx) => {
+      const userId = await upsertExternalLogin(tx, { userId: null, role: "NHA_CUNG_CAP", name, email: loginEmail, password: loginPassword });
+      return tx.supplier.create({
+        data: { code, name, allowsReturn, returnWindowDays: allowsReturn ? returnWindowDays : null, userId },
+      });
+    });
+    return NextResponse.json(item, { status: 201 });
   });
-  return NextResponse.json(item, { status: 201 });
 }

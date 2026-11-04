@@ -25,6 +25,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   TRO_LY_HOA_LAN: "Trợ lý hoa lan",
   KHACH_HANG_LAN: "Khách hàng lan",
   DIEM_BAN_LAN: "Điểm bán lẻ lan",
+  NHA_CUNG_CAP: "Nhà cung cấp",
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -50,6 +51,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   TRO_LY_HOA_LAN: "bg-secondary text-secondary-foreground",
   KHACH_HANG_LAN: "bg-violet-light text-violet-foreground",
   DIEM_BAN_LAN: "bg-achievement text-achievement-foreground",
+  NHA_CUNG_CAP: "bg-secondary text-secondary-foreground",
 };
 
 // Luồng kiểm tra gắn theo NV cấy mô — hệ thống tự tính mỗi tháng (xem src/lib/inspection-lane.ts),
@@ -1121,7 +1123,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
   // Dự án hoa lan — mọi role hoa lan KHÔNG có "/dashboard" (proxy.ts chuyển thẳng /dashboard về trang chủ
-  // riêng, xem ORCHID_SCOPED_HOME) và không vào được bất kỳ trang nội bộ nào khác.
+  // riêng, xem SCOPED_ROLE_HOME) và không vào được bất kỳ trang nội bộ nào khác.
   ADMIN_HOA_LAN: [
     { href: "/orchid", label: "Dự án hoa lan", icon: "Flower2" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
@@ -1145,22 +1147,29 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/orchid-point/stock", label: "Báo số cây còn", icon: "Boxes" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
   ],
+  // Tài khoản NCC cây mô — chưa có nghiệp vụ, bổ sung mục vào đây khi có yêu cầu cụ thể.
+  NHA_CUNG_CAP: [
+    { href: "/supplier-portal", label: "Nhà cung cấp", icon: "Truck" },
+    { href: "/account", label: "Tài khoản", icon: "UserCircle" },
+  ],
 };
 
 // ============================================================
 // DỰ ÁN HOA LAN
 // ============================================================
 
-// Mọi role của Dự án hoa lan chỉ được vào đúng khu riêng (xem proxy guard ở src/lib/auth.config.ts) — mọi
-// trang/API nội bộ khác đều bị chặn kể cả khi API đó chỉ check "đã đăng nhập". apiPrefix = API được gọi.
-export const ORCHID_SCOPED_HOME: Partial<Record<UserRole, { home: string; apiPrefix: string }>> = {
+// Mọi role của Dự án hoa lan + tài khoản NCC chỉ được vào đúng khu riêng (xem proxy guard ở
+// src/lib/auth.config.ts) — mọi trang/API nội bộ khác đều bị chặn kể cả khi API đó chỉ check "đã đăng nhập".
+// apiPrefix = API được gọi.
+export const SCOPED_ROLE_HOME: Partial<Record<UserRole, { home: string; apiPrefix: string }>> = {
   ADMIN_HOA_LAN: { home: "/orchid", apiPrefix: "/api/orchid" },
   TRO_LY_HOA_LAN: { home: "/orchid", apiPrefix: "/api/orchid" },
   KHACH_HANG_LAN: { home: "/orchid-shop", apiPrefix: "/api/orchid/shop" },
   DIEM_BAN_LAN: { home: "/orchid-point", apiPrefix: "/api/orchid/point" },
+  NHA_CUNG_CAP: { home: "/supplier-portal", apiPrefix: "/api/supplier-portal" },
 };
-export function isOrchidScopedRole(role: UserRole | null | undefined): boolean {
-  return !!role && !!ORCHID_SCOPED_HOME[role];
+export function isScopedRole(role: UserRole | null | undefined): boolean {
+  return !!role && !!SCOPED_ROLE_HOME[role];
 }
 // Admin hoa lan: toàn quyền module. Trợ lý hoa lan: vận hành (khách, đơn, nhập/xuất, tồn, thanh toán, công
 // nợ, hoá đơn, điểm bán) — KHÔNG có Chi phí/Báo cáo/Cấu hình (xem canManageOrchidAdminOnly). Admin cấp cao/NV

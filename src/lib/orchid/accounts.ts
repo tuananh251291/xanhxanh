@@ -3,11 +3,12 @@ import type { Prisma, UserRole } from "@prisma/client";
 import { generateUserCode } from "@/lib/codes";
 import { OrchidError } from "@/lib/orchid/server";
 
-// Tạo/cập nhật tài khoản đăng nhập cho Khách hàng lan / Điểm bán lẻ lan. Tài khoản tạo bởi Admin hoa lan/
-// Trợ lý hoa lan nên duyệt sẵn (APPROVED), không qua hàng chờ duyệt tài khoản nhân viên.
-export async function upsertOrchidLogin(
+// Tạo/cập nhật tài khoản đăng nhập cho Khách hàng lan / Điểm bán lẻ lan / Nhà cung cấp. Tài khoản tạo bởi
+// người quản lý (Admin hoa lan/Trợ lý hoa lan, Admin cấp cao với NCC) nên duyệt sẵn (APPROVED), không qua hàng
+// chờ duyệt tài khoản nhân viên.
+export async function upsertExternalLogin(
   tx: Prisma.TransactionClient,
-  params: { userId: string | null; role: Extract<UserRole, "KHACH_HANG_LAN" | "DIEM_BAN_LAN">; name: string; email?: string | null; password?: string | null; isActive?: boolean }
+  params: { userId: string | null; role: Extract<UserRole, "KHACH_HANG_LAN" | "DIEM_BAN_LAN" | "NHA_CUNG_CAP">; name: string; email?: string | null; password?: string | null; isActive?: boolean }
 ): Promise<string | null> {
   const { userId, role, name } = params;
   const email = params.email?.trim().toLowerCase() || null;

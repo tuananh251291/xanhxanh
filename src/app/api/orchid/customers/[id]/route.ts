@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOrchidStaff, badRequest, handleOrchidError } from "@/lib/orchid/server";
 import { orchidCustomerSchema } from "@/lib/orchid/schemas";
-import { upsertOrchidLogin } from "@/lib/orchid/accounts";
+import { upsertExternalLogin } from "@/lib/orchid/accounts";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireOrchidStaff();
@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const customer = await prisma.$transaction(async (tx) => {
       const current = await tx.orchidCustomer.findUniqueOrThrow({ where: { id }, select: { userId: true } });
       // Khoá/mở tài khoản đăng nhập theo trạng thái khách.
-      const userId = await upsertOrchidLogin(tx, {
+      const userId = await upsertExternalLogin(tx, {
         userId: current.userId,
         role: "KHACH_HANG_LAN",
         name: data.name,
