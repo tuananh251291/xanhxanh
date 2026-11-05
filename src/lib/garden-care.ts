@@ -4,6 +4,7 @@ import { isGardenAdmin } from "@/types";
 import { canManageGarden } from "@/lib/garden-staff";
 import { generateGardenCareLotCode } from "@/lib/codes";
 import { addToLine, logMovement, InventoryError } from "@/lib/garden-inventory";
+import { createAlert } from "@/lib/inventory";
 
 type Viewer = { id: string; role: UserRole | null | undefined };
 
@@ -84,6 +85,25 @@ export async function syncCareLotStaff(tx: Prisma.TransactionClient, lotId: stri
   if (lot.staffId && qtyByStaff.has(lot.staffId)) return;
   const next = [...qtyByStaff.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   if (next !== lot.staffId) await tx.gardenCareLot.update({ where: { id: lotId }, data: { staffId: next } });
+}
+
+// Báo NV vừa được QLV giao chăm sóc cây (phiếu sắp xếp hoặc Tồn kho & điều phối) — chỉ NV có tài khoản đang hoạt
+// động và thấy được lô ở /garden-care. Gọi SAU khi transaction đã lưu; lỗi gửi thông báo không làm hỏng thao tác.
+export async function notifyCareLotAssigned(params: { staffId: string; lotId: string; quantity: number }) {
+  try {
+    const [staff, lot] = await Promise.all([
+      prisma.gardenStaff.findUnique({ where: { id: params.staffId }, select: { types: true, userId: true, user: { select: { isActive: true } } } }),
+      prisma.gardenCareLot.findUnique({ where: { id: params.lotId }, select: { code: true, stageCode: true, plantType: { select: { code: true, name: true } } } }),
+    ]);
+    if (!staff?.userId || !staff.user?.isActive || !staff.types.includes("CHAM_SOC_CAY_MO") || !lot) return;
+    await createAlert({
+      type: "GARDEN_CARE_CONFIRMED", title: `Bạn được giao chăm sóc lô ${lot.code}`,
+      message: `Quản lý vườn vừa giao bạn chăm sóc ${params.quantity.toLocaleString("vi-VN")} cây ${lot.plantType.code} (${lot.plantType.name}, ${lot.stageCode}) thuộc lô ${lot.code}.`,
+      userId: staff.userId, relatedId: params.lotId, relatedType: "GardenCareLot",
+    });
+  } catch (err) {
+    console.error("[garden-care] Không gửi được thông báo giao lô", params.lotId, err);
+  }
 }
 
 // Phạm vi lô xem được: NV chăm sóc cây mô = lô mình phụ trách; QLV = lô các vườn mình quản lý; Admin = tất cả.
