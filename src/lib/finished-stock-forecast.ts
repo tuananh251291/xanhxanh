@@ -8,7 +8,7 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { isAdminRole } from "@/types";
 import type { UserRole } from "@prisma/client";
 import {
-  DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY, computeForecastRows,
+  DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY, FORECAST_REGISTERED_UPLOAD_KEY, computeForecastRows,
   type ForecastInput, type ForecastRow,
 } from "@/lib/finished-stock-forecast-calc";
 
@@ -26,11 +26,35 @@ export async function getForecastRatePct(): Promise<number> {
   return Number.isNaN(value) || value < 0 || value > 100 ? DEFAULT_FORECAST_RATE_PCT : value;
 }
 
+// Số đăng ký sản xuất tải từ file, { "yyyy-MM": { plantTypeId: số cây } } — tháng có ở đây thay cho số trong bảng
+// RootingForecastEntry của tháng đó. Lưu riêng để không đổi chỉ tiêu cây ra rễ của NV cấy mô (đọc từ bảng đó).
+export type UploadedRegistered = Record<string, Record<string, number>>;
+
+export async function getUploadedRegistered(): Promise<UploadedRegistered> {
+  const raw = await getSystemConfig(FORECAST_REGISTERED_UPLOAD_KEY, "");
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as UploadedRegistered;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveUploadedRegistered(data: UploadedRegistered): Promise<void> {
+  const value = JSON.stringify(data);
+  await prisma.systemConfig.upsert({
+    where: { key: FORECAST_REGISTERED_UPLOAD_KEY },
+    create: { key: FORECAST_REGISTERED_UPLOAD_KEY, value, description: "Số đăng ký sản xuất tải từ file cho Tồn kho dự kiến (JSON)" },
+    update: { value },
+  });
+}
+
 export type FinishedForecastResult = {
   ratePct: number;
   roomFound: boolean;
   rows: (ForecastRow & { code: string; name: string })[];
   lateSupplierPlans: { code: string; supplierName: string; expectedKey: string; quantity: number }[];
+  uploadedMonths: { month: string; quantity: number }[];
 };
 
 export async function computeFinishedForecast(warehouseId: string, dateKey: string, now: Date = new Date()): Promise<FinishedForecastResult> {
@@ -38,11 +62,16 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
   const todayKey = toVnDateKey(now);
   const ratePct = await getForecastRatePct();
 
+  const uploaded = await getUploadedRegistered();
+  const uploadedMonths = Object.entries(uploaded)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, rows]) => ({ month, quantity: Object.values(rows).reduce((s, q) => s + q, 0) }));
+
   const room = await prisma.room.findFirst({
     where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
     select: { id: true },
   });
-  if (!room) return { ratePct, roomFound: false, rows: [], lateSupplierPlans: [] };
+  if (!room) return { ratePct, roomFound: false, rows: [], lateSupplierPlans: [], uploadedMonths };
 
   const [stockLots, shelfLots, entries, plans, orderItems, rootingSlots, epochResolver] = await Promise.all([
     prisma.lot.findMany({
@@ -122,7 +151,10 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
       monthKey: addMonths(e.taskMonth, i + 1).toISOString().slice(0, 7),
       quantity,
     }))
-  );
+  ).filter((r) => !uploaded[r.monthKey]);
+  for (const [monthKey, rows] of Object.entries(uploaded)) {
+    for (const [plantTypeId, quantity] of Object.entries(rows)) registered.push({ plantTypeId, monthKey, quantity });
+  }
 
   const lateSupplierPlans: FinishedForecastResult["lateSupplierPlans"] = [];
   const supplierPlans: ForecastInput["supplierPlans"] = [];
@@ -161,5 +193,6 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
       .map((r) => ({ ...r, code: plantById.get(r.plantTypeId)?.code ?? "", name: plantById.get(r.plantTypeId)?.name ?? "" }))
       .sort((a, b) => a.code.localeCompare(b.code)),
     lateSupplierPlans,
+    uploadedMonths,
   };
 }

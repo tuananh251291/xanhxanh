@@ -10,6 +10,7 @@ import { FINISHED_SPEC_BAG_SIZE } from "@/types";
 
 export const FORECAST_RATE_KEY = "finished_forecast_rate_pct";
 export const DEFAULT_FORECAST_RATE_PCT = 80;
+export const FORECAST_REGISTERED_UPLOAD_KEY = "finished_forecast_registered_upload";
 // Chu kỳ Nhóm tuần ra rễ mặc định khi chưa cấu hình Nhóm nào.
 const DEFAULT_ROOTING_SLOTS = 4;
 

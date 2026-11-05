@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { isPageAllowed } from "@/lib/permissions";
 import { canViewFinishedForecast, computeFinishedForecast, toVnDateKey } from "@/lib/finished-stock-forecast";
 import ForecastBoard from "./forecast-board";
+import RegisteredUpload from "./registered-upload";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -69,6 +70,8 @@ export default async function FinishedForecastPage({ searchParams }: { searchPar
           </form>
         </CardContent>
       </Card>
+
+      <RegisteredUpload uploadedMonths={result.uploadedMonths} />
 
       {!result.roomFound ? (
         <p className="text-sm text-text-muted">Kho này chưa có Phòng đạt tiêu chuẩn.</p>
