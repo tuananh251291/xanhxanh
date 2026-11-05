@@ -598,6 +598,10 @@ export const ALERT_TYPE_LABELS = {
   GARDEN_PACK_REQUEST_DONE: "Vườn đã xuất đủ phiếu giao vườn",
 } as const;
 
+// Thông báo "Kho thị trường chưa có Quản lý bán lẻ" — dùng chung AlertType CONTAMINATION_PROPOSAL (không đổi
+// enum), nhận diện qua relatedType để dẫn tới trang Người dùng thay vì trang đề xuất. Xem market-inspection.ts.
+export const RETAIL_MANAGER_MISSING_RELATED_TYPE = "RetailManagerMissing";
+
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
 // vào vừa đánh dấu đã xem vừa điều hướng thẳng tới đó, thay vì chỉ có nút "Đã xem" chung chung (xem
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
@@ -1057,7 +1061,6 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   DIEU_PHOI: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/all", label: "Tồn kho tổng", icon: "Warehouse" },
-    { href: "/purchase-orders", label: "Đặt hàng NCC", icon: "ShoppingBag" },
     // Nghiệp vụ 7 — nhận đơn Sale, xác nhận số lượng giao từng Vườn sản xuất đóng gói, xem /garden-pack-requests.
     { href: "/garden-pack-requests", label: "Phiếu giao vườn đóng gói", icon: "PackageOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },

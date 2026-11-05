@@ -1589,8 +1589,8 @@ function KhoDashboard({
   );
 }
 
-function MyTaskStatusBadge({ task }: { task: MyTask }) {
-  if (task.proposalState === "SUBMITTED") return <Badge variant="info" className="shrink-0">Chờ Admin duyệt</Badge>;
+function MyTaskStatusBadge({ task, submittedLabel = "Chờ Admin duyệt" }: { task: MyTask; submittedLabel?: string }) {
+  if (task.proposalState === "SUBMITTED") return <Badge variant="info" className="shrink-0">{submittedLabel}</Badge>;
   if (task.proposalState === "REJECTED") return <Badge variant="overdue" className="shrink-0">Bị từ chối</Badge>;
   return <Badge className="bg-warning-light text-warning-foreground shrink-0">Chưa hoàn thành</Badge>;
 }
@@ -1647,7 +1647,7 @@ function DoiTacVanHanhDashboard({ myTasks, userName }: { myTasks: MyTask[]; user
                     <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
                     <p className="text-xs text-text-secondary truncate">{t.description}</p>
                   </div>
-                  <MyTaskStatusBadge task={t} />
+                  <MyTaskStatusBadge task={t} submittedLabel="Chờ QL thị trường duyệt" />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {t.dailyTaskId && <DeXuatTaskAction task={t} />}

@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { createAlert } from "@/lib/inventory";
+import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
+import { ensureDeXuatTaskCompletion } from "@/lib/daily-task-weekly";
 import { generateDailyTaskCode } from "@/lib/codes";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek, addDays, endOfWeek, format, getWeek } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { Prisma, RoomType } from "@prisma/client";
-import { POT_SPEC_LABELS } from "@/types";
+import { POT_SPEC_LABELS, RETAIL_MANAGER_MISSING_RELATED_TYPE } from "@/types";
 import { upsertLot } from "@/lib/goods-receipt";
 
 // 3 phòng cố định của Kho thị trường (WarehouseType.THI_TRUONG, xem User.workplaceWarehouseId của
@@ -93,6 +94,109 @@ export async function ensureWeeklyMarketInspectionTask(warehouseId: string | nul
           relatedType: "DailyTask",
         });
       }
+    }
+  }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Báo QL thị trường khi Đối tác để quá hạn kiểm tra từ 1 ngày: hạn là Thứ 6, nên từ Thứ 7 (giờ VN) trở đi việc
+// còn chưa làm, hoặc có phiếu bị từ chối mà chưa gửi lại, sẽ được báo. Phiếu đang chờ duyệt không tính vì đó là
+// phần việc của QL. Gộp 1 thông báo/kho/tuần. Chỉ xét tuần này và tuần trước để lần chạy đầu không báo dồn
+// toàn bộ việc tồn của các tuần cũ.
+async function alertOverdueInspection(warehouseId: string, warehouseName: string, partnerName: string) {
+  const now = new Date();
+  const thisWeek = toStoredWeekStart(startOfWeek(now, { weekStartsOn: 1 }));
+  const lastWeek = new Date(thisWeek.getTime() - 7 * DAY_MS);
+  const vnToday = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+
+  const tasks = await prisma.dailyTask.findMany({
+    where: { type: "DE_XUAT_TRONG_HUY", warehouseId, status: "PENDING", weekStart: { in: [lastWeek, thisWeek] } },
+    select: {
+      weekStart: true,
+      room: { select: { name: true } },
+      proposals: { where: { status: { not: "DRAFT" } }, select: { status: true } },
+    },
+  });
+
+  const roomsByWeek = new Map<string, string[]>();
+  for (const t of tasks) {
+    if (!t.weekStart) continue;
+    // weekStart lưu dạng 00:00 UTC của Thứ 2 nên +5 ngày ra đúng chuỗi ngày Thứ 7.
+    const saturday = new Date(t.weekStart.getTime() + 5 * DAY_MS).toISOString().slice(0, 10);
+    if (vnToday < saturday) continue;
+    const waitingForPartner = t.proposals.length === 0 || t.proposals.some((p) => p.status === "REJECTED");
+    if (!waitingForPartner) continue;
+    const key = t.weekStart.toISOString().slice(0, 10);
+    roomsByWeek.set(key, [...(roomsByWeek.get(key) ?? []), t.room?.name ?? "Không rõ phòng"]);
+  }
+
+  for (const [week, rooms] of roomsByWeek) {
+    const relatedId = `market-inspection-overdue:${warehouseId}:${week}`;
+    const sent = await prisma.alert.findFirst({ where: { type: "DE_XUAT_TRONG_HUY_WEEKLY_DUE", relatedId }, select: { id: true } });
+    if (sent) continue;
+    const weekNumber = getWeek(new Date(`${week}T00:00:00`), { weekStartsOn: 1 });
+    await createAlertForMarketSaleStaff({
+      warehouseId,
+      type: "DE_XUAT_TRONG_HUY_WEEKLY_DUE",
+      title: "Đối tác vận hành quá hạn kiểm tra định kì",
+      message: `${partnerName} (${warehouseName}) chưa hoàn tất kiểm tra tuần ${weekNumber}: ${rooms.join(", ")}. Hạn là Thứ Sáu — vui lòng nhắc Đối tác cập nhật.`,
+      relatedId,
+      relatedType: "DailyTask",
+    });
+  }
+}
+
+// Kho có Đối tác nhưng chưa có Quản lý bán lẻ thì đề xuất không có ai duyệt — báo Admin/Admin cấp cao. Lặp lại
+// tối đa 1 lần/ngày tới khi gán xong; gán xong thì tự tắt các thông báo còn chưa đọc.
+async function alertMissingRetailManager(warehouseId: string, warehouseName: string) {
+  const relatedId = `market-no-retail-manager:${warehouseId}`;
+  const pending = await prisma.contaminationProposal.count({ where: { warehouseId, status: "PENDING" } });
+  const since = new Date(Date.now() - DAY_MS);
+  for (const targetRole of ["ADMIN", "SUPER_ADMIN"] as const) {
+    const recent = await prisma.alert.findFirst({
+      where: { relatedId, targetRole, OR: [{ status: "UNREAD" }, { createdAt: { gte: since } }] },
+      select: { id: true },
+    });
+    if (recent) continue;
+    await createAlert({
+      type: "CONTAMINATION_PROPOSAL",
+      title: "Kho thị trường chưa có Quản lý bán lẻ",
+      message: `${warehouseName} chưa được gán Quản lý bán lẻ nên đề xuất Trồng/Hủy của Đối tác không có người duyệt${pending > 0 ? ` (đang treo ${pending} dòng)` : ""}. Vui lòng gán ở trang Người dùng.`,
+      targetRole,
+      relatedId,
+      relatedType: RETAIL_MANAGER_MISSING_RELATED_TYPE,
+    });
+  }
+}
+
+// Chạy định kỳ (xem instrumentation-node.ts), không phụ thuộc Đối tác có đăng nhập hay không. Lỗi ở 1 kho không
+// chặn các kho còn lại.
+export async function syncMarketInspectionAlerts() {
+  const warehouses = await prisma.warehouse.findMany({ where: { type: "THI_TRUONG", isActive: true }, select: { id: true, name: true } });
+  for (const w of warehouses) {
+    try {
+      const managerCount = await prisma.retailWarehouseAccess.count({
+        where: { warehouseId: w.id, user: { isActive: true, role: "SALE", isRetailManager: true } },
+      });
+      if (managerCount > 0) {
+        await prisma.alert.updateMany({
+          where: { relatedId: `market-no-retail-manager:${w.id}`, status: "UNREAD" },
+          data: { status: "READ" },
+        });
+      }
+      const partner = await prisma.user.findFirst({
+        where: { workplaceWarehouseId: w.id, role: "DOI_TAC_VAN_HANH", isActive: true },
+        select: { name: true },
+      });
+      if (!partner) continue;
+      if (managerCount === 0) await alertMissingRetailManager(w.id, w.name);
+
+      await ensureWeeklyMarketInspectionTask(w.id);
+      await ensureDeXuatTaskCompletion(w.id);
+      if (managerCount > 0) await alertOverdueInspection(w.id, w.name, partner.name);
+    } catch (err) {
+      console.error(`[cron] Lỗi thông báo kiểm tra định kì kho ${w.name}:`, err);
     }
   }
 }

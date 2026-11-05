@@ -60,15 +60,15 @@ export async function deleteContaminationProposalPhoto(publicUrl: string): Promi
 const PHOTO_RETENTION_DAYS = 30;
 
 // Xoá HẲN ảnh bằng chứng (không phải bản ghi đề xuất) của mọi ContaminationProposal có createdAt quá
-// PHOTO_RETENTION_DAYS ngày — gọi từ lịch node-cron hàng ngày (xem src/instrumentation-node.ts). Ảnh chỉ
-// gắn lúc tạo, không đổi qua "Sửa & gửi lại" nên createdAt luôn là mốc chính xác. Best-effort: 1 ảnh lỗi
-// xoá storage không chặn các ảnh còn lại.
+// PHOTO_RETENTION_DAYS ngày — gọi từ lịch node-cron hàng ngày (xem src/instrumentation-node.ts). Bỏ qua
+// phiếu đang PENDING: ảnh có thể vừa được chụp lại qua "Sửa & gửi lại" của 1 phiếu tạo đã lâu, QL thị trường
+// vẫn cần xem để duyệt. Best-effort: 1 ảnh lỗi xoá storage không chặn các ảnh còn lại.
 export async function cleanupExpiredContaminationProposalPhotos(): Promise<{ proposalsCleaned: number }> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - PHOTO_RETENTION_DAYS);
 
   const proposals = await prisma.contaminationProposal.findMany({
-    where: { createdAt: { lte: cutoff }, photoUrls: { isEmpty: false } },
+    where: { createdAt: { lte: cutoff }, photoUrls: { isEmpty: false }, status: { not: "PENDING" } },
     select: { id: true, photoUrls: true },
   });
 

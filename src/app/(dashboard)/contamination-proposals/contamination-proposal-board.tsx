@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { compressImageToDataUrl } from "@/lib/image-compress";
+import { CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS } from "@/lib/contamination-proposal-constants";
+import MultiPhotoSlotGroup from "@/components/shared/multi-photo-slot-group";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -139,18 +142,61 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
   const isPlantRoom = proposal.room?.type === "PHONG_CAY_TRONG";
   const needsPotSpec = type === "TRONG" && (proposal.room?.type === "PHONG_SAN_PHAM_DAT" || proposal.room?.type === "PHONG_SAN_PHAM_KHONG_DAT" || isPlantRoom);
   const potOptions = isPlantRoom ? POT_OPTIONS.filter((o) => o.value !== proposal.stageCode) : POT_OPTIONS;
+  // Kho thị trường: Đối tác được chụp lại ảnh bằng chứng (VD bị từ chối vì ảnh mờ). Ảnh cũ chỉ bị xoá khỏi kho
+  // lưu sau khi gửi lại thành công (server làm), ảnh mới chụp mà huỷ hộp thoại thì xoá ngay tại đây.
+  const isMarket = !!proposal.room?.type && MARKET_ROOM_TYPE_SET.has(proposal.room.type);
+  const [photos, setPhotos] = useState<string[]>(proposal.photoUrls);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const newPhotosRef = useRef<Set<string>>(new Set());
+
+  const deleteUploaded = (url: string) => {
+    newPhotosRef.current.delete(url);
+    void fetch("/api/contamination-proposals/photos", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }).catch(() => {});
+  };
+
+  const addPhoto = async (file: File) => {
+    setUploadingPhoto(true);
+    try {
+      const dataUrl = await compressImageToDataUrl(file, { ...CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS, stampTimestamp: true });
+      const res = await fetch("/api/contamination-proposals/photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Tải ảnh lên thất bại"); return; }
+      newPhotosRef.current.add(json.url);
+      setPhotos((prev) => [...prev, json.url]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không nén được ảnh — thử lại");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const removePhoto = (url: string) => {
+    setPhotos((prev) => prev.filter((u) => u !== url));
+    if (newPhotosRef.current.has(url)) deleteUploaded(url);
+  };
 
   const resetForm = () => {
     setType(proposal.type);
     setQuantity(String(proposal.quantity));
     setNotes(proposal.notes ?? "");
     setPotStageCode(proposal.plantStageCode ?? "");
+    [...newPhotosRef.current].forEach(deleteUploaded);
+    setPhotos(proposal.photoUrls);
   };
 
   const submit = async () => {
     const value = Number(quantity);
     if (!Number.isFinite(value) || value <= 0) { toast.error("Số lượng không hợp lệ"); return; }
     if (needsPotSpec && !potStageCode) { toast.error("Chọn quy cách chậu cho phần Trồng"); return; }
+    if (isMarket && photos.length === 0) { toast.error("Cần đính kèm ít nhất 1 ảnh bằng chứng"); return; }
     if (needsPotSpec && isPlantRoom && potStageCode === proposal.stageCode) {
       toast.error("Trồng lại trong Phòng cây trồng phải chọn quy cách chậu KHÁC quy cách hiện tại"); return;
     }
@@ -159,9 +205,10 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
       const res = await fetch(`/api/contamination-proposals/${proposal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resubmit: true, type, quantity: value, notes: notes.trim() || undefined, plantStageCode: needsPotSpec ? potStageCode : undefined }),
+        body: JSON.stringify({ resubmit: true, type, quantity: value, notes: notes.trim() || undefined, plantStageCode: needsPotSpec ? potStageCode : undefined, photoUrls: isMarket ? photos : undefined }),
       });
       if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
+      newPhotosRef.current.clear();
       toast.success(`Đã sửa & gửi lại phiếu ${proposal.code}`);
       setOpen(false);
       onSaved();
@@ -186,7 +233,7 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
         )}
         <p className="text-xs text-text-muted">
           {proposal.plantType.code} — {proposal.plantType.name} ({proposal.stageCode}){proposal.room ? ` · ${proposal.room.name}` : ""} — giữ nguyên mã
-          cây/quy cách/phòng, chỉ sửa được số lượng/loại/ghi chú.
+          cây/quy cách/phòng, chỉ sửa được số lượng/loại/ghi chú{isMarket ? "/ảnh" : ""}.
         </p>
         <div className="space-y-3">
           <div className="space-y-1">
@@ -218,6 +265,12 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
             <Label className="text-xs">Số lượng</Label>
             <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </div>
+          {isMarket && (
+            <div className="space-y-1">
+              <Label className="text-xs">Ảnh bằng chứng (xoá ảnh cũ rồi chụp lại nếu cần, ít nhất 1 ảnh)</Label>
+              <MultiPhotoSlotGroup urls={photos} editable uploading={uploadingPhoto} onAdd={addPhoto} onRemove={removePhoto} />
+            </div>
+          )}
           <div className="space-y-1">
             <Label className="text-xs">Ghi chú</Label>
             <textarea
@@ -230,7 +283,7 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={saving} onClick={() => setOpen(false)}>Huỷ</Button>
-          <Button className="bg-primary hover:bg-primary-hover" disabled={saving} onClick={submit}>
+          <Button className="bg-primary hover:bg-primary-hover" disabled={saving || uploadingPhoto} onClick={submit}>
             {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
             Gửi lại
           </Button>

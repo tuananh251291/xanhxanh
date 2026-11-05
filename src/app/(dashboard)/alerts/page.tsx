@@ -9,7 +9,7 @@ import { Bell, Loader2, Check, Eye, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
-import { ALERT_TYPE_LABELS, ALERT_DETAIL_LINKS } from "@/types";
+import { ALERT_TYPE_LABELS, ALERT_DETAIL_LINKS, RETAIL_MANAGER_MISSING_RELATED_TYPE } from "@/types";
 
 type Alert = {
   id: string;
@@ -87,7 +87,7 @@ export default function AlertsPage() {
       ) : (
         <div className="space-y-2">
           {alerts.map((a) => {
-            const baseLink = ALERT_DETAIL_LINKS[a.type];
+            const baseLink = a.relatedType === RETAIL_MANAGER_MISSING_RELATED_TYPE ? "/users" : ALERT_DETAIL_LINKS[a.type];
             // Phản hồi đơn hàng lỗi — mở thẳng chi tiết đúng phản hồi ở /defect-orders.
             const detailLink = baseLink && a.relatedType === "OrderFeedback" && a.relatedId ? `${baseLink}?feedback=${a.relatedId}` : baseLink;
             const actionLink = a.actionLink ?? null;
