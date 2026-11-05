@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { compressImageToDataUrl } from "@/lib/image-compress";
 import { CONTAMINATION_PROPOSAL_COMPRESS_OPTIONS } from "@/lib/contamination-proposal-constants";
 import MultiPhotoSlotGroup from "@/components/shared/multi-photo-slot-group";
-import { POT_SPEC_LABELS } from "@/types";
+import { POT_SPEC_LABELS, FREE_GIFT_PLANT_CODE } from "@/types";
 
 const POT_OPTIONS = Object.entries(POT_SPEC_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -329,6 +329,7 @@ export default function DeXuatExecuteForm({
                             <Input
                               type="number" min={0} max={l.quantity} className="h-9 text-right"
                               value={getValue(l.id).trong}
+                              disabled={l.plantType.code === FREE_GIFT_PLANT_CODE}
                               onChange={(e) => setValue(l.id, { trong: e.target.value })}
                             />
                             {needsPotSpec && (parseInt(getValue(l.id).trong, 10) || 0) > 0 && (

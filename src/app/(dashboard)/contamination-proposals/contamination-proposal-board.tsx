@@ -17,7 +17,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import { POT_SPEC_LABELS, finishedStageLabel } from "@/types";
+import { POT_SPEC_LABELS, finishedStageLabel, FREE_GIFT_PLANT_CODE } from "@/types";
 
 export type Proposal = {
   id: string;
@@ -41,6 +41,8 @@ export type Proposal = {
   photoUrls: string[];
   // Quy cách chậu của đề xuất Trồng (Kho thị trường, từ Phòng sản phẩm đạt/không đạt) — null nếu không có.
   plantStageCode: string | null;
+  // Phần QL bán lẻ chuyển sang Free Gift lúc duyệt — quantity + freeGiftQuantity = số Đối tác đề xuất.
+  freeGiftQuantity: number;
 };
 export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
 
@@ -293,13 +295,56 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
   );
 }
 
+// Dòng đề xuất Kho thị trường QL bán lẻ được chia sang Free Gift (trừ chính cây Free Gift).
+export function canSplitFreeGift(p: Proposal): boolean {
+  return !!p.room?.type && MARKET_ROOM_TYPE_SET.has(p.room.type) && p.plantType.code !== FREE_GIFT_PLANT_CODE;
+}
+
+// Giữ tổng đúng số Đối tác đề xuất: nhập 1 ô thì ô kia tự tính phần còn lại.
+export function clampSplit(value: string, total: number): number {
+  const n = parseInt(value, 10);
+  return Math.min(Math.max(Number.isNaN(n) ? 0 : n, 0), total);
+}
+
+function FreeGiftDialog({ proposal, loading, onConfirm }: { proposal: Proposal; loading: boolean; onConfirm: (freeGift: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const total = proposal.quantity;
+  const [freeGift, setFreeGift] = useState(total);
+  const typeLabel = proposal.type === "TRONG" ? "Trồng" : "Hủy";
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setFreeGift(total); }}>
+      <DialogTrigger render={<Button size="sm" variant="outline" className="h-7" disabled={loading} />}>Duyệt Free Gift</DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Duyệt Free Gift — {proposal.plantType.code} {proposal.stageCode}</DialogTitle></DialogHeader>
+        <p className="text-sm text-text-secondary">Đối tác đề xuất {typeLabel} {total.toLocaleString("vi-VN")} cây. Tổng 2 ô dưới luôn bằng số này.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label>{typeLabel}</Label>
+            <Input type="number" min={0} max={total} value={total - freeGift} onChange={(e) => setFreeGift(total - clampSplit(e.target.value, total))} />
+          </div>
+          <div className="space-y-1">
+            <Label>Free Gift</Label>
+            <Input type="number" min={0} max={total} value={freeGift} onChange={(e) => setFreeGift(clampSplit(e.target.value, total))} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Đóng</Button>
+          <Button className="bg-primary hover:bg-primary-hover" disabled={loading} onClick={() => { setOpen(false); onConfirm(freeGift); }}>
+            {loading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />} Duyệt
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, processingId, onReview, onSaved }: {
   items: Proposal[];
   canApprove: boolean;
   canSubmit: boolean;
   canResubmit: (p: Proposal) => boolean;
   processingId: string | null;
-  onReview: (id: string, action: "approve" | "reject", reason?: string) => void;
+  onReview: (id: string, action: "approve" | "reject", reason?: string, freeGiftQuantity?: number) => void;
   onSaved: () => void;
 }) {
   const { data: session } = useSession();
@@ -347,12 +392,16 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
                 {p.stageCode}
                 {p.plantStageCode && <span className="text-text-secondary"> → {finishedStageLabel(p.plantStageCode)}</span>}
               </td>
-              <td className="px-3 py-2 text-right font-medium text-foreground">{p.quantity.toLocaleString("vi-VN")}</td>
+              <td className="px-3 py-2 text-right font-medium text-foreground">
+                {p.quantity.toLocaleString("vi-VN")}
+                {p.freeGiftQuantity > 0 && <p className="text-xs font-normal text-violet-foreground whitespace-nowrap">+ {p.freeGiftQuantity.toLocaleString("vi-VN")} Free Gift</p>}
+              </td>
               {(canApprove || canSubmit) && (
                 <td className="px-3 py-2">
                   {canApprove && p.status === "PENDING" && canApproveProposal(p, role) && (
                     <div className="flex gap-1 justify-end">
                       <RejectDialog loading={processingId === p.id} onConfirm={(reason) => onReview(p.id, "reject", reason)} />
+                      {canSplitFreeGift(p) && <FreeGiftDialog proposal={p} loading={processingId === p.id} onConfirm={(n) => onReview(p.id, "approve", undefined, n)} />}
                       <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === p.id} onClick={() => onReview(p.id, "approve")}>
                         {processingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Duyệt</>}
                       </Button>

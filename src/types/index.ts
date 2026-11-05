@@ -325,6 +325,14 @@ export function buildKpiRateMap(rates: { plantTypeId: string; stageCode: string;
 }
 
 // Số cây trong 1 túi theo quy cách — dùng để quy đổi số cây sang số túi (VD: T05 → chia 5)
+// Free Gift ở Kho thị trường — 1 mã cây chung (không phân loại cây gốc), tồn nằm ở Phòng sản phẩm đạt với quy
+// cách T01 (1 cây/đơn vị) nên số trên lô đúng bằng số cây. Mã cây tạo khi duyệt Free Gift lần đầu, để
+// isActive=false nên không hiện trong các danh sách chọn mã cây của nghiệp vụ khác. Xem src/lib/market-inspection.ts.
+export const FREE_GIFT_CATEGORY_CODE = "FG";
+export const FREE_GIFT_PLANT_CODE = "FG001";
+export const FREE_GIFT_PLANT_NAME = "Free Gift";
+export const FREE_GIFT_STAGE_CODE = "T01";
+
 export const FINISHED_SPEC_BAG_SIZE = {
   T01: 1,
   T05: 5,

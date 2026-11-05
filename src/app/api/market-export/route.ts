@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import ExcelJS from "exceljs";
-import { isAdminRole } from "@/types";
+import { isAdminRole, FREE_GIFT_PLANT_CODE, FREE_GIFT_PLANT_NAME, FREE_GIFT_STAGE_CODE } from "@/types";
 import { cellText, cellNumber, cellDate } from "@/lib/excel-import";
 import { generateMarketExportCode } from "@/lib/codes";
 import { parseExportStageCode, roomKindForStageCode, bagSizeForStageCode } from "@/lib/market-export";
@@ -99,10 +99,11 @@ export async function POST(req: NextRequest) {
   const sheet = workbook.getWorksheet("Xuất cây") ?? workbook.worksheets[0];
   if (!sheet) return NextResponse.json({ message: "File không có sheet dữ liệu" }, { status: 400 });
 
-  const [passedRoom, plantedRoom, plantTypes] = await Promise.all([
+  const [passedRoom, plantedRoom, plantTypes, freeGiftPlant] = await Promise.all([
     prisma.room.findFirst({ where: { warehouseId, type: "PHONG_SAN_PHAM_DAT", isActive: true }, select: { id: true } }),
     prisma.room.findFirst({ where: { warehouseId, type: "PHONG_CAY_TRONG", isActive: true }, select: { id: true } }),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true } }),
+    prisma.plantType.findUnique({ where: { code: FREE_GIFT_PLANT_CODE }, select: { id: true, code: true, name: true } }),
   ]);
   if (!passedRoom || !plantedRoom) {
     return NextResponse.json({ message: "Kho thị trường thiếu Phòng sản phẩm đạt/Phòng cây trồng — liên hệ Admin kiểm tra lại kho" }, { status: 400 });
@@ -138,7 +139,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (!productCode) { errors.push({ row: rowNumber, label, message: "Thiếu Mã hàng" }); return; }
-    const stageCode = parseExportStageCode(productCode);
+    // Dòng Free Gift nhận theo Tên nội bộ, Mã hàng không cần chứa quy cách — trừ theo số cây = Lineitem quantity.
+    const isFreeGift = internalName.trim().toLowerCase() === FREE_GIFT_PLANT_NAME.toLowerCase();
+    const stageCode = isFreeGift ? FREE_GIFT_STAGE_CODE : parseExportStageCode(productCode);
     if (!stageCode) {
       errors.push({ row: rowNumber, label, message: `Không xác định được quy cách từ Mã hàng "${productCode}" (cần chứa T01/T05/T10 hoặc S/M/L/C)` });
       return;
@@ -147,7 +150,8 @@ export async function POST(req: NextRequest) {
     if (!roomKind) { errors.push({ row: rowNumber, label, message: `Quy cách "${stageCode}" không xác định được phòng đích` }); return; }
 
     if (!internalName) { errors.push({ row: rowNumber, label, message: "Thiếu Tên nội bộ" }); return; }
-    const plantType = plantTypeByName.get(internalName.trim().toLowerCase());
+    const plantType = isFreeGift ? freeGiftPlant : plantTypeByName.get(internalName.trim().toLowerCase());
+    if (isFreeGift && !plantType) { errors.push({ row: rowNumber, label, message: "Vượt tồn: kho chưa có cây Free Gift nào" }); return; }
     if (!plantType) { errors.push({ row: rowNumber, label, message: `Không tìm thấy Loại cây có Tên nội bộ "${internalName}"` }); return; }
 
     const dedupeKey = `${orderCode.trim().toUpperCase()}::${productCode.trim().toUpperCase()}`;

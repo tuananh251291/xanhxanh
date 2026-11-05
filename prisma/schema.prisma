@@ -2380,6 +2380,10 @@ model ContaminationProposal {
   // moveApprovedMarketPlantingToPlantRoom). NULL = không chuyển phòng (Hủy, Trồng từ chính Phòng cây trồng,
   // luồng Kho mô/Kho thành phẩm).
   plantStageCode     String?
+  // Phần QL bán lẻ chuyển sang Free Gift lúc duyệt (chỉ Kho thị trường). quantity lúc đó giảm còn phần Trồng/Hủy
+  // thực tế (có thể = 0), nên quantity + freeGiftQuantity luôn đúng bằng số Đối tác đề xuất. Xem
+  // applyFreeGiftSplit, src/lib/market-inspection.ts.
+  freeGiftQuantity   Int                         @default(0)
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
