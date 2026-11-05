@@ -63,22 +63,45 @@ export async function getCareStaffProfile(userId: string) {
   });
 }
 
+// Lô NV được giao: NV phụ trách cả lô (phiếu sắp xếp, GardenCareLot.staffId) HOẶC phụ trách ít nhất 1 dòng tồn
+// đang chăm sóc (QLV phân ở Tồn kho & điều phối chỉ đổi GardenStockLine.staffId, 1 lô có thể chia nhiều NV).
+function assignedCareLotWhere(staffId: string): Prisma.GardenCareLotWhereInput {
+  return { OR: [{ staffId }, { stockLines: { some: { staffId, pool: { in: [...CARE_POOLS] }, quantity: { gt: 0 } } } }] };
+}
+
+export async function isAssignedToCareLot(staffId: string, lotId: string): Promise<boolean> {
+  return (await prisma.gardenCareLot.count({ where: { id: lotId, ...assignedCareLotWhere(staffId) } })) > 0;
+}
+
+// Đồng bộ NV phụ trách của lô sau khi QLV đổi NV trên dòng tồn: giữ nguyên nếu NV hiện tại còn phụ trách dòng nào,
+// không thì chuyển sang NV giữ nhiều cây nhất (hết NV thì bỏ trống). Lô không còn cây đang chăm sóc thì không đổi.
+export async function syncCareLotStaff(tx: Prisma.TransactionClient, lotId: string) {
+  const lot = await tx.gardenCareLot.findUnique({ where: { id: lotId }, select: { staffId: true } });
+  const lines = await tx.gardenStockLine.findMany({ where: { lotId, pool: { in: [...CARE_POOLS] }, quantity: { gt: 0 } }, select: { staffId: true, quantity: true } });
+  if (!lot || lines.length === 0) return;
+  const qtyByStaff = new Map<string, number>();
+  for (const l of lines) if (l.staffId) qtyByStaff.set(l.staffId, (qtyByStaff.get(l.staffId) ?? 0) + l.quantity);
+  if (lot.staffId && qtyByStaff.has(lot.staffId)) return;
+  const next = [...qtyByStaff.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  if (next !== lot.staffId) await tx.gardenCareLot.update({ where: { id: lotId }, data: { staffId: next } });
+}
+
 // Phạm vi lô xem được: NV chăm sóc cây mô = lô mình phụ trách; QLV = lô các vườn mình quản lý; Admin = tất cả.
 export async function careLotScope(user: Viewer): Promise<Prisma.GardenCareLotWhereInput | null> {
   if (isGardenAdmin(user.role)) return {};
   if (user.role === "NHAN_VIEN_QUAN_LY_VUON") return { garden: { managerId: user.id } };
   if (user.role === "NV_CHAM_SOC_CAY_MO") {
     const profile = await getCareStaffProfile(user.id);
-    return profile ? { staffId: profile.id } : { id: "__none__" };
+    return profile ? assignedCareLotWhere(profile.id) : { id: "__none__" };
   }
   return null;
 }
 
 // Người được lập phiếu cây hỏng / đạt size S cho 1 lô: NV phụ trách lô, hoặc QLV/Admin quản lý vườn.
-export async function canReportOnLot(user: Viewer, lot: { gardenId: string; staffId: string | null }): Promise<boolean> {
+export async function canReportOnLot(user: Viewer, lot: { id: string; gardenId: string }): Promise<boolean> {
   if (user.role === "NV_CHAM_SOC_CAY_MO") {
     const profile = await getCareStaffProfile(user.id);
-    return !!profile && profile.id === lot.staffId;
+    return !!profile && (await isAssignedToCareLot(profile.id, lot.id));
   }
   return canManageGarden(user, lot.gardenId);
 }

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isGardenAdmin } from "@/types";
 import { canManageGarden } from "@/lib/garden-staff";
-import { getCareStaffProfile, rowLabel } from "@/lib/garden-care";
+import { getCareStaffProfile, isAssignedToCareLot, rowLabel } from "@/lib/garden-care";
 import GardenCareTicketDetail from "./garden-care-ticket-detail";
 
 const rowSelect = { number: true, rack: { select: { letter: true, house: { select: { number: true } } } } } as const;
@@ -34,7 +34,7 @@ export default async function GardenCareTicketPage({ params }: { params: Promise
   const canManage = await canManageGarden(session.user, t.gardenId);
   const profile = session.user.role === "NV_CHAM_SOC_CAY_MO" ? await getCareStaffProfile(session.user.id) : null;
   const isCreator = t.createdById === session.user.id;
-  if (!isCreator && !canManage && !isGardenAdmin(session.user.role) && !(profile && profile.id === t.lot.staffId)) redirect("/garden-care");
+  if (!isCreator && !canManage && !isGardenAdmin(session.user.role) && !(profile && (await isAssignedToCareLot(profile.id, t.lotId)))) redirect("/garden-care");
 
   return (
     <GardenCareTicketDetail

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canManageGarden } from "@/lib/garden-staff";
 import { moveStock, cleanupEmptyLines, InventoryError } from "@/lib/garden-inventory";
+import { syncCareLotStaff } from "@/lib/garden-care";
 import { z } from "zod";
 
 const schema = z.object({
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ message: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const { lineId, quantity, toPool, toStage, toRowId, toStaffId, note } = parsed.data;
 
-  const line = await prisma.gardenStockLine.findUnique({ where: { id: lineId }, select: { gardenId: true } });
+  const line = await prisma.gardenStockLine.findUnique({ where: { id: lineId }, select: { gardenId: true, lotId: true } });
   if (!line) return NextResponse.json({ message: "Không tìm thấy dòng tồn" }, { status: 404 });
   if (!(await canManageGarden(session.user, line.gardenId))) return NextResponse.json({ message: "Chỉ Quản lý vườn được điều phối" }, { status: 403 });
 
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
     await prisma.$transaction(async (tx) => {
       await moveStock(tx, { lineId, quantity, toPool, toStage, toRowId, toStaffId, note: note || null, byId: session.user.id });
       await cleanupEmptyLines(tx, line.gardenId);
+      if (toStaffId !== undefined && line.lotId) await syncCareLotStaff(tx, line.lotId);
     });
     return NextResponse.json({ success: true, message: `Đã điều phối ${quantity.toLocaleString("vi-VN")} cây` });
   } catch (err) {

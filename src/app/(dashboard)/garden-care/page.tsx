@@ -50,7 +50,7 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
         receiptItem: { select: { receipt: { select: { id: true, code: true } } } },
         stockLines: {
           where: { pool: pool ? pool : { in: [...CARE_POOLS] }, quantity: { gt: 0 } },
-          select: { id: true, pool: true, rowId: true, quantity: true, row: { select: { number: true, rack: { select: { letter: true, house: { select: { number: true } } } } } } },
+          select: { id: true, pool: true, rowId: true, quantity: true, staffId: true, staff: { select: { name: true } }, row: { select: { number: true, rack: { select: { letter: true, house: { select: { number: true } } } } } } },
         },
         tickets: { where: { status: { not: "CONFIRMED" }, type: { in: ["DAMAGE", "SIZE_S"] } }, select: { id: true, code: true, type: true } },
       },
@@ -131,7 +131,10 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
                     const unplaced = l.stockLines.filter((x) => !x.rowId).reduce((s, x) => s + x.quantity, 0);
                     const linePools = [...new Set(l.stockLines.map((x) => x.pool))];
                     const canPlace = managedIds.has(l.gardenId);
-                    const canReport = canPlace || (!!profile && profile.id === l.staffId);
+                    const canReport = canPlace || (!!profile && (profile.id === l.staffId || l.stockLines.some((x) => x.staffId === profile.id)));
+                    // 1 lô có thể chia nhiều NV theo dòng tồn (phân ở Tồn kho & điều phối).
+                    const lineStaffNames = [...new Set(l.stockLines.flatMap((x) => (x.staff ? [x.staff.name] : [])))];
+                    const staffLabel = lineStaffNames.length > 0 ? lineStaffNames.join(", ") : l.staff?.name;
                     return (
                       <tr key={l.id} className="border-b border-divider last:border-0 even:bg-primary-light/30 align-top">
                         <td className="px-4 py-2">
@@ -154,7 +157,7 @@ export default async function GardenCarePage({ searchParams }: { searchParams: P
                             {unplaced > 0 && <span className="rounded-md bg-warning-light text-warning-foreground text-xs px-2 py-0.5">Chưa xếp: {fmt(unplaced)}</span>}
                           </div>
                         </td>
-                        <td className="px-4 py-2 text-foreground">{l.staff?.name ?? <span className="text-text-muted">Chưa giao</span>}</td>
+                        <td className="px-4 py-2 text-foreground">{staffLabel ?? <span className="text-text-muted">Chưa giao</span>}</td>
                         <td className="px-4 py-2">
                           <CareLotActions
                             lot={{
