@@ -125,6 +125,13 @@ export function canManagePayroll(role: UserRole | null | undefined): boolean {
   return role === "SUPER_ADMIN" || role === "HANH_CHINH_NHAN_SU";
 }
 
+// Tạm ẩn thông tin liên quan tới lương với NV cấy mô đến hết 31/12/2026 giờ VN (HCNS/Admin vẫn xem bình thường),
+// từ 01/01/2027 tự hiện lại. Hiện chỉ có dòng "Số lượng được ghi nhận (tính lương)" ở /repack-instructions/[id].
+const PAY_INFO_HIDDEN_FROM_CAY_MO_UNTIL = new Date("2027-01-01T00:00:00+07:00");
+export function isPayInfoHiddenFor(role: UserRole | null | undefined, now: Date = new Date()): boolean {
+  return role === "CAY_MO" && now < PAY_INFO_HIDDEN_FROM_CAY_MO_UNTIL;
+}
+
 // Ai được ghi đè tạm thời "luồng kiểm tra" (Xanh/Vàng/Đỏ) của NV cấy mô theo khoảng ngày (xem
 // User.inspectionLaneOverride*, PATCH /api/users/[id] nhánh inspectionLaneOverride/
 // cancelInspectionLaneOverride) — CHỈ Admin cấp cao + Admin kỹ thuật, KHÔNG bao gồm Admin thường (khác
