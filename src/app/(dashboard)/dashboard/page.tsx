@@ -34,6 +34,7 @@ import { isEvaluationOverdue } from "@/lib/probation-evaluation";
 import { getRootingHandoffTaskGroups } from "@/lib/rooting-handoff-task";
 import { getRootingEvalWeeklyTask, ROOTING_EVAL_DEADLINE_LABEL } from "@/lib/rooting-quality-evaluation";
 import MonthlyPricingCard from "@/components/shared/monthly-pricing-card";
+import { getDepositedOrderShortfalls, type DepositedShortfall } from "@/lib/finished-stock-forecast";
 import { ensureMonthlyPricingReminders, getMonthlyPricingStatus } from "@/lib/pricing-reminders";
 
 // Lượt cấy giống thử nghiệm (R&D) sắp/đã đến hạn cấy trong 3 ngày tới, chưa nhập kết quả — CHỈ hiện cho
@@ -745,15 +746,16 @@ export default async function DashboardPage() {
   }
 
   if (isKhoThanhPhamRole(role)) {
-    const [stats, myTasks, stockCountTask] = await Promise.all([
+    const [stats, myTasks, stockCountTask, depositedShortfalls] = await Promise.all([
       getKhoMoStats(),
       getMyPendingTasks(userId),
       role === "QUAN_LY_KHO_THANH_PHAM" ? getMonthEndStockCountTask(session?.user?.workplaceWarehouseId) : Promise.resolve(null),
+      role === "QUAN_LY_KHO_THANH_PHAM" && session?.user?.workplaceWarehouseId ? getDepositedOrderShortfalls(session.user.workplaceWarehouseId) : Promise.resolve([]),
     ]);
     if (stockCountTask && session?.user?.workplaceWarehouseId) {
       await ensureStockCountReminder(userId, session.user.workplaceWarehouseId, stockCountTask);
     }
-    return <KhoDashboard stats={stats} role={role} myTasks={myTasks} stockCountTask={stockCountTask} />;
+    return <KhoDashboard stats={stats} role={role} myTasks={myTasks} stockCountTask={stockCountTask} depositedShortfalls={depositedShortfalls} />;
   }
 
   if (role === "DOI_TAC_VAN_HANH") {
@@ -1504,12 +1506,13 @@ function MoiTruongDashboard({
 }
 
 function KhoDashboard({
-  stats, role, myTasks, stockCountTask = null,
+  stats, role, myTasks, stockCountTask = null, depositedShortfalls = [],
 }: {
   stats: Awaited<ReturnType<typeof getKhoMoStats>>;
   role: UserRole;
   myTasks: MyTask[];
   stockCountTask?: Awaited<ReturnType<typeof getMonthEndStockCountTask>>;
+  depositedShortfalls?: DepositedShortfall[];
 }) {
   const mauMe = stats.activeLots.find((l) => l.stage === "MAU_ME");
   const thanhPham = stats.activeLots.find((l) => l.stage === "THANH_PHAM");
@@ -1526,6 +1529,26 @@ function KhoDashboard({
           <StatCard title="Lô mẫu mẹ đang lưu" value={mauMe?._count ?? 0} icon={Sun} color="green" subtitle={`${mauMe?._sum?.quantity ?? 0} bình`} />
           <StatCard title="Lô thành phẩm đang lưu" value={thanhPham?._count ?? 0} icon={Package} color="blue" subtitle={`${thanhPham?._sum?.quantity ?? 0} bình`} />
         </div>
+      )}
+
+      {depositedShortfalls.length > 0 && (
+        <Card className="border-destructive/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-destructive flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> Đơn đã cọc đang thiếu hàng ({depositedShortfalls.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {depositedShortfalls.map((o) => (
+              <Link key={o.orderId} href={`/orders/pack/${o.orderId}`} className="block rounded-lg border border-divider p-3 hover:border-destructive">
+                <p className="text-sm font-semibold text-foreground">{o.orderCode} · Xuất {o.shipKey.split("-").reverse().join("/")}</p>
+                <p className="text-sm text-text-secondary">
+                  {o.lines.map((l) => `${l.code} ${l.stageCode} thiếu ${l.quantity.toLocaleString("vi-VN")}`).join(" · ")}
+                </p>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {/* Nhiệm vụ cuối tháng — chỉ hiện từ 4 ngày trước hạn (xem getMonthEndStockCountTask), không tính vào

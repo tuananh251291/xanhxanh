@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { releaseGardenAllocationsForOrders } from "@/lib/garden-inventory";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode, generateTransferCode } from "@/lib/codes";
+import { generateTransferCode } from "@/lib/codes";
 import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
-import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
+import { isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
 import { canEditShipTime } from "@/lib/order-ship-time";
 import { orderItemSpec, ORDER_ITEM_SPEC_FIELDS } from "@/lib/order-item-spec";
 import { addMonths } from "date-fns";
 import { cancelOpenSupplierChecks } from "@/lib/supplier-check-notify";
 import { getShipCutoffKey, prepareAvailability, toVnDateKey } from "@/lib/finished-stock-forecast";
+import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
+import { canEditOrderItems } from "@/lib/order-edit";
+import { generateOrderCode } from "@/lib/codes";
 import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
 
 const patchSchema = z.object({
@@ -20,6 +23,8 @@ const patchSchema = z.object({
   depositedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   // action="reschedule" — dời quá 1 tháng so với ngày xuất ban đầu: gửi true sau khi người dùng đồng ý huỷ đơn.
   cancelOverMonth: z.boolean().optional(),
+  // action="ship" — Quản lý kho thành phẩm xuất trước phần đã có, phần còn lại giữ chỗ tới khi hàng về.
+  partial: z.boolean().optional(),
   // action="reschedule" — Quản lý kho thành phẩm sửa "Thời gian dự kiến xuất" (ngày + giờ) của đơn chưa xuất.
   expectedShipAt: z.string().optional(),
   // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất
@@ -180,21 +185,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
 
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: {
-      items: {
-        include: {
-          lot: {
-            select: {
-              id: true, stageCode: true, roomId: true, plantTypeId: true,
-              room: { select: { type: true, warehouseId: true } },
-            },
-          },
-        },
-      },
-    },
-  });
+  const order = await loadOrderForConfirm(orderId);
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   // Quản lý kho thành phẩm xác nhận HỘ được mọi đơn (không chỉ đơn saleId trùng chính mình) — vì đơn được
   // tạo hộ luôn gán saleId = NV bán hàng thật (xem POST /api/orders), không phải người quản lý đang bấm.
@@ -219,124 +210,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     }
   }
 
-  let processingRequestCount = 0;
-  let mediumOrderCount = 0;
-
-  // Môi trường mặc định dùng cho ProcessingMediumOrder (đơn môi trường phát sinh cho đơn xử lý) — luôn
-  // là mã "10" (MT CTP Cơ bản, xem prisma/seed.ts). Tra trước transaction vì không đổi theo từng dòng.
-  // Thiếu mã này (Admin lỡ xoá ở /medium-types) thì bỏ qua việc tạo đơn môi trường, không chặn xác nhận
-  // đơn hàng — đây là tính năng phụ trợ, không phải điều kiện bắt buộc để xác nhận.
-  const defaultMediumType = await prisma.mediumType.findUnique({ where: { code: "10" } });
-
-  await prisma.$transaction(async (tx) => {
-    // Cache Phòng đạt tiêu chuẩn đích theo kho — nhiều dòng cùng đơn có thể cùng kho, tránh tra lại.
-    const targetRoomCache = new Map<string, string | null>();
-
-    for (const item of order.items) {
-      // OrderItem.neededQuantity khác null nghĩa là dòng này cần xử lý từ lúc Tạm giữ (xem POST
-      // /api/orders) — quantity lúc đó đã là CẢ TÚI tròn sẵn (VD 25), neededQuantity là phần thật cần
-      // (VD 21). Không tính lại bagSize/deductQuantity từ quantity như trước (sẽ sai vì quantity giờ
-      // luôn là bội số của bagSize) — chỉ cần suy ra bagSize để hiển thị, phần dư = quantity - needed.
-      if (item.neededQuantity === null) continue;
-      const lot = item.lot;
-      if (!lot) throw new Error("Dòng cần xử lý cây chưa có lô nguồn — liên hệ Quản lý kho thành phẩm");
-
-      // Nguồn ở Kho hàn túi/Theo dõi (không phải Phòng đạt tiêu chuẩn) — cần biết trước Phòng đạt tiêu
-      // chuẩn ĐÍCH cùng kho để lúc "Hoàn thành xử lý" cộng đúng chỗ (xem PATCH
-      // /api/order-processing-requests/[id]) — phòng nguồn không phải phòng bán được nên không thể cộng
-      // dư ngược lại đó như tier "mở túi" thường trong Phòng đạt tiêu chuẩn.
-      let targetRoomId: string | null = null;
-      if (lot.room!.type !== "PHONG_DAT_TIEU_CHUAN") {
-        const warehouseId = lot.room!.warehouseId;
-        if (!targetRoomCache.has(warehouseId)) {
-          const targetRoom = await tx.room.findFirst({
-            where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
-            select: { id: true },
-          });
-          targetRoomCache.set(warehouseId, targetRoom?.id ?? null);
-        }
-        targetRoomId = targetRoomCache.get(warehouseId) ?? null;
-        if (!targetRoomId) {
-          throw new Error(`Kho chứa lô ${lot.stageCode} chưa có Phòng đạt tiêu chuẩn — liên hệ Admin trước khi xác nhận`);
-        }
-      }
-
-      const bagSize = FINISHED_SPEC_BAG_SIZE[lot.stageCode as keyof typeof FINISHED_SPEC_BAG_SIZE] ?? 1;
-      const code = await generateOrderProcessingRequestCode(tx);
-      const processingRequest = await tx.orderProcessingRequest.create({
-        data: {
-          code,
-          orderId: order.id,
-          orderItemId: item.id,
-          roomId: lot.roomId!,
-          targetRoomId,
-          plantTypeId: lot.plantTypeId,
-          sourceLotId: lot.id,
-          sourceStageCode: lot.stageCode,
-          neededQuantity: item.neededQuantity,
-          bagSize,
-          deductQuantity: item.quantity,
-          surplusQuantity: item.quantity - item.neededQuantity,
-        },
-      });
-      processingRequestCount += 1;
-
-      // Đơn môi trường cho đơn xử lý này — số lượng = deductQuantity (cả túi nguồn đã mở ra để tách/ghép),
-      // ghi rõ trong notes đây là môi trường phục vụ đơn xử lý nào (xem comment ProcessingMediumOrder).
-      if (defaultMediumType) {
-        const mediumOrderCode = await generateProcessingMediumOrderCode(tx);
-        await tx.processingMediumOrder.create({
-          data: {
-            code: mediumOrderCode,
-            processingRequestId: processingRequest.id,
-            mediumTypeId: defaultMediumType.id,
-            quantity: item.quantity,
-            notes: `Đơn môi trường cho đơn xử lý ${processingRequest.code} (đơn hàng ${order.code})`,
-          },
-        });
-        mediumOrderCount += 1;
-      }
-    }
-
-    await tx.order.update({ where: { id: order.id }, data: {
-      status: "CONFIRMED",
-      confirmedAt: new Date(),
-      depositAmount: deposit.depositAmount,
-      depositedAt: deposit.depositedAt ? new Date(`${deposit.depositedAt}T00:00:00+07:00`) : undefined,
-    } });
-  }, { timeout: 30000, maxWait: 10000 });
-
-  await createAlert({
-    type: "ORDER_PENDING_PACK",
-    title: `Đơn ${order.code}: khách đã cọc`,
-    message: `Đơn ${order.code} đã chuyển sang chờ xuất kho — xem trang Sắp xếp đơn hàng`,
-    targetRole: "QUAN_LY_KHO_THANH_PHAM",
-    relatedId: order.id,
-    relatedType: "Order",
-  });
-
-  if (processingRequestCount > 0) {
-    await createAlert({
-      type: "ORDER_PENDING_PACK",
-      title: "Có đơn hàng cần tách túi trước khi xuất kho",
-      message: `Đơn ${order.code} có ${processingRequestCount} dòng cần tách/ghép túi — xem trang Xử lý cây`,
-      targetRole: "KHO_THANH_PHAM",
-      relatedId: order.id,
-      relatedType: "Order",
-    });
-  }
-
-  if (mediumOrderCount > 0) {
-    await createAlert({
-      type: "MEDIUM_ORDER_CREATED",
-      title: "Có phiếu báo giá môi trường mới",
-      message: `Đơn ${order.code} cần ${mediumOrderCount} đơn môi trường mới cho việc xử lý tách/ghép túi — xem trang Phiếu báo giá MT`,
-      targetRole: "MOI_TRUONG",
-      relatedId: order.id,
-      relatedType: "Order",
-    });
-  }
-
+  const processingRequestCount = await applyOrderConfirmation(order, deposit);
   return NextResponse.json({ success: true, processingRequestCount });
 }
 
@@ -350,17 +224,38 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
 
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, saleId: true, status: true } });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, code: true, saleId: true, status: true, items: { select: { processingRequest: { select: { status: true } } } } },
+  });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   // Quản lý kho thành phẩm hủy HỘ được mọi đơn — cùng lý do với confirmOrder ở trên.
   if (user.role === "SALE" && order.saleId !== user.id) {
     return NextResponse.json({ message: "Chỉ được xóa đơn hàng của chính mình" }, { status: 403 });
   }
-  if (order.status !== "HELD") {
+  // Đơn đã cọc chỉ QL Kho TP huỷ được (VD đến ngày xuất mà hàng NCC chưa về).
+  const isDeposited = order.status === "CONFIRMED";
+  if (order.status !== "HELD" && !(isDeposited && canEditOrderItems(user.role))) {
     return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ — không thể xóa" }, { status: 400 });
   }
+  if (order.items.some((i) => i.processingRequest?.status === "COMPLETED")) {
+    return NextResponse.json({ message: "Đơn đã có dòng hoàn thành xử lý cây — không huỷ được" }, { status: 400 });
+  }
 
-  await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+  await prisma.$transaction([
+    prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } }),
+    prisma.orderProcessingRequest.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "CANCELLED" } }),
+  ]);
+  if (isDeposited) {
+    await createAlert({
+      type: "ORDER_EDITED",
+      title: `Đơn ${order.code} đã bị huỷ`,
+      message: `Quản lý kho thành phẩm đã huỷ đơn ${order.code} (khách đã cọc) — cần xử lý với khách.`,
+      userId: order.saleId,
+      relatedId: order.id,
+      relatedType: "Order",
+    });
+  }
   await cancelOpenSupplierChecks([order.id]);
   // Phân bổ cây Vườn sản xuất của đơn — tự giải phóng phần chưa xuất về kho nguồn, báo Quản lý vườn dừng đóng gói.
   await releaseGardenAllocationsForOrders([order.id], user.id);
@@ -373,7 +268,7 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
 // cầu xử lý COMPLETED thì tồn thực đã bị trừ ở bước "Hoàn thành xử lý" rồi — xem PATCH
 // /api/order-processing-requests/[id], không trừ lại ở đây). Chặn xuất kho nếu còn Yêu cầu xử lý
 // PENDING (còn túi chưa mở) — Kho TP phải hoàn thành xử lý trước.
-async function shipOrder(orderId: string, user: { id: string; role: string | null; workplaceWarehouseId?: string | null }) {
+async function shipOrder(orderId: string, user: { id: string; role: string | null; workplaceWarehouseId?: string | null }, partial = false) {
   if (user.role !== "KHO_THANH_PHAM" && user.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
@@ -524,7 +419,14 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
       });
     }
   }
-  if (shortages.length > 0) {
+  const isPartial = partial && shortages.length > 0;
+  if (isPartial && !canEditOrderItems(user.role)) {
+    return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm được xuất một phần" }, { status: 403 });
+  }
+  if (isPartial && allocations.length === 0) {
+    return NextResponse.json({ message: "Chưa có hàng nào để xuất" }, { status: 400 });
+  }
+  if (shortages.length > 0 && !partial) {
     shortages.sort((a, b) => a.plantCode.localeCompare(b.plantCode) || (a.stageCode ?? "").localeCompare(b.stageCode ?? ""));
     const list = shortages.map((s) => `${s.plantCode} ${s.stageCode} thiếu ${s.missing} (cần ${s.needed}, lấy được ${s.available} kể cả lô khác còn trống)`).join("; ");
     return NextResponse.json(
@@ -536,6 +438,8 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
   for (const a of allocations) deductByLot.set(a.lotId, (deductByLot.get(a.lotId) ?? 0) + a.quantity);
   const itemById = new Map(plainItems.map((i) => [i.id, i]));
 
+  let shippedOrderId = order.id;
+  let shippedOrderCode = order.code;
   try {
     await prisma.$transaction(async (tx) => {
       // Trừ theo lô, có điều kiện tồn >= số cần — phòng trường hợp tồn vừa đổi giữa lúc kiểm tra và lúc trừ.
@@ -547,16 +451,64 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
         }
       }
 
-      // Ghi lại lô thực xuất cho dòng chưa có lô (lấy từ nhiều lô thì tách thành nhiều dòng).
-      for (const item of plainItems.filter((i) => !i.lotId)) {
-        const parts = allocations.filter((a) => a.itemId === item.id);
-        for (const [index, part] of parts.entries()) {
-          if (index === 0) await tx.orderItem.update({ where: { id: item.id }, data: { lotId: part.lotId, quantity: part.quantity } });
-          else await tx.orderItem.create({ data: { orderId: order.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes } });
+      if (isPartial) {
+        // Xuất một phần: phần đã xuất tách thành 1 đơn SHIPPED riêng để mọi báo cáo/đánh giá dùng như đơn thường và các
+        // phép tính giữ chỗ khỏi phải biết tới "dòng đã xuất". Đơn gốc giữ phần còn lại ở trạng thái CONFIRMED, bỏ gắn lô.
+        const shipped = await tx.order.create({
+          data: {
+            code: await generateOrderCode(tx),
+            parentOrderId: order.id,
+            exportCode: order.exportCode,
+            saleId: order.saleId,
+            customerCode: order.customerCode,
+            customerId: order.customerId,
+            marketWarehouseId: order.marketWarehouseId,
+            market: order.market,
+            salesMarketId: order.salesMarketId,
+            expectedShipAt: order.expectedShipAt,
+            confirmedAt: order.confirmedAt,
+            shippedAt: new Date(),
+            status: "SHIPPED",
+            notes: `Xuất một phần của đơn ${order.code}`,
+          },
+        });
+        shippedOrderId = shipped.id;
+        shippedOrderCode = shipped.code;
+        for (const item of plainItems) {
+          const parts = allocations.filter((a) => a.itemId === item.id);
+          const done = parts.reduce((s, a) => s + a.quantity, 0);
+          if (done === 0) continue;
+          for (const part of parts) {
+            await tx.orderItem.create({
+              data: { orderId: shipped.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes, pickedQuantity1: part.quantity },
+            });
+          }
+          if (done < item.quantity) {
+            await tx.orderItem.update({
+              where: { id: item.id },
+              data: { plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: null, quantity: item.quantity - done, pickedQuantity1: 0, pickedQuantity2: 0, pickedQuantity3: 0 },
+            });
+          } else {
+            await tx.orderItem.delete({ where: { id: item.id } });
+          }
         }
-      }
+        // Dòng đã hoàn thành xử lý cây (tồn thực đã trừ) đi cùng đợt xuất đầu tiên.
+        for (const item of items.filter((i) => i.processingRequest?.status === "COMPLETED")) {
+          await tx.orderItem.update({ where: { id: item.id }, data: { orderId: shipped.id } });
+          await tx.orderProcessingRequest.updateMany({ where: { orderItemId: item.id }, data: { orderId: shipped.id } });
+        }
+      } else {
+        // Ghi lại lô thực xuất cho dòng chưa có lô (lấy từ nhiều lô thì tách thành nhiều dòng).
+        for (const item of plainItems.filter((i) => !i.lotId)) {
+          const parts = allocations.filter((a) => a.itemId === item.id);
+          for (const [index, part] of parts.entries()) {
+            if (index === 0) await tx.orderItem.update({ where: { id: item.id }, data: { lotId: part.lotId, quantity: part.quantity } });
+            else await tx.orderItem.create({ data: { orderId: order.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes } });
+          }
+        }
 
-      await tx.order.update({ where: { id: order.id }, data: { status: "SHIPPED", shippedAt: new Date() } });
+        await tx.order.update({ where: { id: order.id }, data: { status: "SHIPPED", shippedAt: new Date() } });
+      }
 
       if (order.marketWarehouseId && firstPlainItem) {
         const code = await generateTransferCode(tx);
@@ -567,8 +519,8 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
             fromRoomId: firstPlainItem.lot.roomId,
             toWarehouseId: order.marketWarehouseId,
             fromUserId: user.id,
-            orderId: order.id,
-            notes: `Tự động tạo khi xuất đơn hàng ${order.code}`,
+            orderId: shippedOrderId,
+            notes: `Tự động tạo khi xuất đơn hàng ${shippedOrderCode}`,
             items: {
               // Đúng lô THỰC trừ (có thể gồm lô khác bù phần thiếu của lô gắn với dòng đơn).
               create: allocations.map((a) => ({ lotId: a.lotId, quantity: a.quantity })),
@@ -577,6 +529,18 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
         });
       }
     }, { timeout: 30000, maxWait: 10000 });
+
+    if (isPartial) {
+      await createAlert({
+        type: "ORDER_EDITED",
+        title: `Đơn ${order.code} đã xuất một phần`,
+        message: `Đã xuất ${allocations.reduce((s, a) => s + a.quantity, 0).toLocaleString("vi-VN")} cây (đơn ${shippedOrderCode}), phần còn lại giữ chỗ tới khi hàng về.`,
+        userId: order.saleId,
+        relatedId: order.id,
+        relatedType: "Order",
+      });
+      return NextResponse.json({ success: true, partial: true, shippedOrderCode });
+    }
 
     if (order.assignedToId && order.assignedById) {
       await createAlert({
@@ -623,7 +587,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (parsed.data.action === "assign") return await assignOrder(id, session.user, parsed.data.assignedToId);
     if (parsed.data.action === "ack") return await ackOrder(id, session.user);
     if (parsed.data.action === "reschedule") return await rescheduleOrder(id, session.user, parsed.data.expectedShipAt, parsed.data.cancelOverMonth);
-    return await shipOrder(id, session.user);
+    return await shipOrder(id, session.user, parsed.data.partial);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";
     return NextResponse.json({ message }, { status: 400 });

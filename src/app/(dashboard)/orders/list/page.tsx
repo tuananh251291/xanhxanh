@@ -20,7 +20,7 @@ import OrderDetailDialog from "./order-detail-dialog";
 import ShipAtEditCell from "./ship-at-edit-cell";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
 import { ORDER_ITEM_SPEC_FIELDS, withResolvedLot } from "@/lib/order-item-spec";
-import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } from "@prisma/client";
+import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User, SupplierCheckStatus } from "@prisma/client";
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
   assignedTo: Pick<User, "id" | "name"> | null;
@@ -35,6 +35,8 @@ type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status"
     processingRequest: Pick<OrderProcessingRequest, "status"> | null;
   })[];
 };
+
+const SUPPLIER_ANSWERED: SupplierCheckStatus[] = ["CONFIRMED", "PLACED", "DELIVERED"];
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -204,7 +206,7 @@ export default async function OrdersListPage() {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
       expectedShipAt: true, notes: true, createdAt: true, supplyResultSentAt: true,
       shortages: { select: { quantity: true } },
-      supplierChecks: { where: { status: { in: ["CONFIRMED", "PLACED", "DELIVERED"] } }, select: { items: { select: { confirmedQuantity: true } } } },
+      supplierChecks: { where: { status: { in: SUPPLIER_ANSWERED } }, select: { items: { select: { confirmedQuantity: true } } } },
       salesMarket: { select: { name: true } },
       assignedTo: { select: { id: true, name: true } },
       items: {

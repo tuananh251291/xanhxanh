@@ -8,7 +8,7 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { isAdminRole } from "@/types";
 import type { Prisma, UserRole } from "@prisma/client";
 import {
-  DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY, FORECAST_REGISTERED_UPLOAD_KEY, buildForecastEvents, computeForecastRows, lineAvailability, shipCutoffKey,
+  DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY, FORECAST_REGISTERED_UPLOAD_KEY, buildForecastEvents, computeForecastRows, lineAvailability, lineBalance, shipCutoffKey,
   type ForecastInput, type ForecastRow,
 } from "@/lib/finished-stock-forecast-calc";
 
@@ -157,7 +157,7 @@ async function loadDemand(
   todayKey: string,
   client: Client,
   opts: { plantTypeIds?: string[]; excludeOrderId?: string } = {}
-): Promise<Pick<ForecastInput, "stock" | "orders">> {
+): Promise<Pick<ForecastInput, "stock"> & { orders: (ForecastInput["orders"][number] & { orderId: string; orderCode: string; depositedAt: Date | null })[] }> {
   const { plantTypeIds, excludeOrderId } = opts;
   const [stock, orderItems] = await Promise.all([
     client.lot.findMany({
@@ -177,7 +177,7 @@ async function loadDemand(
       select: {
         quantity: true, plantTypeId: true, stageCode: true,
         lot: { select: { plantTypeId: true, stageCode: true } },
-        order: { select: { code: true, status: true, expectedShipAt: true } },
+        order: { select: { id: true, code: true, status: true, expectedShipAt: true, confirmedAt: true } },
       },
     }),
   ]);
@@ -190,6 +190,9 @@ async function loadDemand(
       // Đơn cũ không có ngày xuất: coi như xuất ngay để không đánh giá cao tồn.
       dateKey: i.order.expectedShipAt ? toVnDateKey(i.order.expectedShipAt) : todayKey,
       note: `${i.order.code} · ${i.order.status === "HELD" ? "Tạm giữ" : "Đã cọc"}`,
+      orderId: i.order.id,
+      orderCode: i.order.code,
+      depositedAt: i.order.status === "CONFIRMED" ? i.order.confirmedAt ?? new Date(0) : null,
     })),
   };
 }
@@ -239,6 +242,65 @@ export async function getShipCutoffKey(shipDate: Date, now: Date = new Date()): 
     select: { date: true },
   });
   return shipCutoffKey(toVnDateKey(shipDate), toVnDateKey(now), new Set(holidays.map((h) => toVnDateKey(h.date))));
+}
+
+export type DepositedShortfall = { orderId: string; orderCode: string; shipKey: string; lines: { code: string; stageCode: string; quantity: number }[] };
+
+// Đơn đã cọc bị thiếu so với tồn dự kiến hiện tại (số đạt giảm, NCC trễ/giao thiếu) — hiện trên Tổng quan của QL Kho TP. Đơn
+// cọc trước được ưu tiên: mỗi đơn chỉ tính cùng các đơn cọc trước nó; đơn tạm giữ không tranh với đơn đã cọc.
+export async function getDepositedOrderShortfalls(warehouseId: string): Promise<DepositedShortfall[]> {
+  const roomId = await getDatRoomId(warehouseId);
+  if (!roomId) return [];
+  const supply = await loadSupply(roomId, warehouseId, new Date());
+  const demand = await loadDemand(roomId, supply.todayKey, prisma);
+  const deposited = demand.orders
+    .filter((o) => o.depositedAt)
+    .sort((a, b) => a.depositedAt!.getTime() - b.depositedAt!.getTime() || a.orderId.localeCompare(b.orderId));
+  if (deposited.length === 0) return [];
+
+  const holidays = await prisma.publicHoliday.findMany({ where: { date: { gte: new Date() } }, select: { date: true } });
+  const holidayKeys = new Set(holidays.map((h) => toVnDateKey(h.date)));
+  const onlyPlant = <T extends { plantTypeId: string }>(rows: T[], plantTypeId: string) => rows.filter((r) => r.plantTypeId === plantTypeId);
+
+  const byOrder = new Map<string, { orderId: string; orderCode: string; shipKey: string; short: Map<string, { plantTypeId: string; stageCode: string; quantity: number }> }>();
+  for (const plantTypeId of new Set(deposited.map((o) => o.plantTypeId))) {
+    const lines = onlyPlant(deposited, plantTypeId);
+    const input: Omit<ForecastInput, "orders"> = {
+      ...supply,
+      stock: onlyPlant(demand.stock, plantTypeId),
+      rootingLots: onlyPlant(supply.rootingLots, plantTypeId),
+      registered: onlyPlant(supply.registered, plantTypeId),
+      supplierPlans: onlyPlant(supply.supplierPlans, plantTypeId),
+    };
+    for (const orderId of new Set(lines.map((l) => l.orderId))) {
+      const rank = lines.findIndex((l) => l.orderId === orderId);
+      const lastIndex = lines.map((l) => l.orderId).lastIndexOf(orderId);
+      const considered = lines.slice(0, lastIndex + 1);
+      const own = lines.slice(rank, lastIndex + 1).filter((l) => l.orderId === orderId);
+      const full: ForecastInput = { ...input, orders: considered };
+      const events = buildForecastEvents(full);
+      const cutoff = shipCutoffKey(own[0].dateKey, supply.todayKey, holidayKeys);
+      for (const stageCode of new Set(own.map((l) => l.stageCode))) {
+        const balance = lineBalance(full, events, plantTypeId, stageCode, cutoff).withRegistered;
+        if (balance >= 0) continue;
+        const quantity = own.filter((l) => l.stageCode === stageCode).reduce((s, l) => s + l.quantity, 0);
+        const entry = byOrder.get(orderId) ?? { orderId, orderCode: own[0].orderCode, shipKey: own[0].dateKey, short: new Map() };
+        entry.short.set(`${plantTypeId}:${stageCode}`, { plantTypeId, stageCode, quantity: Math.min(quantity, -balance) });
+        byOrder.set(orderId, entry);
+      }
+    }
+  }
+  if (byOrder.size === 0) return [];
+
+  const plantIds = [...byOrder.values()].flatMap((o) => [...o.short.values()].map((s) => s.plantTypeId));
+  const plants = await prisma.plantType.findMany({ where: { id: { in: plantIds } }, select: { id: true, code: true } });
+  const codeOf = new Map(plants.map((p) => [p.id, p.code]));
+  return [...byOrder.values()]
+    .map((o) => ({
+      orderId: o.orderId, orderCode: o.orderCode, shipKey: o.shipKey,
+      lines: [...o.short.values()].map((s) => ({ code: codeOf.get(s.plantTypeId) ?? "", stageCode: s.stageCode, quantity: s.quantity })),
+    }))
+    .sort((a, b) => a.shipKey.localeCompare(b.shipKey));
 }
 
 export type LineAvailability = { exact: number; withRegistered: number };

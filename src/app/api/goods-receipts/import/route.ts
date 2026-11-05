@@ -25,10 +25,9 @@ export async function GET() {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
 
-  const [suppliers, gardens, warehouses, plantTypes] = await Promise.all([
+  const [suppliers, gardens, plantTypes] = await Promise.all([
     prisma.supplier.findMany({ where: { isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.productionGarden.findMany({ where: { isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
-    prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.plantType.findMany({ where: { isActive: true }, select: { code: true, name: true }, orderBy: { code: "asc" } }),
   ]);
 
@@ -63,11 +62,10 @@ export async function GET() {
   lookupSheet.getRow(1).font = { bold: true };
   for (const s of suppliers) lookupSheet.addRow({ kind: "Nhà cung cấp", code: s.code, name: s.name });
   for (const g of gardens) lookupSheet.addRow({ kind: "Khu SX nội bộ", code: g.code, name: g.name });
-  for (const w of warehouses) lookupSheet.addRow({ kind: "Khu sản xuất", code: w.code, name: w.name });
   for (const p of plantTypes) lookupSheet.addRow({ kind: "Loại cây", code: p.code, name: p.name });
 
   addGuideSheet(workbook, [
-    { column: "Mã NCC / Khu SX", required: true, description: "Mã nhà cung cấp, mã Khu SX nội bộ hoặc mã khu sản xuất (VD SX-TA) đã có trong hệ thống — xem sheet Danh mục." },
+    { column: "Mã NCC / Khu SX", required: true, description: "Mã nhà cung cấp hoặc mã Khu SX nội bộ đã có trong hệ thống — xem sheet Danh mục." },
     { column: "Mã hàng", required: true, description: "Mã loại cây đã có trong hệ thống — xem sheet Danh mục." },
     { column: "Quy cách", required: true, description: "T01 (túi 1 cây) / T05 (túi 5 cây) / T06 (túi 6 cây) / T10 (túi 10 cây) / T20 (túi 20 cây) / T25 (túi 25 cây)." },
     { column: "Số lượng", required: true, description: "Số nguyên dương." },
@@ -135,10 +133,9 @@ export async function POST(req: NextRequest) {
   const sheet = workbook.getWorksheet(SHEET_NAME) ?? workbook.getWorksheet(LEGACY_SHEET_NAME) ?? workbook.worksheets[0];
   if (!sheet) return NextResponse.json({ message: "File không có sheet dữ liệu" }, { status: 400 });
 
-  const [suppliers, gardens, warehouses, plantTypes, room, creatingUser] = await Promise.all([
+  const [suppliers, gardens, plantTypes, room, creatingUser] = await Promise.all([
     prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
     prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
-    prisma.warehouse.findMany({ where: { type: "SAN_XUAT", isActive: true }, select: { id: true, code: true } }),
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
     getFinishedQualifiedRooms().then((rooms) => rooms.find((r) => r.warehouseId === workplaceWarehouseId) ?? null),
     prisma.user.findUnique({ where: { id: session!.user.id }, select: { code: true } }),
@@ -148,7 +145,6 @@ export async function POST(req: NextRequest) {
   }
   const supplierByCode = new Map(suppliers.map((s) => [s.code.toUpperCase(), s]));
   const gardenByCode = new Map(gardens.map((g) => [g.code.toUpperCase(), g]));
-  const warehouseByCode = new Map(warehouses.map((w) => [w.code.toUpperCase(), w]));
   const plantTypeByCode = new Map(plantTypes.map((p) => [p.code.toUpperCase(), p]));
   const staffCode = creatingUser?.code ?? "000";
 
@@ -170,7 +166,8 @@ export async function POST(req: NextRequest) {
     // Ưu tiên NCC ngoài nếu (hiếm) trùng mã với 1 Khu SX nội bộ.
     const supplier = supplierByCode.get(supplierCode.toUpperCase());
     const garden = supplier ? undefined : gardenByCode.get(supplierCode.toUpperCase());
-    const productionWarehouse = supplier || garden ? undefined : warehouseByCode.get(supplierCode.toUpperCase());
+    // Hàng khu sản xuất đã tính ở Tồn kho dự kiến theo lô/số đăng ký — không nhập dự kiến từ khu sản xuất nữa.
+    const productionWarehouse = undefined as { id: string; code: string } | undefined;
     if (!supplier && !garden && !productionWarehouse) { errors.push({ row: rowNumber, label, message: `Không tìm thấy nhà cung cấp / Khu SX "${supplierCode}"` }); return; }
 
     if (!plantTypeCode) { errors.push({ row: rowNumber, label, message: "Thiếu Mã hàng" }); return; }

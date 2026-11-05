@@ -178,6 +178,18 @@ export function lineAvailability(
   stageCode: string,
   dateKey: string
 ): { exact: number; withRegistered: number } {
+  const balance = lineBalance(input, events, plantTypeId, stageCode, dateKey);
+  return { exact: Math.max(0, balance.exact), withRegistered: Math.max(0, balance.withRegistered) };
+}
+
+// Như lineAvailability nhưng giữ số âm — âm nghĩa là các đơn đã tính vượt quá số hàng có được.
+export function lineBalance(
+  input: Pick<ForecastInput, "stock">,
+  events: ForecastEvent[],
+  plantTypeId: string,
+  stageCode: string,
+  dateKey: string
+): { exact: number; withRegistered: number } {
   const stageTotals = new Map<string, number>();
   for (const s of input.stock) {
     if (s.plantTypeId === plantTypeId) stageTotals.set(s.stageCode, (stageTotals.get(s.stageCode) ?? 0) + s.quantity);
@@ -207,7 +219,7 @@ export function lineAvailability(
     if (measuredStart && lastOfDay) measure();
   });
   if (!measuredStart) measure();
-  return { exact: Math.max(0, exact ?? 0), withRegistered: Math.max(0, withRegistered ?? 0) };
+  return { exact: exact ?? 0, withRegistered: withRegistered ?? 0 };
 }
 
 export function computeForecastRows(input: ForecastInput, dateKey: string): ForecastRow[] {

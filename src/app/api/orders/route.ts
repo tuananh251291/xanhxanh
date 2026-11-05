@@ -11,6 +11,7 @@ import { z } from "zod";
 import { prepareAvailability } from "@/lib/finished-stock-forecast";
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
+import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
 import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
@@ -157,6 +158,11 @@ export async function POST(req: NextRequest) {
       }
     }
   } else {
+    // Chỉ NV bán hàng quản lý Kho thị trường đó (Quản lý bán lẻ được gán kho) mới tạo được đơn cho kho.
+    const access = session.user.role === "SALE"
+      ? await prisma.retailWarehouseAccess.findFirst({ where: { warehouseId: marketWarehouseId, userId: session.user.id, user: { isRetailManager: true } }, select: { id: true } })
+      : null;
+    if (!access) return NextResponse.json({ message: "Chỉ NV quản lý Kho thị trường này mới tạo được đơn cho kho" }, { status: 403 });
     marketWarehouse = await prisma.warehouse.findUnique({
       where: { id: marketWarehouseId },
       select: { id: true, code: true, type: true },
@@ -332,6 +338,12 @@ export async function POST(req: NextRequest) {
         order.id,
         "Order"
       );
+    }
+
+    // Đơn Kho thị trường không cần cọc — đủ hàng thì coi như đã cọc ngay. Thiếu hàng: chờ QL Kho TP gửi kết quả kiểm tra NCC.
+    if (marketWarehouse && orderShortageTotal === 0) {
+      const full = await loadOrderForConfirm(order.id);
+      if (full) await applyOrderConfirmation(full);
     }
 
     return NextResponse.json(order, { status: 201 });

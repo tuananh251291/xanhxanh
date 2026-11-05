@@ -98,9 +98,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Không tìm thấy khu sản xuất nội bộ" }, { status: 400 });
     }
   }
+  // Hàng khu sản xuất đã tính ở Tồn kho dự kiến theo lô/số đăng ký — phiếu dự kiến từ khu sản xuất sẽ tính trùng.
   if (data.status === "PLANNED" && data.productionWarehouseId) {
-    const warehouse = await prisma.warehouse.findFirst({ where: { id: data.productionWarehouseId, type: "SAN_XUAT", isActive: true }, select: { id: true } });
-    if (!warehouse) return NextResponse.json({ message: "Không tìm thấy khu sản xuất" }, { status: 400 });
+    return NextResponse.json({ message: "Không tạo phiếu dự kiến nhập từ khu sản xuất nữa — hàng này đã tính trong Tồn kho dự kiến" }, { status: 400 });
   }
   // Chỉ được nhập hàng vào đúng kho thành phẩm mình làm việc (workplaceWarehouseId) — khác
   // getFinishedQualifiedRooms dùng ở nơi khác (VD Xử lý cây) vốn không giới hạn theo kho.

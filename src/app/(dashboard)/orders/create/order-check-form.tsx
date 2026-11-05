@@ -129,8 +129,8 @@ type SalesUser = { id: string; code: string; name: string; holdDays: number };
 type HoldItem = { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string };
 
 export default function OrderCheckForm({
-  plantTypes, customers, markets, salesUsers, isActingForSale,
-}: { plantTypes: PlantType[]; customers: Customer[]; markets: MarketOpt[]; salesUsers: SalesUser[]; isActingForSale: boolean }) {
+  plantTypes, customers, markets, salesUsers, isActingForSale, marketWarehouseIds,
+}: { marketWarehouseIds: string[]; plantTypes: PlantType[]; customers: Customer[]; markets: MarketOpt[]; salesUsers: SalesUser[]; isActingForSale: boolean }) {
   // Thị trường lấy theo khách hàng (Customer.marketId); chỉ chọn tay khi gửi Kho thị trường / khách gõ tay.
   const marketOptions = markets.map((m) => ({ value: m.id, label: `${m.code} · ${m.name}` }));
   const [rows, setRows] = useState<DemandRow[]>(() => Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
@@ -223,9 +223,9 @@ export default function OrderCheckForm({
     setLoadingMarketWarehouses(true);
     fetch("/api/warehouses?type=THI_TRUONG")
       .then((r) => r.json())
-      .then((data: MarketWarehouse[]) => setMarketWarehouses(Array.isArray(data) ? data : []))
+      .then((data: MarketWarehouse[]) => setMarketWarehouses(Array.isArray(data) ? data.filter((w) => marketWarehouseIds.includes(w.id)) : []))
       .finally(() => setLoadingMarketWarehouses(false));
-  }, [sendToMarketWarehouse, marketWarehouses.length]);
+  }, [sendToMarketWarehouse, marketWarehouses.length, marketWarehouseIds]);
 
   const toggleMarketWarehouse = (checked: boolean) => {
     setSendToMarketWarehouse(checked);
@@ -809,10 +809,12 @@ export default function OrderCheckForm({
                 {selectedCustomer?.customerGroup && (
                   <p className="text-xs text-text-muted">{CUSTOMER_GROUP_LABELS[selectedCustomer.customerGroup]}</p>
                 )}
-                <label className="flex items-center gap-2 pt-1.5 cursor-pointer">
+                {marketWarehouseIds.length > 0 && (
+                  <label className="flex items-center gap-2 pt-1.5 cursor-pointer">
                   <Checkbox checked={sendToMarketWarehouse} onCheckedChange={(v) => toggleMarketWarehouse(!!v)} />
                   <span className="text-sm text-text-secondary">Kho thị trường — gửi nội bộ thay vì bán cho khách hàng</span>
                 </label>
+                )}
                 {sendToMarketWarehouse && (
                   loadingMarketWarehouses ? (
                     <div className="flex items-center gap-2 text-xs text-text-muted pt-1">

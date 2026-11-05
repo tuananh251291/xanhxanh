@@ -23,6 +23,10 @@ export default async function OrdersPage() {
   // (holdDays) lấy theo ĐÚNG NV bán hàng đó (mỗi khách có thể khác NV, khác holdDays), không phải của
   // người quản lý đang thao tác hộ — nhúng thẳng vào từng khách để form khỏi phải tự tra thêm.
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
+  // Đơn Kho thị trường: chỉ NV bán hàng quản lý đúng kho đó.
+  const marketWarehouseAccess = role === "SALE" && session?.user?.id
+    ? await prisma.retailWarehouseAccess.findMany({ where: { userId: session.user.id, user: { isRetailManager: true } }, select: { warehouseId: true } })
+    : [];
 
   const [plantTypes, customersRaw, recentOrders, defaultHoldDaysStr, salesUsers] = await Promise.all([
     prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
@@ -79,7 +83,7 @@ export default async function OrdersPage() {
         </p>
       </div>
 
-      <OrderCheckForm plantTypes={plantTypes} customers={customers} markets={markets} salesUsers={salesUsersWithHold} isActingForSale={isActingForSale} />
+      <OrderCheckForm marketWarehouseIds={marketWarehouseAccess.map((a) => a.warehouseId)} plantTypes={plantTypes} customers={customers} markets={markets} salesUsers={salesUsersWithHold} isActingForSale={isActingForSale} />
 
       {recentOrders.length > 0 && (
         <Card>

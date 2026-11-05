@@ -129,7 +129,10 @@ Chỉ tính cây mô ở Phòng đạt tiêu chuẩn của Kho thành phẩm. Co
   Kiểm tra NCC, hạn 1 ngày làm việc) → NCC xác nhận ở `/supplier-portal` (NCC chưa có tài khoản: QL nhập hộ) và giữ hàng → QL gửi kết quả cho Sale, hạn giữ bắt
   đầu tính → khách cọc → QL Đặt hàng: tạo Phiếu dự kiến nhập (A3) + dòng đơn chưa có lô (A4) trong cùng transaction → NCC giao theo phiếu, số thực tế thay số xác nhận.
   Đơn huỷ/hết hạn: Đơn kiểm tra chưa đặt thôi hiệu lực; đã đặt thì hàng vẫn về, thành tồn tự do.
-- Chưa làm (giai đoạn 5): xuất một phần, báo thiếu cho đơn đã cọc khi số đạt/NCC giảm, đơn Kho thị trường coi như đã cọc, bỏ nguồn Khu sản xuất ở form dự kiến nhập.
+- Xuất một phần (QL Kho TP, trang Nhặt hàng): phần đã xuất tách thành 1 đơn SHIPPED riêng (`parentOrderId`), đơn gốc giữ phần còn lại ở CONFIRMED, bỏ gắn lô.
+- Đơn đã cọc thiếu hàng so với tồn dự kiến: hiện ở Tổng quan của QL Kho TP (`getDepositedOrderShortfalls`), đơn cọc trước được ưu tiên.
+- Đơn Kho thị trường: chỉ Quản lý bán lẻ được gán đúng kho tạo được, đủ hàng thì coi như đã cọc ngay; thiếu hàng thì coi như đã cọc khi QL gửi kết quả kiểm tra NCC.
+- Phiếu dự kiến nhập chỉ từ NCC/Vườn, không từ Khu sản xuất (đã tính ở A2).
 
 ## Tài khoản demo
 

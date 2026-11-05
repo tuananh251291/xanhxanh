@@ -4,6 +4,7 @@ import { createAlert, getSystemConfig } from "@/lib/inventory";
 import { createPlannedGoodsReceipt } from "@/lib/goods-receipt";
 import { getShipCutoffKey, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { notifySupplier, notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
+import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
 import type { Prisma, UserRole } from "@prisma/client";
 
 // Đơn thiếu hàng: phần thiếu lưu ở OrderShortage (không giữ chỗ tồn). QL Kho TP gửi Đơn kiểm tra cho NCC → NCC báo số đáp
@@ -224,7 +225,7 @@ export async function sendSupplyResult(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
-      id: true, code: true, status: true, saleId: true, supplyResultSentAt: true,
+      id: true, code: true, status: true, saleId: true, supplyResultSentAt: true, marketWarehouseId: true,
       sale: { select: { holdDays: true } },
       customer: { select: { customerGroup: true } },
       shortages: { select: { quantity: true } },
@@ -245,6 +246,11 @@ export async function sendSupplyResult(orderId: string) {
   const defaultHoldDays = parseInt(await getSystemConfig("default_hold_days", "3"), 10) || 3;
   const holdUntil = order.customer?.customerGroup === "KHACH_CONG_TY_LON" ? addMonths(now, 5) : addDays(now, order.sale.holdDays ?? defaultHoldDays);
   await prisma.order.update({ where: { id: order.id }, data: { supplyResultSentAt: now, holdUntil } });
+  // Đơn Kho thị trường không có bước cọc — có kết quả là coi như đã cọc, QL đặt hàng được ngay.
+  if (order.marketWarehouseId) {
+    const full = await loadOrderForConfirm(order.id);
+    if (full) await applyOrderConfirmation(full);
+  }
   const missing = shortage - confirmed;
   await createAlert({
     type: "ORDER_EDITED",

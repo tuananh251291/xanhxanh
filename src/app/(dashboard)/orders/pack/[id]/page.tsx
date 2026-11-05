@@ -10,6 +10,7 @@ import { isAdminRole, isKhoThanhPhamRole, orderMarketLabel } from "@/types";
 import OrderPickTable from "./order-pick-table";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
 import { withResolvedLot } from "@/lib/order-item-spec";
+import OrderPartialActions from "./order-partial-actions";
 import { canEditOrderItems } from "@/lib/order-edit";
 
 export default async function OrderPickPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,6 +25,7 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
       sale: { select: { name: true } },
       salesMarket: { select: { name: true } },
       assignedTo: { select: { name: true, code: true } },
+      partialShipments: { select: { code: true } },
       items: {
         include: {
           plantType: { select: { code: true, name: true } },
@@ -55,12 +57,16 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <ListChecks className="w-6 h-6 text-primary-strong" /> Nhặt hàng — {order.code}
           </h1>
-          {canEditOrder && <OrderEditDialog orderId={order.id} orderCode={order.code} plantTypes={plantTypes} />}
+          <div className="flex flex-wrap items-center gap-2">
+            {canEditOrder && order.status === "CONFIRMED" && <OrderPartialActions orderId={order.id} orderCode={order.code} />}
+            {canEditOrder && <OrderEditDialog orderId={order.id} orderCode={order.code} plantTypes={plantTypes} />}
+          </div>
         </div>
         <p className="text-text-secondary text-sm mt-1">
           {order.customerCode} · {orderMarketLabel(order)} · NV {order.sale.name}
           {order.assignedTo && ` · Giao cho ${order.assignedTo.name} (${order.assignedTo.code})`}
           {order.confirmedAt && ` · Xác nhận lúc ${order.confirmedAt.toLocaleString("vi-VN")}`}
+          {order.partialShipments.length > 0 && ` · Đã xuất một phần: ${order.partialShipments.map((s) => s.code).join(", ")}`}
         </p>
       </div>
 

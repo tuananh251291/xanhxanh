@@ -3547,6 +3547,10 @@ model Order {
   originalExpectedShipAt DateTime?
   // Quản lý kho thành phẩm đã gửi kết quả kiểm tra NCC cho Sale — đơn thiếu hàng chỉ tính hạn giữ + được cọc từ lúc này.
   supplyResultSentAt DateTime?
+  // Đơn SHIPPED tách ra khi Quản lý kho thành phẩm xuất trước phần đã có — đơn gốc giữ phần còn lại, vẫn CONFIRMED.
+  parentOrderId     String?
+  parentOrder       Order?      @relation("OrderPartialShipment", fields: [parentOrderId], references: [id])
+  partialShipments  Order[]     @relation("OrderPartialShipment")
   confirmedAt       DateTime?
   // Thông tin khách đặt cọc — đơn CONFIRMED tạo trước khi có bước cọc để trống (coi như đã cọc, không có số tiền).
   depositAmount     Float?
