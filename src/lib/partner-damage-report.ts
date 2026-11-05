@@ -50,6 +50,7 @@ export async function computePartnerDamageReport(
       where: {
         type: "HUY",
         status: "APPROVED",
+        quantity: { gt: 0 },
         approvedAt: { gte: rangeStart, lt: rangeEnd },
         warehouse: { type: "THI_TRUONG" },
         ...warehouseFilter,

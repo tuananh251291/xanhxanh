@@ -6,8 +6,9 @@ import { toStoredWeekStart } from "@/lib/week-rotation";
 import { startOfWeek, addDays, endOfWeek, format, getWeek } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { Prisma, RoomType } from "@prisma/client";
-import { POT_SPEC_LABELS, RETAIL_MANAGER_MISSING_RELATED_TYPE } from "@/types";
+import { POT_SPEC_LABELS, RETAIL_MANAGER_MISSING_RELATED_TYPE, FREE_GIFT_CATEGORY_CODE, FREE_GIFT_PLANT_CODE, FREE_GIFT_PLANT_NAME, FREE_GIFT_STAGE_CODE } from "@/types";
 import { upsertLot } from "@/lib/goods-receipt";
+import { InsufficientRoomStockError } from "@/lib/finished-goods";
 
 // 3 phòng cố định của Kho thị trường (WarehouseType.THI_TRUONG, xem User.workplaceWarehouseId của
 // DOI_TAC_VAN_HANH) — dùng cho việc kiểm tra định kì hàng tuần + luồng "Thực hiện" nhiệm vụ, tái dùng
@@ -211,7 +212,7 @@ export async function syncMarketInspectionAlerts() {
 export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.TransactionClient, proposalIds: string[]): Promise<void> {
   const proposals = await tx.contaminationProposal.findMany({
     where: {
-      id: { in: proposalIds }, type: "TRONG", status: "APPROVED",
+      id: { in: proposalIds }, type: "TRONG", status: "APPROVED", quantity: { gt: 0 },
       room: { type: { in: ["PHONG_SAN_PHAM_DAT", "PHONG_SAN_PHAM_KHONG_DAT", "PHONG_CAY_TRONG"] } },
       warehouse: { type: "THI_TRUONG" },
     },
@@ -232,6 +233,52 @@ export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.Transacti
     }
     await upsertLot(tx, plantRoom.id, p.plantTypeId, p.plantType.code, p.plantStageCode, p.quantity, p.requestedBy.code);
   }
+}
+
+type FreeGiftSplitProposal = {
+  id: string;
+  code: string;
+  warehouseId: string;
+  quantity: number;
+  plantType: { code: string };
+  warehouse: { type: string };
+};
+
+// Kiểm tra số Free Gift QL bán lẻ nhập cho 1 dòng đề xuất — trả về thông báo lỗi, null = hợp lệ. Tổng luôn giữ
+// nguyên số Đối tác đề xuất: Trồng/Hủy = quantity - freeGift nên chỉ cần freeGift không vượt quantity.
+export function freeGiftSplitError(p: FreeGiftSplitProposal, freeGift: number): string | null {
+  if (p.warehouse.type !== "THI_TRUONG") return "Chỉ đề xuất của Kho thị trường mới duyệt Free Gift được";
+  if (p.plantType.code === FREE_GIFT_PLANT_CODE) return `${p.code}: cây Free Gift không chuyển sang Free Gift được nữa`;
+  if (freeGift > p.quantity) return `${p.code}: số Free Gift không được vượt số đề xuất (${p.quantity})`;
+  return null;
+}
+
+// Tách 1 phần (hoặc toàn bộ) dòng đề xuất sang Free Gift. Cây gốc đã bị trừ khỏi phòng nguồn từ lúc Đối tác gửi,
+// nên ở đây chỉ cộng vào mã Free Gift của kho — tổng số cây không đổi. Gọi TRƯỚC khi chuyển trạng thái APPROVED.
+export async function applyFreeGiftSplit(tx: Prisma.TransactionClient, p: FreeGiftSplitProposal, freeGift: number, staffCode: string): Promise<void> {
+  // Chỉ tách dòng còn PENDING — 2 người duyệt cùng lúc thì người sau bị chặn, không cộng Free Gift 2 lần.
+  const locked = await tx.contaminationProposal.updateMany({
+    where: { id: p.id, status: "PENDING" },
+    data: { quantity: p.quantity - freeGift, freeGiftQuantity: freeGift },
+  });
+  if (locked.count === 0) throw new InsufficientRoomStockError(`Phiếu ${p.code} vừa được xử lý — tải lại trang`);
+
+  const room = await tx.room.findFirst({ where: { warehouseId: p.warehouseId, type: "PHONG_SAN_PHAM_DAT", isActive: true }, select: { id: true } });
+  if (!room) throw new InsufficientRoomStockError("Kho thị trường thiếu Phòng sản phẩm đạt — liên hệ Admin kiểm tra lại kho");
+
+  const category = await tx.plantCategory.upsert({
+    where: { code: FREE_GIFT_CATEGORY_CODE },
+    update: {},
+    create: { code: FREE_GIFT_CATEGORY_CODE, name: FREE_GIFT_PLANT_NAME, isActive: false },
+    select: { id: true },
+  });
+  const plantType = await tx.plantType.upsert({
+    where: { code: FREE_GIFT_PLANT_CODE },
+    update: {},
+    create: { code: FREE_GIFT_PLANT_CODE, name: FREE_GIFT_PLANT_NAME, categoryId: category.id, seq: 1, isActive: false },
+    select: { id: true },
+  });
+  await upsertLot(tx, room.id, plantType.id, FREE_GIFT_PLANT_CODE, FREE_GIFT_STAGE_CODE, freeGift, staffCode);
 }
 
 // Đề xuất Trồng của Kho thị trường từ Phòng sản phẩm đạt/không đạt mà chưa có quy cách chậu (phiếu gửi trước

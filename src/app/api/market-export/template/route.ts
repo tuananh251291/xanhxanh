@@ -60,7 +60,7 @@ export async function GET() {
       required: true,
       description: "Mã sản phẩm kèm quy cách — PHẢI chứa 1 trong các quy cách T01/T05/T10 (túi, trừ ở Phòng sản phẩm đạt) hoặc S/M/L/C (chậu, trừ ở Phòng cây trồng), ưu tiên đặt ở cuối mã, cách nhau bằng dấu \"-\" (VD MT001-T05).",
     },
-    { column: "Tên nội bộ", required: true, description: "Phải khớp CHÍNH XÁC với Tên loại cây trong hệ thống — xem sheet Danh mục." },
+    { column: "Tên nội bộ", required: true, description: "Phải khớp CHÍNH XÁC với Tên loại cây trong hệ thống — xem sheet Danh mục. Đơn Free Gift: ghi đúng \"Free Gift\" (không cần phân loại cây, Mã hàng không cần chứa quy cách, Lineitem quantity = số cây)." },
   ]);
 
   const buffer = await workbook.xlsx.writeBuffer();

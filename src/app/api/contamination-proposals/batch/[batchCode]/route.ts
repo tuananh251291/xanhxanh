@@ -5,9 +5,8 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
-import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
-import { deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
-import { upsertLot } from "@/lib/goods-receipt";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, findMarketPlantingMissingPot, missingPotMessage, freeGiftSplitError, applyFreeGiftSplit } from "@/lib/market-inspection";
+import { InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert } from "@/lib/inventory";
 
 const include = {
@@ -52,8 +51,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ batc
   return NextResponse.json(proposals);
 }
 
-// quantities (tuỳ chọn, CHỈ Kho thị trường): QL thị trường sửa số từng dòng trước khi duyệt — { [proposalId]: số mới }.
-const patchSchema = z.object({ action: z.literal("approve"), quantities: z.record(z.string(), z.number().int().positive()).optional() });
+// freeGift (tuỳ chọn, CHỈ Kho thị trường): QL bán lẻ chuyển 1 phần mỗi dòng sang Free Gift trước khi duyệt — { [proposalId]: số Free Gift }.
+// Tổng mỗi dòng giữ nguyên số Đối tác đề xuất: phần còn lại vẫn Trồng/Hủy như đề xuất.
+const patchSchema = z.object({ action: z.literal("approve"), freeGift: z.record(z.string(), z.number().int().min(0)).optional() });
 
 // "Duyệt nhanh tất cả" — duyệt 1 lượt mọi dòng đang PENDING trong đề xuất, khỏi phải bấm Duyệt từng
 // dòng cây. Chỉ hỗ trợ approve (tác dụng phụ tồn kho duy nhất của approve: Trồng của Đối tác vận hành từ
@@ -92,30 +92,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const missingPot = await findMarketPlantingMissingPot(pending.map((p) => p.id));
   if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
 
-  // Sửa số trước khi duyệt — chỉ Kho thị trường (dòng có phòng nguồn). Lúc gửi đã trừ đúng số cũ ở phòng nguồn:
-  // giảm thì hoàn phần chênh về phòng nguồn, tăng thì trừ thêm (phải đủ tồn).
-  const quantities = parsed.data.quantities ?? {};
-  const edits = pending
-    .filter((p) => quantities[p.id] !== undefined && quantities[p.id] !== p.quantity)
-    .map((p) => ({ p, newQty: quantities[p.id] }));
-  if (edits.length > 0 && edits.some(({ p }) => p.warehouse.type !== "THI_TRUONG" || !p.roomId)) {
-    return NextResponse.json({ message: "Chỉ sửa được số lượng đề xuất của Kho thị trường" }, { status: 400 });
+  const freeGift = parsed.data.freeGift ?? {};
+  const splits = pending.filter((p) => (freeGift[p.id] ?? 0) > 0).map((p) => ({ p, qty: freeGift[p.id] }));
+  for (const { p, qty } of splits) {
+    const splitError = freeGiftSplitError(p, qty);
+    if (splitError) return NextResponse.json({ message: splitError }, { status: 400 });
   }
 
   let newHandoverIds: string[];
   try {
   newHandoverIds = await prisma.$transaction(async (tx) => {
-    for (const { p, newQty } of edits) {
-      const diff = newQty - p.quantity;
-      if (diff > 0) {
-        await deductFromRoomFifo(tx, p.roomId!, p.plantTypeId, p.stageCode, diff, `${p.plantType.code} ${p.stageCode} (cần thêm ${diff})`);
-      } else {
-        await upsertLot(tx, p.roomId!, p.plantTypeId, p.plantType.code, p.stageCode, -diff, p.requestedBy.code);
-      }
-      // Chỉ sửa dòng còn PENDING (khoá chống 2 người duyệt cùng lúc).
-      const locked = await tx.contaminationProposal.updateMany({ where: { id: p.id, status: "PENDING" }, data: { quantity: newQty } });
-      if (locked.count === 0) throw new InsufficientRoomStockError(`Phiếu ${p.code} vừa được xử lý — tải lại trang`);
-    }
+    for (const { p, qty } of splits) await applyFreeGiftSplit(tx, p, qty, p.requestedBy.code);
     await tx.contaminationProposal.updateMany({
       where: { id: { in: pending.map((p) => p.id) } },
       data: { status: "APPROVED", approvedById: session!.user!.id, approvedAt: new Date() },
@@ -129,13 +116,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   }
   await notifyGardenHandoversCreated(newHandoverIds);
 
-  if (edits.length > 0) {
+  if (splits.length > 0) {
     await createAlert({
       type: "CONTAMINATION_PROPOSAL",
-      title: `Đề xuất ${batchCode} được duyệt với số lượng đã sửa`,
-      message: `QL thị trường đã sửa số trước khi duyệt: ${edits.map(({ p, newQty }) => `${p.plantType.code} ${p.stageCode}: ${p.quantity} → ${newQty}`).join("; ")}.`,
-      userId: edits[0].p.requestedById,
-      relatedId: edits[0].p.id,
+      title: `Đề xuất ${batchCode} được duyệt có chuyển Free Gift`,
+      message: `QL bán lẻ đã chuyển sang Free Gift: ${splits.map(({ p, qty }) => `${p.plantType.code} ${p.stageCode}: ${qty}/${p.quantity}`).join("; ")}.`,
+      userId: splits[0].p.requestedById,
+      relatedId: splits[0].p.id,
       relatedType: "ContaminationProposal",
     });
   }

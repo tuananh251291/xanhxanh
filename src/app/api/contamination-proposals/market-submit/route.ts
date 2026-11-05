@@ -5,6 +5,7 @@ import { generateContaminationProposalCode } from "@/lib/codes";
 import { createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { MARKET_ROOM_TYPES, POT_STAGE_CODE_LIST } from "@/lib/market-inspection";
+import { FREE_GIFT_PLANT_CODE } from "@/types";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     const plantCode = plantCodeById.get(l.plantTypeId);
     if (!plantCode) return NextResponse.json({ message: "Mã cây không hợp lệ" }, { status: 400 });
     if (l.type !== "TRONG") continue;
+    if (plantCode === FREE_GIFT_PLANT_CODE) return NextResponse.json({ message: "Cây Free Gift chỉ đề xuất Hủy được" }, { status: 400 });
     if (!l.plantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(l.plantStageCode)) {
       return NextResponse.json({ message: `${plantCode}: chọn quy cách chậu (S/M/L/X/Y/Z/C) cho phần Trồng` }, { status: 400 });
     }

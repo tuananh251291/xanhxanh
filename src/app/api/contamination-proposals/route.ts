@@ -1,3 +1,4 @@
+import { FREE_GIFT_PLANT_CODE } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
@@ -144,6 +145,8 @@ export async function POST(req: NextRequest) {
     // Trồng (kể cả trồng lại ngay trong Phòng cây trồng sang quy cách chậu khác, VD S → M) luôn phải chọn quy
     // cách chậu — lúc duyệt cây được cộng vào Phòng cây trồng theo quy cách này (moveApprovedMarketPlantingToPlantRoom).
     if (type === "TRONG") {
+      const plant = await prisma.plantType.findUnique({ where: { id: plantTypeId }, select: { code: true } });
+      if (plant?.code === FREE_GIFT_PLANT_CODE) return NextResponse.json({ message: "Cây Free Gift chỉ đề xuất Hủy được" }, { status: 400 });
       if (!requestedPlantStageCode || !(POT_STAGE_CODE_LIST as string[]).includes(requestedPlantStageCode)) {
         return NextResponse.json({ message: "Chọn quy cách chậu (S/M/L/X/Y/Z/C) cho phần Trồng" }, { status: 400 });
       }

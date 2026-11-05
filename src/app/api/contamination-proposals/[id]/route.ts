@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { isAdminRole } from "@/types";
+import { isAdminRole, FREE_GIFT_PLANT_CODE } from "@/types";
 import { addToContaminationRoom } from "@/lib/contamination-room";
 import { upsertLot } from "@/lib/goods-receipt";
 import { getRoomStock, deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
 import { deleteContaminationProposalPhoto } from "@/lib/contamination-proposal-storage";
-import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage, freeGiftSplitError, applyFreeGiftSplit } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const schema = z.union([
-  z.object({ action: z.enum(["approve", "reject"]), reason: z.string().trim().max(500).optional() }),
+  // freeGiftQuantity (chỉ Kho thị trường, khi duyệt): phần chuyển sang Free Gift, còn lại vẫn Trồng/Hủy như đề xuất.
+  z.object({ action: z.enum(["approve", "reject"]), reason: z.string().trim().max(500).optional(), freeGiftQuantity: z.number().int().min(0).optional() }),
   // "Sửa & gửi lại" — chỉ áp dụng cho đề xuất đã REJECTED, chỉ đổi được Số lượng/Loại/Ghi chú (mã cây,
   // quy cách, phòng nguồn GIỮ NGUYÊN như phiếu gốc — đổi những cái đó coi như 1 đề xuất khác hẳn, phải
   // gửi mới qua form thường). Xem canResubmitProposal (permission) + validate riêng cho type=TRONG bên dưới.
@@ -57,6 +58,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { type, quantity, notes } = parsed.data;
+    if (type === "TRONG" && proposal.plantType.code === FREE_GIFT_PLANT_CODE) {
+      return NextResponse.json({ message: "Cây Free Gift chỉ đề xuất Hủy được" }, { status: 400 });
+    }
 
     // Kho thị trường: giữ ảnh cũ nếu không gửi kèm, nhưng phải luôn còn ≥1 ảnh để QL thị trường đối chiếu
     // (ảnh cũ có thể đã bị tự xoá sau 30 ngày — khi đó bắt buộc chụp lại).
@@ -187,13 +191,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (proposal.status !== "PENDING") return NextResponse.json({ message: "Đề xuất đã được xử lý" }, { status: 400 });
 
   const { action, reason } = parsed.data;
+  const freeGift = action === "approve" ? parsed.data.freeGiftQuantity ?? 0 : 0;
 
   if (action === "approve") {
     const missingPot = await findMarketPlantingMissingPot([id]);
     if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
   }
+  if (freeGift > 0) {
+    const splitError = freeGiftSplitError(proposal, freeGift);
+    if (splitError) return NextResponse.json({ message: splitError }, { status: 400 });
+  }
 
-  const newHandoverIds = await prisma.$transaction(async (tx) => {
+  let newHandoverIds: string[];
+  try {
+  newHandoverIds = await prisma.$transaction(async (tx) => {
+    if (freeGift > 0) await applyFreeGiftSplit(tx, proposal, freeGift, proposal.requestedBy.code);
+
     await tx.contaminationProposal.update({
       where: { id },
       data: {
@@ -232,7 +245,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Đề xuất Trồng của Kho thành phẩm (từ Phòng chờ xử lý) được duyệt → tự tạo/gộp phiếu bàn giao về Vườn.
     return action === "approve" ? attachApprovedToGardenHandover(tx, [id]) : [];
   });
+  } catch (err) {
+    if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
+    throw err;
+  }
   await notifyGardenHandoversCreated(newHandoverIds);
+
+  if (freeGift > 0) {
+    await createAlert({
+      type: "CONTAMINATION_PROPOSAL",
+      title: "Đề xuất được duyệt có chuyển Free Gift",
+      message: `QL bán lẻ đã chuyển ${freeGift.toLocaleString("vi-VN")}/${proposal.quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${proposal.stageCode}) sang Free Gift — phiếu ${proposal.code}.`,
+      userId: proposal.requestedById,
+      relatedId: proposal.id,
+      relatedType: "ContaminationProposal",
+    });
+  }
 
   if (action === "reject") {
     const typeLabel = proposal.type === "TRONG" ? "Trồng lại" : "Hủy bỏ";
