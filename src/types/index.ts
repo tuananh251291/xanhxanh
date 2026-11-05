@@ -563,7 +563,8 @@ export const ALERT_TYPE_LABELS = {
   GARDEN_DAMAGE_CONFIRMED: "Phiếu ghi nhận cây hỏng đã xác nhận",
   GARDEN_CARE_SUBMITTED: "Phiếu chăm sóc cây mô chờ duyệt",
   GARDEN_CARE_RETURNED: "Phiếu chăm sóc cây mô bị trả lại",
-  GARDEN_CARE_CONFIRMED: "Phiếu chăm sóc cây mô đã duyệt",
+  // Dùng chung: phiếu chăm sóc đã duyệt + NV được giao chăm sóc lô (xem notifyCareLotAssigned).
+  GARDEN_CARE_CONFIRMED: "Chăm sóc cây mô",
   RND_NEXT_ROUND_READY: "Kì cấy R&D tiếp theo đã sẵn sàng",
   MOTHER_FORECAST_MONTHLY_DUE: "Nhiệm vụ Dự kiến đáp ứng mẫu mẹ đến hạn",
   MOTHER_OUTPUT_SHORTFALL: "Sản lượng mẫu mẹ tụt dưới kế hoạch",

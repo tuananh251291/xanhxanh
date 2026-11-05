@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { canManageGarden } from "@/lib/garden-staff";
 import { generateGardenCareTicketCode } from "@/lib/codes";
-import { CARE_POOLS } from "@/lib/garden-care";
+import { CARE_POOLS, notifyCareLotAssigned } from "@/lib/garden-care";
 import { moveStock, cleanupEmptyLines, InventoryError } from "@/lib/garden-inventory";
 import { z } from "zod";
 
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
+    let assignedQuantity = 0;
     const ticket = await prisma.$transaction(async (tx) => {
       const lines = await tx.gardenStockLine.findMany({ where: { lotId: id, pool: { in: [...CARE_POOLS] } }, select: { id: true, rowId: true } });
       const lineById = new Map(lines.map((l) => [l.id, l]));
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (staffChanged) {
         await tx.gardenCareLot.update({ where: { id }, data: { staffId } });
         const current = await tx.gardenStockLine.findMany({ where: { lotId: id, pool: { in: [...CARE_POOLS] }, quantity: { gt: 0 } }, select: { id: true, quantity: true, staffId: true } });
+        assignedQuantity = current.reduce((s, l) => s + l.quantity, 0);
         for (const l of current) {
           if (l.staffId === staffId) continue;
           await moveStock(tx, { lineId: l.id, quantity: l.quantity, toStaffId: staffId, type: "PLACE", note: "Đổi NV phụ trách lô", byId: session.user.id });
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         select: { code: true },
       });
     }, { timeout: 30000 });
+    if (staffChanged && staffId && assignedQuantity > 0) await notifyCareLotAssigned({ staffId, lotId: id, quantity: assignedQuantity });
     return NextResponse.json({ success: true, message: `Đã duyệt phiếu sắp xếp ${ticket.code}` }, { status: 201 });
   } catch (err) {
     if (err instanceof InventoryError) return NextResponse.json({ message: err.message }, { status: 400 });
