@@ -1060,7 +1060,6 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
   DIEU_PHOI: [
     { href: "/dashboard", label: "Tổng quan", icon: "LayoutDashboard" },
     { href: "/inventory/all", label: "Tồn kho tổng", icon: "Warehouse" },
-    { href: "/purchase-orders", label: "Đặt hàng NCC", icon: "ShoppingBag" },
     // Nghiệp vụ 7 — nhận đơn Sale, xác nhận số lượng giao từng Vườn sản xuất đóng gói, xem /garden-pack-requests.
     { href: "/garden-pack-requests", label: "Phiếu giao vườn đóng gói", icon: "PackageOpen" },
     { href: "/account", label: "Tài khoản", icon: "UserCircle" },
