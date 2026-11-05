@@ -8,6 +8,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { orderMarketLabel } from "@/types";
 import ShipOrderButton from "@/components/shared/ship-order-button";
 import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
+import { withResolvedLot } from "@/lib/order-item-spec";
 import { getOrderPackStatus } from "@/lib/order-pack-status";
 
 // Chi tiết đơn: gộp các dòng cùng mã cây + quy cách (nhiều lô), sắp theo mã — bảng 3 cột thẳng hàng
@@ -72,7 +73,8 @@ export default async function ShippingOrdersPage() {
         salesMarket: { select: { name: true } },
         items: {
           include: {
-            lot: { select: { stageCode: true, plantType: { select: { code: true, name: true } } } },
+            plantType: { select: { code: true, name: true } },
+            lot: { select: { plantTypeId: true, stageCode: true, plantType: { select: { code: true, name: true } } } },
             processingRequest: { select: { status: true } },
           },
         },
@@ -140,7 +142,7 @@ export default async function ShippingOrdersPage() {
                     </div>
                   </div>
 
-                  <OrderLinesGrid items={order.items} />
+                  <OrderLinesGrid items={order.items.map(withResolvedLot)} />
                 </CardContent>
               </Card>
             );

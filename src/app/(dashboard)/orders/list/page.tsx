@@ -19,6 +19,7 @@ import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
 import ShipAtEditCell from "./ship-at-edit-cell";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
+import { ORDER_ITEM_SPEC_FIELDS, withResolvedLot } from "@/lib/order-item-spec";
 import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User } from "@prisma/client";
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
@@ -194,7 +195,7 @@ export default async function OrdersListPage() {
       assignedTo: { select: { id: true, name: true } },
       items: {
         select: {
-          id: true, quantity: true, notes: true,
+          id: true, quantity: true, notes: true, ...ORDER_ITEM_SPEC_FIELDS,
           pickedQuantity1: true, pickedQuantity2: true, pickedQuantity3: true,
           lot: { select: { stageCode: true, plantTypeId: true, plantType: { select: { name: true, code: true } } } },
           processingRequest: { select: { status: true } },
@@ -253,7 +254,7 @@ export default async function OrdersListPage() {
       <OrdersTable
         title="Đơn tạm giữ"
         description="Đang giữ chỗ tồn kho — xác nhận khi khách đồng ý mua, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
-        orders={heldOrders}
+        orders={heldOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil
         showQuantity
         showExpectedShipAt
@@ -267,7 +268,7 @@ export default async function OrdersListPage() {
       <OrdersTable
         title="Đơn đã xác nhận"
         description="Đã chốt với khách, chờ Kho thành phẩm xuất kho — không thể tự xóa/sửa ở bước này."
-        orders={confirmedOrders}
+        orders={confirmedOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil={false}
         showQuantity={false}
         showExpectedShipAt
@@ -329,7 +330,7 @@ export default async function OrdersListPage() {
         <OrdersTable
           title="Đơn của nhân sự tôi quản lý"
           description="Đơn đang giữ/đã xác nhận của NV bán hàng bạn quản lý (đúng thị trường được giao quản lý) — chỉ xem, NV phụ trách tự xác nhận/xoá."
-          orders={teamOrders}
+          orders={teamOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
           showSale
           showHoldUntil
           showQuantity

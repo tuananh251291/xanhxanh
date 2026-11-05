@@ -9,6 +9,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { orderMarketLabel, canAccessOrderPages } from "@/types";
 import { getCustomerManager, canSaleViewOrder } from "@/lib/customer-manager";
 import { PrintButton } from "@/components/shared/print-button";
+import { withResolvedLot } from "@/lib/order-item-spec";
 import "./print-order.css";
 
 const BLANK = "………………";
@@ -51,7 +52,7 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
       sale: { select: { name: true } },
       customer: { select: { marketId: true } },
       salesMarket: { select: { name: true } },
-      items: { include: { lot: { include: { plantType: { select: { code: true, name: true } } } } } },
+      items: { include: { plantType: { select: { code: true, name: true } }, lot: { include: { plantType: { select: { code: true, name: true } } } } } },
     },
   });
   if (!order) notFound();
@@ -65,7 +66,7 @@ export default async function OrderPrintPage({ params }: { params: Promise<{ id:
     ? await getCustomerManager(order.saleId, order.customer.marketId)
     : null;
 
-  const rows = groupForPrint(order.items);
+  const rows = groupForPrint(order.items.map(withResolvedLot));
   const totalQuantity = rows.reduce((s, r) => s + r.quantity, 0);
 
   return (

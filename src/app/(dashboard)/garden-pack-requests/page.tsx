@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isPageAllowed } from "@/lib/permissions";
 import { canDispatchPack } from "@/lib/garden-packing";
 import { GARDEN_OUTPUT_SPECS } from "@/lib/garden-receipt-constants";
+import { ORDER_ITEM_SPEC_FIELDS, withResolvedLot } from "@/lib/order-item-spec";
 import PackRequestsBoard from "./pack-requests-board";
 
 // Nghiệp vụ 7 — NV Điều phối: nhận đơn hàng Sale, xác nhận số lượng giao cho từng Vườn sản xuất đóng gói (phiếu giao
@@ -21,7 +22,7 @@ export default async function GardenPackRequestsPage() {
       select: {
         id: true, code: true, customerCode: true, status: true, notes: true, expectedShipAt: true,
         sale: { select: { name: true } }, marketWarehouse: { select: { name: true } },
-        items: { select: { quantity: true, lot: { select: { stageCode: true, plantType: { select: { code: true } } } } } },
+        items: { select: { quantity: true, ...ORDER_ITEM_SPEC_FIELDS, lot: { select: { plantTypeId: true, stageCode: true, plantType: { select: { code: true, name: true } } } } } },
       },
     }),
     prisma.productionGarden.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true, manager: { select: { name: true } } }, orderBy: { code: "asc" } }),
@@ -48,7 +49,7 @@ export default async function GardenPackRequestsPage() {
       orders={orders.map((o) => ({
         id: o.id, code: o.code, status: o.status, customer: o.marketWarehouse?.name ?? o.customerCode, saleName: o.sale.name, notes: o.notes,
         expectedShipAt: o.expectedShipAt?.toISOString() ?? null,
-        items: o.items.map((i) => `${i.lot.plantType.code} ${i.lot.stageCode} × ${i.quantity.toLocaleString("vi-VN")}`),
+        items: o.items.map(withResolvedLot).map((i) => `${i.lot.plantType.code} ${i.lot.stageCode} × ${i.quantity.toLocaleString("vi-VN")}`),
       }))}
       gardens={gardens.map((g) => ({ id: g.id, label: `${g.name} (${g.code})${g.manager ? ` · QLV ${g.manager.name}` : " · chưa có QLV"}` }))}
       plantTypes={plantTypes}

@@ -170,14 +170,14 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
     }
   }
 
-  const orders: ForecastInput["orders"] = orderItems.map((i) => ({
+  const orders: ForecastInput["orders"] = orderItems.flatMap((i) => !i.lot ? [] : [{
     plantTypeId: i.lot.plantTypeId,
     stageCode: i.lot.stageCode,
     quantity: i.quantity,
     // Đơn cũ không có ngày xuất: coi như xuất ngay để không đánh giá cao tồn.
     dateKey: i.order.expectedShipAt ? toVnDateKey(i.order.expectedShipAt) : todayKey,
     note: `${i.order.code} · ${i.order.status === "HELD" ? "Tạm giữ" : "Đã xác nhận"}`,
-  }));
+  }]);
 
   const rows = computeForecastRows({ todayKey, ratePct, rootingSlots, stock: stockLots, rootingLots, registered, supplierPlans, orders }, dateKey);
   const plantTypes = await prisma.plantType.findMany({

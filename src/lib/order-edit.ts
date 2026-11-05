@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getQualifiedLots } from "@/lib/order-availability";
 import { createAlert } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
+import { ORDER_ITEM_SPEC_FIELDS, orderItemSpec } from "@/lib/order-item-spec";
 import { ALL_FINISHED_STAGE_CODES } from "@/types";
 
 // QL Kho thành phẩm / Admin cấp cao SỬA đơn chưa xuất (HELD/CONFIRMED) — kể cả khi đã phân công và NV đã
@@ -42,7 +43,7 @@ async function loadOrder(orderId: string) {
       items: {
         orderBy: { id: "asc" },
         select: {
-          id: true, lotId: true, quantity: true, neededQuantity: true,
+          id: true, lotId: true, quantity: true, neededQuantity: true, ...ORDER_ITEM_SPEC_FIELDS,
           pickedQuantity1: true, pickedQuantity2: true, pickedQuantity3: true,
           lot: { select: { id: true, roomId: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } }, room: { select: { warehouseId: true, type: true } } } },
           processingRequest: { select: { id: true, code: true, status: true, mediumOrder: { select: { id: true, code: true, status: true } } } },
@@ -72,7 +73,7 @@ export async function getOrderEditData(orderId: string) {
   const regular = new Map<string, { plantTypeId: string; plantCode: string; plantName: string; stageCode: string; quantity: number; picked: number }>();
   for (const i of order.items) {
     const kind = classifyOrderItem(i);
-    const base = { plantCode: i.lot.plantType.code, plantName: i.lot.plantType.name, stageCode: i.lot.stageCode };
+    const base = { plantCode: orderItemSpec(i).plantType.code, plantName: orderItemSpec(i).plantType.name, stageCode: orderItemSpec(i).stageCode };
     if (kind === "locked") {
       locked.push({
         id: i.id, ...base, quantity: i.neededQuantity ?? i.quantity,
@@ -81,8 +82,8 @@ export async function getOrderEditData(orderId: string) {
     } else if (kind === "processing") {
       processing.push({ id: i.id, ...base, quantity: i.neededQuantity ?? i.quantity, prCode: i.processingRequest?.code ?? null });
     } else {
-      const key = groupKey(i.lot.plantTypeId, i.lot.stageCode);
-      const g = regular.get(key) ?? { plantTypeId: i.lot.plantTypeId, ...base, quantity: 0, picked: 0 };
+      const key = groupKey(orderItemSpec(i).plantTypeId, orderItemSpec(i).stageCode);
+      const g = regular.get(key) ?? { plantTypeId: orderItemSpec(i).plantTypeId, ...base, quantity: 0, picked: 0 };
       g.quantity += i.quantity;
       g.picked += pickedTotal(i);
       regular.set(key, g);
@@ -106,7 +107,7 @@ export async function editOrderItems(params: {
 
   // Kho thành phẩm của đơn = kho chứa các lô đang giữ — QL kho chỉ sửa đơn thuộc đúng kho mình làm việc.
   // (bỏ qua Phòng thị trường đã cấp quyền — thuộc Kho thị trường, không phải kho thành phẩm của đơn).
-  const warehouseIds = [...new Set(order.items.filter((i) => i.lot.room?.type !== "PHONG_THI_TRUONG").map((i) => i.lot.room?.warehouseId).filter((w): w is string => !!w))];
+  const warehouseIds = [...new Set(order.items.filter((i) => i.lot?.room?.type !== "PHONG_THI_TRUONG").map((i) => i.lot?.room?.warehouseId).filter((w): w is string => !!w))];
   const warehouseId = warehouseIds[0] ?? user.workplaceWarehouseId;
   if (!warehouseId) throw new OrderEditError("Không xác định được kho thành phẩm của đơn");
   if (user.role === "QUAN_LY_KHO_THANH_PHAM" && !warehouseIds.every((w) => w === user.workplaceWarehouseId) && warehouseIds.length > 0) {
@@ -134,17 +135,17 @@ export async function editOrderItems(params: {
 
   const plantTypes = await prisma.plantType.findMany({ where: { id: { in: [...new Set(lines.map((l) => l.plantTypeId))] } }, select: { id: true, code: true } });
   const plantCodeById = new Map(plantTypes.map((p) => [p.id, p.code]));
-  for (const p of order.items) plantCodeById.set(p.lot.plantTypeId, p.lot.plantType.code);
+  for (const p of order.items) plantCodeById.set(orderItemSpec(p).plantTypeId, orderItemSpec(p).plantType.code);
   if (lines.some((l) => !plantCodeById.has(l.plantTypeId))) throw new OrderEditError("Mã cây không hợp lệ");
 
   const datRooms = await prisma.room.findMany({ where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true }, select: { id: true } });
   // Lô của dòng thường hiện có (VD Phòng thị trường đã cấp quyền) vẫn được lấy thêm — cùng phạm vi lúc tạo đơn.
-  const searchRoomIds = [...new Set([...datRooms.map((r) => r.id), ...regularItems.map((i) => i.lot.roomId).filter((r): r is string => !!r)])];
+  const searchRoomIds = [...new Set([...datRooms.map((r) => r.id), ...regularItems.map((i) => i.lot?.roomId).filter((r): r is string => !!r)])];
 
   // Gộp dòng thường hiện có theo (mã cây, quy cách)
   const currentByKey = new Map<string, LoadedItem[]>();
   for (const i of regularItems) {
-    const key = groupKey(i.lot.plantTypeId, i.lot.stageCode);
+    const key = groupKey(orderItemSpec(i).plantTypeId, orderItemSpec(i).stageCode);
     currentByKey.set(key, [...(currentByKey.get(key) ?? []), i]);
   }
   const desiredByKey = new Map(lines.map((l) => [groupKey(l.plantTypeId, l.stageCode), l]));
@@ -216,7 +217,7 @@ export async function editOrderItems(params: {
             if (take <= 0) continue;
             const existing = itemByLot.get(lot.id);
             if (existing) await tx.orderItem.update({ where: { id: existing.id }, data: { quantity: { increment: take } } });
-            else await tx.orderItem.create({ data: { orderId: order.id, lotId: lot.id, quantity: take } });
+            else await tx.orderItem.create({ data: { orderId: order.id, plantTypeId, stageCode, lotId: lot.id, quantity: take } });
             extra -= take;
           }
         }
@@ -231,7 +232,7 @@ export async function editOrderItems(params: {
   // Thông báo
   const changeText = [
     ...changes.map((c) => (c.before === 0 ? `thêm ${c.label}: ${c.after}` : c.after === 0 ? `xoá ${c.label} (${c.before})` : `${c.label}: ${c.before} → ${c.after}`)),
-    ...removedProcessing.map((i) => `xoá dòng xử lý ${i.lot.plantType.code} ${i.lot.stageCode} (${i.neededQuantity ?? i.quantity})`),
+    ...removedProcessing.map((i) => `xoá dòng xử lý ${orderItemSpec(i).plantType.code} ${orderItemSpec(i).stageCode} (${i.neededQuantity ?? i.quantity})`),
   ].join("; ");
   await createAlert({
     type: "ORDER_EDITED",

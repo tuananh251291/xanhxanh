@@ -251,7 +251,7 @@ export async function POST(req: NextRequest) {
               continue;
             }
             await tx.orderItem.create({
-              data: { orderId: created.id, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, notes: item.notes },
+              data: { orderId: created.id, plantTypeId: item.plantTypeId, stageCode: lot.stageCode, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, notes: item.notes },
             });
             continue;
           }
@@ -269,7 +269,7 @@ export async function POST(req: NextRequest) {
             const take = Math.min(lot.available, remaining);
             if (take <= 0) continue;
             await tx.orderItem.create({
-              data: { orderId: created.id, lotId: lot.id, quantity: take, notes: item.notes },
+              data: { orderId: created.id, plantTypeId: item.plantTypeId, stageCode: lot.stageCode, lotId: lot.id, quantity: take, notes: item.notes },
             });
             remaining -= take;
           }

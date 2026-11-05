@@ -131,7 +131,7 @@ export default async function OrdersPackPage() {
                           !item.processingRequest ? "outline" : item.processingRequest.status === "COMPLETED" ? "completed" : "in-progress"
                         }
                       >
-                        {item.lot.stageCode} · {item.quantity.toLocaleString("vi-VN")} cây
+                        {item.stageCode ?? item.lot?.stageCode} · {item.quantity.toLocaleString("vi-VN")} cây
                         {item.processingRequest && (item.processingRequest.status === "COMPLETED" ? " · đã xử lý" : " · chờ tách túi")}
                       </Badge>
                     ))}

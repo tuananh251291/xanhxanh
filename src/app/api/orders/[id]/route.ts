@@ -36,8 +36,8 @@ async function rescheduleOrder(orderId: string, user: { id: string; role: string
     return NextResponse.json({ message: "Chỉ sửa được đơn chưa xuất kho" }, { status: 400 });
   }
   const latestPlanned = order.items
-    .filter((i) => i.lot.status === "PLANNED" && i.lot.expectedDate)
-    .reduce<Date | null>((max, i) => (!max || i.lot.expectedDate! > max ? i.lot.expectedDate! : max), null);
+    .filter((i) => i.lot?.status === "PLANNED" && i.lot.expectedDate)
+    .reduce<Date | null>((max, i) => (!max || i.lot!.expectedDate! > max ? i.lot!.expectedDate! : max), null);
   if (latestPlanned && shipAt < latestPlanned) {
     return NextResponse.json({ message: `Đơn có hàng dự kiến về ngày ${latestPlanned.toLocaleDateString("vi-VN")} — không dời sớm hơn ngày này được` }, { status: 400 });
   }
@@ -152,14 +152,16 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
       // (VD 21). Không tính lại bagSize/deductQuantity từ quantity như trước (sẽ sai vì quantity giờ
       // luôn là bội số của bagSize) — chỉ cần suy ra bagSize để hiển thị, phần dư = quantity - needed.
       if (item.neededQuantity === null) continue;
+      const lot = item.lot;
+      if (!lot) throw new Error("Dòng cần xử lý cây chưa có lô nguồn — liên hệ Quản lý kho thành phẩm");
 
       // Nguồn ở Kho hàn túi/Theo dõi (không phải Phòng đạt tiêu chuẩn) — cần biết trước Phòng đạt tiêu
       // chuẩn ĐÍCH cùng kho để lúc "Hoàn thành xử lý" cộng đúng chỗ (xem PATCH
       // /api/order-processing-requests/[id]) — phòng nguồn không phải phòng bán được nên không thể cộng
       // dư ngược lại đó như tier "mở túi" thường trong Phòng đạt tiêu chuẩn.
       let targetRoomId: string | null = null;
-      if (item.lot.room!.type !== "PHONG_DAT_TIEU_CHUAN") {
-        const warehouseId = item.lot.room!.warehouseId;
+      if (lot.room!.type !== "PHONG_DAT_TIEU_CHUAN") {
+        const warehouseId = lot.room!.warehouseId;
         if (!targetRoomCache.has(warehouseId)) {
           const targetRoom = await tx.room.findFirst({
             where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
@@ -169,22 +171,22 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
         }
         targetRoomId = targetRoomCache.get(warehouseId) ?? null;
         if (!targetRoomId) {
-          throw new Error(`Kho chứa lô ${item.lot.stageCode} chưa có Phòng đạt tiêu chuẩn — liên hệ Admin trước khi xác nhận`);
+          throw new Error(`Kho chứa lô ${lot.stageCode} chưa có Phòng đạt tiêu chuẩn — liên hệ Admin trước khi xác nhận`);
         }
       }
 
-      const bagSize = FINISHED_SPEC_BAG_SIZE[item.lot.stageCode as keyof typeof FINISHED_SPEC_BAG_SIZE] ?? 1;
+      const bagSize = FINISHED_SPEC_BAG_SIZE[lot.stageCode as keyof typeof FINISHED_SPEC_BAG_SIZE] ?? 1;
       const code = await generateOrderProcessingRequestCode(tx);
       const processingRequest = await tx.orderProcessingRequest.create({
         data: {
           code,
           orderId: order.id,
           orderItemId: item.id,
-          roomId: item.lot.roomId!,
+          roomId: lot.roomId!,
           targetRoomId,
-          plantTypeId: item.lot.plantTypeId,
-          sourceLotId: item.lot.id,
-          sourceStageCode: item.lot.stageCode,
+          plantTypeId: lot.plantTypeId,
+          sourceLotId: lot.id,
+          sourceStageCode: lot.stageCode,
           neededQuantity: item.neededQuantity,
           bagSize,
           deductQuantity: item.quantity,
@@ -305,9 +307,15 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
     );
   }
 
+  const lotlessCount = order.items.filter((i) => !i.lot).length;
+  if (lotlessCount > 0) {
+    return NextResponse.json({ message: `Còn ${lotlessCount} dòng chưa có lô hàng — chưa xuất kho được` }, { status: 400 });
+  }
+  const items = order.items.flatMap((i) => (i.lot ? [{ ...i, lot: i.lot }] : []));
+
   // Dòng trỏ vào lô "ảo" (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts) chưa có hàng
   // thật — chặn xuất kho, báo Kho thành phẩm xác nhận số liệu thật của kế hoạch trước (trang Nhập hàng).
-  const plannedCount = order.items.filter((i) => !i.processingRequest && i.lot.status === "PLANNED").length;
+  const plannedCount = items.filter((i) => !i.processingRequest && i.lot.status === "PLANNED").length;
   if (plannedCount > 0) {
     return NextResponse.json(
       { message: `Còn ${plannedCount} dòng đang chờ hàng dự kiến về thật — xác nhận Kế hoạch nhập kho tại trang Nhập hàng trước khi xuất kho` },
@@ -321,7 +329,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
   // "Gửi hàng Kho thị trường"). Dòng đã qua Yêu cầu xử lý KHÔNG có lô nào để gửi tiếp (actualOutputQuantity
   // coi như đã cam kết thẳng cho đơn, không tạo lô mới — xem PATCH /api/order-processing-requests/[id]),
   // nên bỏ qua, không đưa vào phiếu Transfer.
-  const plainItems = order.items.filter((i) => !i.processingRequest);
+  const plainItems = items.filter((i) => !i.processingRequest);
   const firstPlainItem = plainItems[0];
 
   // Phân bổ lô để trừ: mỗi dòng lấy trước từ ĐÚNG lô đã gắn lúc tạo đơn; lô đó không đủ (VD đơn khác xuất trước
@@ -358,7 +366,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
       select: { lotId: true, quantity: true },
     });
     const heldByLot = new Map<string, number>();
-    for (const h of held) heldByLot.set(h.lotId, (heldByLot.get(h.lotId) ?? 0) + h.quantity);
+    for (const h of held) heldByLot.set(h.lotId!, (heldByLot.get(h.lotId!) ?? 0) + h.quantity);
     for (const l of candidateLots) {
       const free = l.quantity - (heldByLot.get(l.id) ?? 0);
       if (free <= 0) continue;

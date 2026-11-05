@@ -9,6 +9,7 @@ import { isPageAllowed } from "@/lib/permissions";
 import { isAdminRole, isKhoThanhPhamRole, orderMarketLabel } from "@/types";
 import OrderPickTable from "./order-pick-table";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
+import { withResolvedLot } from "@/lib/order-item-spec";
 import { canEditOrderItems } from "@/lib/order-edit";
 
 export default async function OrderPickPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,8 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
       assignedTo: { select: { name: true, code: true } },
       items: {
         include: {
-          lot: { select: { code: true, stageCode: true, plantType: { select: { code: true, name: true } } } },
+          plantType: { select: { code: true, name: true } },
+          lot: { select: { plantTypeId: true, stageCode: true, plantType: { select: { code: true, name: true } } } },
         },
       },
     },
@@ -70,7 +72,7 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
           <OrderPickTable
             // Đơn bị sửa (thêm/bớt dòng, đổi số lượng) thì dựng lại bảng — state nháp khởi tạo 1 lần từ items.
             key={order.items.map((i) => `${i.id}:${i.quantity}`).join("|")}
-            items={order.items.map((item) => ({
+            items={order.items.map(withResolvedLot).map((item) => ({
               id: item.id,
               plantCode: item.lot.plantType.code,
               plantName: item.lot.plantType.name,
