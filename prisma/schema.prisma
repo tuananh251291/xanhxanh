@@ -3668,7 +3668,7 @@ model OrderItem {
   plantType      PlantType? @relation(fields: [plantTypeId], references: [id])
   stageCode      String?
   lotId          String?
-  lot            Lot?    @relation(fields: [lotId], references: [id])
+  lot            Lot?    @relation(fields: [lotId], references: [id], onDelete: Restrict)
   // Số thực sự cần cho đơn — bằng `quantity` ở dòng bình thường (null). Khác null khi dòng này là bù
   // túi từ 1 quy cách khác (VD thiếu 21 cây T01, bù từ 1 lô T05 phải mở nguyên túi 25 cây): `quantity`
   // giữ NGUYÊN CẢ TÚI (25, đã trừ khỏi tồn đạt tiêu chuẩn ngay lúc Tạm giữ — xem POST /api/orders), còn
