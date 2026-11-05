@@ -7,6 +7,7 @@ import { upsertLot } from "@/lib/goods-receipt";
 import { getRoomStock, deductFromRoomFifo, InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
+import { deleteContaminationProposalPhoto } from "@/lib/contamination-proposal-storage";
 import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage } from "@/lib/market-inspection";
 import { z } from "zod";
 
@@ -22,6 +23,8 @@ const schema = z.union([
     notes: z.string().optional(),
     // Quy cách chậu — bắt buộc khi Kho thị trường đề xuất Trồng từ Phòng sản phẩm đạt/không đạt.
     plantStageCode: z.string().optional(),
+    // Kho thị trường: bộ ảnh mới sau khi Đối tác chụp lại/xoá bớt — phải còn ≥1 ảnh.
+    photoUrls: z.array(z.string()).optional(),
   }),
 ]);
 
@@ -55,6 +58,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { type, quantity, notes } = parsed.data;
 
+    // Kho thị trường: giữ ảnh cũ nếu không gửi kèm, nhưng phải luôn còn ≥1 ảnh để QL thị trường đối chiếu
+    // (ảnh cũ có thể đã bị tự xoá sau 30 ngày — khi đó bắt buộc chụp lại).
+    const isMarket = proposal.warehouse.type === "THI_TRUONG";
+    const nextPhotoUrls = isMarket ? parsed.data.photoUrls ?? proposal.photoUrls : proposal.photoUrls;
+    if (isMarket && nextPhotoUrls.length === 0) {
+      return NextResponse.json({ message: "Cần đính kèm ít nhất 1 ảnh bằng chứng" }, { status: 400 });
+    }
+
     // Kho thị trường: Trồng từ Phòng sản phẩm đạt/không đạt phải chọn quy cách chậu (cây sẽ vào Phòng cây
     // trồng theo quy cách này lúc duyệt) — các trường hợp khác luôn để null.
     let plantStageCode: string | null = null;
@@ -75,7 +86,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Đổi sang Trồng cho đề xuất Kho thành phẩm CHƯA từng chọn Vườn sản xuất (tạo lúc type=HUY) — không
     // hỗ trợ chọn Vườn ở đây (giữ form sửa đơn giản, chỉ Số lượng/Loại/Ghi chú), phải gửi đề xuất mới qua
     // form thường nếu thực sự cần đổi hẳn sang Trồng.
-    if (type === "TRONG" && proposal.roomId && !proposal.productionGardenId) {
+    // Kho thị trường không gắn với Vườn nào (cây vào Phòng cây trồng theo quy cách chậu) nên không áp dụng.
+    if (!isMarket && type === "TRONG" && proposal.roomId && !proposal.productionGardenId) {
       return NextResponse.json(
         { message: "Đề xuất này chưa có Vườn sản xuất — không đổi sang \"Trồng\" được ở đây, hãy gửi đề xuất mới" },
         { status: 400 }
@@ -107,6 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { id },
         data: {
           type, quantity, notes, plantStageCode,
+          photoUrls: nextPhotoUrls,
           status: "PENDING",
           approvedById: null,
           approvedAt: null,
@@ -118,6 +131,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (err instanceof InsufficientRoomStockError) return NextResponse.json({ message: err.message }, { status: 409 });
       throw err;
     }
+
+    // Ảnh đã bị thay — chỉ xoá khỏi kho lưu sau khi phiếu đã lưu thành công.
+    const removedPhotos = proposal.photoUrls.filter((u) => !nextPhotoUrls.includes(u));
+    await Promise.all(removedPhotos.map((u) => deleteContaminationProposalPhoto(u).catch(() => {})));
 
     const typeLabel = type === "TRONG" ? "Trồng lại" : "Hủy bỏ";
     const resubmitMessage = `${session.user.name} đã sửa & gửi lại đề xuất "${typeLabel}" ${quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${proposal.stageCode}) — phiếu ${proposal.code}`;

@@ -597,6 +597,10 @@ export const ALERT_TYPE_LABELS = {
   GARDEN_PACK_REQUEST_DONE: "Vườn đã xuất đủ phiếu giao vườn",
 } as const;
 
+// Thông báo "Kho thị trường chưa có Quản lý bán lẻ" — dùng chung AlertType CONTAMINATION_PROPOSAL (không đổi
+// enum), nhận diện qua relatedType để dẫn tới trang Người dùng thay vì trang đề xuất. Xem market-inspection.ts.
+export const RETAIL_MANAGER_MISSING_RELATED_TYPE = "RetailManagerMissing";
+
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
 // vào vừa đánh dấu đã xem vừa điều hướng thẳng tới đó, thay vì chỉ có nút "Đã xem" chung chung (xem
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.

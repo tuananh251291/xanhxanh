@@ -5,6 +5,7 @@ import { cleanupExpiredAttendanceSelfies } from "@/lib/attendance-storage";
 import { cleanupExpiredViolationPhotos } from "@/lib/violation-photo-storage";
 import { syncMotherLotDueDates } from "@/lib/mother-due-sync";
 import { syncRootingLotDueDates } from "@/lib/rooting-due-sync";
+import { syncMarketInspectionAlerts } from "@/lib/market-inspection";
 
 // Chạy 3h sáng mỗi ngày (giờ server) — khung giờ ít NV thao tác nhất, tránh cạnh tranh tài nguyên với
 // lúc NV nhập liệu ban ngày. Lỗi (VD Supabase tạm gián đoạn) chỉ log, không crash tiến trình Next.js —
@@ -81,3 +82,15 @@ async function runRootingDueSync() {
 }
 void runRootingDueSync();
 cron.schedule("10 * * * *", runRootingDueSync);
+
+// Kiểm tra định kì Kho thị trường: tự tạo việc tuần, báo QL thị trường khi Đối tác quá hạn, báo Admin khi kho
+// chưa có Quản lý bán lẻ — chạy ở đây vì các trường hợp này xảy ra đúng lúc Đối tác KHÔNG đăng nhập.
+async function runMarketInspectionAlerts() {
+  try {
+    await syncMarketInspectionAlerts();
+  } catch (err) {
+    console.error("[cron] Lỗi đồng bộ thông báo kiểm tra định kì Kho thị trường:", err);
+  }
+}
+void runMarketInspectionAlerts();
+cron.schedule("20 * * * *", runMarketInspectionAlerts);

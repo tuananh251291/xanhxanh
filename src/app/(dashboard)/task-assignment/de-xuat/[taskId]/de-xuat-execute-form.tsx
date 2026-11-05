@@ -192,43 +192,31 @@ export default function DeXuatExecuteForm({
     if (collectRows().length === 0) return sendNoProposal();
     const rows = collectRows();
     setSubmitting(true);
-    let batchCode: string | undefined;
-    let successCount = 0;
     try {
-      for (const r of rows) {
-        const calls: { type: "HUY" | "TRONG"; quantity: number; photoUrls: string[]; plantStageCode?: string }[] = [];
-        if (r.huy > 0) calls.push({ type: "HUY", quantity: r.huy, photoUrls: r.huyPhotos });
-        if (r.trong > 0) calls.push({ type: "TRONG", quantity: r.trong, photoUrls: r.trongPhotos, plantStageCode: needsPotSpec ? r.potStageCode : undefined });
-        for (const c of calls) {
-          const res = await fetch("/api/contamination-proposals", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: c.type,
-              roomId,
-              plantTypeId: r.lot.plantTypeId,
-              stageCode: r.lot.stageCode,
-              quantity: c.quantity,
-              batchCode,
-              dailyTaskId: taskId,
-              photoUrls: c.photoUrls,
-              plantStageCode: c.plantStageCode,
-              // productionGardenId (state) có thể là null (chưa chọn/không có vườn nào, xem gardens.length
-              // === 0) — gửi undefined thay vì null vì z.string().optional() không nhận null.
-              productionGardenId: c.type === "TRONG" && productionGardenId ? productionGardenId : undefined,
-            }),
-          });
-          if (!res.ok) { toast.error((await res.json()).message ?? "Có dòng gửi thất bại"); continue; }
-          const created = await res.json();
-          if (!batchCode) batchCode = created.batchCode ?? created.code;
-          successCount += 1;
-        }
+      const lines = rows.flatMap((r) => {
+        const base = { plantTypeId: r.lot.plantTypeId, stageCode: r.lot.stageCode };
+        return [
+          ...(r.huy > 0 ? [{ ...base, type: "HUY" as const, quantity: r.huy, photoUrls: r.huyPhotos }] : []),
+          ...(r.trong > 0 ? [{ ...base, type: "TRONG" as const, quantity: r.trong, photoUrls: r.trongPhotos, plantStageCode: needsPotSpec ? r.potStageCode : undefined }] : []),
+        ];
+      });
+      const res = await fetch("/api/contamination-proposals/market-submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dailyTaskId: taskId, roomId, lines }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        // Gửi theo kiểu tất cả hoặc không: chưa dòng nào được ghi — ở lại form, giữ nguyên số và ảnh đã nhập,
+        // chỉ cập nhật lại cột Tồn kho để Đối tác thấy số mới nhất rồi sửa dòng lỗi.
+        toast.error(json?.message ?? "Gửi đề xuất thất bại — chưa có dòng nào được ghi");
+        const fresh = await fetch(`/api/lots?roomId=${roomId}&status=ACTIVE`).then((r) => r.json()).catch(() => null);
+        if (Array.isArray(fresh)) setAllLots(fresh);
+        return;
       }
-      if (successCount > 0) {
-        toast.success(`Đã gửi ${successCount} đề xuất cho QL thị trường duyệt`);
-        // Đối tác vận hành không vào được /task-assignment (bị đẩy về Dashboard) — về thẳng Dashboard.
-        router.push("/dashboard");
-      }
+      toast.success(`Đã gửi ${json?.count ?? lines.length} đề xuất cho QL thị trường duyệt`);
+      // Đối tác vận hành không vào được /task-assignment (bị đẩy về Dashboard) — về thẳng Dashboard.
+      router.push("/dashboard");
     } finally {
       setSubmitting(false);
       setConfirmOpen(false);
