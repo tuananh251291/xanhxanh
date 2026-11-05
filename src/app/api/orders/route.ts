@@ -10,6 +10,7 @@ import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
 import { prepareAvailability } from "@/lib/finished-stock-forecast";
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
+import { createAlert } from "@/lib/inventory";
 import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
@@ -51,6 +52,8 @@ const createSchema = z.object({
   notes: z.string().optional(),
   // "Mã đơn xuất khẩu" — nhập tay, tách khỏi mã đơn nội bộ (Order.code) tự sinh, dùng cho phiếu in.
   exportCode: z.string().optional(),
+  // Sale đã đồng ý giữ phần có và gửi phần thiếu cho Quản lý kho thành phẩm kiểm tra NCC (src/lib/supplier-check.ts).
+  acceptShortage: z.boolean().optional(),
   items: z
     .array(
       z.object({
@@ -92,7 +95,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { customerId, freeCustomerCode, saleUserId, marketWarehouseId, marketId, expectedShipAt, notes, exportCode, items } = parsed.data;
+  const { customerId, freeCustomerCode, saleUserId, marketWarehouseId, marketId, expectedShipAt, notes, exportCode, items, acceptShortage } = parsed.data;
   // Giờ xuất mặc định 9:00 — chỉ Quản lý kho thành phẩm/Admin được chọn giờ khác (xem normalizeExpectedShipAt).
   const shipDate = normalizeExpectedShipAt(expectedShipAt, session.user.role);
   if (!shipDate) {
@@ -198,6 +201,7 @@ export async function POST(req: NextRequest) {
   const loadAvailability = await prepareAvailability(session.user.workplaceWarehouseId, [...plantTypeById.keys()], shipDate);
   const marketRoomIds = (await prisma.room.findMany({ where: { id: { in: roomIds }, type: "PHONG_THI_TRUONG" }, select: { id: true } })).map((r) => r.id);
 
+  let orderShortageTotal = 0;
   try {
     const order = await prisma.$transaction(
       async (tx) => {
@@ -232,10 +236,10 @@ export async function POST(req: NextRequest) {
 
         // key = plantTypeId:stageCode — tồn còn giữ được lúc gặp dòng ĐẦU TIÊN của mã đó (trước khi dòng nào
         // của mã đó giữ chỗ), tổng nhu cầu cả đơn, và có dòng nào thiếu không.
-        const demandByKey = new Map<string, { plantTypeId: string; stageCode: string; needed: number; available: number; short: boolean; note?: string }>();
+        const demandByKey = new Map<string, { plantTypeId: string; stageCode: string; needed: number; available: number; granted: number; short: boolean; note?: string }>();
         const track = (plantTypeId: string, stageCode: string, quantity: number, available: number) => {
           const key = `${plantTypeId}:${stageCode}`;
-          const d = demandByKey.get(key) ?? { plantTypeId, stageCode, needed: 0, available, short: false };
+          const d = demandByKey.get(key) ?? { plantTypeId, stageCode, needed: 0, available, granted: 0, short: false };
           d.needed += quantity;
           demandByKey.set(key, d);
           return d;
@@ -268,13 +272,17 @@ export async function POST(req: NextRequest) {
             await tx.orderItem.create({
               data: { orderId: created.id, plantTypeId: item.plantTypeId, stageCode: lot.stageCode, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, notes: item.notes },
             });
+            d.granted += item.quantity;
             continue;
           }
 
-          track(item.plantTypeId, item.stageCode, item.quantity, await capOf(item.plantTypeId, item.stageCode));
+          const d = track(item.plantTypeId, item.stageCode, item.quantity, await capOf(item.plantTypeId, item.stageCode));
+          // Đồng ý thiếu: chỉ giữ phần trong số đáp ứng, phần còn lại ghi vào OrderShortage ở cuối.
+          const granted = acceptShortage ? Math.min(item.quantity, Math.max(0, d.available - d.granted)) : item.quantity;
+          d.granted += granted;
 
           // Lấy hàng đang có trước, phần còn lại là hàng sắp về — để trống lô, chọn lô lúc xuất kho.
-          let remaining = item.quantity;
+          let remaining = granted;
           for (const lot of lots) {
             if (remaining <= 0) break;
             const take = Math.min(lot.available, remaining);
@@ -291,7 +299,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const shortages = [...demandByKey.values()].filter((d) => d.short || d.needed > d.available);
+        const shortages = [...demandByKey.values()].filter((d) => d.short || (!acceptShortage && d.needed > d.available));
         if (shortages.length > 0) {
           // Rollback cả đơn — báo đủ danh sách mã thiếu.
           throw new OrderShortageError(
@@ -304,11 +312,29 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        return created;
+        const missing = [...demandByKey.values()].filter((d) => d.needed > d.granted);
+        if (missing.length === 0) return created;
+        orderShortageTotal = missing.reduce((s, d) => s + d.needed - d.granted, 0);
+        await tx.orderShortage.createMany({
+          data: missing.map((d) => ({ orderId: created.id, plantTypeId: d.plantTypeId, stageCode: d.stageCode, quantity: d.needed - d.granted })),
+        });
+        // Hạn giữ chỉ bắt đầu khi Quản lý kho thành phẩm gửi kết quả kiểm tra NCC.
+        return tx.order.update({ where: { id: created.id }, data: { holdUntil: null } });
       },
       // Đơn nhiều dòng (VD tạo bằng Excel) mỗi dòng truy vấn tồn riêng — vượt giới hạn 5s mặc định của Prisma.
       { isolationLevel: "Serializable", timeout: 30000, maxWait: 10000 }
     );
+
+    if (orderShortageTotal > 0) {
+      await createAlert({
+        type: "SUPPLIER_CHECK_UPDATE",
+        title: `Đơn ${order.code} thiếu ${orderShortageTotal.toLocaleString("vi-VN")} cây`,
+        message: "Cần gửi Đơn kiểm tra cho NCC trong 1 ngày làm việc — xem trang Kiểm tra NCC",
+        targetRole: "QUAN_LY_KHO_THANH_PHAM",
+        relatedId: order.id,
+        relatedType: "Order",
+      });
+    }
 
     return NextResponse.json(order, { status: 201 });
   } catch (err) {

@@ -400,6 +400,8 @@ enum AlertType {
   TRANSFER_RECEIVE_FEEDBACK
   // QL Kho thành phẩm / Admin cấp cao sửa đơn chưa xuất (src/lib/order-edit.ts) — báo NV bán hàng của đơn.
   ORDER_EDITED
+  // Đơn kiểm tra NCC có thay đổi cần Quản lý kho thành phẩm xử lý — xem src/lib/supplier-check.ts.
+  SUPPLIER_CHECK_UPDATE
   // Bảng giá / tỉ giá hằng tháng (xem src/lib/pricing-reminders.ts): nhắc NV Trợ lý tải bảng giá tháng sau, nhắc
   // NV Kế toán nhập tỉ giá tháng sau (từ ngày 28); bảng giá mới chờ Admin cấp cao duyệt; kết quả duyệt.
   PRICE_LIST_MONTHLY_DUE
@@ -516,6 +518,7 @@ model User {
   // đề xuất Huỷ/Trồng hàng không đạt (RejectedGoodsClassification) của đúng kho được gán — vẫn KHÔNG có
   // quyền thao tác nhận/xuất hàng vật lý như Đối tác vận hành (đó vẫn ràng buộc qua workplaceWarehouseId).
   isRetailManager               Boolean                       @default(false)
+  supplierChecksSent            SupplierCheck[]               @relation("SupplierCheckSentBy")
   retailWarehouseAccess         RetailWarehouseAccess[]
   // Luồng kiểm tra — chỉ áp dụng cho NV cấy mô (CAY_MO), HỆ THỐNG TỰ TÍNH lại đầu mỗi tháng từ tỉ lệ
   // nhiễm tháng trước (xem ensureMonthlyInspectionLaneUpdate, src/lib/inspection-lane.ts). Null = chưa
@@ -1018,6 +1021,8 @@ model PlantType {
 
   priceListItems PriceListItem[]
   orderItems     OrderItem[]
+  orderShortages OrderShortage[]
+  supplierCheckItems SupplierCheckItem[]
 
   @@unique([categoryId, seq])
   @@map("plant_types")
@@ -1113,6 +1118,7 @@ model Supplier {
   updatedAt        DateTime @updatedAt
 
   goodsReceipts GoodsReceipt[]
+  checks        SupplierCheck[]
 
   @@map("suppliers")
 }
@@ -1217,6 +1223,7 @@ model GoodsReceipt {
   assignmentConfirmedAt DateTime?
 
   items GoodsReceiptItem[]
+  supplierCheck SupplierCheck?
 
   @@map("goods_receipts")
 }
@@ -3538,6 +3545,8 @@ model Order {
   // Ngày xuất lúc tạo đơn — mốc tính "dời không quá 1 tháng" (PATCH /api/orders/[id] action=reschedule). Đơn cũ để
   // trống: lấy expectedShipAt ở lần dời đầu tiên.
   originalExpectedShipAt DateTime?
+  // Quản lý kho thành phẩm đã gửi kết quả kiểm tra NCC cho Sale — đơn thiếu hàng chỉ tính hạn giữ + được cọc từ lúc này.
+  supplyResultSentAt DateTime?
   confirmedAt       DateTime?
   // Thông tin khách đặt cọc — đơn CONFIRMED tạo trước khi có bước cọc để trống (coi như đã cọc, không có số tiền).
   depositAmount     Float?
@@ -3567,10 +3576,81 @@ model Order {
   invoices           Invoice[]
   feedback           OrderFeedback?
   gardenPackRequests GardenPackRequest[]
+  shortages          OrderShortage[]
+  supplierChecks     SupplierCheck[]
 
   @@index([customerId])
   @@index([marketWarehouseId])
   @@map("orders")
+}
+
+// Phần đơn hàng chưa đáp ứng được lúc tạo đơn (theo mã cây + quy cách) — KHÔNG giữ chỗ tồn dự kiến, chờ QL Kho TP kiểm tra NCC.
+model OrderShortage {
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  plantTypeId String
+  plantType   PlantType @relation(fields: [plantTypeId], references: [id])
+  stageCode   String
+  quantity    Int
+
+  @@unique([orderId, plantTypeId, stageCode])
+  @@map("order_shortages")
+}
+
+enum SupplierCheckStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  EXPIRED
+  PLACED
+  DELIVERED
+  CANCELLED
+}
+
+// "Đơn kiểm tra số lượng" gửi NCC cho phần thiếu của 1 đơn hàng — xem src/lib/supplier-check.ts. PLACED = đã Đặt hàng, có
+// Phiếu dự kiến nhập (goodsReceiptId) tính vào hàng NCC trong Tồn kho dự kiến.
+model SupplierCheck {
+  id               String              @id @default(cuid())
+  code             String              @unique
+  orderId          String
+  order            Order               @relation(fields: [orderId], references: [id])
+  supplierId       String
+  supplier         Supplier            @relation(fields: [supplierId], references: [id])
+  status           SupplierCheckStatus @default(PENDING)
+  deliveryDate     DateTime
+  responseDeadline DateTime
+  respondedAt      DateTime?
+  respondedByProxy Boolean             @default(false)
+  sentById         String
+  sentBy           User                @relation("SupplierCheckSentBy", fields: [sentById], references: [id])
+  placedAt         DateTime?
+  deliveredAt      DateTime?
+  goodsReceiptId   String?             @unique
+  goodsReceipt     GoodsReceipt?       @relation(fields: [goodsReceiptId], references: [id])
+  createdAt        DateTime            @default(now())
+
+  items SupplierCheckItem[]
+
+  @@index([orderId])
+  @@index([supplierId])
+  @@map("supplier_checks")
+}
+
+model SupplierCheckItem {
+  id                String        @id @default(cuid())
+  checkId           String
+  check             SupplierCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  plantTypeId       String
+  plantType         PlantType     @relation(fields: [plantTypeId], references: [id])
+  stageCode         String
+  requestedQuantity Int
+  // NCC xác nhận có thể đáp ứng — null khi chưa trả lời.
+  confirmedQuantity Int?
+  // Số thực giao theo phiếu, thay số đã xác nhận.
+  deliveredQuantity Int?
+
+  @@map("supplier_check_items")
 }
 
 model OrderItem {

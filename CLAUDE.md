@@ -125,7 +125,11 @@ Chỉ tính cây mô ở Phòng đạt tiêu chuẩn của Kho thành phẩm. Co
   hàng. Lô đang gắn cho đơn xuất muộn hơn vẫn được lấy (đơn đó tự lấy từ hàng về sau), trừ lô nguồn của dòng cần xử lý.
 - Dời ngày xuất (Quản lý kho TP): muộn hơn, không quá 1 tháng so với `originalExpectedShipAt` thì giữ đơn; sớm hơn thì tính lại số
   đáp ứng; quá 1 tháng thì huỷ đơn, báo Sale đặt lại.
-- Chưa làm (giai đoạn 4-5): đơn thiếu hàng hiện vẫn bị từ chối, chưa có Đơn kiểm tra NCC, xuất một phần, đơn Kho thị trường coi như đã cọc.
+- Đơn thiếu hàng (`src/lib/supplier-check.ts`): phần thiếu lưu ở `OrderShortage`, không giữ chỗ, `holdUntil` để trống. QL Kho TP gửi Đơn kiểm tra (trang
+  Kiểm tra NCC, hạn 1 ngày làm việc) → NCC xác nhận ở `/supplier-portal` (NCC chưa có tài khoản: QL nhập hộ) và giữ hàng → QL gửi kết quả cho Sale, hạn giữ bắt
+  đầu tính → khách cọc → QL Đặt hàng: tạo Phiếu dự kiến nhập (A3) + dòng đơn chưa có lô (A4) trong cùng transaction → NCC giao theo phiếu, số thực tế thay số xác nhận.
+  Đơn huỷ/hết hạn: Đơn kiểm tra chưa đặt thôi hiệu lực; đã đặt thì hàng vẫn về, thành tồn tự do.
+- Chưa làm (giai đoạn 5): xuất một phần, báo thiếu cho đơn đã cọc khi số đạt/NCC giảm, đơn Kho thị trường coi như đã cọc, bỏ nguồn Khu sản xuất ở form dự kiến nhập.
 
 ## Tài khoản demo
 

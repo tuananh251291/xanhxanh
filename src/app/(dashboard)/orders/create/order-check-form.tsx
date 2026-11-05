@@ -126,6 +126,8 @@ type MarketOpt = { id: string; code: string; name: string };
 type MarketWarehouse = { id: string; code: string; name: string };
 type SalesUser = { id: string; code: string; name: string; holdDays: number };
 
+type HoldItem = { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string };
+
 export default function OrderCheckForm({
   plantTypes, customers, markets, salesUsers, isActingForSale,
 }: { plantTypes: PlantType[]; customers: Customer[]; markets: MarketOpt[]; salesUsers: SalesUser[]; isActingForSale: boolean }) {
@@ -148,6 +150,7 @@ export default function OrderCheckForm({
   const [checking, setChecking] = useState(false);
   const [holding, setHolding] = useState(false);
   const [shortages, setShortages] = useState<OrderShortage[] | null>(null);
+  const [lastHoldItems, setLastHoldItems] = useState<HoldItem[]>([]);
   const [customerId, setCustomerId] = useState("");
   const onCustomerChange = (id: string) => {
     setCustomerId(id);
@@ -284,7 +287,7 @@ export default function OrderCheckForm({
 
   // Gọi chung cho cả 2 chế độ (nhập tay/Excel) — giữ nguyên contract POST /api/orders (đã tự kiểm tra
   // tồn kho real-time trong transaction Serializable), chỉ khác cách `items` được dựng.
-  const submitHold = async (items: { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string }[]) => {
+  const submitHold = async (items: HoldItem[], acceptShortage = false) => {
     if (sendToMarketWarehouse) {
       if (!marketWarehouseId) { toast.error("Cần chọn Kho thị trường"); return; }
     } else if (isActingForSale && !saleUserId) {
@@ -308,19 +311,23 @@ export default function OrderCheckForm({
           freeCustomerCode: !sendToMarketWarehouse && useFreeCustomer ? freeCustomerCode.trim() : undefined,
           saleUserId: sendToMarketWarehouse || !isActingForSale ? undefined : saleUserId,
           marketWarehouseId: sendToMarketWarehouse ? marketWarehouseId : undefined,
-          marketId: effectiveMarketId, expectedShipAt, exportCode: exportCode || undefined, items,
+          marketId: effectiveMarketId, expectedShipAt, exportCode: exportCode || undefined, items, acceptShortage,
         }),
       });
       const json = await res.json();
       if (!res.ok) {
-        if (Array.isArray(json.shortages) && json.shortages.length > 0) setShortages(json.shortages);
+        if (Array.isArray(json.shortages) && json.shortages.length > 0) {
+          setLastHoldItems(items);
+          setShortages(json.shortages);
+        }
         else toast.error(json.message ?? "Có lỗi xảy ra");
         return;
       }
       const holdLabel = sendToMarketWarehouse
         ? "đã gửi Kho thị trường"
         : `giữ trong ${selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`}`;
-      toast.success(`Đã tạo đơn ${json.code} — ${holdLabel}`);
+      setShortages(null);
+      toast.success(acceptShortage ? `Đã tạo đơn ${json.code} — phần thiếu đã gửi Quản lý kho thành phẩm kiểm tra NCC` : `Đã tạo đơn ${json.code} — ${holdLabel}`);
       setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
       setResults(null);
       setExcelItems([]);
@@ -356,6 +363,9 @@ export default function OrderCheckForm({
           neededQuantity: a.requiresProcessing ? a.suggestedQty : undefined,
         });
       }
+      // Phần chưa đáp ứng vẫn gửi lên: server báo thiếu, Sale chọn gửi Quản lý kho thành phẩm kiểm tra NCC.
+      const missing = r.quantityDemand - acceptedTotalFor(r);
+      if (missing > 0) items.push({ plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: missing });
     }
     submitHold(items);
   };
@@ -864,7 +874,7 @@ export default function OrderCheckForm({
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-text-secondary">
-            {shortages?.length ?? 0} mã dưới đây không đủ tồn đạt tiêu chuẩn. Sửa số lượng (hoặc bỏ dòng) rồi bấm Tạm giữ lại — chưa có dòng nào được giữ.
+            {shortages?.length ?? 0} mã dưới đây không đủ tồn đạt tiêu chuẩn. Sửa số lượng (hoặc bỏ dòng) rồi bấm Tạm giữ lại, hoặc giữ phần có và gửi phần thiếu cho Quản lý kho thành phẩm kiểm tra NCC.
           </p>
           <div className="border border-divider rounded-lg overflow-x-auto max-h-[60vh] overflow-y-auto">
             <table className="w-full text-sm">
@@ -897,6 +907,7 @@ export default function OrderCheckForm({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShortages(null)}>Đóng</Button>
+            <Button disabled={holding} onClick={() => submitHold(lastHoldItems, true)}>Giữ phần có và gửi kiểm tra NCC</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

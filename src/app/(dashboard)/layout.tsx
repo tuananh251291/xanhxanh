@@ -26,6 +26,7 @@ import AiAssistantWidget from "@/components/shared/ai-assistant-widget";
 import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import { vnDateKey } from "@/lib/attendance";
+import { ensureSupplierCheckDeadlines } from "@/lib/supplier-check";
 import { getAnnualLeaveUsage } from "@/lib/attendance-server";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -60,6 +61,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     await ensureWeeklyRootingQualityEvaluation(session.user.workplaceWarehouseId);
     await ensureRootingQualityEvaluationReminder(session.user.workplaceWarehouseId);
   }
+  if (role === "QUAN_LY_KHO_THANH_PHAM") await ensureSupplierCheckDeadlines();
   if (role === "KHO_MO") {
     await ensureRootingReadyAlerts();
     await ensureExpiredExtraWorkReadinessAlertsRead();

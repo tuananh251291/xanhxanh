@@ -7,9 +7,10 @@ import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
 import { canEditShipTime } from "@/lib/order-ship-time";
-import { prepareAvailability } from "@/lib/finished-stock-forecast";
 import { orderItemSpec, ORDER_ITEM_SPEC_FIELDS } from "@/lib/order-item-spec";
 import { addMonths } from "date-fns";
+import { cancelOpenSupplierChecks } from "@/lib/supplier-check";
+import { getShipCutoffKey, prepareAvailability, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
 
 const patchSchema = z.object({
@@ -46,6 +47,7 @@ async function rescheduleOrder(
     where: { id: orderId },
     select: {
       id: true, code: true, saleId: true, status: true, expectedShipAt: true, originalExpectedShipAt: true,
+      supplierChecks: { where: { status: { in: ["PENDING", "CONFIRMED", "PLACED"] } }, select: { deliveryDate: true } },
       items: {
         select: {
           quantity: true, ...ORDER_ITEM_SPEC_FIELDS,
@@ -77,6 +79,7 @@ async function rescheduleOrder(
       prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } }),
       prisma.orderProcessingRequest.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "CANCELLED" } }),
     ]);
+    await cancelOpenSupplierChecks([order.id]);
     await releaseGardenAllocationsForOrders([order.id], user.id);
     await createAlert({
       type: "ORDER_EDITED",
@@ -90,6 +93,10 @@ async function rescheduleOrder(
   }
 
   if (order.expectedShipAt && shipAt < order.expectedShipAt) {
+    const latestDeliveryKey = await getShipCutoffKey(shipAt);
+    if (order.supplierChecks.some((c) => toVnDateKey(c.deliveryDate) > latestDeliveryKey)) {
+      return NextResponse.json({ message: "NCC giao không kịp ngày xuất mới" }, { status: 400 });
+    }
     const demand = new Map<string, { plantTypeId: string; stageCode: string; code: string; quantity: number }>();
     for (const item of order.items) {
       if (item.processingRequest?.status === "COMPLETED" || item.lot?.room?.type === "PHONG_THI_TRUONG") continue;
@@ -196,6 +203,9 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   }
   if (order.status !== "HELD") {
     return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ — không thể xác nhận" }, { status: 400 });
+  }
+  if (!order.supplyResultSentAt && (await prisma.orderShortage.count({ where: { orderId } })) > 0) {
+    return NextResponse.json({ message: "Đơn đang chờ Quản lý kho thành phẩm kiểm tra NCC — chưa ghi nhận cọc được" }, { status: 400 });
   }
   if (!order.marketWarehouseId && (deposit.depositAmount === undefined || !deposit.depositedAt)) {
     return NextResponse.json({ message: "Cần nhập số tiền và ngày khách cọc" }, { status: 400 });
@@ -351,6 +361,7 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
   }
 
   await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+  await cancelOpenSupplierChecks([order.id]);
   // Phân bổ cây Vườn sản xuất của đơn — tự giải phóng phần chưa xuất về kho nguồn, báo Quản lý vườn dừng đóng gói.
   await releaseGardenAllocationsForOrders([order.id], user.id);
 

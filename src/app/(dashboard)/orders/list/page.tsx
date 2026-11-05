@@ -26,6 +26,9 @@ type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status"
   assignedTo: Pick<User, "id" | "name"> | null;
   salesMarket: { name: string } | null;
   invoices?: { id: string; invoiceNo: string; status: string }[];
+  supplyResultSentAt: Date | null;
+  shortages: { quantity: number }[];
+  supplierChecks: { items: { confirmedQuantity: number | null }[] }[];
   sale?: Pick<User, "code" | "name">;
   items: (Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
     lot: Pick<Lot, "stageCode" | "plantTypeId"> & { plantType: Pick<PlantType, "name" | "code"> };
@@ -93,7 +96,16 @@ function OrdersTable({
                 <tr key={o.id} className="border-b last:border-0 even:bg-primary-light hover:bg-primary-light/60 transition-colors">
                   <td className="px-4 py-3 text-sm font-mono text-text-secondary">{o.code}</td>
                   {showSale && <td className="px-4 py-3 text-sm text-foreground">{o.sale ? `${o.sale.code} - ${o.sale.name}` : "—"}</td>}
-                  <td className="px-4 py-3 text-sm text-foreground">{o.customerCode} · {orderMarketLabel(o)}</td>
+                  <td className="px-4 py-3 text-sm text-foreground">
+                    {o.customerCode} · {orderMarketLabel(o)}
+                    {o.shortages.length > 0 && (
+                      <Badge variant={o.supplyResultSentAt ? "info" : "in-progress"} className="block w-fit mt-1">
+                        {o.supplyResultSentAt
+                          ? `NCC đáp ứng ${o.supplierChecks.flatMap((c) => c.items).reduce((s, i) => s + (i.confirmedQuantity ?? 0), 0).toLocaleString("vi-VN")}/${o.shortages.reduce((s, x) => s + x.quantity, 0).toLocaleString("vi-VN")} cây thiếu`
+                          : `Chờ kiểm tra NCC: thiếu ${o.shortages.reduce((s, x) => s + x.quantity, 0).toLocaleString("vi-VN")} cây`}
+                      </Badge>
+                    )}
+                  </td>
                   {showQuantity && (
                     <td className="px-4 py-3 text-sm text-foreground">{o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây</td>
                   )}
@@ -151,7 +163,7 @@ function OrdersTable({
                       {showActions && (
                         <>
                           <OrderInvoiceLink orderId={o.id} invoice={o.invoices?.[0] ?? null} />
-                          <ConfirmOrderButton orderId={o.id} />
+                          {(o.shortages.length === 0 || o.supplyResultSentAt) && <ConfirmOrderButton orderId={o.id} />}
                           <CancelOrderButton orderId={o.id} orderCode={o.code} />
                         </>
                       )}
@@ -190,7 +202,9 @@ export default async function OrdersListPage() {
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
   const orderSelect = {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
-      expectedShipAt: true, notes: true, createdAt: true,
+      expectedShipAt: true, notes: true, createdAt: true, supplyResultSentAt: true,
+      shortages: { select: { quantity: true } },
+      supplierChecks: { where: { status: { in: ["CONFIRMED", "PLACED", "DELIVERED"] } }, select: { items: { select: { confirmedQuantity: true } } } },
       salesMarket: { select: { name: true } },
       assignedTo: { select: { id: true, name: true } },
       items: {

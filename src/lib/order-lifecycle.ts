@@ -23,6 +23,11 @@ export async function ensureExpiredOrdersCancelled(): Promise<void> {
       where: { orderId: { in: expiredIds }, status: "PENDING" },
       data: { status: "CANCELLED" },
     }),
+    // Đơn kiểm tra chưa đặt hàng thôi hiệu lực, NCC thôi giữ hàng (xem src/lib/supplier-check.ts).
+    prisma.supplierCheck.updateMany({
+      where: { orderId: { in: expiredIds }, status: { in: ["PENDING", "CONFIRMED"] } },
+      data: { status: "CANCELLED" },
+    }),
   ]);
 
   // Phân bổ cây Vườn sản xuất (Nghiệp vụ 5) của đơn hết hạn — tự giải phóng phần chưa xuất về kho nguồn. Lịch sử

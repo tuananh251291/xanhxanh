@@ -528,6 +528,7 @@ export const ALERT_TYPE_LABELS = {
   LOT_READY_TRANSFER: "Lô sẵn sàng bàn giao",
   ORDER_PENDING_PACK: "Đơn chờ đóng gói",
   ORDER_EDITED: "Đơn hàng đã được sửa",
+  SUPPLIER_CHECK_UPDATE: "Kiểm tra NCC",
   PRICE_LIST_MONTHLY_DUE: "Nhắc cập nhật bảng giá tháng sau",
   PRICE_LIST_SUBMITTED: "Bảng giá mới chờ duyệt",
   PRICE_LIST_DECIDED: "Kết quả duyệt bảng giá",
@@ -602,6 +603,7 @@ export const ALERT_TYPE_LABELS = {
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
   ORDER_EDITED: "/orders/list",
+  SUPPLIER_CHECK_UPDATE: "/supplier-checks",
   PRICE_LIST_MONTHLY_DUE: "/price-lists",
   PRICE_LIST_SUBMITTED: "/price-lists",
   PRICE_LIST_DECIDED: "/price-lists",
@@ -803,6 +805,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/users", label: "Quản lý người dùng", icon: "Users" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
+    { href: "/supplier-checks", label: "Kiểm tra NCC", icon: "Truck" },
     { href: "/inventory/du-kien", label: "Tồn kho dự kiến", icon: "CalendarCheck" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
     { href: "/production-gardens", label: "Vườn sản xuất", icon: "Sprout" },
@@ -1007,6 +1010,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/ktp-handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
+    { href: "/supplier-checks", label: "Kiểm tra NCC", icon: "Truck" },
     { href: "/inventory/du-kien", label: "Tồn kho dự kiến", icon: "CalendarCheck" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
     // Xem lại mọi phiếu bàn giao thành phẩm từ Phòng ra rễ các khu sản xuất + xuất Excel (xem
