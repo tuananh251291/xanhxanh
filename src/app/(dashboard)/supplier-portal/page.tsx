@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import SupplierCheckQuantityForm from "@/components/shared/supplier-check-quantity-form";
 import { toVnDateKey } from "@/lib/finished-stock-forecast";
+import SupplierNotifications from "./supplier-notifications";
 import { ensureSupplierCheckDeadlines } from "@/lib/supplier-check";
 
 const fmtDate = (d: Date) => toVnDateKey(d).split("-").reverse().join("/");
@@ -30,6 +31,12 @@ export default async function SupplierPortalPage() {
   }
 
   await ensureSupplierCheckDeadlines();
+  const notifications = await prisma.alert.findMany({
+    where: { userId: session.user.id, status: "UNREAD" },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: { id: true, title: true, message: true, createdAt: true },
+  });
   const checks = await prisma.supplierCheck.findMany({
     where: { supplierId: supplier.id },
     orderBy: { createdAt: "desc" },
@@ -48,6 +55,7 @@ export default async function SupplierPortalPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">Mã nhà cung cấp {supplier.code}. Xác nhận số lượng đáp ứng và nhập phiếu giao hàng tại đây.</p>
       </div>
+      <SupplierNotifications notifications={notifications.map((n) => ({ ...n, createdAt: n.createdAt.toISOString() }))} />
       {checks.length === 0 && <Card><CardContent className="py-12 text-center text-text-muted">Chưa có Đơn kiểm tra nào</CardContent></Card>}
       {checks.map((c) => {
         const status = STATUS[c.status] ?? { label: c.status, variant: "outline" as const };

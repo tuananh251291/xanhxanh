@@ -9,7 +9,7 @@ import { z } from "zod";
 import { canEditShipTime } from "@/lib/order-ship-time";
 import { orderItemSpec, ORDER_ITEM_SPEC_FIELDS } from "@/lib/order-item-spec";
 import { addMonths } from "date-fns";
-import { cancelOpenSupplierChecks } from "@/lib/supplier-check";
+import { cancelOpenSupplierChecks } from "@/lib/supplier-check-notify";
 import { getShipCutoffKey, prepareAvailability, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
 

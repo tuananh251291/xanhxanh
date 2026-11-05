@@ -10,7 +10,7 @@ import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
 import { prepareAvailability } from "@/lib/finished-stock-forecast";
 import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
-import { createAlert } from "@/lib/inventory";
+import { notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
 import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
@@ -326,14 +326,12 @@ export async function POST(req: NextRequest) {
     );
 
     if (orderShortageTotal > 0) {
-      await createAlert({
-        type: "SUPPLIER_CHECK_UPDATE",
-        title: `Đơn ${order.code} thiếu ${orderShortageTotal.toLocaleString("vi-VN")} cây`,
-        message: "Cần gửi Đơn kiểm tra cho NCC trong 1 ngày làm việc — xem trang Kiểm tra NCC",
-        targetRole: "QUAN_LY_KHO_THANH_PHAM",
-        relatedId: order.id,
-        relatedType: "Order",
-      });
+      await notifySupplierCheckManagers(
+        `Đơn ${order.code} thiếu ${orderShortageTotal.toLocaleString("vi-VN")} cây`,
+        "Cần gửi Đơn kiểm tra cho NCC trong 1 ngày làm việc — xem trang Kiểm tra NCC",
+        order.id,
+        "Order"
+      );
     }
 
     return NextResponse.json(order, { status: 201 });
