@@ -7,7 +7,7 @@ import { RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { isPageAllowed } from "@/lib/permissions";
-import { isAdminRole, REPACK_STATUS_LABELS, isPayInfoHiddenFor } from "@/types";
+import { isAdminRole, REPACK_STATUS_LABELS } from "@/types";
 import CancelRepackButton from "../cancel-repack-button";
 
 export default async function RepackInstructionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -94,7 +94,7 @@ export default async function RepackInstructionDetailPage({ params }: { params: 
           ) : (
           <p><span className="text-text-muted">Sắp xếp lên kệ:</span> {fmt(instruction.placedAt)}{instruction.placedBy ? ` bởi ${instruction.placedBy.name}` : ""}{instruction.actualOutputShelf && ` — kệ ${instruction.actualOutputShelf.code}`}</p>
           )}
-          {instruction.creditedQuantity != null && !isPayInfoHiddenFor(role) && (
+          {instruction.creditedQuantity != null && (
             <p className="pt-2 border-t"><span className="text-text-muted">Số lượng được ghi nhận (tính lương):</span> <b className="text-primary-strong">{instruction.creditedQuantity.toLocaleString("vi-VN")} cây</b></p>
           )}
         </CardContent>
