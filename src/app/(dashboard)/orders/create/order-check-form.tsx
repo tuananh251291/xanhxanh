@@ -95,6 +95,7 @@ type CheckResult = {
   quantityDemand: number;
   availableAtStage: number;
   fulfilledAtStage: number;
+  fromRegistered: number;
   usesPlannedStock: boolean;
   plannedDate: string | null;
   alternatives: Alternative[];
@@ -625,6 +626,11 @@ export default function OrderCheckForm({
                     <tr className="border-b border-divider">
                       <td className="px-3 py-2 font-medium">
                         {r.plantTypeName} ({r.plantTypeCode})
+                        {r.fromRegistered > 0 && (
+                          <span className="block text-xs text-info-foreground">
+                            Gồm {r.fromRegistered.toLocaleString("vi-VN")} cây từ số đăng ký sản xuất
+                          </span>
+                        )}
                         {r.usesPlannedStock && (
                           <Badge className="ml-1.5 bg-info-light text-info-foreground">
                             Có hàng dự kiến{r.plannedDate ? ` về ${new Date(r.plannedDate).toLocaleDateString("vi-VN")}` : ""}

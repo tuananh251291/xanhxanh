@@ -158,6 +158,58 @@ export function buildForecastEvents(input: ForecastInput): ForecastEvent[] {
   return events.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 }
 
+// N = ngày xuất lùi 2 ngày làm việc (bỏ Chủ nhật + ngày lễ), không sớm hơn hôm nay.
+export function shipCutoffKey(shipKey: string, todayKey: string, holidayKeys: ReadonlySet<string>): string {
+  let key = shipKey;
+  for (let left = 2; left > 0; ) {
+    key = addDaysKey(key, -1);
+    if (toUtc(key).getUTCDay() !== 0 && !holidayKeys.has(key)) left -= 1;
+  }
+  return key < todayKey ? todayKey : key;
+}
+
+// Số đáp ứng được của 1 mã cây + quy cách tính từ ngày N trở về sau — lấy mức THẤP NHẤT để không hứa trùng hàng của đơn
+// xuất muộn hơn. exact: chỉ hàng đúng quy cách. withRegistered: cộng thêm số đăng ký (chưa có quy cách, đáp ứng được
+// mọi quy cách) sau khi đã trừ phần các quy cách khác đang thiếu phải dùng tới.
+export function lineAvailability(
+  input: Pick<ForecastInput, "stock">,
+  events: ForecastEvent[],
+  plantTypeId: string,
+  stageCode: string,
+  dateKey: string
+): { exact: number; withRegistered: number } {
+  const stageTotals = new Map<string, number>();
+  for (const s of input.stock) {
+    if (s.plantTypeId === plantTypeId) stageTotals.set(s.stageCode, (stageTotals.get(s.stageCode) ?? 0) + s.quantity);
+  }
+  let pool = 0;
+  let exact: number | null = null;
+  let withRegistered: number | null = null;
+  const measure = () => {
+    const own = stageTotals.get(stageCode) ?? 0;
+    let otherDeficit = 0;
+    for (const [stage, quantity] of stageTotals) if (stage !== stageCode && quantity < 0) otherDeficit -= quantity;
+    const shared = own + Math.max(0, pool - otherDeficit);
+    exact = exact === null ? own : Math.min(exact, own);
+    withRegistered = withRegistered === null ? shared : Math.min(withRegistered, shared);
+  };
+
+  const plantEvents = events.filter((e) => e.plantTypeId === plantTypeId);
+  let measuredStart = false;
+  plantEvents.forEach((e, i) => {
+    if (e.dateKey > dateKey && !measuredStart) {
+      measure();
+      measuredStart = true;
+    }
+    if (e.stageCode === null) pool += e.quantity;
+    else stageTotals.set(e.stageCode, (stageTotals.get(e.stageCode) ?? 0) + e.quantity);
+    const lastOfDay = i + 1 === plantEvents.length || plantEvents[i + 1].dateKey !== e.dateKey;
+    if (measuredStart && lastOfDay) measure();
+  });
+  if (!measuredStart) measure();
+  return { exact: Math.max(0, exact ?? 0), withRegistered: Math.max(0, withRegistered ?? 0) };
+}
+
 export function computeForecastRows(input: ForecastInput, dateKey: string): ForecastRow[] {
   const events = buildForecastEvents(input);
   const eventsByPlant = new Map<string, ForecastEvent[]>();

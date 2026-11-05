@@ -17,17 +17,27 @@ export default function ShipAtEditCell({ orderId, expectedShipAt }: { orderId: s
   const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
 
+  const send = (cancelOverMonth: boolean) =>
+    fetch(`/api/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reschedule", expectedShipAt: new Date(value).toISOString(), cancelOverMonth }),
+    });
+
   const save = async () => {
     if (!value) { toast.error("Chọn ngày xuất"); return; }
     setSaving(true);
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reschedule", expectedShipAt: new Date(value).toISOString() }),
-      });
-      if (!res.ok) { toast.error((await res.json()).message ?? "Có lỗi xảy ra"); return; }
-      toast.success("Đã cập nhật thời gian dự kiến xuất");
+      let res = await send(false);
+      if (res.status === 409) {
+        const json = await res.json();
+        if (json.code !== "OVER_ONE_MONTH") { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+        if (!window.confirm(`${json.message}. Huỷ đơn?`)) return;
+        res = await send(true);
+      }
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
+      toast.success(json.cancelled ? "Đã huỷ đơn và báo NV bán hàng đặt lại" : "Đã cập nhật thời gian dự kiến xuất");
       setEditing(false);
       router.refresh();
     } finally {

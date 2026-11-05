@@ -7,10 +7,18 @@ import { createAlert, createAlertForWarehouseStaff } from "@/lib/inventory";
 import { FINISHED_SPEC_BAG_SIZE, isKhoThanhPhamRole, canActAsSale } from "@/types";
 import { z } from "zod";
 import { canEditShipTime } from "@/lib/order-ship-time";
+import { prepareAvailability } from "@/lib/finished-stock-forecast";
+import { orderItemSpec, ORDER_ITEM_SPEC_FIELDS } from "@/lib/order-item-spec";
+import { addMonths } from "date-fns";
 import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
 
 const patchSchema = z.object({
   action: z.enum(["confirm", "ship", "cancel", "assign", "ack", "reschedule"]),
+  // action="confirm" — "Khách đã cọc": số tiền + ngày cọc (yyyy-MM-dd), đơn Kho thị trường không cần.
+  depositAmount: z.number().min(0).optional(),
+  depositedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // action="reschedule" — dời quá 1 tháng so với ngày xuất ban đầu: gửi true sau khi người dùng đồng ý huỷ đơn.
+  cancelOverMonth: z.boolean().optional(),
   // action="reschedule" — Quản lý kho thành phẩm sửa "Thời gian dự kiến xuất" (ngày + giờ) của đơn chưa xuất.
   expectedShipAt: z.string().optional(),
   // action="assign" — Quản lý kho thành phẩm gán đích danh 1 NV kho thành phẩm phụ trách đóng gói/xuất
@@ -21,7 +29,14 @@ const patchSchema = z.object({
 // Quản lý kho thành phẩm (hoặc Admin) sửa "Thời gian dự kiến xuất" của đơn HELD/CONFIRMED — mặc định lúc tạo
 // đơn là 9:00 (xem normalizeExpectedShipAt). Chặn dời SỚM hơn ngày về của lô "dự kiến nhập" (PLANNED) mà đơn
 // đang giữ chỗ, vì lô đó chỉ được tính vào đơn khi về trước ngày xuất (xem getQualifiedLots).
-async function rescheduleOrder(orderId: string, user: { id: string; role: string | null }, expectedShipAt: string | undefined) {
+// Dời ngày xuất: muộn hơn trong vòng 1 tháng so với ngày xuất ban đầu thì giữ đơn; sớm hơn thì tính lại số đáp ứng; quá
+// 1 tháng thì báo Sale đặt lại đơn, đơn cũ huỷ và trả tồn (cần xác nhận lại bằng cancelOverMonth).
+async function rescheduleOrder(
+  orderId: string,
+  user: { id: string; role: string | null; workplaceWarehouseId?: string | null },
+  expectedShipAt: string | undefined,
+  cancelOverMonth: boolean | undefined
+) {
   if (!canEditShipTime(user.role as Parameters<typeof canEditShipTime>[0])) {
     return NextResponse.json({ message: "Chỉ Quản lý kho thành phẩm mới sửa được thời gian dự kiến xuất" }, { status: 403 });
   }
@@ -29,7 +44,16 @@ async function rescheduleOrder(orderId: string, user: { id: string; role: string
   if (!shipAt || Number.isNaN(shipAt.getTime())) return NextResponse.json({ message: "Thời gian không hợp lệ" }, { status: 400 });
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { status: true, items: { select: { lot: { select: { status: true, expectedDate: true } } } } },
+    select: {
+      id: true, code: true, saleId: true, status: true, expectedShipAt: true, originalExpectedShipAt: true,
+      items: {
+        select: {
+          quantity: true, ...ORDER_ITEM_SPEC_FIELDS,
+          lot: { select: { status: true, expectedDate: true, plantTypeId: true, stageCode: true, plantType: { select: { code: true, name: true } }, room: { select: { type: true, warehouseId: true } } } },
+          processingRequest: { select: { status: true } },
+        },
+      },
+    },
   });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   if (order.status !== "HELD" && order.status !== "CONFIRMED") {
@@ -41,7 +65,54 @@ async function rescheduleOrder(orderId: string, user: { id: string; role: string
   if (latestPlanned && shipAt < latestPlanned) {
     return NextResponse.json({ message: `Đơn có hàng dự kiến về ngày ${latestPlanned.toLocaleDateString("vi-VN")} — không dời sớm hơn ngày này được` }, { status: 400 });
   }
-  const updated = await prisma.order.update({ where: { id: orderId }, data: { expectedShipAt: shipAt }, select: { id: true, expectedShipAt: true } });
+
+  const baseline = order.originalExpectedShipAt ?? order.expectedShipAt;
+  if (baseline && shipAt > addMonths(baseline, 1)) {
+    const message = "Dời quá 1 tháng so với ngày xuất ban đầu — đơn sẽ bị huỷ và trả tồn, NV bán hàng cần đặt lại đơn, số lượng lúc đó có thể thay đổi";
+    if (!cancelOverMonth) return NextResponse.json({ code: "OVER_ONE_MONTH", message }, { status: 409 });
+    if (order.items.some((i) => i.processingRequest?.status === "COMPLETED")) {
+      return NextResponse.json({ message: "Đơn đã có dòng hoàn thành xử lý cây — không huỷ được" }, { status: 400 });
+    }
+    await prisma.$transaction([
+      prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } }),
+      prisma.orderProcessingRequest.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "CANCELLED" } }),
+    ]);
+    await releaseGardenAllocationsForOrders([order.id], user.id);
+    await createAlert({
+      type: "ORDER_EDITED",
+      title: `Đơn ${order.code} đã huỷ do dời ngày xuất quá 1 tháng`,
+      message: `Đơn ${order.code} đã huỷ và trả tồn. Cần đặt lại đơn, số lượng tại thời điểm đó có thể thay đổi.`,
+      userId: order.saleId,
+      relatedId: order.id,
+      relatedType: "Order",
+    });
+    return NextResponse.json({ cancelled: true });
+  }
+
+  if (order.expectedShipAt && shipAt < order.expectedShipAt) {
+    const demand = new Map<string, { plantTypeId: string; stageCode: string; code: string; quantity: number }>();
+    for (const item of order.items) {
+      if (item.processingRequest?.status === "COMPLETED" || item.lot?.room?.type === "PHONG_THI_TRUONG") continue;
+      const spec = orderItemSpec(item);
+      const key = `${spec.plantTypeId}:${spec.stageCode}`;
+      const line = demand.get(key) ?? { plantTypeId: spec.plantTypeId, stageCode: spec.stageCode, code: spec.plantType.code, quantity: 0 };
+      line.quantity += item.quantity;
+      demand.set(key, line);
+    }
+    const warehouseId = order.items.find((i) => i.lot?.room)?.lot?.room?.warehouseId ?? user.workplaceWarehouseId ?? null;
+    const availabilityOf = await (await prepareAvailability(warehouseId, [...new Set([...demand.values()].map((d) => d.plantTypeId))], shipAt, { excludeOrderId: order.id }))();
+    const short = [...demand.values()].flatMap((d) => {
+      const available = availabilityOf(d.plantTypeId, d.stageCode).withRegistered;
+      return available < d.quantity ? [`${d.code} ${d.stageCode}: cần ${d.quantity.toLocaleString("vi-VN")}, đáp ứng ${available.toLocaleString("vi-VN")}`] : [];
+    });
+    if (short.length > 0) return NextResponse.json({ message: `Không đủ hàng để xuất sớm hơn — ${short.join("; ")}` }, { status: 400 });
+  }
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { expectedShipAt: shipAt, originalExpectedShipAt: baseline ?? shipAt },
+    select: { id: true, expectedShipAt: true },
+  });
   return NextResponse.json(updated);
 }
 
@@ -95,7 +166,9 @@ async function ackOrder(orderId: string, user: { id: string; role: string | null
 // lúc DUY NHẤT phát sinh "Yêu cầu xử lý cây" (nếu 1 dòng cần trừ tồn thật không tròn quy cách túi) và
 // báo cho Kho thành phẩm — trước khi xác nhận, Kho thành phẩm chưa biết/chưa cần biết gì về đơn này.
 // KHÔNG trừ tồn thực ở bước này (tồn thực chỉ đổi khi Kho thành phẩm "Hoàn thành xử lý" và "Xuất kho").
-async function confirmOrder(orderId: string, user: { id: string; role: string | null }) {
+type DepositInput = { depositAmount?: number; depositedAt?: string };
+
+async function confirmOrder(orderId: string, user: { id: string; role: string | null }, deposit: DepositInput) {
   if (!canActAsSale(user.role)) {
     return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   }
@@ -123,6 +196,9 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   }
   if (order.status !== "HELD") {
     return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ — không thể xác nhận" }, { status: 400 });
+  }
+  if (!order.marketWarehouseId && (deposit.depositAmount === undefined || !deposit.depositedAt)) {
+    return NextResponse.json({ message: "Cần nhập số tiền và ngày khách cọc" }, { status: 400 });
   }
   // Đơn bán cho khách (không phải gửi Kho thị trường) tạo từ INVOICE_REQUIRED_FROM phải có invoice đã duyệt gắn đơn.
   // Miễn tạm thời: mọi vai trò tới ALL_INVOICE_EXEMPT_UNTIL, Quản lý kho TP xác nhận hộ tới QLK_INVOICE_EXEMPT_UNTIL.
@@ -212,8 +288,22 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
       }
     }
 
-    await tx.order.update({ where: { id: order.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+    await tx.order.update({ where: { id: order.id }, data: {
+      status: "CONFIRMED",
+      confirmedAt: new Date(),
+      depositAmount: deposit.depositAmount,
+      depositedAt: deposit.depositedAt ? new Date(`${deposit.depositedAt}T00:00:00+07:00`) : undefined,
+    } });
   }, { timeout: 30000, maxWait: 10000 });
+
+  await createAlert({
+    type: "ORDER_PENDING_PACK",
+    title: `Đơn ${order.code}: khách đã cọc`,
+    message: `Đơn ${order.code} đã chuyển sang chờ xuất kho — xem trang Sắp xếp đơn hàng`,
+    targetRole: "QUAN_LY_KHO_THANH_PHAM",
+    relatedId: order.id,
+    relatedType: "Order",
+  });
 
   if (processingRequestCount > 0) {
     await createAlert({
@@ -272,7 +362,7 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
 // cầu xử lý COMPLETED thì tồn thực đã bị trừ ở bước "Hoàn thành xử lý" rồi — xem PATCH
 // /api/order-processing-requests/[id], không trừ lại ở đây). Chặn xuất kho nếu còn Yêu cầu xử lý
 // PENDING (còn túi chưa mở) — Kho TP phải hoàn thành xử lý trước.
-async function shipOrder(orderId: string, user: { id: string; role: string | null }) {
+async function shipOrder(orderId: string, user: { id: string; role: string | null; workplaceWarehouseId?: string | null }) {
   if (user.role !== "KHO_THANH_PHAM" && user.role !== "QUAN_LY_KHO_THANH_PHAM") {
     return NextResponse.json({ message: "Chỉ NV kho thành phẩm mới dùng được chức năng này" }, { status: 403 });
   }
@@ -289,6 +379,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
               plantType: { select: { code: true, name: true } },
             },
           },
+          plantType: { select: { code: true, name: true } },
           processingRequest: { select: { status: true } },
         },
       },
@@ -296,7 +387,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
   });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   if (order.status !== "CONFIRMED") {
-    return NextResponse.json({ message: "Đơn hàng chưa được Sale xác nhận — không thể xuất kho" }, { status: 400 });
+    return NextResponse.json({ message: "Đơn hàng chưa có xác nhận khách cọc — không thể xuất kho" }, { status: 400 });
   }
 
   const pendingCount = order.items.filter((i) => i.processingRequest?.status === "PENDING").length;
@@ -307,11 +398,28 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
     );
   }
 
+  // Dòng chưa có lô (hàng sắp về lúc tạo đơn): chọn lô ngay bây giờ trong Phòng đạt tiêu chuẩn — coi như 1 "lô rỗng" để đi
+  // chung đường lấy phần thiếu từ lô khác bên dưới.
   const lotlessCount = order.items.filter((i) => !i.lot).length;
-  if (lotlessCount > 0) {
-    return NextResponse.json({ message: `Còn ${lotlessCount} dòng chưa có lô hàng — chưa xuất kho được` }, { status: 400 });
+  const lotlessWarehouseId = order.items.find((i) => i.lot?.room)?.lot?.room?.warehouseId ?? user.workplaceWarehouseId ?? null;
+  const lotlessRoom = lotlessCount > 0 && lotlessWarehouseId
+    ? await prisma.room.findFirst({ where: { warehouseId: lotlessWarehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true }, select: { id: true, name: true, warehouseId: true } })
+    : null;
+  if (lotlessCount > 0 && !lotlessRoom) {
+    return NextResponse.json({ message: "Không xác định được Phòng đạt tiêu chuẩn để lấy hàng cho đơn" }, { status: 400 });
   }
-  const items = order.items.flatMap((i) => (i.lot ? [{ ...i, lot: i.lot }] : []));
+  const items = order.items.map((i) => {
+    if (i.lot) return { ...i, lot: i.lot };
+    const spec = orderItemSpec(i);
+    return {
+      ...i,
+      lot: {
+        id: "", code: "chưa có lô", quantity: 0, status: "ACTIVE" as const,
+        stageCode: spec.stageCode, plantTypeId: spec.plantTypeId, plantType: spec.plantType,
+        roomId: lotlessRoom!.id as string | null, room: { warehouseId: lotlessRoom!.warehouseId, name: lotlessRoom!.name },
+      },
+    };
+  });
 
   // Dòng trỏ vào lô "ảo" (Kế hoạch nhập kho chưa về, xem src/lib/order-availability.ts) chưa có hàng
   // thật — chặn xuất kho, báo Kho thành phẩm xác nhận số liệu thật của kế hoạch trước (trang Nhập hàng).
@@ -360,6 +468,9 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
     const held = await prisma.orderItem.findMany({
       where: {
         lotId: { in: candidateLots.map((l) => l.id) }, orderId: { not: order.id },
+        // Đơn xuất muộn hơn đơn này không giữ cứng lô (hàng sắp về đã được tính cho đơn đó lúc tạo đơn, đến lượt xuất
+        // sẽ tự lấy từ lô khác) — trừ dòng cần xử lý cây, vì phiếu xử lý đã chỉ đích danh lô nguồn.
+        AND: [{ OR: [{ neededQuantity: { not: null } }, ...(order.expectedShipAt ? [{ order: { expectedShipAt: { lte: order.expectedShipAt } } }, { order: { expectedShipAt: null } }] : [{}])] }],
         order: { status: { in: ["HELD", "CONFIRMED"] } },
         OR: [{ processingRequest: { is: null } }, { processingRequest: { is: { status: { not: "COMPLETED" } } } }],
       },
@@ -425,6 +536,15 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
         }
       }
 
+      // Ghi lại lô thực xuất cho dòng chưa có lô (lấy từ nhiều lô thì tách thành nhiều dòng).
+      for (const item of plainItems.filter((i) => !i.lotId)) {
+        const parts = allocations.filter((a) => a.itemId === item.id);
+        for (const [index, part] of parts.entries()) {
+          if (index === 0) await tx.orderItem.update({ where: { id: item.id }, data: { lotId: part.lotId, quantity: part.quantity } });
+          else await tx.orderItem.create({ data: { orderId: order.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes } });
+        }
+      }
+
       await tx.order.update({ where: { id: order.id }, data: { status: "SHIPPED", shippedAt: new Date() } });
 
       if (order.marketWarehouseId && firstPlainItem) {
@@ -487,11 +607,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
   try {
-    if (parsed.data.action === "confirm") return await confirmOrder(id, session.user);
+    if (parsed.data.action === "confirm") return await confirmOrder(id, session.user, parsed.data);
     if (parsed.data.action === "cancel") return await cancelOrder(id, session.user);
     if (parsed.data.action === "assign") return await assignOrder(id, session.user, parsed.data.assignedToId);
     if (parsed.data.action === "ack") return await ackOrder(id, session.user);
-    if (parsed.data.action === "reschedule") return await rescheduleOrder(id, session.user, parsed.data.expectedShipAt);
+    if (parsed.data.action === "reschedule") return await rescheduleOrder(id, session.user, parsed.data.expectedShipAt, parsed.data.cancelOverMonth);
     return await shipOrder(id, session.user);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Có lỗi xảy ra";

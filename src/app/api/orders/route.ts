@@ -8,6 +8,8 @@ import { isSerializationFailure } from "@/lib/prisma-errors";
 import { getSystemConfig } from "@/lib/inventory";
 import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
+import { prepareAvailability } from "@/lib/finished-stock-forecast";
+import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
@@ -190,9 +192,20 @@ export async function POST(req: NextRequest) {
       .map((p) => [p.id, p])
   );
 
+  // Số đáp ứng theo Tồn kho dự kiến (src/lib/finished-stock-forecast.ts) — hàng sắp về đọc trước, tồn thực + đơn đang
+  // giữ đọc lại trong transaction. Phòng thị trường đã được cấp quyền không thuộc tồn dự kiến nên cộng riêng như cũ.
+  await ensureExpiredOrdersCancelled();
+  const loadAvailability = await prepareAvailability(session.user.workplaceWarehouseId, [...plantTypeById.keys()], shipDate);
+  const marketRoomIds = (await prisma.room.findMany({ where: { id: { in: roomIds }, type: "PHONG_THI_TRUONG" }, select: { id: true } })).map((r) => r.id);
+
   try {
     const order = await prisma.$transaction(
       async (tx) => {
+        const availabilityOf = await loadAvailability(tx);
+        const capOf = async (plantTypeId: string, stageCode: string) => {
+          const inMarketRooms = await getQualifiedLots(marketRoomIds, plantTypeId, stageCode, tx, { shipDate });
+          return availabilityOf(plantTypeId, stageCode).withRegistered + inMarketRooms.reduce((s, l) => s + l.available, 0);
+        };
         const code = await generateOrderCode(tx);
         // Khách công ty lớn: giữ đơn 5 tháng, không phụ thuộc Năng lực giữ đơn (ngày) của NV Sale. Đơn Kho
         // thị trường không có customerGroup nên luôn theo Năng lực giữ đơn (ngày) như khách thường.
@@ -210,6 +223,7 @@ export async function POST(req: NextRequest) {
             marketWarehouseId: marketWarehouse?.id,
             salesMarketId,
             expectedShipAt: shipDate,
+            originalExpectedShipAt: shipDate,
             notes,
             status: "HELD",
             holdUntil,
@@ -244,7 +258,8 @@ export async function POST(req: NextRequest) {
             // khác) — không đụng Lot.quantity thật, chỉ thật sự trừ/cộng khi Kho thành phẩm bấm "Hoàn
             // thành xử lý".
             const lot = lots.find((l) => l.available >= item.quantity);
-            const d = track(item.plantTypeId, item.stageCode, item.quantity, lots.reduce((s, l) => s + l.available, 0));
+            const inProgress = lots.filter((l) => inProgressRoomIds.includes(l.roomId)).reduce((s, l) => s + l.available, 0);
+            const d = track(item.plantTypeId, item.stageCode, item.quantity, (await capOf(item.plantTypeId, item.stageCode)) + inProgress);
             if (!lot) {
               d.short = true;
               d.note = `không còn 1 lô đủ nguyên túi ${item.quantity} cây để xử lý`;
@@ -256,13 +271,9 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          const totalAvailable = lots.reduce((s, l) => s + l.available, 0);
-          const d = track(item.plantTypeId, item.stageCode, item.quantity, totalAvailable);
-          if (totalAvailable < item.quantity) {
-            d.short = true;
-            continue;
-          }
+          track(item.plantTypeId, item.stageCode, item.quantity, await capOf(item.plantTypeId, item.stageCode));
 
+          // Lấy hàng đang có trước, phần còn lại là hàng sắp về — để trống lô, chọn lô lúc xuất kho.
           let remaining = item.quantity;
           for (const lot of lots) {
             if (remaining <= 0) break;
@@ -273,9 +284,14 @@ export async function POST(req: NextRequest) {
             });
             remaining -= take;
           }
+          if (remaining > 0) {
+            await tx.orderItem.create({
+              data: { orderId: created.id, plantTypeId: item.plantTypeId, stageCode: item.stageCode, quantity: remaining, notes: item.notes },
+            });
+          }
         }
 
-        const shortages = [...demandByKey.values()].filter((d) => d.short);
+        const shortages = [...demandByKey.values()].filter((d) => d.short || d.needed > d.available);
         if (shortages.length > 0) {
           // Rollback cả đơn — báo đủ danh sách mã thiếu.
           throw new OrderShortageError(

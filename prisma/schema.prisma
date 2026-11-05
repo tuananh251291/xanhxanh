@@ -3535,6 +3535,9 @@ model Order {
   // Sale tự ước lượng lúc tạm giữ đơn — chỉ để tham khảo lên kế hoạch, không ràng buộc nghiệp vụ (khác
   // holdUntil, vốn quyết định lúc nào đơn tự hủy).
   expectedShipAt    DateTime?
+  // Ngày xuất lúc tạo đơn — mốc tính "dời không quá 1 tháng" (PATCH /api/orders/[id] action=reschedule). Đơn cũ để
+  // trống: lấy expectedShipAt ở lần dời đầu tiên.
+  originalExpectedShipAt DateTime?
   confirmedAt       DateTime?
   // Thông tin khách đặt cọc — đơn CONFIRMED tạo trước khi có bước cọc để trống (coi như đã cọc, không có số tiền).
   depositAmount     Float?

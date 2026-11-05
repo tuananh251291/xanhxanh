@@ -103,22 +103,29 @@ alerts
 
 ## Quy tắc tồn kho
 
-- **Tồn đạt tiêu chuẩn** (Sale dùng để kiểm tra nhu cầu KH) = tồn thực − tổng số lượng trong đơn HELD hoặc
-  CONFIRMED (cả 2 đều chưa xuất kho, vẫn coi là đang giữ chỗ — trừ dòng đã có Yêu cầu xử lý cây
-  COMPLETED, xem dưới, tồn thực đã giảm thật nên không trừ đôi)
-- **Tồn thực tế** (Kho thành phẩm dùng để biết số lượng vật lý thật trong kho) = `Lot.quantity`
-- Đơn HELD (Sale tạm giữ): trừ tồn đạt tiêu chuẩn, KHÔNG trừ tồn thực, Kho thành phẩm CHƯA biết gì về đơn
-- Sale "Xác nhận" (đơn chuyển HELD → CONFIRMED): vẫn KHÔNG trừ tồn thực. Đây là lúc DUY NHẤT phát sinh
-  Yêu cầu xử lý cây (PENDING) cho dòng cần tách/ghép túi (số lượng không tròn quy cách túi nguồn) và
-  báo cho Kho thành phẩm (alert ORDER_PENDING_PACK) — trước khi xác nhận, Kho thành phẩm không thấy đơn
-- Kho thành phẩm "Hoàn thành xử lý" (trang Xử lý cây): trừ tồn thực ở quy cách nguồn theo nguyên túi đã
-  mở (deductQuantity), cộng phần dư (surplusQuantity) vào quy cách T01 — đây là lúc tồn thực đổi cho
-  dòng cần tách túi
-- Kho thành phẩm "Xuất kho" (trang Sắp xếp đơn hàng, đơn chuyển CONFIRMED → SHIPPED): trừ tồn thực đúng số
-  lượng đơn cho các dòng KHÔNG cần xử lý (dòng đã xử lý xong thì không trừ lại). Chặn xuất kho nếu đơn
-  còn Yêu cầu xử lý PENDING
-- Đơn HELD quá hạn holdUntil: tự động CANCELLED, hoàn tồn đạt tiêu chuẩn (đơn đã CONFIRMED thì không tự huỷ
-  theo holdUntil nữa — Sale đã chốt); Yêu cầu xử lý cây PENDING của đơn bị huỷ cũng tự CANCELLED theo
+Chỉ tính cây mô ở Phòng đạt tiêu chuẩn của Kho thành phẩm. Code: `src/lib/finished-stock-forecast-calc.ts` (phép tính),
+`src/lib/finished-stock-forecast.ts` (nạp dữ liệu).
+
+- **Tồn thực tế** (B) = `Lot.quantity` — số vật lý trong kho.
+- **Tồn dự kiến tại ngày N**: A = B + A2 + A3 − A4
+  - A2 hàng khu sản xuất: số đăng ký (cộng theo mã cây, nhân tỉ lệ `finished_forecast_rate_pct`, chưa có quy cách, chia đều
+    4 thứ 5 cuối tháng) → lô đã lên giàn (nhân tỉ lệ, làm tròn xuống theo túi, tính vào thứ 5 tuần đến hạn) → đã đánh giá
+    (nguyên số đạt) → đang bàn giao (nguyên số, tính ngay). Tháng có file tải lên thay số trong `RootingForecastEntry`.
+  - A3 hàng NCC: Phiếu dự kiến nhập từ NCC chưa quá ngày giao.
+  - A4 đơn HELD/CONFIRMED chưa xuất, trừ vào ngày xuất của đơn (trừ dòng đã có Yêu cầu xử lý COMPLETED).
+- **Số đáp ứng của 1 đơn** = A thấp nhất từ ngày (xuất − 2 ngày làm việc, bỏ Chủ nhật + ngày lễ) trở về sau — không dùng A tại
+  đúng 1 ngày vì sẽ hứa trùng hàng của đơn xuất muộn hơn. Thứ tự lấy: đúng quy cách → mở túi → số đăng ký.
+- **Dòng đơn**: lưu `plantTypeId` + `stageCode`. Phần có hàng thật gắn lô (lô cũ trước), phần hàng sắp về để `lotId` trống, chọn lô
+  lúc xuất kho. Đọc dòng đơn qua `src/lib/order-item-spec.ts`, không đọc thẳng `item.lot`.
+- Sale tạo đơn (HELD): giữ chỗ, KHÔNG trừ tồn thực. Hết `holdUntil` thì tự CANCELLED.
+- Sale "Khách đã cọc" (HELD → CONFIRMED, thay nút Xác nhận cũ): ghi số tiền + ngày cọc, kiểm tra phiếu báo giá, sinh Yêu cầu xử lý
+  cây (dòng cần tách/ghép túi), báo Kho thành phẩm. Không tự huỷ theo `holdUntil` nữa. Vẫn KHÔNG trừ tồn thực.
+- Kho thành phẩm "Hoàn thành xử lý": trừ tồn thực ở quy cách nguồn theo nguyên túi đã mở, cộng phần dư vào T01.
+- Kho thành phẩm "Xuất kho" (CONFIRMED → SHIPPED): trừ tồn thực cho dòng không cần xử lý. Chặn nếu còn Yêu cầu xử lý PENDING hoặc thiếu
+  hàng. Lô đang gắn cho đơn xuất muộn hơn vẫn được lấy (đơn đó tự lấy từ hàng về sau), trừ lô nguồn của dòng cần xử lý.
+- Dời ngày xuất (Quản lý kho TP): muộn hơn, không quá 1 tháng so với `originalExpectedShipAt` thì giữ đơn; sớm hơn thì tính lại số
+  đáp ứng; quá 1 tháng thì huỷ đơn, báo Sale đặt lại.
+- Chưa làm (giai đoạn 4-5): đơn thiếu hàng hiện vẫn bị từ chối, chưa có Đơn kiểm tra NCC, xuất một phần, đơn Kho thị trường coi như đã cọc.
 
 ## Tài khoản demo
 

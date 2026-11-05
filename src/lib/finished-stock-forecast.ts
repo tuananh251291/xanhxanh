@@ -6,13 +6,14 @@ import { computeRootingExpectedMoveAt } from "@/lib/rooting-week-group";
 import { getRotationEpochResolver, resolveRotationEpoch } from "@/lib/rotation-epoch";
 import { toStoredWeekStart } from "@/lib/week-rotation";
 import { isAdminRole } from "@/types";
-import type { UserRole } from "@prisma/client";
+import type { Prisma, UserRole } from "@prisma/client";
 import {
-  DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY, FORECAST_REGISTERED_UPLOAD_KEY, computeForecastRows,
+  DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY, FORECAST_REGISTERED_UPLOAD_KEY, buildForecastEvents, computeForecastRows, lineAvailability, shipCutoffKey,
   type ForecastInput, type ForecastRow,
 } from "@/lib/finished-stock-forecast-calc";
 
-// Trang "Tồn kho dự kiến" — giai đoạn đầu CHỈ để xem + đối chiếu số, chưa nối vào luồng tạo đơn hàng.
+type Client = Prisma.TransactionClient | typeof prisma;
+
 export function canViewFinishedForecast(role: UserRole | null | undefined): boolean {
   return role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(role ?? null);
 }
@@ -49,37 +50,23 @@ export async function saveUploadedRegistered(data: UploadedRegistered): Promise<
   });
 }
 
-export type FinishedForecastResult = {
-  ratePct: number;
-  roomFound: boolean;
-  rows: (ForecastRow & { code: string; name: string })[];
+const getDatRoomId = async (warehouseId: string, client: Client = prisma) =>
+  (await client.room.findFirst({ where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true }, select: { id: true } }))?.id ?? null;
+
+type Supply = Pick<ForecastInput, "todayKey" | "ratePct" | "rootingSlots" | "rootingLots" | "registered" | "supplierPlans"> & {
   lateSupplierPlans: { code: string; supplierName: string; expectedKey: string; quantity: number }[];
-  uploadedMonths: { month: string; quantity: number }[];
 };
 
-export async function computeFinishedForecast(warehouseId: string, dateKey: string, now: Date = new Date()): Promise<FinishedForecastResult> {
-  await ensureExpiredOrdersCancelled();
+// Phần hàng sắp về (lô khu sản xuất, số đăng ký, NCC) — đọc NGOÀI transaction tạo đơn: các bảng này đổi liên tục, đọc
+// trong transaction Serializable sẽ làm đơn hay bị huỷ giả.
+async function loadSupply(roomId: string, warehouseId: string, now: Date, plantTypeIds?: string[]): Promise<Supply> {
   const todayKey = toVnDateKey(now);
-  const ratePct = await getForecastRatePct();
-
-  const uploaded = await getUploadedRegistered();
-  const uploadedMonths = Object.entries(uploaded)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, rows]) => ({ month, quantity: Object.values(rows).reduce((s, q) => s + q, 0) }));
-
-  const room = await prisma.room.findFirst({
-    where: { warehouseId, type: "PHONG_DAT_TIEU_CHUAN", isActive: true },
-    select: { id: true },
-  });
-  if (!room) return { ratePct, roomFound: false, rows: [], lateSupplierPlans: [], uploadedMonths };
-
-  const [stockLots, shelfLots, entries, plans, orderItems, rootingSlots, epochResolver] = await Promise.all([
+  const plantFilter = plantTypeIds ? { plantTypeId: { in: plantTypeIds } } : {};
+  const [ratePct, uploaded, shelfLots, entries, plans, rootingSlots, epochResolver, evaluations] = await Promise.all([
+    getForecastRatePct(),
+    getUploadedRegistered(),
     prisma.lot.findMany({
-      where: { roomId: room.id, status: "ACTIVE", quantity: { gt: 0 } },
-      select: { plantTypeId: true, stageCode: true, quantity: true },
-    }),
-    prisma.lot.findMany({
-      where: { stage: "THANH_PHAM", status: "ACTIVE", quantity: { gt: 0 }, shelf: { room: { type: "PHONG_RA_RE" } } },
+      where: { ...plantFilter, stage: "THANH_PHAM", status: "ACTIVE", quantity: { gt: 0 }, shelf: { room: { type: "PHONG_RA_RE" } } },
       select: {
         plantTypeId: true, stageCode: true, quantity: true, enteredAt: true, expectedMoveAt: true,
         plantType: { select: { rootingWeeks: true } },
@@ -88,38 +75,25 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
         transferItems: { where: { transfer: { status: "PENDING", toWarehouseId: warehouseId } }, select: { quantity: true } },
       },
     }),
-    prisma.rootingForecastEntry.findMany({ select: { plantTypeId: true, taskMonth: true, quantity1: true, quantity2: true, quantity3: true } }),
+    prisma.rootingForecastEntry.findMany({ where: plantFilter, select: { plantTypeId: true, taskMonth: true, quantity1: true, quantity2: true, quantity3: true } }),
     prisma.goodsReceipt.findMany({
-      where: { status: "PLANNED", supplierId: { not: null }, roomId: room.id, expectedDate: { not: null } },
+      where: { status: "PLANNED", supplierId: { not: null }, roomId, expectedDate: { not: null } },
       select: {
         code: true, expectedDate: true, supplier: { select: { name: true } },
         items: { select: { plantTypeId: true, stageCode: true, quantityDelivered: true } },
       },
     }),
-    prisma.orderItem.findMany({
-      where: {
-        order: { status: { in: ["HELD", "CONFIRMED"] } },
-        lot: { roomId: room.id },
-        // Dòng đã xử lý xong: tồn thực đã trừ thật, không trừ đôi — cùng điều kiện với getQualifiedLots.
-        OR: [{ processingRequest: null }, { processingRequest: { status: { not: "COMPLETED" } } }],
-      },
-      select: {
-        quantity: true,
-        lot: { select: { plantTypeId: true, stageCode: true } },
-        order: { select: { code: true, status: true, expectedShipAt: true } },
-      },
-    }),
     prisma.shelfGroup.count({ where: { rotationKind: "RA_RE" } }),
     getRotationEpochResolver("RA_RE"),
+    // Đánh giá chất lượng lưu theo (phòng, Nhóm, tuần xuất). Lô được lùi sang Nhóm kế tiếp sau đánh giá có enteredAt
+    // mới hơn completedAt của đánh giá Nhóm đó nên vẫn tính là chưa đánh giá.
+    prisma.rootingQualityEvaluation.findMany({
+      where: { status: "COMPLETED", completedAt: { not: null } },
+      select: { roomId: true, rotationGroupId: true, weekStart: true, completedAt: true },
+    }),
   ]);
 
-  // Đánh giá chất lượng lưu theo (phòng, Nhóm, tuần xuất). Lô được lùi sang Nhóm kế tiếp sau đánh giá có
-  // enteredAt mới hơn completedAt của đánh giá Nhóm đó nên vẫn tính là chưa đánh giá.
-  const evaluations = await prisma.rootingQualityEvaluation.findMany({
-    where: { status: "COMPLETED", completedAt: { not: null } },
-    select: { roomId: true, rotationGroupId: true, weekStart: true, completedAt: true },
-  });
-  const evaluationKey = (roomId: string, groupId: string, weekKey: string) => `${roomId}|${groupId}|${weekKey}`;
+  const evaluationKey = (evalRoomId: string, groupId: string, weekKey: string) => `${evalRoomId}|${groupId}|${weekKey}`;
   const evaluatedAt = new Map(
     evaluations.map((e) => [evaluationKey(e.roomId, e.rotationGroupId, e.weekStart.toISOString().slice(0, 10)), e.completedAt!])
   );
@@ -153,10 +127,12 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
     }))
   ).filter((r) => !uploaded[r.monthKey]);
   for (const [monthKey, rows] of Object.entries(uploaded)) {
-    for (const [plantTypeId, quantity] of Object.entries(rows)) registered.push({ plantTypeId, monthKey, quantity });
+    for (const [plantTypeId, quantity] of Object.entries(rows)) {
+      if (!plantTypeIds || plantTypeIds.includes(plantTypeId)) registered.push({ plantTypeId, monthKey, quantity });
+    }
   }
 
-  const lateSupplierPlans: FinishedForecastResult["lateSupplierPlans"] = [];
+  const lateSupplierPlans: Supply["lateSupplierPlans"] = [];
   const supplierPlans: ForecastInput["supplierPlans"] = [];
   for (const plan of plans) {
     const expectedKey = toVnDateKey(plan.expectedDate!);
@@ -166,20 +142,79 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
       continue;
     }
     for (const item of plan.items) {
+      if (plantTypeIds && !plantTypeIds.includes(item.plantTypeId)) continue;
       supplierPlans.push({ plantTypeId: item.plantTypeId, stageCode: item.stageCode, quantity: item.quantityDelivered, dateKey: expectedKey, note: `${plan.code} · ${supplierName}` });
     }
   }
 
-  const orders: ForecastInput["orders"] = orderItems.flatMap((i) => !i.lot ? [] : [{
-    plantTypeId: i.lot.plantTypeId,
-    stageCode: i.lot.stageCode,
-    quantity: i.quantity,
-    // Đơn cũ không có ngày xuất: coi như xuất ngay để không đánh giá cao tồn.
-    dateKey: i.order.expectedShipAt ? toVnDateKey(i.order.expectedShipAt) : todayKey,
-    note: `${i.order.code} · ${i.order.status === "HELD" ? "Tạm giữ" : "Đã xác nhận"}`,
-  }]);
+  return { todayKey, ratePct, rootingSlots, rootingLots, registered, supplierPlans, lateSupplierPlans };
+}
 
-  const rows = computeForecastRows({ todayKey, ratePct, rootingSlots, stock: stockLots, rootingLots, registered, supplierPlans, orders }, dateKey);
+// Phần tồn thực + đơn chưa xuất — đọc được trong transaction tạo đơn để 2 đơn cùng lúc không giữ trùng hàng. Dòng chưa
+// có lô cũng là đơn đang giữ chỗ nên vẫn tính (hiện chỉ có 1 Kho thành phẩm thật nên không cần lọc theo kho).
+async function loadDemand(
+  roomId: string,
+  todayKey: string,
+  client: Client,
+  opts: { plantTypeIds?: string[]; excludeOrderId?: string } = {}
+): Promise<Pick<ForecastInput, "stock" | "orders">> {
+  const { plantTypeIds, excludeOrderId } = opts;
+  const [stock, orderItems] = await Promise.all([
+    client.lot.findMany({
+      where: { roomId, status: "ACTIVE", quantity: { gt: 0 }, ...(plantTypeIds ? { plantTypeId: { in: plantTypeIds } } : {}) },
+      select: { plantTypeId: true, stageCode: true, quantity: true },
+    }),
+    client.orderItem.findMany({
+      where: {
+        order: { status: { in: ["HELD", "CONFIRMED"] }, ...(excludeOrderId ? { id: { not: excludeOrderId } } : {}) },
+        ...(plantTypeIds ? { plantTypeId: { in: plantTypeIds } } : {}),
+        // Dòng đã xử lý xong: tồn thực đã trừ thật, không trừ đôi — cùng điều kiện với getQualifiedLots.
+        AND: [
+          { OR: [{ lotId: null }, { lot: { roomId } }] },
+          { OR: [{ processingRequest: null }, { processingRequest: { status: { not: "COMPLETED" } } }] },
+        ],
+      },
+      select: {
+        quantity: true, plantTypeId: true, stageCode: true,
+        lot: { select: { plantTypeId: true, stageCode: true } },
+        order: { select: { code: true, status: true, expectedShipAt: true } },
+      },
+    }),
+  ]);
+  return {
+    stock,
+    orders: orderItems.map((i) => ({
+      plantTypeId: i.plantTypeId ?? i.lot?.plantTypeId ?? "",
+      stageCode: i.stageCode ?? i.lot?.stageCode ?? "",
+      quantity: i.quantity,
+      // Đơn cũ không có ngày xuất: coi như xuất ngay để không đánh giá cao tồn.
+      dateKey: i.order.expectedShipAt ? toVnDateKey(i.order.expectedShipAt) : todayKey,
+      note: `${i.order.code} · ${i.order.status === "HELD" ? "Tạm giữ" : "Đã cọc"}`,
+    })),
+  };
+}
+
+export type FinishedForecastResult = {
+  ratePct: number;
+  roomFound: boolean;
+  rows: (ForecastRow & { code: string; name: string })[];
+  lateSupplierPlans: { code: string; supplierName: string; expectedKey: string; quantity: number }[];
+  uploadedMonths: { month: string; quantity: number }[];
+};
+
+export async function computeFinishedForecast(warehouseId: string, dateKey: string, now: Date = new Date()): Promise<FinishedForecastResult> {
+  await ensureExpiredOrdersCancelled();
+  const uploaded = await getUploadedRegistered();
+  const uploadedMonths = Object.entries(uploaded)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, rows]) => ({ month, quantity: Object.values(rows).reduce((s, q) => s + q, 0) }));
+
+  const roomId = await getDatRoomId(warehouseId);
+  if (!roomId) return { ratePct: await getForecastRatePct(), roomFound: false, rows: [], lateSupplierPlans: [], uploadedMonths };
+
+  const supply = await loadSupply(roomId, warehouseId, now);
+  const demand = await loadDemand(roomId, supply.todayKey, prisma);
+  const rows = computeForecastRows({ ...supply, ...demand }, dateKey);
   const plantTypes = await prisma.plantType.findMany({
     where: { id: { in: rows.map((r) => r.plantTypeId) } },
     select: { id: true, code: true, name: true },
@@ -187,12 +222,39 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
   const plantById = new Map(plantTypes.map((p) => [p.id, p]));
 
   return {
-    ratePct,
+    ratePct: supply.ratePct,
     roomFound: true,
     rows: rows
       .map((r) => ({ ...r, code: plantById.get(r.plantTypeId)?.code ?? "", name: plantById.get(r.plantTypeId)?.name ?? "" }))
       .sort((a, b) => a.code.localeCompare(b.code)),
-    lateSupplierPlans,
+    lateSupplierPlans: supply.lateSupplierPlans,
     uploadedMonths,
+  };
+}
+
+// Mốc N của 1 đơn: ngày xuất lùi 2 ngày làm việc.
+export async function getShipCutoffKey(shipDate: Date, now: Date = new Date()): Promise<string> {
+  const holidays = await prisma.publicHoliday.findMany({
+    where: { date: { gte: new Date(shipDate.getTime() - 40 * 86_400_000), lte: shipDate } },
+    select: { date: true },
+  });
+  return shipCutoffKey(toVnDateKey(shipDate), toVnDateKey(now), new Set(holidays.map((h) => toVnDateKey(h.date))));
+}
+
+export type LineAvailability = { exact: number; withRegistered: number };
+
+// Chuẩn bị tính số đáp ứng cho các mã cây của 1 đơn. Trả về hàm đọc tồn thực + đơn (truyền tx khi tạo đơn) rồi tính
+// từng mã cây + quy cách. Kho chưa có Phòng đạt tiêu chuẩn thì số đáp ứng luôn 0.
+export async function prepareAvailability(warehouseId: string | null, plantTypeIds: string[], shipDate: Date, opts: { excludeOrderId?: string } = {}) {
+  const roomId = warehouseId ? await getDatRoomId(warehouseId) : null;
+  const dateKey = await getShipCutoffKey(shipDate);
+  const supply = roomId && warehouseId ? await loadSupply(roomId, warehouseId, new Date(), plantTypeIds) : null;
+
+  return async (client: Client = prisma) => {
+    if (!roomId || !supply) return (): LineAvailability => ({ exact: 0, withRegistered: 0 });
+    const demand = await loadDemand(roomId, supply.todayKey, client, { plantTypeIds, excludeOrderId: opts.excludeOrderId });
+    const input: ForecastInput = { ...supply, ...demand };
+    const events = buildForecastEvents(input);
+    return (plantTypeId: string, stageCode: string): LineAvailability => lineAvailability(input, events, plantTypeId, stageCode, dateKey);
   };
 }

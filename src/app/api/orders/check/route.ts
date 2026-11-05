@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots, parseBagSize } from "@/lib/order-availability";
 import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
+import { prepareAvailability } from "@/lib/finished-stock-forecast";
+import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm (đóng gói lại từ T01/T05, không sản xuất trực
@@ -166,6 +168,10 @@ export async function POST(req: NextRequest) {
   });
   const plantTypeById = new Map(plantTypes.map((p) => [p.id, p]));
 
+  await ensureExpiredOrdersCancelled();
+  const availabilityOf = await (await prepareAvailability(session.user.workplaceWarehouseId, plantTypeIds, shipDate))();
+  const marketRoomIds = (await prisma.room.findMany({ where: { id: { in: roomIds }, type: "PHONG_THI_TRUONG" }, select: { id: true } })).map((r) => r.id);
+
   const results = [];
   for (const item of parsed.data.items) {
     const plantType = plantTypeById.get(item.plantTypeId);
@@ -175,8 +181,11 @@ export async function POST(req: NextRequest) {
 
     // Tầng 1: Phòng đạt tiêu chuẩn, đúng quy cách.
     const primaryLots = await getQualifiedLots(roomIds, item.plantTypeId, item.stageCode, prisma, { shipDate });
-    const availableAtStage = primaryLots.reduce((s, l) => s + l.available, 0);
-    const fulfilledAtStage = Math.min(availableAtStage, item.quantity);
+    // Số đáp ứng theo Tồn kho dự kiến. Thứ tự lấy hàng: đúng quy cách → mở túi → số đăng ký sản xuất (cộng ở cuối).
+    const inMarketRooms = (await getQualifiedLots(marketRoomIds, item.plantTypeId, item.stageCode, prisma, { shipDate })).reduce((s, l) => s + l.available, 0);
+    const availability = availabilityOf(item.plantTypeId, item.stageCode);
+    const availableExact = availability.exact + inMarketRooms;
+    let fulfilledAtStage = Math.min(availableExact, item.quantity);
     let remaining = item.quantity - fulfilledAtStage;
     const usesPlannedStock = primaryLots.some((l) => l.planned);
     const plannedDate = earliestPlannedDate(primaryLots);
@@ -221,6 +230,10 @@ export async function POST(req: NextRequest) {
       remaining = tier3b.remaining;
     }
 
+    const fromRegistered = Math.min(remaining, Math.max(0, availability.withRegistered - availability.exact));
+    fulfilledAtStage += fromRegistered;
+    const availableAtStage = availableExact + fromRegistered;
+
     const totalFulfilled = fulfilledAtStage + alternatives.reduce((s, a) => s + a.suggestedQty, 0);
 
     results.push({
@@ -231,6 +244,7 @@ export async function POST(req: NextRequest) {
       quantityDemand: item.quantity,
       availableAtStage,
       fulfilledAtStage,
+      fromRegistered,
       usesPlannedStock,
       plannedDate,
       alternatives,

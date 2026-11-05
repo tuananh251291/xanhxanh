@@ -433,7 +433,7 @@ export const LOT_STATUS_LABELS = {
 export const ORDER_STATUS_LABELS = {
   DRAFT: "Nháp",
   HELD: "Đang giữ",
-  CONFIRMED: "Đã xác nhận",
+  CONFIRMED: "Đã cọc",
   SHIPPED: "Đã xuất",
   CANCELLED: "Đã hủy",
 } as const;

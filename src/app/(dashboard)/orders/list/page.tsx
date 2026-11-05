@@ -253,7 +253,7 @@ export default async function OrdersListPage() {
 
       <OrdersTable
         title="Đơn tạm giữ"
-        description="Đang giữ chỗ tồn kho — xác nhận khi khách đồng ý mua, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
+        description="Đang giữ chỗ tồn kho — bấm Khách đã cọc khi khách đặt cọc, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
         orders={heldOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil
         showQuantity
@@ -266,8 +266,8 @@ export default async function OrdersListPage() {
       />
 
       <OrdersTable
-        title="Đơn đã xác nhận"
-        description="Đã chốt với khách, chờ Kho thành phẩm xuất kho — không thể tự xóa/sửa ở bước này."
+        title="Đơn đã cọc"
+        description="Khách đã cọc, chờ Kho thành phẩm xuất kho — không thể tự xóa/sửa ở bước này."
         orders={confirmedOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil={false}
         showQuantity={false}
