@@ -41,7 +41,7 @@ export type Proposal = {
   photoUrls: string[];
   // Quy cách chậu của đề xuất Trồng (Kho thị trường, từ Phòng sản phẩm đạt/không đạt) — null nếu không có.
   plantStageCode: string | null;
-  // Phần QL bán lẻ chuyển sang Free Gift lúc duyệt — quantity + freeGiftQuantity = số Đối tác đề xuất.
+  // Phần QL bán lẻ chuyển sang Free Gift lúc duyệt — quantity là phần Trồng/Hủy còn lại.
   freeGiftQuantity: number;
 };
 export type Batch = { batchCode: string; createdAt: string; items: Proposal[] };
@@ -295,41 +295,57 @@ function ResubmitDialog({ proposal, onSaved }: { proposal: Proposal; onSaved: ()
   );
 }
 
-// Dòng đề xuất Kho thị trường QL bán lẻ được chia sang Free Gift (trừ chính cây Free Gift).
-export function canSplitFreeGift(p: Proposal): boolean {
-  return !!p.room?.type && MARKET_ROOM_TYPE_SET.has(p.room.type) && p.plantType.code !== FREE_GIFT_PLANT_CODE;
+export function isMarketProposal(p: Proposal): boolean {
+  return !!p.room?.type && MARKET_ROOM_TYPE_SET.has(p.room.type);
 }
 
-// Giữ tổng đúng số Đối tác đề xuất: nhập 1 ô thì ô kia tự tính phần còn lại.
-export function clampSplit(value: string, total: number): number {
+// Dòng đề xuất Kho thị trường QL bán lẻ được chia sang Free Gift (trừ chính cây Free Gift).
+export function canSplitFreeGift(p: Proposal): boolean {
+  return isMarketProposal(p) && p.plantType.code !== FREE_GIFT_PLANT_CODE;
+}
+
+export type ApprovalSplit = { quantity: number; freeGift: number };
+
+// Tăng ô này mà tổng vượt số đề xuất thì ô kia tự giảm cho vừa; giảm ô này thì phần chênh hoàn về phòng nguồn.
+function clampInput(value: string, total: number): number {
   const n = parseInt(value, 10);
   return Math.min(Math.max(Number.isNaN(n) ? 0 : n, 0), total);
 }
+export function withQuantity(s: ApprovalSplit, value: string, total: number): ApprovalSplit {
+  const quantity = clampInput(value, total);
+  return { quantity, freeGift: Math.min(s.freeGift, total - quantity) };
+}
+export function withFreeGift(s: ApprovalSplit, value: string, total: number): ApprovalSplit {
+  const freeGift = clampInput(value, total);
+  return { freeGift, quantity: Math.min(s.quantity, total - freeGift) };
+}
 
-function FreeGiftDialog({ proposal, loading, onConfirm }: { proposal: Proposal; loading: boolean; onConfirm: (freeGift: number) => void }) {
+function MarketApproveDialog({ proposal, loading, onConfirm }: { proposal: Proposal; loading: boolean; onConfirm: (split: ApprovalSplit) => void }) {
   const [open, setOpen] = useState(false);
   const total = proposal.quantity;
-  const [freeGift, setFreeGift] = useState(total);
+  const [split, setSplit] = useState<ApprovalSplit>({ quantity: total, freeGift: 0 });
   const typeLabel = proposal.type === "TRONG" ? "Trồng" : "Hủy";
+  const refund = total - split.quantity - split.freeGift;
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setFreeGift(total); }}>
-      <DialogTrigger render={<Button size="sm" variant="outline" className="h-7" disabled={loading} />}>Duyệt Free Gift</DialogTrigger>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setSplit({ quantity: total, freeGift: 0 }); }}>
+      <DialogTrigger render={<Button size="sm" variant="outline" className="h-7" disabled={loading} />}>Sửa số / Free Gift</DialogTrigger>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>Duyệt Free Gift — {proposal.plantType.code} {proposal.stageCode}</DialogTitle></DialogHeader>
-        <p className="text-sm text-text-secondary">Đối tác đề xuất {typeLabel} {total.toLocaleString("vi-VN")} cây. Tổng 2 ô dưới luôn bằng số này.</p>
+        <DialogHeader><DialogTitle>Sửa số & duyệt — {proposal.plantType.code} {proposal.stageCode}</DialogTitle></DialogHeader>
+        <p className="text-sm text-text-secondary">Đối tác đề xuất {typeLabel} {total.toLocaleString("vi-VN")} cây. Tổng 2 ô không được vượt số này, phần chênh hoàn về phòng nguồn.</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label>{typeLabel}</Label>
-            <Input type="number" min={0} max={total} value={total - freeGift} onChange={(e) => setFreeGift(total - clampSplit(e.target.value, total))} />
+            <Input type="number" min={0} max={total} value={split.quantity} onChange={(e) => setSplit((s) => withQuantity(s, e.target.value, total))} />
           </div>
           <div className="space-y-1">
             <Label>Free Gift</Label>
-            <Input type="number" min={0} max={total} value={freeGift} onChange={(e) => setFreeGift(clampSplit(e.target.value, total))} />
+            <Input type="number" min={0} max={total} disabled={!canSplitFreeGift(proposal)} value={split.freeGift} onChange={(e) => setSplit((s) => withFreeGift(s, e.target.value, total))} />
           </div>
         </div>
+        <p className="text-sm text-text-secondary">Hoàn về phòng nguồn: <span className="font-medium text-foreground">{refund.toLocaleString("vi-VN")}</span></p>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Đóng</Button>
-          <Button className="bg-primary hover:bg-primary-hover" disabled={loading} onClick={() => { setOpen(false); onConfirm(freeGift); }}>
+          <Button className="bg-primary hover:bg-primary-hover" disabled={loading || split.quantity + split.freeGift === 0} onClick={() => { setOpen(false); onConfirm(split); }}>
             {loading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />} Duyệt
           </Button>
         </DialogFooter>
@@ -344,7 +360,7 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
   canSubmit: boolean;
   canResubmit: (p: Proposal) => boolean;
   processingId: string | null;
-  onReview: (id: string, action: "approve" | "reject", reason?: string, freeGiftQuantity?: number) => void;
+  onReview: (id: string, action: "approve" | "reject", reason?: string, split?: ApprovalSplit) => void;
   onSaved: () => void;
 }) {
   const { data: session } = useSession();
@@ -401,7 +417,7 @@ export function ProposalItemsTable({ items, canApprove, canSubmit, canResubmit, 
                   {canApprove && p.status === "PENDING" && canApproveProposal(p, role) && (
                     <div className="flex gap-1 justify-end">
                       <RejectDialog loading={processingId === p.id} onConfirm={(reason) => onReview(p.id, "reject", reason)} />
-                      {canSplitFreeGift(p) && <FreeGiftDialog proposal={p} loading={processingId === p.id} onConfirm={(n) => onReview(p.id, "approve", undefined, n)} />}
+                      {isMarketProposal(p) && <MarketApproveDialog proposal={p} loading={processingId === p.id} onConfirm={(split) => onReview(p.id, "approve", undefined, split)} />}
                       <Button size="sm" className="h-7 bg-primary hover:bg-primary-hover" disabled={processingId === p.id} onClick={() => onReview(p.id, "approve")}>
                         {processingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5 mr-1" /> Duyệt</>}
                       </Button>

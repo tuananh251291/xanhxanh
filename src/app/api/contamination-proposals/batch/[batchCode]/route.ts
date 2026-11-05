@@ -5,7 +5,7 @@ import { isAdminRole, isKhoThanhPhamRole } from "@/types";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
-import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, findMarketPlantingMissingPot, missingPotMessage, freeGiftSplitError, applyFreeGiftSplit } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, findMarketPlantingMissingPot, missingPotMessage, marketApprovalSplitError, applyMarketApprovalSplit, isMarketApprovalSplitChanged, marketApprovalSplitSummary } from "@/lib/market-inspection";
 import { InsufficientRoomStockError } from "@/lib/finished-goods";
 import { createAlert } from "@/lib/inventory";
 
@@ -51,9 +51,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ batc
   return NextResponse.json(proposals);
 }
 
-// freeGift (tuỳ chọn, CHỈ Kho thị trường): QL bán lẻ chuyển 1 phần mỗi dòng sang Free Gift trước khi duyệt — { [proposalId]: số Free Gift }.
-// Tổng mỗi dòng giữ nguyên số Đối tác đề xuất: phần còn lại vẫn Trồng/Hủy như đề xuất.
-const patchSchema = z.object({ action: z.literal("approve"), freeGift: z.record(z.string(), z.number().int().min(0)).optional() });
+// splits (tuỳ chọn, CHỈ Kho thị trường): QL bán lẻ sửa số từng dòng trước khi duyệt — { [proposalId]: số Trồng/Hủy +
+// số Free Gift }. Tổng mỗi dòng không vượt số Đối tác đề xuất, phần chênh hoàn về phòng nguồn.
+const patchSchema = z.object({
+  action: z.literal("approve"),
+  splits: z.record(z.string(), z.object({ quantity: z.number().int().min(0), freeGift: z.number().int().min(0) })).optional(),
+});
 
 // "Duyệt nhanh tất cả" — duyệt 1 lượt mọi dòng đang PENDING trong đề xuất, khỏi phải bấm Duyệt từng
 // dòng cây. Chỉ hỗ trợ approve (tác dụng phụ tồn kho duy nhất của approve: Trồng của Đối tác vận hành từ
@@ -69,7 +72,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const pending = await prisma.contaminationProposal.findMany({
     where: { ...batchWhere(batchCode), status: "PENDING" },
     select: {
-      id: true, code: true, warehouseId: true, roomId: true, plantTypeId: true, stageCode: true, quantity: true, requestedById: true,
+      id: true, code: true, type: true, warehouseId: true, roomId: true, plantTypeId: true, stageCode: true, quantity: true, requestedById: true,
       room: { select: { type: true } }, warehouse: { select: { type: true } },
       plantType: { select: { code: true } }, requestedBy: { select: { code: true } },
     },
@@ -92,17 +95,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   const missingPot = await findMarketPlantingMissingPot(pending.map((p) => p.id));
   if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
 
-  const freeGift = parsed.data.freeGift ?? {};
-  const splits = pending.filter((p) => (freeGift[p.id] ?? 0) > 0).map((p) => ({ p, qty: freeGift[p.id] }));
-  for (const { p, qty } of splits) {
-    const splitError = freeGiftSplitError(p, qty);
+  const requested = parsed.data.splits ?? {};
+  const splits = pending
+    .filter((p) => requested[p.id] && isMarketApprovalSplitChanged(p, requested[p.id]))
+    .map((p) => ({ p, split: requested[p.id] }));
+  for (const { p, split } of splits) {
+    const splitError = marketApprovalSplitError(p, split);
     if (splitError) return NextResponse.json({ message: splitError }, { status: 400 });
   }
 
   let newHandoverIds: string[];
   try {
   newHandoverIds = await prisma.$transaction(async (tx) => {
-    for (const { p, qty } of splits) await applyFreeGiftSplit(tx, p, qty, p.requestedBy.code);
+    for (const { p, split } of splits) await applyMarketApprovalSplit(tx, p, split, p.requestedBy.code);
     await tx.contaminationProposal.updateMany({
       where: { id: { in: pending.map((p) => p.id) } },
       data: { status: "APPROVED", approvedById: session!.user!.id, approvedAt: new Date() },
@@ -119,8 +124,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ba
   if (splits.length > 0) {
     await createAlert({
       type: "CONTAMINATION_PROPOSAL",
-      title: `Đề xuất ${batchCode} được duyệt có chuyển Free Gift`,
-      message: `QL bán lẻ đã chuyển sang Free Gift: ${splits.map(({ p, qty }) => `${p.plantType.code} ${p.stageCode}: ${qty}/${p.quantity}`).join("; ")}.`,
+      title: `Đề xuất ${batchCode} được duyệt với số lượng đã sửa`,
+      message: `QL bán lẻ đã sửa số trước khi duyệt: ${splits.map(({ p, split }) => marketApprovalSplitSummary(p, split)).join("; ")}.`,
       userId: splits[0].p.requestedById,
       relatedId: splits[0].p.id,
       relatedType: "ContaminationProposal",

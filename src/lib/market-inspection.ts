@@ -235,33 +235,56 @@ export async function moveApprovedMarketPlantingToPlantRoom(tx: Prisma.Transacti
   }
 }
 
-type FreeGiftSplitProposal = {
+type MarketApprovalProposal = {
   id: string;
   code: string;
+  type: "TRONG" | "HUY";
   warehouseId: string;
+  roomId: string | null;
+  plantTypeId: string;
+  stageCode: string;
   quantity: number;
   plantType: { code: string };
   warehouse: { type: string };
 };
+// QL bán lẻ quyết định lúc duyệt 1 dòng: quantity = số Trồng/Hủy thực tế, freeGift = số chuyển Free Gift.
+export type MarketApprovalSplit = { quantity: number; freeGift: number };
 
-// Kiểm tra số Free Gift QL bán lẻ nhập cho 1 dòng đề xuất — trả về thông báo lỗi, null = hợp lệ. Tổng luôn giữ
-// nguyên số Đối tác đề xuất: Trồng/Hủy = quantity - freeGift nên chỉ cần freeGift không vượt quantity.
-export function freeGiftSplitError(p: FreeGiftSplitProposal, freeGift: number): string | null {
-  if (p.warehouse.type !== "THI_TRUONG") return "Chỉ đề xuất của Kho thị trường mới duyệt Free Gift được";
-  if (p.plantType.code === FREE_GIFT_PLANT_CODE) return `${p.code}: cây Free Gift không chuyển sang Free Gift được nữa`;
-  if (freeGift > p.quantity) return `${p.code}: số Free Gift không được vượt số đề xuất (${p.quantity})`;
+export function isMarketApprovalSplitChanged(p: { quantity: number }, s: MarketApprovalSplit): boolean {
+  return s.quantity !== p.quantity || s.freeGift > 0;
+}
+
+// Kiểm tra số QL bán lẻ nhập — trả về thông báo lỗi, null = hợp lệ. Tổng được phép nhỏ hơn số Đối tác đề xuất
+// (phần chênh hoàn về phòng nguồn) nhưng không được vượt.
+export function marketApprovalSplitError(p: MarketApprovalProposal, s: MarketApprovalSplit): string | null {
+  if (p.warehouse.type !== "THI_TRUONG" || !p.roomId) return "Chỉ đề xuất của Kho thị trường mới sửa số/duyệt Free Gift được";
+  if (p.plantType.code === FREE_GIFT_PLANT_CODE && s.freeGift > 0) return `${p.code}: cây Free Gift không chuyển sang Free Gift được nữa`;
+  if (s.quantity + s.freeGift > p.quantity) return `${p.code}: tổng Trồng/Hủy và Free Gift không được vượt số đề xuất (${p.quantity})`;
+  if (s.quantity + s.freeGift === 0) return `${p.code}: số lượng đang bằng 0 — muốn bỏ hẳn dòng này thì bấm Từ chối`;
   return null;
 }
 
-// Tách 1 phần (hoặc toàn bộ) dòng đề xuất sang Free Gift. Cây gốc đã bị trừ khỏi phòng nguồn từ lúc Đối tác gửi,
-// nên ở đây chỉ cộng vào mã Free Gift của kho — tổng số cây không đổi. Gọi TRƯỚC khi chuyển trạng thái APPROVED.
-export async function applyFreeGiftSplit(tx: Prisma.TransactionClient, p: FreeGiftSplitProposal, freeGift: number, staffCode: string): Promise<void> {
-  // Chỉ tách dòng còn PENDING — 2 người duyệt cùng lúc thì người sau bị chặn, không cộng Free Gift 2 lần.
+export function marketApprovalSplitSummary(p: MarketApprovalProposal, s: MarketApprovalSplit): string {
+  const parts = [`${p.type === "TRONG" ? "Trồng" : "Hủy"} ${s.quantity}`];
+  if (s.freeGift > 0) parts.push(`Free Gift ${s.freeGift}`);
+  const refund = p.quantity - s.quantity - s.freeGift;
+  if (refund > 0) parts.push(`hoàn về phòng nguồn ${refund}`);
+  return `${p.plantType.code} ${p.stageCode}: đề xuất ${p.quantity} → ${parts.join(", ")}`;
+}
+
+// Áp dụng số QL bán lẻ đã sửa. Cây gốc đã bị trừ khỏi phòng nguồn từ lúc Đối tác gửi, nên phần chênh được cộng lại
+// vào phòng nguồn, phần Free Gift cộng vào mã Free Gift của kho. Gọi TRƯỚC khi chuyển trạng thái APPROVED.
+export async function applyMarketApprovalSplit(tx: Prisma.TransactionClient, p: MarketApprovalProposal, s: MarketApprovalSplit, staffCode: string): Promise<void> {
+  // Chỉ sửa dòng còn PENDING — 2 người duyệt cùng lúc thì người sau bị chặn, không cộng tồn 2 lần.
   const locked = await tx.contaminationProposal.updateMany({
     where: { id: p.id, status: "PENDING" },
-    data: { quantity: p.quantity - freeGift, freeGiftQuantity: freeGift },
+    data: { quantity: s.quantity, freeGiftQuantity: s.freeGift },
   });
   if (locked.count === 0) throw new InsufficientRoomStockError(`Phiếu ${p.code} vừa được xử lý — tải lại trang`);
+
+  const refund = p.quantity - s.quantity - s.freeGift;
+  if (refund > 0) await upsertLot(tx, p.roomId!, p.plantTypeId, p.plantType.code, p.stageCode, refund, staffCode);
+  if (s.freeGift === 0) return;
 
   const room = await tx.room.findFirst({ where: { warehouseId: p.warehouseId, type: "PHONG_SAN_PHAM_DAT", isActive: true }, select: { id: true } });
   if (!room) throw new InsufficientRoomStockError("Kho thị trường thiếu Phòng sản phẩm đạt — liên hệ Admin kiểm tra lại kho");
@@ -278,7 +301,7 @@ export async function applyFreeGiftSplit(tx: Prisma.TransactionClient, p: FreeGi
     create: { code: FREE_GIFT_PLANT_CODE, name: FREE_GIFT_PLANT_NAME, categoryId: category.id, seq: 1, isActive: false },
     select: { id: true },
   });
-  await upsertLot(tx, room.id, plantType.id, FREE_GIFT_PLANT_CODE, FREE_GIFT_STAGE_CODE, freeGift, staffCode);
+  await upsertLot(tx, room.id, plantType.id, FREE_GIFT_PLANT_CODE, FREE_GIFT_STAGE_CODE, s.freeGift, staffCode);
 }
 
 // Đề xuất Trồng của Kho thị trường từ Phòng sản phẩm đạt/không đạt mà chưa có quy cách chậu (phiếu gửi trước

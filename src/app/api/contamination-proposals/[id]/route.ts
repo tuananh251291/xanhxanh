@@ -8,12 +8,16 @@ import { getRoomStock, deductFromRoomFifo, InsufficientRoomStockError } from "@/
 import { createAlert, createAlertForMarketSaleStaff } from "@/lib/inventory";
 import { requiresSuperAdminApproval, attachApprovedToGardenHandover, notifyGardenHandoversCreated } from "@/lib/garden-handover";
 import { deleteContaminationProposalPhoto } from "@/lib/contamination-proposal-storage";
-import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage, freeGiftSplitError, applyFreeGiftSplit } from "@/lib/market-inspection";
+import { moveApprovedMarketPlantingToPlantRoom, isMarketSaleApprover, POT_STAGE_CODE_LIST, findMarketPlantingMissingPot, missingPotMessage, marketApprovalSplitError, applyMarketApprovalSplit, isMarketApprovalSplitChanged, marketApprovalSplitSummary } from "@/lib/market-inspection";
 import { z } from "zod";
 
 const schema = z.union([
-  // freeGiftQuantity (chỉ Kho thị trường, khi duyệt): phần chuyển sang Free Gift, còn lại vẫn Trồng/Hủy như đề xuất.
-  z.object({ action: z.enum(["approve", "reject"]), reason: z.string().trim().max(500).optional(), freeGiftQuantity: z.number().int().min(0).optional() }),
+  // split (chỉ Kho thị trường, khi duyệt): số Trồng/Hủy thực tế + số chuyển Free Gift, tổng không vượt số đề xuất.
+  z.object({
+    action: z.enum(["approve", "reject"]),
+    reason: z.string().trim().max(500).optional(),
+    split: z.object({ quantity: z.number().int().min(0), freeGift: z.number().int().min(0) }).optional(),
+  }),
   // "Sửa & gửi lại" — chỉ áp dụng cho đề xuất đã REJECTED, chỉ đổi được Số lượng/Loại/Ghi chú (mã cây,
   // quy cách, phòng nguồn GIỮ NGUYÊN như phiếu gốc — đổi những cái đó coi như 1 đề xuất khác hẳn, phải
   // gửi mới qua form thường). Xem canResubmitProposal (permission) + validate riêng cho type=TRONG bên dưới.
@@ -191,21 +195,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (proposal.status !== "PENDING") return NextResponse.json({ message: "Đề xuất đã được xử lý" }, { status: 400 });
 
   const { action, reason } = parsed.data;
-  const freeGift = action === "approve" ? parsed.data.freeGiftQuantity ?? 0 : 0;
+  const split = action === "approve" && parsed.data.split && isMarketApprovalSplitChanged(proposal, parsed.data.split) ? parsed.data.split : null;
 
   if (action === "approve") {
     const missingPot = await findMarketPlantingMissingPot([id]);
     if (missingPot) return NextResponse.json({ message: missingPotMessage(missingPot) }, { status: 400 });
   }
-  if (freeGift > 0) {
-    const splitError = freeGiftSplitError(proposal, freeGift);
+  if (split) {
+    const splitError = marketApprovalSplitError(proposal, split);
     if (splitError) return NextResponse.json({ message: splitError }, { status: 400 });
   }
 
   let newHandoverIds: string[];
   try {
   newHandoverIds = await prisma.$transaction(async (tx) => {
-    if (freeGift > 0) await applyFreeGiftSplit(tx, proposal, freeGift, proposal.requestedBy.code);
+    if (split) await applyMarketApprovalSplit(tx, proposal, split, proposal.requestedBy.code);
 
     await tx.contaminationProposal.update({
       where: { id },
@@ -251,11 +255,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   await notifyGardenHandoversCreated(newHandoverIds);
 
-  if (freeGift > 0) {
+  if (split) {
     await createAlert({
       type: "CONTAMINATION_PROPOSAL",
-      title: "Đề xuất được duyệt có chuyển Free Gift",
-      message: `QL bán lẻ đã chuyển ${freeGift.toLocaleString("vi-VN")}/${proposal.quantity.toLocaleString("vi-VN")} ${proposal.plantType.name} (${proposal.stageCode}) sang Free Gift — phiếu ${proposal.code}.`,
+      title: "Đề xuất được duyệt với số lượng đã sửa",
+      message: `QL bán lẻ đã sửa số phiếu ${proposal.code}: ${marketApprovalSplitSummary(proposal, split)}.`,
       userId: proposal.requestedById,
       relatedId: proposal.id,
       relatedType: "ContaminationProposal",

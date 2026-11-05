@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, CheckCheck, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { ProposalItemsTable, summarizeBatchStatus, canApproveProposal, canSplitFreeGift, clampSplit, MARKET_ROOM_TYPE_SET, type Proposal } from "../contamination-proposal-board";
+import { ProposalItemsTable, summarizeBatchStatus, canApproveProposal, canSplitFreeGift, withQuantity, withFreeGift, MARKET_ROOM_TYPE_SET, type Proposal, type ApprovalSplit } from "../contamination-proposal-board";
 
 // Trang chi tiết 1 "đề xuất" (batchCode, hoặc chính `code` của dòng đơn lẻ tạo trước khi có tính năng
 // gộp) — tách khỏi popup "Xem thêm" cũ vì có phiếu gộp tới vài chục loại cây, hiện hết trong 1 khung nhỏ
@@ -29,9 +29,9 @@ export default function BatchDetailBoard({
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [approvingAll, setApprovingAll] = useState(false);
-  // Kho thị trường: hộp thoại chia Free Gift từng dòng rồi duyệt tất cả 1 lần (phiếu gộp theo ngày) — key = proposal id.
+  // Kho thị trường: hộp thoại sửa số/chia Free Gift từng dòng rồi duyệt tất cả 1 lần (phiếu gộp theo ngày) — key = proposal id.
   const [editOpen, setEditOpen] = useState(false);
-  const [freeGiftDraft, setFreeGiftDraft] = useState<Record<string, number>>({});
+  const [splitDraft, setSplitDraft] = useState<Record<string, ApprovalSplit>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,13 +46,13 @@ export default function BatchDetailBoard({
 
   useEffect(() => { load(); }, [load]);
 
-  const review = async (id: string, action: "approve" | "reject", reason?: string, freeGiftQuantity?: number) => {
+  const review = async (id: string, action: "approve" | "reject", reason?: string, split?: ApprovalSplit) => {
     setProcessingId(id);
     try {
       const res = await fetch(`/api/contamination-proposals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason, freeGiftQuantity }),
+        body: JSON.stringify({ action, reason, split }),
       });
       if (!res.ok) { toast.error((await res.json().catch(() => null))?.message ?? "Có lỗi xảy ra"); return; }
       load();
@@ -61,13 +61,13 @@ export default function BatchDetailBoard({
     }
   };
 
-  const approveAll = async (freeGift?: Record<string, number>) => {
+  const approveAll = async (splits?: Record<string, ApprovalSplit>) => {
     setApprovingAll(true);
     try {
       const res = await fetch(`/api/contamination-proposals/batch/${encodeURIComponent(batchCode)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", freeGift }),
+        body: JSON.stringify({ action: "approve", splits }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) { toast.error(json?.message ?? "Có lỗi xảy ra"); return; }
@@ -83,12 +83,21 @@ export default function BatchDetailBoard({
   const pendingItems = items.filter((p) => p.status === "PENDING");
 
   const openEdit = () => {
-    setFreeGiftDraft({});
+    setSplitDraft(Object.fromEntries(pendingItems.map((p) => [p.id, { quantity: p.quantity, freeGift: 0 }])));
     setEditOpen(true);
   };
 
   const allToFreeGift = () => {
-    setFreeGiftDraft(Object.fromEntries(pendingItems.filter(canSplitFreeGift).map((p) => [p.id, p.quantity])));
+    setSplitDraft((d) => ({ ...d, ...Object.fromEntries(pendingItems.filter(canSplitFreeGift).map((p) => [p.id, { quantity: 0, freeGift: p.quantity }])) }));
+  };
+
+  const submitEdit = () => {
+    const empty = pendingItems.find((p) => { const s = splitDraft[p.id]; return s && s.quantity + s.freeGift === 0; });
+    if (empty) {
+      toast.error(`${empty.plantType.code} ${empty.stageCode}: số lượng đang bằng 0 — muốn bỏ dòng này thì đóng hộp thoại và Từ chối`);
+      return;
+    }
+    approveAll(splitDraft);
   };
 
   // Đúng NV đã gửi đề xuất này, HOẶC Quản lý kho thành phẩm của đúng kho đó (chỉ áp dụng đề xuất Kho
@@ -131,7 +140,7 @@ export default function BatchDetailBoard({
                     {canApprove && pendingCount > 0 && (
                       <Button size="sm" className="bg-primary hover:bg-primary-hover" disabled={approvingAll} onClick={() => (isMarketBatch ? openEdit() : approveAll())}>
                         {approvingAll ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <CheckCheck className="w-4 h-4 mr-1.5" />}
-                        {isMarketBatch ? `Chia Free Gift & duyệt tất cả (${pendingCount})` : `Duyệt nhanh tất cả (${pendingCount})`}
+                        {isMarketBatch ? `Sửa số, Free Gift & duyệt tất cả (${pendingCount})` : `Duyệt nhanh tất cả (${pendingCount})`}
                       </Button>
                     )}
                   </div>
@@ -145,9 +154,9 @@ export default function BatchDetailBoard({
               </CardContent>
               <Dialog open={editOpen} onOpenChange={(o) => { if (!approvingAll) setEditOpen(o); }}>
                 <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader><DialogTitle>Chia Free Gift & duyệt tất cả — {batchCode}</DialogTitle></DialogHeader>
+                  <DialogHeader><DialogTitle>Sửa số, Free Gift & duyệt tất cả — {batchCode}</DialogTitle></DialogHeader>
                   <p className="text-xs text-text-secondary bg-info-light rounded-lg p-2">
-                    Giảm số Trồng/Hủy thì số Free Gift tăng tương ứng, tổng mỗi dòng luôn bằng số Đối tác đề xuất.
+                    Tổng Trồng/Hủy và Free Gift mỗi dòng không được vượt số Đối tác đề xuất, phần chênh hoàn về phòng nguồn.
                     Cây chuyển sang Free Gift được cộng vào mã Free Gift của kho. Muốn bỏ hẳn 1 dòng thì đóng hộp thoại và Từ chối dòng đó.
                   </p>
                   <div className="overflow-x-auto border border-divider rounded-lg">
@@ -161,13 +170,13 @@ export default function BatchDetailBoard({
                           <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Tổng</th>
                           <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Trồng/Hủy</th>
                           <th className="text-left px-3 py-2 text-base text-primary-strong font-bold">Free Gift</th>
+                          <th className="text-right px-3 py-2 text-base text-primary-strong font-bold">Hoàn nguồn</th>
                         </tr>
                       </thead>
                       <tbody>
                         {pendingItems.map((p) => {
-                          const freeGift = freeGiftDraft[p.id] ?? 0;
-                          const setFreeGift = (n: number) => setFreeGiftDraft((d) => ({ ...d, [p.id]: n }));
-                          const splittable = canSplitFreeGift(p);
+                          const split = splitDraft[p.id] ?? { quantity: p.quantity, freeGift: 0 };
+                          const setSplit = (next: ApprovalSplit) => setSplitDraft((d) => ({ ...d, [p.id]: next }));
                           return (
                             <tr key={p.id} className="border-b last:border-0 even:bg-primary-light/30">
                               <td className="px-3 py-1.5 font-mono">{p.plantType.code}</td>
@@ -176,13 +185,14 @@ export default function BatchDetailBoard({
                               <td className="px-3 py-1.5">{p.type === "TRONG" ? "Trồng" : "Hủy"}</td>
                               <td className="px-3 py-1.5 text-right font-medium">{p.quantity.toLocaleString("vi-VN")}</td>
                               <td className="px-3 py-1.5">
-                                <Input type="number" min={0} max={p.quantity} className="h-8 w-24" disabled={!splittable} value={p.quantity - freeGift}
-                                  onChange={(e) => setFreeGift(p.quantity - clampSplit(e.target.value, p.quantity))} />
+                                <Input type="number" min={0} max={p.quantity} className="h-8 w-24" value={split.quantity}
+                                  onChange={(e) => setSplit(withQuantity(split, e.target.value, p.quantity))} />
                               </td>
                               <td className="px-3 py-1.5">
-                                <Input type="number" min={0} max={p.quantity} className="h-8 w-24" disabled={!splittable} value={freeGift}
-                                  onChange={(e) => setFreeGift(clampSplit(e.target.value, p.quantity))} />
+                                <Input type="number" min={0} max={p.quantity} className="h-8 w-24" disabled={!canSplitFreeGift(p)} value={split.freeGift}
+                                  onChange={(e) => setSplit(withFreeGift(split, e.target.value, p.quantity))} />
                               </td>
+                              <td className="px-3 py-1.5 text-right">{(p.quantity - split.quantity - split.freeGift).toLocaleString("vi-VN")}</td>
                             </tr>
                           );
                         })}
@@ -192,7 +202,7 @@ export default function BatchDetailBoard({
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setEditOpen(false)} disabled={approvingAll}>Đóng</Button>
                     <Button variant="outline" onClick={allToFreeGift} disabled={approvingAll}>Free Gift tất cả</Button>
-                    <Button className="bg-primary hover:bg-primary-hover" onClick={() => approveAll(freeGiftDraft)} disabled={approvingAll}>
+                    <Button className="bg-primary hover:bg-primary-hover" onClick={submitEdit} disabled={approvingAll}>
                       {approvingAll ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <CheckCheck className="w-4 h-4 mr-1.5" />}
                       Duyệt tất cả ({pendingItems.length})
                     </Button>
