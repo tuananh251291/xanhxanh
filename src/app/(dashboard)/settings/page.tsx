@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 import ChecklistSettings from "./checklist-settings";
+import { DEFAULT_FORECAST_RATE_PCT, FORECAST_RATE_KEY } from "@/lib/finished-stock-forecast-calc";
 
 const CONFIG_META: Record<string, { label: string; description: string; unit: string }> = {
   default_hold_days: { label: "Thời gian giữ đơn mặc định", description: "Số ngày sale giữ đơn trước khi hết hạn", unit: "ngày" },
@@ -40,6 +42,7 @@ const RANGE_CONFIG_META: { minKey: string; maxKey: string; label: string; descri
 ];
 
 export default function SettingsPage() {
+  const { data: session } = useSession();
   const [configs, setConfigs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +53,7 @@ export default function SettingsPage() {
       .then((data: { key: string; value: string }[]) => {
         const map: Record<string, string> = {};
         data.forEach(({ key, value }) => { map[key] = value; });
+        map[FORECAST_RATE_KEY] ??= String(DEFAULT_FORECAST_RATE_PCT);
         setConfigs(map);
       })
       .finally(() => setLoading(false));
@@ -101,6 +105,25 @@ export default function SettingsPage() {
               </div>
             </div>
           ))}
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Tỉ lệ tính tồn kho dự kiến</Label>
+            <p className="text-xs text-text-secondary">
+              % số đăng ký sản xuất và lô đã lên giàn chưa đánh giá được tính vào Tồn kho dự kiến — chỉ Admin cấp cao sửa được
+            </p>
+            <div className="flex items-center gap-2 max-w-xs">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                disabled={session?.user?.role !== "SUPER_ADMIN"}
+                value={configs[FORECAST_RATE_KEY] ?? ""}
+                onChange={(e) => setConfigs((prev) => ({ ...prev, [FORECAST_RATE_KEY]: e.target.value }))}
+                className="w-28"
+              />
+              <span className="text-sm text-text-secondary">%</span>
+            </div>
+          </div>
 
           {RANGE_CONFIG_META.map((meta) => (
             <div key={meta.minKey} className="space-y-2">

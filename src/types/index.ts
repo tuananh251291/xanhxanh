@@ -802,6 +802,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/users", label: "Quản lý người dùng", icon: "Users" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
+    { href: "/inventory/du-kien", label: "Tồn kho dự kiến", icon: "CalendarCheck" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
     { href: "/production-gardens", label: "Vườn sản xuất", icon: "Sprout" },
     { href: "/garden-handovers", label: "Bàn giao cây về Vườn", icon: "PackageCheck" },
@@ -834,6 +835,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/users", label: "Người dùng", icon: "Users" },
     { href: "/production-management", label: "Quản lý Khu sản xuất", icon: "Factory" },
     { href: "/inventory/kho-sang", label: "Phòng sáng", icon: "Sun" },
+    { href: "/inventory/du-kien", label: "Tồn kho dự kiến", icon: "CalendarCheck" },
     { href: "/master-data", label: "Cài đặt CSDL chung hệ thống", icon: "Database" },
     { href: "/quality-monitoring", label: "Giám sát & vi phạm", icon: "ShieldAlert" },
     { href: "/report-center", label: "Báo cáo", icon: "BarChart3" },
@@ -1004,6 +1006,7 @@ export const ROLE_NAV: Record<UserRole, { href: string; label: string; icon: str
     { href: "/ktp-handover-out", label: "Bàn giao liên kho", icon: "Send" },
     { href: "/transfers/send-market", label: "Gửi hàng Kho thị trường", icon: "Send" },
     { href: "/inventory", label: "Xem tồn kho", icon: "Warehouse" },
+    { href: "/inventory/du-kien", label: "Tồn kho dự kiến", icon: "CalendarCheck" },
     { href: "/goods-receipts", label: "Nhận hàng", icon: "Truck" },
     // Xem lại mọi phiếu bàn giao thành phẩm từ Phòng ra rễ các khu sản xuất + xuất Excel (xem
     // src/lib/finished-handover-history.ts) — tab "Nhận bàn giao thành phẩm" ở /goods-receipts chỉ hiện phiếu chờ nhận.
