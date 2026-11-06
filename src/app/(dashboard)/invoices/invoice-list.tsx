@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { fmtMoney } from "@/lib/invoice-engine";
 
@@ -72,6 +73,9 @@ export default function InvoiceList({ canApprove }: { canApprove: boolean }) {
                       <td className="px-3 py-2">
                         <Badge variant={INVOICE_STATUS[r.status]?.variant ?? "outline"}>{INVOICE_STATUS[r.status]?.label ?? r.status}</Badge>
                         {r.hasManualPrice && r.status === "APPROVED" && <span className="block text-xs text-text-muted">có giá đề xuất thay đổi</span>}
+                        {canApprove && r.status === "PENDING_APPROVAL" && (
+                          <Link href={`/invoices/${r.id}`} className="block mt-1"><Button size="sm" className="h-7">Xem chi tiết & duyệt</Button></Link>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-text-secondary">{r.createdBy.name}</td>
                     </tr>

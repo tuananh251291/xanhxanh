@@ -1,0 +1,75 @@
+/* In/xuất PDF phiếu báo giá. Trang lề 0 để trình duyệt không còn chỗ in URL/ngày ở đầu và chân trang; lề thật do
+   hàng đệm thead/tfoot của .ipr-table tạo, tự lặp lại khi phiếu dài sang trang sau. */
+@page inv-sheet {
+  size: A4 portrait;
+  margin: 0;
+}
+
+/* Trên màn hình bảng khung không có tác dụng gì. */
+.ipr-table,
+.ipr-table > tbody,
+.ipr-table > tbody > tr,
+.ipr-table > tbody > tr > td {
+  display: block;
+}
+.ipr-table > thead,
+.ipr-table > tfoot {
+  display: none;
+}
+
+@media print {
+  /* Next giữ stylesheet sau khi chuyển trang — quy tắc chung phải gắn :has(.ipr-table) để không ảnh hưởng phiếu in khác. */
+  body:has(.ipr-table) {
+    page: inv-sheet;
+    background: #fff;
+  }
+  body:has(.ipr-table) * {
+    visibility: hidden;
+  }
+  body:has(.ipr-table) .ipr-table,
+  body:has(.ipr-table) .ipr-table * {
+    visibility: visible;
+  }
+  html:has(.ipr-table),
+  body:has(.ipr-table),
+  body:has(.ipr-table) main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  body:has(.ipr-table) main > div {
+    padding: 0 !important;
+  }
+  .ipr-table {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .ipr-table > thead {
+    display: table-header-group;
+  }
+  .ipr-table > tfoot {
+    display: table-footer-group;
+  }
+  .ipr-table > tbody {
+    display: table-row-group;
+  }
+  .ipr-table > thead > tr,
+  .ipr-table > tbody > tr,
+  .ipr-table > tfoot > tr {
+    display: table-row;
+  }
+  /* Không cắt đôi 1 dòng hàng qua 2 trang. */
+  .ipr-table > tbody > tr > td table tr {
+    break-inside: avoid;
+  }
+  .ipr-table > thead > tr > td,
+  .ipr-table > tfoot > tr > td {
+    display: table-cell;
+    height: 12mm;
+    padding: 0;
+  }
+  .ipr-table > tbody > tr > td {
+    display: table-cell;
+    padding: 0 12mm;
+  }
+}

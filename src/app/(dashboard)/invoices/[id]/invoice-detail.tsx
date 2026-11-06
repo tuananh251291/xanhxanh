@@ -10,8 +10,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ArrowLeft, Check, FileDown, Loader2, PenLine, X, Ban } from "lucide-react";
 import { toast } from "sonner";
 import InvoiceSheet, { type InvoiceSheetProfile } from "@/components/shared/invoice-sheet";
-import type { InvoiceResult } from "@/lib/invoice-engine";
+import type { InvoiceApprovalSummary, InvoiceResult } from "@/lib/invoice-engine";
 import { INVOICE_STATUS } from "../invoice-list";
+import InvoiceApprovalPanel from "./invoice-approval-panel";
+import InvoiceInternalSheet from "./invoice-internal-sheet";
+import "./invoice-print.css";
 
 type Inv = {
   id: string; invoiceNo: string; invoiceDate: string; status: string;
@@ -20,9 +23,12 @@ type Inv = {
   order: { id: string; code: string; status: string } | null; note: string | null; rejectionReason: string | null; hasManualPrice: boolean;
   createdBy: string; createdAt: string; decidedBy: string | null; decidedAt: string | null;
   profile: InvoiceSheetProfile | null; result: InvoiceResult;
+  customerCode: string | null; shipDate: string | null;
 };
 
-export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { invoice: Inv; canApprove: boolean; canEdit: boolean }) {
+export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, approvalSummary }: {
+  invoice: Inv; canApprove: boolean; canEdit: boolean; approvalSummary: InvoiceApprovalSummary | null;
+}) {
   const router = useRouter();
   const [view, setView] = useState<"customer" | "internal">("customer");
   const [busy, setBusy] = useState(false);
@@ -70,12 +76,6 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
           <Button size="sm" variant={view === "customer" ? "default" : "outline"} onClick={() => setView("customer")}>Bản gửi khách</Button>
           <Button size="sm" variant={view === "internal" ? "default" : "outline"} onClick={() => setView("internal")}>Bản nội bộ</Button>
           <span className="flex-1" />
-          {canApprove && inv.status === "PENDING_APPROVAL" && (
-            <>
-              <Button size="sm" disabled={busy} onClick={() => act({ action: "approve" }, "Đã duyệt phiếu báo giá")}><Check className="w-4 h-4 mr-1" /> Duyệt giá</Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => setRejecting(true)}><X className="w-4 h-4 mr-1" /> Từ chối</Button>
-            </>
-          )}
           {canEdit && <Link href={`/invoices/${inv.id}/edit`}><Button size="sm" variant="outline"><PenLine className="w-4 h-4 mr-1" /> Sửa</Button></Link>}
           {canEdit && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (confirm(`Huỷ phiếu báo giá ${inv.invoiceNo}?`)) act({ action: "cancel" }, "Đã huỷ phiếu báo giá"); }}>
@@ -86,16 +86,42 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
         </div>
       </div>
 
-      <div className="max-w-4xl">
-        <InvoiceSheet
-          invoiceNo={inv.invoiceNo} date={inv.invoiceDate} profile={inv.profile}
-          customer={{ name: inv.customerName, address: inv.customerAddress, email: inv.customerEmail }}
-          marketName={inv.marketName} kind={inv.kind} result={inv.result} view={view}
+      {approvalSummary && (
+        <InvoiceApprovalPanel
+          summary={approvalSummary}
+          actions={canApprove && inv.status === "PENDING_APPROVAL" && (
+            <>
+              <Button variant="outline" disabled={busy} onClick={() => setRejecting(true)}><X className="w-4 h-4 mr-1" /> Từ chối</Button>
+              <Button disabled={busy} onClick={() => act({ action: "approve" }, "Đã duyệt phiếu báo giá")}><Check className="w-4 h-4 mr-1" /> Duyệt giá</Button>
+            </>
+          )}
         />
-      </div>
-      {inv.hasManualPrice && view === "internal" && (
-        <p className="text-xs text-text-muted print:hidden">Dòng giá đề xuất thay đổi: {inv.result.items.filter((i) => i.manualPrice).map((i) => `${i.code} ${i.unit}`).join(", ")}</p>
       )}
+
+      <div className="max-w-4xl print:max-w-none">
+        <table className="ipr-table">
+          <thead><tr><td /></tr></thead>
+          <tbody>
+            <tr>
+              <td>
+                {view === "customer" ? (
+                  <InvoiceSheet
+                    invoiceNo={inv.invoiceNo} date={inv.invoiceDate} profile={inv.profile}
+                    customer={{ name: inv.customerName, address: inv.customerAddress, email: inv.customerEmail }}
+                    marketName={inv.marketName} kind={inv.kind} result={inv.result} view="customer"
+                  />
+                ) : (
+                  <InvoiceInternalSheet
+                    invoiceNo={inv.invoiceNo} orderCode={inv.order?.code ?? null} customerCode={inv.customerCode}
+                    shipDate={inv.shipDate} result={inv.result}
+                  />
+                )}
+              </td>
+            </tr>
+          </tbody>
+          <tfoot><tr><td /></tr></tfoot>
+        </table>
+      </div>
 
       <Dialog open={rejecting} onOpenChange={(o) => !busy && setRejecting(o)}>
         <DialogContent>

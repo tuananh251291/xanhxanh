@@ -208,6 +208,16 @@ export type InvoiceResult = {
   plants: number; hasManualPrice: boolean; combineShip: boolean;
 };
 
+// Dữ liệu Admin cấp cao xem khi duyệt giá đề xuất: giá gốc tra từ bảng giá của phiếu (không lưu trong kết quả phiếu).
+export type InvoiceApprovalLine = {
+  code: string; name: string; spec: string; qty: number;
+  basePrice: number | null; proposedPrice: number; diffAmount: number | null; note: string | null;
+};
+export type InvoiceApprovalSummary = {
+  currency: string; lines: InvoiceApprovalLine[];
+  goodsAtBase: number; goodsProposed: number; decrease: number; unpricedCount: number;
+};
+
 export type InvoiceContext = {
   market: InvoiceMarket;
   priceList: InvoicePriceList | null;
@@ -235,6 +245,52 @@ function autoBoxes<T extends { cap1: number; cap5: number; cap10: number }>(boxe
     if (r === big) out[0].count++; else out.push({ box: r, count: 1 });
   }
   return out.filter((p) => p.count > 0);
+}
+
+export function invoiceApprovalSummary(ctx: InvoiceContext, O: InvoiceInput, result: InvoiceResult): InvoiceApprovalSummary {
+  const { market: M, priceList: q, rates } = ctx;
+  const cur = result.currency;
+  const a = rates[M.currency], b = rates[cur];
+  const fx = cur === M.currency ? 1 : a && b ? a.vndPerUnit / b.vndPerUnit : null;
+  const byKey = new Map((q?.items ?? []).map((p) => [priceKey(p), p]));
+  const agg = new Map<string, number>();
+  for (const l of O.lines) if (l.key) agg.set(l.key, (agg.get(l.key) ?? 0) + (+l.qty || 0));
+
+  const toLine = (p: InvoicePriceItem | undefined, key: string, code: string, name: string, spec: string, qty: number, unit: number): InvoiceApprovalLine => {
+    let basePrice: number | null = null, note: string | null = null;
+    if (!q) note = "Chưa có bảng giá";
+    else if (!p) note = "Không có trong bảng giá";
+    else if (fx === null) note = "Thiếu tỉ giá";
+    else {
+      const lp = lookupPrice(q.tiers, p.prices, agg.get(key) ?? qty);
+      if (lp.err === "moq") note = `Dưới số lượng tối thiểu ${lp.moq}`;
+      else if (lp.err === "notier") note = `Không có giá bậc ${lp.tier}`;
+      else basePrice = roundCur(lp.price * fx, cur);
+    }
+    const diffAmount = basePrice === null ? null : roundCur(roundCur(basePrice * qty, cur) - roundCur(unit * qty, cur), cur);
+    return { code, name, spec, qty, basePrice, proposedPrice: unit, diffAmount, note };
+  };
+
+  const lines: InvoiceApprovalLine[] = [];
+  for (const l of O.lines) {
+    if (!(l.manualPrice != null && l.manualPrice > 0)) continue;
+    const p = l.key ? byKey.get(l.key) : undefined;
+    const qty = +l.qty || 0;
+    if (qty > 0) lines.push(toLine(p, l.key, p?.code ?? l.key, p?.name ?? l.key, p?.spec ?? "", qty, l.manualPrice));
+  }
+  for (const m of O.manual) {
+    const qty = +m.qty || 0;
+    if (!m.desc && !qty) continue;
+    const key = priceKey({ code: m.code, spec: m.spec });
+    lines.push(toLine(byKey.get(key), key, m.code || "—", m.desc || "—", m.spec, qty, +m.unit || 0));
+  }
+
+  const decrease = roundCur(lines.reduce((s, l) => s + (l.diffAmount ?? 0), 0), cur);
+  return {
+    currency: cur, lines, decrease,
+    goodsProposed: result.goods, goodsAtBase: roundCur(result.goods + decrease, cur),
+    unpricedCount: lines.filter((l) => l.basePrice === null).length,
+  };
 }
 
 export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceResult {
