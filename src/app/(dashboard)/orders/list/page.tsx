@@ -127,7 +127,7 @@ function OrdersTable({
                   )}
                   {showHoldUntil && (
                     <td className="px-4 py-3 text-sm text-text-secondary">
-                      {o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "Tính từ khi QL Kho TP phản hồi"}
+                      {o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "Chờ QL Kho TP phản hồi"}
                     </td>
                   )}
                   {showExpectedShipAt && (
@@ -287,7 +287,7 @@ export default async function OrdersListPage() {
       <OrdersTable
         showPrices={canViewOrderPrice(role)}
         title="Đơn tạm giữ"
-        description="Đang giữ chỗ tồn kho. Hạn giữ tính từ khi QL Kho TP phản hồi đáp ứng. Xóa đơn để trả lại tồn đạt tiêu chuẩn ngay."
+        description="Đang giữ chỗ tồn kho. Chưa bấm Khách xác nhận / Chưa cọc thì đơn tự huỷ khi hết hạn; sau khi bấm, hạn giữ tính từ khi QL Kho TP phản hồi. Xóa đơn để trả lại tồn đạt tiêu chuẩn ngay."
         orders={heldOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil
         showQuantity

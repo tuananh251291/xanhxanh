@@ -6,6 +6,7 @@ import { cleanupExpiredViolationPhotos } from "@/lib/violation-photo-storage";
 import { syncMotherLotDueDates } from "@/lib/mother-due-sync";
 import { syncRootingLotDueDates } from "@/lib/rooting-due-sync";
 import { syncMarketInspectionAlerts } from "@/lib/market-inspection";
+import { ensureExpiredOrdersCancelled, sendOrderHoldReminders } from "@/lib/order-lifecycle";
 
 // Chạy 3h sáng mỗi ngày (giờ server) — khung giờ ít NV thao tác nhất, tránh cạnh tranh tài nguyên với
 // lúc NV nhập liệu ban ngày. Lỗi (VD Supabase tạm gián đoạn) chỉ log, không crash tiến trình Next.js —
@@ -94,3 +95,15 @@ async function runMarketInspectionAlerts() {
 }
 void runMarketInspectionAlerts();
 cron.schedule("20 * * * *", runMarketInspectionAlerts);
+
+// Đơn hết hạn giữ tự huỷ + nhắc Sale trước 1 ngày — chạy ở đây vì phải đúng giờ cả khi không có ai đang mở hệ thống.
+async function runOrderHoldJobs() {
+  try {
+    await ensureExpiredOrdersCancelled();
+    await sendOrderHoldReminders();
+  } catch (err) {
+    console.error("[cron] Lỗi xử lý hạn giữ đơn:", err);
+  }
+}
+void runOrderHoldJobs();
+cron.schedule("*/15 * * * *", runOrderHoldJobs);

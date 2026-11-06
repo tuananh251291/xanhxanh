@@ -610,11 +610,15 @@ export const ALERT_TYPE_LABELS = {
 // enum), nhận diện qua relatedType để dẫn tới trang Người dùng thay vì trang đề xuất. Xem market-inspection.ts.
 export const RETAIL_MANAGER_MISSING_RELATED_TYPE = "RetailManagerMissing";
 
+// Thông báo "khách đã cọc" gửi QL Kho TP — bấm vào mở thẳng chi tiết đơn để làm bước tiếp theo (xem alerts/page.tsx).
+export const ORDER_DEPOSITED_RELATED_TYPE = "OrderDeposited";
+
 // Trang đích khi bấm "Xem chi tiết" ở trang Thông báo cho 1 số loại thông báo có nơi xử lý cụ thể — bấm
 // vào vừa đánh dấu đã xem vừa điều hướng thẳng tới đó, thay vì chỉ có nút "Đã xem" chung chung (xem
 // alerts/page.tsx). Loại nào không có trong map này vẫn giữ nút "Đã xem" như cũ.
 export const ALERT_DETAIL_LINKS: Partial<Record<keyof typeof ALERT_TYPE_LABELS, string>> = {
   ORDER_EDITED: "/orders/list",
+  ORDER_EXPIRING: "/orders/list",
   SUPPLIER_CHECK_UPDATE: "/supplier-checks",
   PRICE_LIST_MONTHLY_DUE: "/price-lists",
   PRICE_LIST_SUBMITTED: "/price-lists",

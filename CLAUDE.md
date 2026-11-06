@@ -117,12 +117,13 @@ Chỉ tính cây mô ở Phòng đạt tiêu chuẩn của Kho thành phẩm. Co
   đúng 1 ngày vì sẽ hứa trùng hàng của đơn xuất muộn hơn. Thứ tự lấy: đúng quy cách → mở túi → số đăng ký.
 - **Dòng đơn**: lưu `plantTypeId` + `stageCode`. Phần có hàng thật gắn lô (lô cũ trước), phần hàng sắp về để `lotId` trống, chọn lô
   lúc xuất kho. Đọc dòng đơn qua `src/lib/order-item-spec.ts`, không đọc thẳng `item.lot`.
-- Sale tạo đơn (HELD): giữ chỗ, KHÔNG trừ tồn thực, chưa có `holdUntil`.
-- Sale "Khách xác nhận / Chưa cọc" (`customerConfirmedAt`, vẫn HELD): mọi đơn khách hàng, đủ hay thiếu, chuyển sang QL Kho TP ở trang Kiểm tra NCC
-  (chỉ QL của kho làm việc của Sale). QL kiểm tra, phần thiếu gửi NCC, rồi "Gửi kết quả cho NV bán hàng" (`supplyResultSentAt`): `holdUntil` bắt đầu tính từ đây,
+- Sale tạo đơn (HELD): giữ chỗ, KHÔNG trừ tồn thực. `holdUntil` = ngày tạo + số ngày giữ của Sale: chưa bấm Khách xác nhận thì báo Sale trước 1 ngày rồi tự CANCELLED
+  (`src/lib/order-lifecycle.ts`, chạy định kì ở `src/instrumentation-node.ts`).
+- Sale "Khách xác nhận / Chưa cọc" (`customerConfirmedAt`, vẫn HELD): `holdUntil` về trống. Mọi đơn khách hàng, đủ hay thiếu, chuyển sang QL Kho TP ở trang Kiểm tra NCC
+  (chỉ QL của kho làm việc của Sale). QL kiểm tra, phần thiếu gửi NCC, rồi "Gửi kết quả cho NV bán hàng" (`supplyResultSentAt`): `holdUntil` tính lại từ đây,
   hết hạn thì tự CANCELLED.
 - Sale "Khách đã cọc" (HELD → CONFIRMED): chỉ bấm được sau khi QL phản hồi. Ghi số tiền + ngày cọc, kiểm tra phiếu báo giá (đơn thiếu: phiếu phải khớp cả phần NCC đáp
-  ứng), sinh Yêu cầu xử lý cây (dòng cần tách/ghép túi), báo Kho thành phẩm. Không tự huỷ theo `holdUntil` nữa. Vẫn KHÔNG trừ tồn thực.
+  ứng), sinh Yêu cầu xử lý cây (dòng cần tách/ghép túi), báo QL của đúng kho (bấm thông báo mở `/orders/pack/[id]`: đặt hàng NCC, bàn giao NV kho). Không tự huỷ theo `holdUntil` nữa. Vẫn KHÔNG trừ tồn thực.
 - Kho thành phẩm "Hoàn thành xử lý": trừ tồn thực ở quy cách nguồn theo nguyên túi đã mở, cộng phần dư vào T01.
 - Kho thành phẩm "Xuất kho" (CONFIRMED → SHIPPED): trừ tồn thực cho dòng không cần xử lý. Chặn nếu còn Yêu cầu xử lý PENDING hoặc thiếu
   hàng. Lô đang gắn cho đơn xuất muộn hơn vẫn được lấy (đơn đó tự lấy từ hàng về sau), trừ lô nguồn của dòng cần xử lý.

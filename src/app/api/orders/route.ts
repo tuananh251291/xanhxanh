@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { addDays } from "date-fns";
+import { getSystemConfig } from "@/lib/inventory";
 import { generateOrderCode } from "@/lib/codes";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
@@ -178,6 +180,12 @@ export async function POST(req: NextRequest) {
     salesMarketId = m.id;
   }
 
+  // Chờ Sale bấm Khách xác nhận / Chưa cọc: quá số ngày giữ của NV bán hàng phụ trách đơn thì tự huỷ. Bấm xong hạn này bỏ, hạn
+  // giữ mới tính từ khi Quản lý kho thành phẩm phản hồi (sendSupplyResult). Đơn Kho thị trường không có bước này.
+  const orderSaleId = customer ? customer.assignedToId! : freeCustomer ? freeCustomer.saleId : session.user.id;
+  const saleHoldDays = marketWarehouse ? null : (await prisma.user.findUnique({ where: { id: orderSaleId }, select: { holdDays: true } }))?.holdDays;
+  const confirmDays = saleHoldDays ?? (parseInt(await getSystemConfig("default_hold_days", "3"), 10) || 3);
+
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
   const inProgressRoomIds = await getInProgressRoomIds(session.user.workplaceWarehouseId);
   const plantTypeById = new Map(
@@ -209,7 +217,7 @@ export async function POST(req: NextRequest) {
           data: {
             code,
             exportCode,
-            saleId: customer ? customer.assignedToId! : freeCustomer ? freeCustomer.saleId : session.user.id,
+            saleId: orderSaleId,
             customerCode: customer ? customer.code : freeCustomer ? freeCustomer.code : marketWarehouse!.code,
             customerId: customer?.id,
             marketWarehouseId: marketWarehouse?.id,
@@ -218,7 +226,7 @@ export async function POST(req: NextRequest) {
             originalExpectedShipAt: shipDate,
             notes,
             status: "HELD",
-            // Hạn giữ (holdUntil) chỉ bắt đầu khi Quản lý kho thành phẩm phản hồi đáp ứng, xem sendSupplyResult.
+            holdUntil: marketWarehouse ? null : addDays(new Date(), confirmDays),
             customerConfirmedAt: marketWarehouse ? new Date() : null,
             ...(pricing?.priced ? { pricedAt: new Date(), priceListId: pricing.id } : {}),
           },

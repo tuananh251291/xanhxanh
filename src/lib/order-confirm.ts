@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
 import { generateOrderProcessingRequestCode, generateProcessingMediumOrderCode } from "@/lib/codes";
-import { FINISHED_SPEC_BAG_SIZE } from "@/types";
+import { FINISHED_SPEC_BAG_SIZE, ORDER_DEPOSITED_RELATED_TYPE } from "@/types";
+import { notifyWarehouseManagers } from "@/lib/supplier-check-notify";
 
 export const loadOrderForConfirm = (orderId: string) =>
   prisma.order.findUnique({
@@ -112,14 +113,18 @@ export async function applyOrderConfirmation(order: NonNullable<Awaited<ReturnTy
     } });
   }, { timeout: 30000, maxWait: 10000 });
 
-  await createAlert({
-    type: "ORDER_PENDING_PACK",
-    title: `Đơn ${order.code}: khách đã cọc`,
-    message: `Đơn ${order.code} đã chuyển sang chờ xuất kho — xem trang Sắp xếp đơn hàng`,
-    targetRole: "QUAN_LY_KHO_THANH_PHAM",
-    relatedId: order.id,
-    relatedType: "Order",
-  });
+  const [sale, nccToPlace] = await Promise.all([
+    prisma.user.findUnique({ where: { id: order.saleId }, select: { workplaceWarehouseId: true } }),
+    prisma.supplierCheck.count({ where: { orderId: order.id, status: "CONFIRMED" } }),
+  ]);
+  await notifyWarehouseManagers(
+    "ORDER_PENDING_PACK",
+    `Đơn ${order.code}: khách đã cọc`,
+    nccToPlace > 0 ? `Đơn ${order.code} có phần NCC cần đặt hàng — bấm để mở đơn, đặt hàng NCC và bàn giao NV kho` : `Đơn ${order.code} đã chuyển sang chờ xuất kho — bấm để mở đơn và bàn giao NV kho`,
+    order.id,
+    ORDER_DEPOSITED_RELATED_TYPE,
+    sale?.workplaceWarehouseId
+  );
 
   if (processingRequestCount > 0) {
     await createAlert({

@@ -11,6 +11,9 @@ import OrderPickTable from "./order-pick-table";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
 import { withResolvedLot } from "@/lib/order-item-spec";
 import OrderPartialActions from "./order-partial-actions";
+import PlaceSupplierCheckButton from "./place-supplier-check-button";
+import KhoTpAssignCell from "@/components/shared/khotp-assign-cell";
+import { canManageSupplierChecks } from "@/lib/supplier-check";
 import { canEditOrderItems } from "@/lib/order-edit";
 
 export default async function OrderPickPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,8 +27,12 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
     include: {
       sale: { select: { name: true } },
       salesMarket: { select: { name: true } },
-      assignedTo: { select: { name: true, code: true } },
+      assignedTo: { select: { id: true, name: true, code: true } },
       partialShipments: { select: { code: true } },
+      supplierChecks: {
+        where: { status: "CONFIRMED" },
+        select: { id: true, code: true, supplier: { select: { name: true } }, items: { select: { confirmedQuantity: true, stageCode: true, plantType: { select: { code: true } } } } },
+      },
       items: {
         include: {
           plantType: { select: { code: true, name: true } },
@@ -45,6 +52,14 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
   const canEditOrder = canEditOrderItems(role) && (order.status === "HELD" || order.status === "CONFIRMED");
   const plantTypes = canEditOrder
     ? await prisma.plantType.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } })
+    : [];
+
+  // Bước tiếp theo sau khi khách cọc: đặt hàng NCC (nếu có phần NCC đáp ứng) và bàn giao NV kho.
+  const canAssign = role === "QUAN_LY_KHO_THANH_PHAM" || isAdminRole(role);
+  const showNextStep = order.status === "CONFIRMED" && canAssign;
+  const checksToPlace = showNextStep && canManageSupplierChecks(role) ? order.supplierChecks : [];
+  const staffUsers = showNextStep
+    ? await prisma.user.findMany({ where: { role: "KHO_THANH_PHAM" }, select: { id: true, code: true, name: true }, orderBy: { name: "asc" } })
     : [];
 
   return (
@@ -69,6 +84,36 @@ export default async function OrderPickPage({ params }: { params: Promise<{ id: 
           {order.partialShipments.length > 0 && ` · Đã xuất một phần: ${order.partialShipments.map((s) => s.code).join(", ")}`}
         </p>
       </div>
+
+      {showNextStep && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Bước tiếp theo</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {checksToPlace.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-divider p-3">
+                <p className="text-sm text-foreground">
+                  <span className="font-mono text-xs">{c.code}</span> · {c.supplier.name} ·{" "}
+                  {c.items.filter((i) => (i.confirmedQuantity ?? 0) > 0).map((i) => `${i.plantType.code} ${i.stageCode}: ${(i.confirmedQuantity ?? 0).toLocaleString("vi-VN")} cây`).join(", ")}
+                </p>
+                <PlaceSupplierCheckButton checkId={c.id} />
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-text-secondary">Bàn giao NV kho nhặt hàng</span>
+              <KhoTpAssignCell
+                endpoint={`/api/orders/${order.id}`}
+                assignedTo={order.assignedTo}
+                staffOptions={staffUsers}
+                canAssign={canAssign}
+                confirmedAt={order.assignmentConfirmedAt}
+                submitLabel="Bàn giao"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">

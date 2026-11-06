@@ -238,13 +238,14 @@ async function customerConfirmOrder(orderId: string, user: { id: string; role: s
   if (!canActAsSale(user.role)) return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, code: true, status: true, saleId: true, customerConfirmedAt: true, sale: { select: { workplaceWarehouseId: true } }, _count: { select: { shortages: true } } },
+    select: { id: true, code: true, status: true, saleId: true, holdUntil: true, customerConfirmedAt: true, sale: { select: { workplaceWarehouseId: true } }, _count: { select: { shortages: true } } },
   });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   if (user.role === "SALE" && order.saleId !== user.id) return NextResponse.json({ message: "Chỉ được thao tác đơn hàng của chính mình" }, { status: 403 });
   if (order.status !== "HELD") return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ" }, { status: 400 });
   if (order.customerConfirmedAt) return NextResponse.json({ message: "Đơn đã gửi Quản lý kho thành phẩm" }, { status: 400 });
-  await prisma.order.update({ where: { id: order.id }, data: { customerConfirmedAt: new Date() } });
+  if (order.holdUntil && order.holdUntil < new Date()) return NextResponse.json({ message: "Đơn đã quá hạn xác nhận và bị huỷ — tạo lại đơn" }, { status: 400 });
+  await prisma.order.update({ where: { id: order.id }, data: { customerConfirmedAt: new Date(), holdUntil: null } });
   await notifySupplierCheckManagers(
     `Đơn ${order.code}: khách xác nhận, chưa cọc`,
     `${order._count.shortages > 0 ? "Đơn thiếu hàng — cần gửi Đơn kiểm tra cho NCC" : "Đơn đủ hàng — kiểm tra lại"} rồi gửi kết quả cho NV bán hàng trong 1 ngày làm việc, xem trang Kiểm tra NCC`,
