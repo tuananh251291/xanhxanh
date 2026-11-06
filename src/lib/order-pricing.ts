@@ -93,6 +93,8 @@ export async function buildOrderInvoicePrefill(orderId: string): Promise<OrderIn
     where: { id: orderId },
     select: {
       pricedAt: true, priceListId: true,
+      // Phần NCC đã xác nhận nhưng chưa đặt hàng chưa nằm trong dòng đơn — phiếu vẫn phải có, khách cọc theo tổng sẽ nhận.
+      supplierChecks: { where: { status: "CONFIRMED" }, select: { items: { select: { plantTypeId: true, stageCode: true, confirmedQuantity: true, plantType: { select: { code: true, name: true } } } } } },
       items: { select: { ...ITEM_FIELDS, plantType: { select: { code: true, name: true } }, lot: { select: { plantTypeId: true, stageCode: true, plantType: { select: { code: true, name: true } } } } } },
     },
   });
@@ -110,6 +112,18 @@ export async function buildOrderInvoicePrefill(orderId: string): Promise<OrderIn
       plantTypeId: line.plantTypeId, stageCode: line.stageCode, code: plant?.code ?? "", name: plant?.name ?? "",
       quantity: (prev?.quantity ?? 0) + line.quantity,
       manualPrice: prev?.manualPrice ?? (item.priceManual ? item.unitPrice : null),
+    });
+  }
+
+  for (const item of order.supplierChecks.flatMap((c) => c.items)) {
+    const quantity = item.confirmedQuantity ?? 0;
+    if (quantity <= 0) continue;
+    const key = orderLineKey(item);
+    const prev = groups.get(key);
+    groups.set(key, {
+      plantTypeId: item.plantTypeId, stageCode: item.stageCode, code: item.plantType.code, name: item.plantType.name,
+      quantity: (prev?.quantity ?? 0) + quantity,
+      manualPrice: prev?.manualPrice ?? null,
     });
   }
 

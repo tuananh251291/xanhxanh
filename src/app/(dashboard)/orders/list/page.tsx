@@ -15,6 +15,7 @@ import { getOrderPackStatus } from "@/lib/order-pack-status";
 import { getManagedOrderScope } from "@/lib/customer-manager";
 import ConfirmOrderButton from "./confirm-order-button";
 import OrderInvoiceLink from "./order-invoice-link";
+import CustomerConfirmButton from "./customer-confirm-button";
 import CancelOrderButton from "./cancel-order-button";
 import OrderDetailDialog from "./order-detail-dialog";
 import ShipAtEditCell from "./ship-at-edit-cell";
@@ -28,6 +29,7 @@ type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status"
   salesMarket: { name: string } | null;
   invoices?: { id: string; invoiceNo: string; status: string }[];
   supplyResultSentAt: Date | null;
+  customerConfirmedAt: Date | null;
   shortages: { quantity: number }[];
   supplierChecks: { items: { confirmedQuantity: number | null }[] }[];
   sale?: Pick<User, "code" | "name">;
@@ -42,6 +44,19 @@ type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status"
 const SUPPLIER_ANSWERED: SupplierCheckStatus[] = ["CONFIRMED", "PLACED", "DELIVERED"];
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+// Đơn đang giữ đang ở bước nào của luồng Khách xác nhận → QL Kho TP phản hồi → Khách đã cọc.
+function OrderSupplyBadge({ order: o }: { order: OrderRow }) {
+  const fmt = (n: number) => n.toLocaleString("vi-VN");
+  const shortage = o.shortages.reduce((s, x) => s + x.quantity, 0);
+  const confirmed = o.supplierChecks.flatMap((c) => c.items).reduce((s, i) => s + (i.confirmedQuantity ?? 0), 0);
+  const [variant, label]: ["info" | "in-progress" | "outline", string] = o.supplyResultSentAt
+    ? ["info", shortage > 0 ? `QL đã phản hồi: NCC đáp ứng ${fmt(confirmed)}/${fmt(shortage)} cây thiếu` : "QL đã phản hồi: đủ hàng"]
+    : o.customerConfirmedAt
+      ? ["in-progress", `Khách xác nhận / Chưa cọc · chờ QL phản hồi${shortage > 0 ? ` (thiếu ${fmt(shortage)} cây)` : ""}`]
+      : ["outline", shortage > 0 ? `Chưa gửi QL Kho TP · thiếu ${fmt(shortage)} cây` : "Chưa gửi QL Kho TP"];
+  return <Badge variant={variant} className="block w-fit mt-1">{label}</Badge>;
+}
 
 function OrdersTable({
   title,
@@ -105,20 +120,14 @@ function OrdersTable({
                   {showSale && <td className="px-4 py-3 text-sm text-foreground">{o.sale ? `${o.sale.code} - ${o.sale.name}` : "—"}</td>}
                   <td className="px-4 py-3 text-sm text-foreground">
                     {o.customerCode} · {orderMarketLabel(o)}
-                    {o.shortages.length > 0 && (
-                      <Badge variant={o.supplyResultSentAt ? "info" : "in-progress"} className="block w-fit mt-1">
-                        {o.supplyResultSentAt
-                          ? `NCC đáp ứng ${o.supplierChecks.flatMap((c) => c.items).reduce((s, i) => s + (i.confirmedQuantity ?? 0), 0).toLocaleString("vi-VN")}/${o.shortages.reduce((s, x) => s + x.quantity, 0).toLocaleString("vi-VN")} cây thiếu`
-                          : `Chờ kiểm tra NCC: thiếu ${o.shortages.reduce((s, x) => s + x.quantity, 0).toLocaleString("vi-VN")} cây`}
-                      </Badge>
-                    )}
+                    {o.status === "HELD" && <OrderSupplyBadge order={o} />}
                   </td>
                   {showQuantity && (
                     <td className="px-4 py-3 text-sm text-foreground">{o.items.reduce((s, i) => s + i.quantity, 0).toLocaleString("vi-VN")} cây</td>
                   )}
                   {showHoldUntil && (
                     <td className="px-4 py-3 text-sm text-text-secondary">
-                      {o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
+                      {o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "Tính từ khi QL Kho TP phản hồi"}
                     </td>
                   )}
                   {showExpectedShipAt && (
@@ -171,7 +180,8 @@ function OrdersTable({
                       {showActions && (
                         <>
                           <OrderInvoiceLink orderId={o.id} invoice={o.invoices?.[0] ?? null} />
-                          {(o.shortages.length === 0 || o.supplyResultSentAt) && <ConfirmOrderButton orderId={o.id} />}
+                          {!o.customerConfirmedAt && <CustomerConfirmButton orderId={o.id} />}
+                          {o.supplyResultSentAt && <ConfirmOrderButton orderId={o.id} />}
                           <CancelOrderButton orderId={o.id} orderCode={o.code} />
                         </>
                       )}
@@ -210,7 +220,7 @@ export default async function OrdersListPage() {
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
   const orderSelect = {
       id: true, code: true, customerCode: true, market: true, status: true, holdUntil: true,
-      expectedShipAt: true, notes: true, createdAt: true, supplyResultSentAt: true,
+      expectedShipAt: true, notes: true, createdAt: true, supplyResultSentAt: true, customerConfirmedAt: true,
       shortages: { select: { quantity: true } },
       supplierChecks: { where: { status: { in: SUPPLIER_ANSWERED } }, select: { items: { select: { confirmedQuantity: true } } } },
       salesMarket: { select: { name: true } },
@@ -269,15 +279,15 @@ export default async function OrdersListPage() {
         </h1>
         <p className="text-text-secondary text-sm mt-1">
           {isActingForSale
-            ? 'Mọi đơn hàng đang giữ/đã xác nhận (mọi NV bán hàng) — bấm "Xác nhận" khi khách hàng đã đồng ý mua, không thể chuyển ngược lại trạng thái Đang giữ.'
-            : 'Đơn hàng bạn đã tạo — bấm "Xác nhận" khi khách hàng đã đồng ý mua, không thể chuyển ngược lại trạng thái Đang giữ.'}
+            ? 'Mọi đơn hàng đang giữ/đã cọc (mọi NV bán hàng) — bấm "Khách xác nhận / Chưa cọc" khi khách đồng ý mua để QL Kho TP kiểm tra đáp ứng, QL phản hồi xong mới bấm "Khách đã cọc" được.'
+            : 'Đơn hàng bạn đã tạo — bấm "Khách xác nhận / Chưa cọc" khi khách đồng ý mua để QL Kho TP kiểm tra đáp ứng, QL phản hồi xong mới bấm "Khách đã cọc" được.'}
         </p>
       </div>
 
       <OrdersTable
         showPrices={canViewOrderPrice(role)}
         title="Đơn tạm giữ"
-        description="Đang giữ chỗ tồn kho — bấm Khách đã cọc khi khách đặt cọc, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
+        description="Đang giữ chỗ tồn kho. Hạn giữ tính từ khi QL Kho TP phản hồi đáp ứng. Xóa đơn để trả lại tồn đạt tiêu chuẩn ngay."
         orders={heldOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil
         showQuantity

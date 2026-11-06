@@ -117,15 +117,18 @@ Chỉ tính cây mô ở Phòng đạt tiêu chuẩn của Kho thành phẩm. Co
   đúng 1 ngày vì sẽ hứa trùng hàng của đơn xuất muộn hơn. Thứ tự lấy: đúng quy cách → mở túi → số đăng ký.
 - **Dòng đơn**: lưu `plantTypeId` + `stageCode`. Phần có hàng thật gắn lô (lô cũ trước), phần hàng sắp về để `lotId` trống, chọn lô
   lúc xuất kho. Đọc dòng đơn qua `src/lib/order-item-spec.ts`, không đọc thẳng `item.lot`.
-- Sale tạo đơn (HELD): giữ chỗ, KHÔNG trừ tồn thực. Hết `holdUntil` thì tự CANCELLED.
-- Sale "Khách đã cọc" (HELD → CONFIRMED, thay nút Xác nhận cũ): ghi số tiền + ngày cọc, kiểm tra phiếu báo giá, sinh Yêu cầu xử lý
-  cây (dòng cần tách/ghép túi), báo Kho thành phẩm. Không tự huỷ theo `holdUntil` nữa. Vẫn KHÔNG trừ tồn thực.
+- Sale tạo đơn (HELD): giữ chỗ, KHÔNG trừ tồn thực, chưa có `holdUntil`.
+- Sale "Khách xác nhận / Chưa cọc" (`customerConfirmedAt`, vẫn HELD): mọi đơn khách hàng, đủ hay thiếu, chuyển sang QL Kho TP ở trang Kiểm tra NCC
+  (chỉ QL của kho làm việc của Sale). QL kiểm tra, phần thiếu gửi NCC, rồi "Gửi kết quả cho NV bán hàng" (`supplyResultSentAt`): `holdUntil` bắt đầu tính từ đây,
+  hết hạn thì tự CANCELLED.
+- Sale "Khách đã cọc" (HELD → CONFIRMED): chỉ bấm được sau khi QL phản hồi. Ghi số tiền + ngày cọc, kiểm tra phiếu báo giá (đơn thiếu: phiếu phải khớp cả phần NCC đáp
+  ứng), sinh Yêu cầu xử lý cây (dòng cần tách/ghép túi), báo Kho thành phẩm. Không tự huỷ theo `holdUntil` nữa. Vẫn KHÔNG trừ tồn thực.
 - Kho thành phẩm "Hoàn thành xử lý": trừ tồn thực ở quy cách nguồn theo nguyên túi đã mở, cộng phần dư vào T01.
 - Kho thành phẩm "Xuất kho" (CONFIRMED → SHIPPED): trừ tồn thực cho dòng không cần xử lý. Chặn nếu còn Yêu cầu xử lý PENDING hoặc thiếu
   hàng. Lô đang gắn cho đơn xuất muộn hơn vẫn được lấy (đơn đó tự lấy từ hàng về sau), trừ lô nguồn của dòng cần xử lý.
 - Dời ngày xuất (Quản lý kho TP): muộn hơn, không quá 1 tháng so với `originalExpectedShipAt` thì giữ đơn; sớm hơn thì tính lại số
   đáp ứng; quá 1 tháng thì huỷ đơn, báo Sale đặt lại.
-- Đơn thiếu hàng (`src/lib/supplier-check.ts`): phần thiếu lưu ở `OrderShortage`, không giữ chỗ, `holdUntil` để trống. QL Kho TP gửi Đơn kiểm tra (trang
+- Đơn thiếu hàng (`src/lib/supplier-check.ts`): phần thiếu lưu ở `OrderShortage`, không giữ chỗ. Sau khi Sale báo khách xác nhận, QL Kho TP gửi Đơn kiểm tra (trang
   Kiểm tra NCC, hạn 1 ngày làm việc) → NCC xác nhận ở `/supplier-portal` (NCC chưa có tài khoản: QL nhập hộ) và giữ hàng → QL gửi kết quả cho Sale, hạn giữ bắt
   đầu tính → khách cọc → QL Đặt hàng: tạo Phiếu dự kiến nhập (A3) + dòng đơn chưa có lô (A4) trong cùng transaction → NCC giao theo phiếu, số thực tế thay số xác nhận.
   Đơn huỷ/hết hạn: Đơn kiểm tra chưa đặt thôi hiệu lực; đã đặt thì hàng vẫn về, thành tồn tự do.

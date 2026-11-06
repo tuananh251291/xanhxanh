@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { addDays, addMonths } from "date-fns";
 import { generateOrderCode } from "@/lib/codes";
 import { getAccessibleRoomIds, getInProgressRoomIds, getQualifiedLots } from "@/lib/order-availability";
 import { isSerializationFailure } from "@/lib/prisma-errors";
-import { getSystemConfig } from "@/lib/inventory";
 import { canActAsSale, ALL_FINISHED_STAGE_CODES } from "@/types";
 import { z } from "zod";
 import { prepareAvailability } from "@/lib/finished-stock-forecast";
@@ -17,10 +15,6 @@ import { repriceOrder, resolveOrderPriceList } from "@/lib/order-pricing";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
 const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
-
-// Nhóm khách hàng "Khách công ty lớn" được giữ đơn 5 THÁNG kể từ lúc Tạm giữ, thay vì theo Năng lực giữ
-// đơn (ngày) mặc định của NV Sale — xem CustomerGroup, prisma/schema.prisma.
-const LARGE_COMPANY_HOLD_MONTHS = 5;
 
 // Các mã cây + quy cách không đủ tồn khi tạo đơn — gom HẾT mọi dòng thiếu rồi mới báo (thay vì dừng ở dòng
 // thiếu đầu tiên), để người tạo đơn (nhất là Quản lý kho TP tạo hộ bằng Excel, không qua bước Check) sửa 1
@@ -184,19 +178,6 @@ export async function POST(req: NextRequest) {
     salesMarketId = m.id;
   }
 
-  // Năng lực giữ đơn (ngày) riêng từng NV Sale (Admin gõ tay ở /users) là NGOẠI LỆ — chỉ khi chưa cài đặt
-  // (null) mới rơi về "Thời gian giữ đơn mặc định" chung ở /settings (SystemConfig "default_hold_days"),
-  // đọc SỐNG mỗi lần tạo đơn nên Admin sửa số mặc định là áp dụng ngay cho mọi NV chưa có số riêng.
-  const salesUserHoldDays = freeCustomer
-    ? (await prisma.user.findUnique({ where: { id: freeCustomer.saleId }, select: { holdDays: true } }))?.holdDays
-    : !customer
-    ? session.user.holdDays
-    : session.user.role === "SALE"
-      ? session.user.holdDays
-      : (await prisma.user.findUnique({ where: { id: customer.assignedToId! }, select: { holdDays: true } }))?.holdDays;
-  const defaultHoldDays = parseInt(await getSystemConfig("default_hold_days", "3"), 10) || 3;
-  const holdDays = salesUserHoldDays ?? defaultHoldDays;
-
   const roomIds = await getAccessibleRoomIds(session.user.id, session.user.workplaceWarehouseId);
   const inProgressRoomIds = await getInProgressRoomIds(session.user.workplaceWarehouseId);
   const plantTypeById = new Map(
@@ -224,12 +205,6 @@ export async function POST(req: NextRequest) {
           return availabilityOf(plantTypeId, stageCode).withRegistered + inMarketRooms.reduce((s, l) => s + l.available, 0);
         };
         const code = await generateOrderCode(tx);
-        // Khách công ty lớn: giữ đơn 5 tháng, không phụ thuộc Năng lực giữ đơn (ngày) của NV Sale. Đơn Kho
-        // thị trường không có customerGroup nên luôn theo Năng lực giữ đơn (ngày) như khách thường.
-        const holdUntil = customer?.customerGroup === "KHACH_CONG_TY_LON"
-          ? addMonths(new Date(), LARGE_COMPANY_HOLD_MONTHS)
-          : addDays(new Date(), holdDays);
-
         const created = await tx.order.create({
           data: {
             code,
@@ -243,7 +218,8 @@ export async function POST(req: NextRequest) {
             originalExpectedShipAt: shipDate,
             notes,
             status: "HELD",
-            holdUntil,
+            // Hạn giữ (holdUntil) chỉ bắt đầu khi Quản lý kho thành phẩm phản hồi đáp ứng, xem sendSupplyResult.
+            customerConfirmedAt: marketWarehouse ? new Date() : null,
             ...(pricing?.priced ? { pricedAt: new Date(), priceListId: pricing.id } : {}),
           },
         });
@@ -334,14 +310,14 @@ export async function POST(req: NextRequest) {
         await tx.orderShortage.createMany({
           data: missing.map((d) => ({ orderId: created.id, plantTypeId: d.plantTypeId, stageCode: d.stageCode, quantity: d.needed - d.granted })),
         });
-        // Hạn giữ chỉ bắt đầu khi Quản lý kho thành phẩm gửi kết quả kiểm tra NCC.
-        return tx.order.update({ where: { id: created.id }, data: { holdUntil: null } });
+        return created;
       },
       // Đơn nhiều dòng (VD tạo bằng Excel) mỗi dòng truy vấn tồn riêng — vượt giới hạn 5s mặc định của Prisma.
       { isolationLevel: "Serializable", timeout: 30000, maxWait: 10000 }
     );
 
-    if (orderShortageTotal > 0) {
+    // Đơn khách hàng chỉ sang Quản lý kho thành phẩm khi Sale bấm Khách xác nhận / Chưa cọc; đơn Kho thị trường không có bước đó.
+    if (marketWarehouse && orderShortageTotal > 0) {
       await notifySupplierCheckManagers(
         `Đơn ${order.code} thiếu ${orderShortageTotal.toLocaleString("vi-VN")} cây`,
         "Cần gửi Đơn kiểm tra cho NCC trong 1 ngày làm việc — xem trang Kiểm tra NCC",

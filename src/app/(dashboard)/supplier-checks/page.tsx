@@ -19,10 +19,14 @@ export default async function SupplierChecksPage() {
   const [orders, suppliers] = await Promise.all([
     prisma.order.findMany({
       where: {
-        status: { in: ["HELD", "CONFIRMED"] },
-        shortages: { some: {} },
-        // Đơn đã cọc mà không còn gì để đặt hàng/nhập giao thì thôi hiện.
-        OR: [{ status: "HELD" }, { supplierChecks: { some: { status: { in: ["CONFIRMED", "PLACED"] } } } }],
+        // QL chỉ xử lý đơn của NV bán hàng thuộc kho mình; Admin cấp cao xem hết.
+        ...(role === "QUAN_LY_KHO_THANH_PHAM" ? { sale: { OR: [{ workplaceWarehouseId: session?.user?.workplaceWarehouseId ?? "" }, { workplaceWarehouseId: null }] } } : {}),
+        OR: [
+          // Sale đã báo khách xác nhận: chờ QL phản hồi; đã phản hồi thì đơn thiếu vẫn hiện để theo dõi NCC, đơn đủ thôi hiện.
+          { status: "HELD", customerConfirmedAt: { not: null }, OR: [{ supplyResultSentAt: null }, { shortages: { some: {} } }] },
+          // Đơn đã cọc mà không còn gì để đặt hàng/nhập giao thì thôi hiện.
+          { status: "CONFIRMED", shortages: { some: {} }, supplierChecks: { some: { status: { in: ["CONFIRMED", "PLACED"] } } } },
+        ],
       },
       orderBy: { expectedShipAt: "asc" },
       select: {
@@ -44,7 +48,14 @@ export default async function SupplierChecksPage() {
   ]);
 
   const boardOrders: BoardOrder[] = await Promise.all(orders.map(async (o) => {
-    const lines = o.shortages.map((s) => {
+    // Mọi mã + quy cách của đơn (cả dòng đủ hàng), không chỉ dòng thiếu — QL kiểm tra đáp ứng cả đơn.
+    const specs = new Map(o.shortages.map((s) => [`${s.plantTypeId}:${s.stageCode}`, { plantTypeId: s.plantTypeId, stageCode: s.stageCode, quantity: s.quantity, plantType: s.plantType }]));
+    for (const item of o.items) {
+      const spec = orderItemSpec(item);
+      const key = `${spec.plantTypeId}:${spec.stageCode}`;
+      if (!specs.has(key)) specs.set(key, { plantTypeId: spec.plantTypeId, stageCode: spec.stageCode, quantity: 0, plantType: spec.plantType });
+    }
+    const lines = [...specs.values()].map((s) => {
       const same = (i: { plantTypeId: string; stageCode: string }) => i.plantTypeId === s.plantTypeId && i.stageCode === s.stageCode;
       const held = o.items.filter((i) => same(orderItemSpec(i))).reduce((sum, i) => sum + i.quantity, 0);
       const checkLines = o.supplierChecks.flatMap((c) => c.items.filter(same).map((i) => ({ status: c.status, requested: i.requestedQuantity, confirmed: i.confirmedQuantity ?? 0 })));
@@ -79,7 +90,7 @@ export default async function SupplierChecksPage() {
           <ClipboardCheck className="w-6 h-6 text-primary-strong" /> Kiểm tra NCC
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Đơn hàng còn thiếu so với tồn dự kiến: gửi NCC kiểm tra, gửi kết quả cho NV bán hàng, đặt hàng khi khách đã cọc.
+          Đơn khách đã xác nhận: kiểm tra đáp ứng, phần thiếu gửi NCC kiểm tra, gửi kết quả cho NV bán hàng, đặt hàng khi khách đã cọc.
         </p>
       </div>
       <SupplierCheckBoard orders={boardOrders} suppliers={suppliers.map((s) => ({ id: s.id, label: `${s.name} (${s.code})${s.userId ? "" : " · chưa có tài khoản"}` }))} />

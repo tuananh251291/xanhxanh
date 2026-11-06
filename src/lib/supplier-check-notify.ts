@@ -11,8 +11,11 @@ export async function notifySupplier(supplierUserId: string | null | undefined, 
 
 // Gửi đích danh QL Kho TP, không dùng targetRole: alertTargetRolesFor cho NV Kho TP đọc chung, mà NV không vào được trang
 // Kiểm tra NCC.
-export async function notifySupplierCheckManagers(title: string, message: string, relatedId: string, relatedType = "SupplierCheck") {
-  const managers = await prisma.user.findMany({ where: { role: "QUAN_LY_KHO_THANH_PHAM", isActive: true }, select: { id: true } });
+// warehouseId: chỉ báo QL của kho đó (kho làm việc của NV bán hàng); kho chưa có QL thì báo mọi QL để không mất việc.
+export async function notifySupplierCheckManagers(title: string, message: string, relatedId: string, relatedType = "SupplierCheck", warehouseId?: string | null) {
+  const all = await prisma.user.findMany({ where: { role: "QUAN_LY_KHO_THANH_PHAM", isActive: true }, select: { id: true, workplaceWarehouseId: true } });
+  const ofWarehouse = warehouseId ? all.filter((m) => m.workplaceWarehouseId === warehouseId) : [];
+  const managers = ofWarehouse.length > 0 ? ofWarehouse : all;
   await Promise.all(managers.map((m) => createAlert({ type: "SUPPLIER_CHECK_UPDATE", title, message, userId: m.id, relatedId, relatedType })));
 }
 

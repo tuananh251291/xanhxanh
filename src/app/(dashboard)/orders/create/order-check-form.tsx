@@ -327,9 +327,9 @@ export default function OrderCheckForm({
       }
       const holdLabel = sendToMarketWarehouse
         ? "đã gửi Kho thị trường"
-        : `giữ trong ${selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`}`;
+        : "bấm Khách xác nhận / Chưa cọc ở Danh sách đơn hàng khi khách đồng ý";
       setShortages(null);
-      toast.success(acceptShortage ? `Đã tạo đơn ${json.code} — phần thiếu đã gửi Quản lý kho thành phẩm kiểm tra NCC` : `Đã tạo đơn ${json.code} — ${holdLabel}`);
+      toast.success(acceptShortage && sendToMarketWarehouse ? `Đã tạo đơn ${json.code} — phần thiếu đã gửi Quản lý kho thành phẩm kiểm tra NCC` : `Đã tạo đơn ${json.code} — ${holdLabel}`);
       if (json.priceIssueCount > 0) {
         toast.warning(`Đơn ${json.code} có ${json.priceIssueCount} dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá đề xuất thay đổi và chờ Admin cấp cao duyệt trước khi xác nhận`, { duration: 10000 });
       }
@@ -768,8 +768,8 @@ export default function OrderCheckForm({
             {holdDays && (
               <p className="text-xs text-text-secondary">
                 {selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON"
-                  ? "Khách công ty lớn — đơn sẽ được giữ trong 5 tháng kể từ lúc tạo."
-                  : `Đơn sẽ được giữ trong ${holdDays} ngày kể từ lúc tạo.`}
+                  ? "Khách công ty lớn — hạn giữ 5 tháng, tính từ khi QL Kho TP phản hồi đáp ứng."
+                  : `Hạn giữ ${holdDays} ngày, tính từ khi QL Kho TP phản hồi đáp ứng.`}
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

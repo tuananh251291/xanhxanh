@@ -5,11 +5,12 @@ import { createPlannedGoodsReceipt } from "@/lib/goods-receipt";
 import { getShipCutoffKey, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { notifySupplier, notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
 import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
-import { repriceOrder } from "@/lib/order-pricing";
+import { repriceOrder, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
 import type { Prisma, UserRole } from "@prisma/client";
 
-// Đơn thiếu hàng: phần thiếu lưu ở OrderShortage (không giữ chỗ tồn). QL Kho TP gửi Đơn kiểm tra cho NCC → NCC báo số đáp
-// ứng + giữ hàng → QL gửi kết quả cho Sale (hạn giữ đơn bắt đầu từ đây) → khách cọc → QL đổi thành Đặt hàng: tạo Phiếu
+// Sale bấm "Khách xác nhận / Chưa cọc" → đơn sang QL Kho TP kiểm tra đáp ứng. Đơn thiếu hàng: phần thiếu lưu ở OrderShortage
+// (không giữ chỗ tồn), QL gửi Đơn kiểm tra cho NCC → NCC báo số đáp ứng + giữ hàng. QL gửi kết quả cho Sale (hạn giữ đơn bắt
+// đầu từ đây, mọi đơn đều qua bước này) → khách đồng ý và cọc → QL đổi thành Đặt hàng: tạo Phiếu
 // dự kiến nhập (A3) + dòng đơn chưa có lô (A4) cùng lúc, nên tồn dự kiến không bị âm giả → NCC giao theo phiếu, số thực
 // tế thay số đã xác nhận.
 type Client = Prisma.TransactionClient | typeof prisma;
@@ -59,13 +60,14 @@ export async function createSupplierCheck(params: {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
-      status: true, expectedShipAt: true, supplyResultSentAt: true,
+      status: true, expectedShipAt: true, supplyResultSentAt: true, customerConfirmedAt: true,
       shortages: { select: { plantTypeId: true, stageCode: true, quantity: true } },
       supplierChecks: { where: { status: { in: [...ACTIVE_CHECK_STATUSES] } }, select: { status: true, items: { select: { plantTypeId: true, stageCode: true, requestedQuantity: true, confirmedQuantity: true } } } },
     },
   });
   if (!order) throw new SupplierCheckError("Không tìm thấy đơn hàng", 404);
   if (order.status !== "HELD" || order.supplyResultSentAt) throw new SupplierCheckError("Đơn đã gửi kết quả cho NV bán hàng hoặc không còn tạm giữ");
+  if (!order.customerConfirmedAt) throw new SupplierCheckError("NV bán hàng chưa báo khách xác nhận — chưa gửi kiểm tra NCC được");
   if (!order.expectedShipAt) throw new SupplierCheckError("Đơn chưa có ngày xuất");
   const supplier = await prisma.supplier.findFirst({ where: { id: supplierId, isActive: true }, select: { id: true, userId: true } });
   if (!supplier) throw new SupplierCheckError("Nhà cung cấp không hợp lệ");
@@ -115,7 +117,7 @@ const loadCheck = (id: string) =>
     include: {
       items: { include: { plantType: { select: { code: true } } } },
       supplier: { select: { name: true, userId: true } },
-      order: { select: { id: true, code: true, status: true, saleId: true } },
+      order: { select: { id: true, code: true, status: true, saleId: true, sale: { select: { workplaceWarehouseId: true } } } },
     },
   });
 
@@ -150,7 +152,9 @@ export async function respondSupplierCheck(checkId: string, input: QuantityInput
   await notifySupplierCheckManagers(
     `${check.supplier.name} đã trả lời ${check.code}`,
     `Đơn ${check.order.code}: NCC ${total > 0 ? `có thể đáp ứng ${total.toLocaleString("vi-VN")} cây` : "không đáp ứng được"} — xem trang Kiểm tra NCC`,
-    check.id
+    check.id,
+    "SupplierCheck",
+    check.order.sale.workplaceWarehouseId
   );
 }
 
@@ -181,6 +185,9 @@ export async function placeSupplierCheck(checkId: string, user: { id: string; co
     await repriceOrder(tx, check.orderId);
     await tx.supplierCheck.update({ where: { id: check.id }, data: { status: "PLACED", placedAt: new Date(), goodsReceiptId: receipt.id } });
   }, { timeout: 30000, maxWait: 10000 });
+  // Dòng NCC vừa vào đơn: áp lại giá tay đã duyệt trên phiếu báo giá (dòng chỉ có từ NCC chưa có giá nào khác).
+  const invoice = await prisma.invoice.findFirst({ where: { orderId: check.orderId, status: "APPROVED" }, orderBy: { createdAt: "desc" }, select: { id: true } });
+  if (invoice) await syncOrderPricesFromInvoice(invoice.id);
   await notifySupplier(
     check.supplier.userId,
     `${check.code} đã được đặt hàng`,
@@ -218,16 +225,18 @@ export async function deliverSupplierCheck(checkId: string, input: QuantityInput
     short.length > 0
       ? `Đơn ${check.order.code}: giao thiếu ${short.map(({ item, quantity }) => `${item.plantType.code} ${item.stageCode} (${quantity}/${item.confirmedQuantity})`).join(", ")} — xác nhận ở trang Nhận hàng`
       : `Đơn ${check.order.code}: đã giao đủ — xác nhận ở trang Nhận hàng`,
-    check.id
+    check.id,
+    "SupplierCheck",
+    check.order.sale.workplaceWarehouseId
   );
 }
 
-// QL Kho TP gửi kết quả cho Sale: hạn giữ đơn bắt đầu tính từ đây, Sale mới bấm được Khách đã cọc.
+// QL Kho TP gửi kết quả đáp ứng cho Sale (đủ hàng hoặc số NCC đáp ứng): hạn giữ đơn bắt đầu tính từ đây, Sale mới bấm được Khách đã cọc.
 export async function sendSupplyResult(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
-      id: true, code: true, status: true, saleId: true, supplyResultSentAt: true, marketWarehouseId: true,
+      id: true, code: true, status: true, saleId: true, supplyResultSentAt: true, customerConfirmedAt: true, marketWarehouseId: true,
       sale: { select: { holdDays: true } },
       customer: { select: { customerGroup: true } },
       shortages: { select: { quantity: true } },
@@ -236,7 +245,7 @@ export async function sendSupplyResult(orderId: string) {
   });
   if (!order) throw new SupplierCheckError("Không tìm thấy đơn hàng", 404);
   if (order.status !== "HELD" || order.supplyResultSentAt) throw new SupplierCheckError("Đơn đã gửi kết quả hoặc không còn tạm giữ");
-  if (order.shortages.length === 0) throw new SupplierCheckError("Đơn không thiếu hàng");
+  if (!order.customerConfirmedAt) throw new SupplierCheckError("NV bán hàng chưa báo khách xác nhận");
   if (order.supplierChecks.some((c) => c.status === "PENDING")) throw new SupplierCheckError("Còn NCC chưa trả lời");
 
   const shortage = order.shortages.reduce((s, x) => s + x.quantity, 0);
@@ -256,8 +265,8 @@ export async function sendSupplyResult(orderId: string) {
   const missing = shortage - confirmed;
   await createAlert({
     type: "ORDER_EDITED",
-    title: `Đơn ${order.code}: đã có kết quả kiểm tra NCC`,
-    message: `NCC đáp ứng ${confirmed.toLocaleString("vi-VN")}/${shortage.toLocaleString("vi-VN")} cây còn thiếu${missing > 0 ? `, vẫn thiếu ${missing.toLocaleString("vi-VN")} cây` : ""}. Đơn được giữ tới khi hết hạn — bấm Khách đã cọc khi khách đặt cọc.`,
+    title: `Đơn ${order.code}: QL Kho TP đã phản hồi đáp ứng`,
+    message: `${shortage > 0 ? `NCC đáp ứng ${confirmed.toLocaleString("vi-VN")}/${shortage.toLocaleString("vi-VN")} cây còn thiếu${missing > 0 ? `, vẫn thiếu ${missing.toLocaleString("vi-VN")} cây` : ""}` : "Đơn đủ hàng"}. Xác nhận lại với khách; đơn được giữ tới khi hết hạn — bấm Khách đã cọc khi khách đặt cọc.`,
     userId: order.saleId,
     relatedId: order.id,
     relatedType: "Order",
@@ -269,25 +278,25 @@ export async function sendSupplyResult(orderId: string) {
 export async function ensureSupplierCheckDeadlines(now: Date = new Date()) {
   const expired = await prisma.supplierCheck.findMany({
     where: { status: "PENDING", responseDeadline: { lt: now } },
-    select: { id: true, code: true, supplier: { select: { name: true, userId: true } }, order: { select: { code: true } } },
+    select: { id: true, code: true, supplier: { select: { name: true, userId: true } }, order: { select: { code: true, sale: { select: { workplaceWarehouseId: true } } } } },
   });
   if (expired.length > 0) {
     await prisma.supplierCheck.updateMany({ where: { id: { in: expired.map((e) => e.id) } }, data: { status: "EXPIRED" } });
     for (const e of expired) {
-      await notifySupplierCheckManagers(`${e.supplier.name} quá hạn trả lời ${e.code}`, `Đơn ${e.order.code}: coi như NCC không đáp ứng — chọn NCC khác hoặc gửi kết quả cho NV bán hàng`, e.id);
+      await notifySupplierCheckManagers(`${e.supplier.name} quá hạn trả lời ${e.code}`, `Đơn ${e.order.code}: coi như NCC không đáp ứng — chọn NCC khác hoặc gửi kết quả cho NV bán hàng`, e.id, "SupplierCheck", e.order.sale.workplaceWarehouseId);
       await notifySupplier(e.supplier.userId, `${e.code} đã quá hạn xác nhận`, "Đơn kiểm tra đã hết hiệu lực, không cần giữ hàng cho đơn này.", e.id);
     }
   }
 
   const waiting = await prisma.order.findMany({
-    where: { status: "HELD", supplyResultSentAt: null, shortages: { some: {} }, supplierChecks: { none: {} } },
-    select: { id: true, code: true, saleId: true, createdAt: true },
+    where: { status: "HELD", supplyResultSentAt: null, customerConfirmedAt: { not: null }, supplierChecks: { none: {} } },
+    select: { id: true, code: true, saleId: true, customerConfirmedAt: true, sale: { select: { workplaceWarehouseId: true } } },
   });
   for (const order of waiting) {
-    if ((await nextWorkingDeadline(order.createdAt)) > now) continue;
+    if ((await nextWorkingDeadline(order.customerConfirmedAt!)) > now) continue;
     const already = await prisma.alert.findFirst({ where: { type: "SUPPLIER_CHECK_UPDATE", relatedId: order.id, relatedType: "OrderShortageOverdue" }, select: { id: true } });
     if (already) continue;
-    await notifySupplierCheckManagers(`Đơn ${order.code} thiếu hàng chưa gửi NCC`, "Đã quá 1 ngày làm việc — vào trang Kiểm tra NCC để gửi Đơn kiểm tra", order.id, "OrderShortageOverdue");
-    await createAlert({ type: "ORDER_EDITED", title: `Đơn ${order.code} đang chờ QL Kho TP kiểm tra NCC`, message: "Quản lý kho thành phẩm chưa gửi kiểm tra NCC trong hạn 1 ngày làm việc — đã nhắc Quản lý.", userId: order.saleId, relatedId: order.id, relatedType: "Order" });
+    await notifySupplierCheckManagers(`Đơn ${order.code} chưa phản hồi đáp ứng`, "Đã quá 1 ngày làm việc — vào trang Kiểm tra NCC để kiểm tra và gửi kết quả cho NV bán hàng", order.id, "OrderShortageOverdue", order.sale.workplaceWarehouseId);
+    await createAlert({ type: "ORDER_EDITED", title: `Đơn ${order.code} đang chờ QL Kho TP phản hồi`, message: "Quản lý kho thành phẩm chưa phản hồi đáp ứng trong hạn 1 ngày làm việc — đã nhắc Quản lý.", userId: order.saleId, relatedId: order.id, relatedType: "Order" });
   }
 }

@@ -3549,6 +3549,8 @@ model Order {
   // Ngày xuất lúc tạo đơn — mốc tính "dời không quá 1 tháng" (PATCH /api/orders/[id] action=reschedule). Đơn cũ để
   // trống: lấy expectedShipAt ở lần dời đầu tiên.
   originalExpectedShipAt DateTime?
+  // Sale bấm "Khách xác nhận / Chưa cọc": đơn chuyển sang Quản lý kho thành phẩm kiểm tra đáp ứng. Đơn Kho thị trường có sẵn lúc tạo.
+  customerConfirmedAt DateTime?
   // Quản lý kho thành phẩm đã gửi kết quả kiểm tra NCC cho Sale — đơn thiếu hàng chỉ tính hạn giữ + được cọc từ lúc này.
   supplyResultSentAt DateTime?
   // Giá đơn hàng (src/lib/order-pricing.ts) — chốt bảng giá ngay lúc tạo đơn, bảng giá duyệt sau đó không đổi giá đơn này.

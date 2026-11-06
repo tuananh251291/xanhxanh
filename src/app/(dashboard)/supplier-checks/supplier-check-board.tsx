@@ -153,7 +153,7 @@ function OrderCard({ order, suppliers }: { order: BoardOrder; suppliers: { id: s
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           {order.code}
-          <Badge variant={order.status === "CONFIRMED" ? "completed" : "in-progress"}>{order.status === "CONFIRMED" ? "Khách đã cọc" : order.resultSent ? "Chờ khách cọc" : "Đang kiểm tra"}</Badge>
+          <Badge variant={order.status === "CONFIRMED" ? "completed" : "in-progress"}>{order.status === "CONFIRMED" ? "Khách đã cọc" : order.resultSent ? "Chờ khách cọc" : "Khách xác nhận / Chưa cọc"}</Badge>
         </CardTitle>
         <p className="text-sm text-text-secondary">
           {order.customerCode} · {order.saleName} · Xuất {fmtDate(order.shipKey)}
@@ -208,7 +208,7 @@ function OrderCard({ order, suppliers }: { order: BoardOrder; suppliers: { id: s
 
 export default function SupplierCheckBoard({ orders, suppliers }: { orders: BoardOrder[]; suppliers: { id: string; label: string }[] }) {
   if (orders.length === 0) {
-    return <Card><CardContent className="py-12 text-center text-text-muted">Không có đơn hàng nào đang thiếu</CardContent></Card>;
+    return <Card><CardContent className="py-12 text-center text-text-muted">Không có đơn hàng nào đang chờ kiểm tra</CardContent></Card>;
   }
   return <div className="space-y-4">{orders.map((o) => <OrderCard key={o.id} order={o} suppliers={suppliers} />)}</div>;
 }
