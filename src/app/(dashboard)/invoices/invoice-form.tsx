@@ -261,7 +261,7 @@ export default function InvoiceForm({
                         </select>
                       </label>
                     )}
-                    <label className="space-y-1"><span className="text-xs text-text-secondary block">Giá tay/cây (cần duyệt)</span><NumInput className="h-8 w-32" value={l.manualPrice} placeholder="theo bảng giá" onChange={(v) => setLine(i, { manualPrice: v })} /></label>
+                    <label className="space-y-1"><span className="text-xs text-text-secondary block">Giá đề xuất thay đổi (cần duyệt)</span><NumInput className="h-8 w-32" value={l.manualPrice} placeholder="theo bảng giá" onChange={(v) => setLine(i, { manualPrice: v })} /></label>
                     {kind === "SEA" && (
                       <>
                         <label className="space-y-1"><span className="text-xs text-text-secondary block">Nhóm ship</span>
