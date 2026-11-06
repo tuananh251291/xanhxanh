@@ -120,20 +120,6 @@ export default function InvoiceForm({
     setCustomerId(id);
     const c = customers.find((x) => x.id === id);
     if (c) { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); changeMarket(c.marketId); }
-    if (orderId && orders.find((o) => o.id === orderId)?.customerId !== id) {
-      setOrderId("");
-      setPrefilledOrderId("");
-      setInput((v) => ({ ...v, lines: v.lines.filter((l) => !l.orderKey), manual: v.manual.filter((m) => !m.orderKey) }));
-    }
-  };
-  const onOrder = (id: string) => {
-    const o = orders.find((x) => x.id === id);
-    if (o?.customerId && o.customerId !== customerId) onCustomer(o.customerId);
-    else if (o?.pricedMarketId) changeMarket(o.pricedMarketId);
-    // Đặt sau onCustomer vì onCustomer có thể bỏ gắn đơn cũ. Bỏ/đổi đơn thì dòng lấy từ đơn cũ không còn căn cứ.
-    setOrderId(id);
-    setPrefilledOrderId("");
-    setInput((v) => ({ ...v, lines: v.lines.filter((l) => !l.orderKey), manual: v.manual.filter((m) => !m.orderKey) }));
   };
 
   const products = useMemo(() => ctx?.priceList?.items ?? [], [ctx]);
@@ -165,8 +151,8 @@ export default function InvoiceForm({
   };
 
   const customerOpts: Opt[] = customers.map((c) => ({ value: c.id, label: `${c.code} - ${c.name}` }));
-  const orderOpts: Opt[] = orders.filter((o) => !customerId || !o.customerId || o.customerId === customerId)
-    .map((o) => ({ value: o.id, label: `${o.code} · ${o.customerCode} · ${o.plants.toLocaleString("vi-VN")} cây` }));
+  // Phiếu chỉ gắn đơn khi lập từ nút ở danh sách đơn (đơn cần phiếu đã duyệt mới Xác nhận được), form không cho chọn/đổi đơn.
+  const linkedOrder = orders.find((o) => o.id === orderId) ?? null;
   const profile = profiles.find((p) => p.id === profileId) ?? null;
   const settings = ctx?.settings;
   const extraFees = (settings?.extraFees[ctx?.market.code ?? ""] ?? []).filter((f) => f.enabled);
@@ -180,7 +166,9 @@ export default function InvoiceForm({
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1 sm:col-span-2">
               <Label className="text-xs">Khách hàng (bỏ trống nếu báo giá cho khách chưa có trong hệ thống)</Label>
-              <Pick items={customerOpts} value={customerId} onChange={onCustomer} placeholder="Gõ mã hoặc tên khách hàng…" empty="Không tìm thấy khách bạn phụ trách" />
+              {linkedOrder?.customerId
+                ? <p className="h-9 text-sm font-medium py-2">{customerOpts.find((c) => c.value === linkedOrder.customerId)?.label ?? linkedOrder.customerCode} <span className="font-normal text-text-muted">(theo đơn)</span></p>
+                : <Pick items={customerOpts} value={customerId} onChange={onCustomer} placeholder="Gõ mã hoặc tên khách hàng…" empty="Không tìm thấy khách bạn phụ trách" />}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Tên khách trên phiếu báo giá *</Label>
@@ -220,10 +208,12 @@ export default function InvoiceForm({
                 {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs">Gắn đơn hàng đang giữ (bỏ trống = báo giá độc lập)</Label>
-              <Pick items={orderOpts} value={orderId} onChange={onOrder} placeholder="Gõ mã đơn…" empty="Không có đơn đang giữ" />
-            </div>
+            {orderId && (
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs">Phiếu báo giá của đơn</Label>
+                <p className="text-sm font-medium">{linkedOrder ? `${linkedOrder.code} · ${linkedOrder.customerCode} · ${linkedOrder.plants.toLocaleString("vi-VN")} cây` : "Đơn đã gắn với phiếu này"}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
