@@ -16,7 +16,13 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 type Row = { id: string; label: string; type: "MANUAL" | "SPEED" | "CONTAMINATION"; selfScore: number | null; managerScore: number | null };
+export type WeekSummary = {
+  weekNumber: number; sectionTitle: string; weekStart: string | null; weekEnd: string | null;
+  status: Evaluation["status"] | null; managerPercent: number | null; result: Evaluation["result"];
+};
 export type Evaluation = {
+  isFinalWeek: boolean;
+  weekSummary: WeekSummary[];
   id: string; code: string; weekNumber: number; weekStart: string; weekEnd: string;
   status: "PENDING_SELF" | "PENDING_MANAGER" | "COMPLETED";
   sectionTitle: string;
@@ -64,8 +70,8 @@ export default function ProbationEvaluationForm({
 
   useEffect(() => { load(); }, [load]);
 
-  // Đúng các vai trò chấm điểm mới in phiếu, và chỉ khi đã chấm xong.
-  const canPrint = data?.status === "COMPLETED" && (viewerRole === "KY_THUAT" || viewerRole === "ADMIN" || viewerRole === "SUPER_ADMIN" || viewerRole === "ADMIN_KY_THUAT");
+  // Đúng các vai trò chấm điểm mới in phiếu, chỉ in 1 lần ở lần đánh giá cuối đã chấm xong.
+  const canPrint = data?.isFinalWeek === true && data.status === "COMPLETED" && (viewerRole === "KY_THUAT" || viewerRole === "ADMIN" || viewerRole === "SUPER_ADMIN" || viewerRole === "ADMIN_KY_THUAT");
 
   // Bấm "In" ở danh sách mở trang này kèm ?print=1 — mở hộp thoại in ngay khi tải xong, 1 lần.
   const autoPrinted = useRef(false);

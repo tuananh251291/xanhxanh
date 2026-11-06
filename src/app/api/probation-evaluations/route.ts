@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
+import { isFinalProbationWeek } from "@/lib/probation-evaluation";
 
 // Danh sách đánh giá thử việc — CAY_MO chỉ thấy của chính mình (mọi trạng thái); KY_THUAT chỉ thấy phiếu
 // của NV cùng workplaceWarehouseId đang chờ MÌNH chấm (status=PENDING_MANAGER) hoặc đã do mình chấm
@@ -39,5 +40,5 @@ export async function GET(req: NextRequest) {
     take: 300,
   });
 
-  return NextResponse.json(evaluations);
+  return NextResponse.json(evaluations.map((e) => ({ ...e, isFinalWeek: isFinalProbationWeek(e.weekNumber) })));
 }

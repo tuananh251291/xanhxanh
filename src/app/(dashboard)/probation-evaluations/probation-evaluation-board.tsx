@@ -22,6 +22,7 @@ type Evaluation = {
   weekStart: string;
   weekEnd: string;
   status: "PENDING_SELF" | "PENDING_MANAGER" | "COMPLETED";
+  isFinalWeek: boolean;
   managerPercent: number | null;
   result: "DAT" | "CAN_CAI_THIEN" | "KHONG_DAT" | null;
   staff: { name: string; code: string; workplaceWarehouse: { name: string } | null };
@@ -99,7 +100,7 @@ export default function ProbationEvaluationBoard({ canPrint }: { canPrint: boole
                   <Badge className={RESULT_BADGE[e.result]}>{RESULT_LABEL[e.result]}</Badge>
                 </>
               )}
-              {canPrint && e.status === "COMPLETED" && (
+              {canPrint && e.isFinalWeek && e.status === "COMPLETED" && (
                 <Link href={`/probation-evaluations/${e.id}?print=1`}>
                   <Button size="sm" variant="outline" className="h-8"><Printer className="w-4 h-4 mr-1.5" /> In</Button>
                 </Link>

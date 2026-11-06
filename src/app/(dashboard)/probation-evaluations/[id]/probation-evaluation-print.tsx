@@ -5,27 +5,53 @@ import "./print-evaluation.css";
 const RESULT_LABEL: Record<string, string> = { DAT: "Đạt", CAN_CAI_THIEN: "Cần cải thiện", KHONG_DAT: "Không đạt" };
 const dmy = (d: string | null) => (d ? format(new Date(d), "dd/MM/yyyy") : "—");
 
-// Phiếu in của 1 đợt đánh giá đã hoàn thành — chỉ hiện khi in (xem print-evaluation.css).
+// Phiếu in 1 lần ở lần đánh giá cuối: kết quả cả lộ trình + chi tiết tuần cuối — chỉ hiện khi in (xem print-evaluation.css).
 export default function ProbationEvaluationPrint({ data }: { data: Evaluation }) {
   const selfTotal = data.rows.reduce((s, r) => s + (r.selfScore ?? 0), 0);
   const managerTotal = data.rows.reduce((s, r) => s + (r.managerScore ?? 0), 0);
+  const firstStart = data.weekSummary.find((w) => w.weekStart)?.weekStart ?? data.weekStart;
 
   return (
     <div className="pe-sheet">
       <header className="pe-header">
         <h1 className="pe-title">PHIẾU ĐÁNH GIÁ THỬ VIỆC</h1>
-        <p className="pe-subtitle">Tuần {data.weekNumber} — {data.sectionTitle}</p>
+        <p className="pe-subtitle">Tổng hợp {data.weekSummary.length} tuần thử việc</p>
       </header>
 
       <div className="pe-info">
         <span>Nhân viên: <b>{data.staff.name}</b></span>
         <span>Mã nhân viên: <b>{data.staff.code}</b></span>
-        <span>Thời gian: <b>{dmy(data.weekStart)} – {dmy(data.weekEnd)}</b></span>
+        <span>Thời gian: <b>{dmy(firstStart)} – {dmy(data.weekEnd)}</b></span>
         <span>Mã phiếu: <b>{data.code}</b></span>
         <span>Người chấm: <b>{data.manager?.name ?? "—"}{data.manager ? ` (${data.manager.code})` : ""}</b></span>
         <span>Ngày chấm: <b>{dmy(data.managerScoredAt)}</b></span>
       </div>
 
+      <p className="pe-section-title">1. Kết quả các tuần</p>
+      <table className="pe-table">
+        <thead>
+          <tr>
+            <th>Tuần</th>
+            <th>Nội dung</th>
+            <th>Thời gian</th>
+            <th className="pe-num">Kết quả</th>
+            <th>Xếp loại</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.weekSummary.map((w) => (
+            <tr key={w.weekNumber}>
+              <td>{w.weekNumber}</td>
+              <td>{w.sectionTitle}</td>
+              <td className="pe-nowrap">{w.weekStart ? `${dmy(w.weekStart)} – ${dmy(w.weekEnd)}` : "—"}</td>
+              <td className="pe-num">{w.managerPercent !== null ? `${w.managerPercent}%` : "—"}</td>
+              <td>{w.result ? RESULT_LABEL[w.result] : "Chưa chấm xong"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p className="pe-section-title">2. Đánh giá tuần cuối (tuần {data.weekNumber} — {data.sectionTitle})</p>
       <table className="pe-table">
         <thead>
           <tr>

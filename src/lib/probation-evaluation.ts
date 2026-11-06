@@ -162,6 +162,11 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
   },
 ];
 
+// Lần đánh giá cuối của lộ trình thử việc — chỉ phiếu này được in (kèm tổng hợp các tuần trước).
+export function isFinalProbationWeek(week: number): boolean {
+  return week === PROBATION_EVALUATION_WEEKS.length;
+}
+
 export function getWeekTemplate(week: number): ProbationEvaluationWeekTemplate | undefined {
   return PROBATION_EVALUATION_WEEKS.find((w) => w.week === week);
 }

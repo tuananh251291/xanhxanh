@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
-import { getWeekTemplate, computeAutoScores } from "@/lib/probation-evaluation";
+import { getWeekTemplate, computeAutoScores, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -48,7 +48,32 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     };
   });
 
+  // Phiếu in ở lần đánh giá cuối có kèm kết quả cả lộ trình — tuần chưa có phiếu/chưa chấm vẫn hiện đủ dòng.
+  const isFinalWeek = isFinalProbationWeek(evaluation.weekNumber);
+  const staffWeeks = isFinalWeek
+    ? await prisma.probationEvaluation.findMany({
+        where: { staffId: evaluation.staffId },
+        select: { weekNumber: true, weekStart: true, weekEnd: true, status: true, managerPercent: true, result: true },
+      })
+    : [];
+  const weekSummary = isFinalWeek
+    ? PROBATION_EVALUATION_WEEKS.map((w) => {
+        const e = staffWeeks.find((x) => x.weekNumber === w.week);
+        return {
+          weekNumber: w.week,
+          sectionTitle: w.sectionTitle,
+          weekStart: e?.weekStart ?? null,
+          weekEnd: e?.weekEnd ?? null,
+          status: e?.status ?? null,
+          managerPercent: e?.managerPercent ?? null,
+          result: e?.result ?? null,
+        };
+      })
+    : [];
+
   return NextResponse.json({
+    isFinalWeek,
+    weekSummary,
     id: evaluation.id,
     code: evaluation.code,
     weekNumber: evaluation.weekNumber,
