@@ -14,7 +14,7 @@ import OrderCheckForm from "./order-check-form";
 export default async function OrdersPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/orders/create"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/orders/create", session?.user?.email))) redirect("/dashboard");
   // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
   if (!canAccessOrderPages(role)) redirect("/dashboard");
 

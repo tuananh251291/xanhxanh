@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import Sidebar from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import AuthSessionProvider from "@/components/providers/session-provider";
+import { hasOrderPageException } from "@/lib/permissions";
 import { ROLE_NAV, isAdminRole, isKhoThanhPhamRole, alertTargetRolesFor } from "@/types";
 import type { UserRole } from "@prisma/client";
 import PendingStatusScreen from "./pending-status-screen";
@@ -107,7 +108,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       select: { href: true },
     });
     disabledHrefs = new Set(disabled.map((p) => p.href));
-    navItems = roleNavItems.filter((item) => item.href === "/dashboard" || item.href === "/account" || !disabledHrefs.has(item.href));
+    navItems = roleNavItems.filter((item) => item.href === "/dashboard" || item.href === "/account" || !disabledHrefs.has(item.href) || hasOrderPageException(session.user.email, item.href));
   }
   // "Lộ trình đào tạo"/"Đánh giá thử việc" chỉ hiện cho NV cấy mô ĐANG thử việc (employmentType =
   // THU_VIEC) — NV chính thức không còn cần xem lại 2 mục này nữa dù trang vẫn được phép qua ma trận

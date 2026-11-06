@@ -14,7 +14,7 @@ export default async function OrdersHubPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
   if (role !== "SALE" && role !== "QUAN_LY_KHO_THANH_PHAM" && !isAdminRole(role)) redirect("/dashboard");
-  if (!(await isPageAllowed(role, "/orders"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/orders", session?.user?.email))) redirect("/dashboard");
 
   const isActingForSale = role === "QUAN_LY_KHO_THANH_PHAM";
 

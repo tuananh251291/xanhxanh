@@ -23,7 +23,7 @@ import { canExplainDefect } from "@/lib/order-feedback";
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/orders/list", session?.user?.email))) redirect("/dashboard");
   // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
   if (!canAccessOrderPages(role)) redirect("/dashboard");
 

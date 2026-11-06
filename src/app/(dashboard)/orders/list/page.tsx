@@ -200,7 +200,7 @@ function OrdersTable({
 export default async function OrdersListPage() {
   const session = await auth();
   const role = session?.user?.role ?? null;
-  if (!(await isPageAllowed(role, "/orders/list"))) redirect("/dashboard");
+  if (!(await isPageAllowed(role, "/orders/list", session?.user?.email))) redirect("/dashboard");
   // Chỉ các vai trò liên quan đơn hàng — xem canAccessOrderPages.
   if (!canAccessOrderPages(role)) redirect("/dashboard");
 
