@@ -18,8 +18,8 @@ export default async function PriceListsPage() {
           <DollarSign className="w-6 h-6 text-primary-strong" /> Bảng giá tháng
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          Bảng giá theo bậc số lượng của từng thị trường. NV Trợ lý tải bảng giá tháng sau (mỗi thị trường 1 file Excel) trước ngày cuối tháng,
-          Admin cấp cao duyệt mới có hiệu lực.
+          Bảng giá theo bậc số lượng của từng thị trường. NV Trợ lý tải bảng giá (mỗi thị trường 1 file Excel) kèm ngày áp dụng,
+          Admin cấp cao duyệt mới có hiệu lực. Đơn hàng lấy giá theo bảng đang áp dụng tại thời điểm tạo đơn.
         </p>
         </div>
         {(role === "SALE" || role === "SUPER_ADMIN") && (

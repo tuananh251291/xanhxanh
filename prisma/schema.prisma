@@ -3551,6 +3551,12 @@ model Order {
   originalExpectedShipAt DateTime?
   // Quản lý kho thành phẩm đã gửi kết quả kiểm tra NCC cho Sale — đơn thiếu hàng chỉ tính hạn giữ + được cọc từ lúc này.
   supplyResultSentAt DateTime?
+  // Giá đơn hàng (src/lib/order-pricing.ts) — chốt bảng giá ngay lúc tạo đơn, bảng giá duyệt sau đó không đổi giá đơn này.
+  // pricedAt null = đơn không tính giá (đơn cũ, đơn Kho thị trường, thị trường không dùng bảng giá). priceListId null
+  // nhưng pricedAt có = lúc tạo đơn thị trường chưa có bảng giá đã duyệt (mọi dòng cần giá tay).
+  pricedAt          DateTime?
+  priceListId       String?
+  priceList         PriceList?  @relation(fields: [priceListId], references: [id])
   // Đơn SHIPPED tách ra khi Quản lý kho thành phẩm xuất trước phần đã có — đơn gốc giữ phần còn lại, vẫn CONFIRMED.
   parentOrderId     String?
   parentOrder       Order?      @relation("OrderPartialShipment", fields: [parentOrderId], references: [id])
@@ -3661,6 +3667,13 @@ model SupplierCheckItem {
   @@map("supplier_check_items")
 }
 
+enum OrderItemPriceIssue {
+  NO_PRICE_LIST // Lúc tạo đơn thị trường chưa có bảng giá đã duyệt
+  NOT_IN_PRICE_LIST // Mã cây + quy cách không có trong bảng giá đã chốt
+  BELOW_MOQ // Dưới số lượng tối thiểu
+  NO_PRICE_AT_TIER // Bảng giá để trống ở bậc số lượng này
+}
+
 model OrderItem {
   id             String  @id @default(cuid())
   orderId        String
@@ -3680,7 +3693,14 @@ model OrderItem {
   // đổi sang T01 lúc Xác nhận đơn (xem PATCH /api/orders/[id] action=confirm).
   neededQuantity Int?
   quantity       Int
+  // Đơn giá/cây theo đơn vị tiền của bảng giá đã chốt (Order.priceListId), chưa gồm phụ thu/ship (các khoản đó ở Phiếu báo
+  // giá). Null = chưa có giá: xem priceIssue. priceManual = giá tay đã được Admin cấp cao duyệt qua Phiếu báo giá.
   unitPrice      Float?
+  priceTier      String?
+  priceIssue     OrderItemPriceIssue?
+  priceManual    Boolean @default(false)
+  // Quy cách khách cần, dùng tra giá — chỉ có khi dòng bù từ quy cách khác phải xử lý cây (stageCode là túi nguồn).
+  priceStageCode String?
   notes          String?
 
   // Trang "Sắp xếp đơn hàng" (/orders/pack) — NV/QL kho thành phẩm tự ghi số lượng thực tế đã nhặt được
@@ -5453,14 +5473,18 @@ enum PriceListStatus {
   REJECTED
 }
 
-// Bảng giá theo bậc số lượng của 1 thị trường cho 1 tháng (thay "Bảng giá sản phẩm" + báo giá PDF của Invoice
-// Desk). Tải lên bằng Excel (xem POST /api/price-lists), Admin cấp cao duyệt. Bảng ĐANG ÁP DỤNG cho 1 tháng =
-// bảng APPROVED có month lớn nhất <= tháng đó (mới duyệt sau cùng nếu trùng tháng) — giữ lịch sử mọi tháng.
+// Bảng giá theo bậc số lượng của 1 thị trường, có hiệu lực từ 1 ngày áp dụng (thay "Bảng giá sản phẩm" + báo giá PDF
+// của Invoice Desk). Tải lên bằng Excel (xem POST /api/price-lists), Admin cấp cao duyệt. Bảng ĐANG ÁP DỤNG tại 1 ngày =
+// bảng APPROVED có effectiveFrom lớn nhất <= ngày đó (mới duyệt sau cùng nếu trùng ngày) — giữ lịch sử mọi bảng.
 model PriceList {
   id              String          @id @default(cuid())
   marketId        String
   market          Market          @relation(fields: [marketId], references: [id])
-  month           DateTime        @db.Date // ngày 1 của tháng áp dụng
+  // Ngày 1 của tháng chứa effectiveFrom — chỉ để nhóm theo tháng (nhắc việc hằng tháng, tổng quan).
+  month           DateTime        @db.Date
+  // Ngày áp dụng do NV Trợ lý điền lúc tải lên — căn cứ chọn bảng giá: đơn hàng lấy bảng APPROVED có effectiveFrom
+  // lớn nhất <= ngày tạo đơn (trùng ngày thì bảng duyệt sau cùng), xem getEffectivePriceList.
+  effectiveFrom   DateTime        @default(dbgenerated("CURRENT_DATE")) @db.Date
   currency        String
   // Nhãn bậc số lượng theo đúng thứ tự cột giá, VD ["5-9","10-19",...,"5000+"].
   tiers           String[]
@@ -5475,8 +5499,10 @@ model PriceList {
   decidedAt       DateTime?
   createdAt       DateTime        @default(now())
   items           PriceListItem[]
+  orders          Order[]
 
   @@index([marketId, month])
+  @@index([marketId, effectiveFrom])
   @@map("price_lists")
 }
 

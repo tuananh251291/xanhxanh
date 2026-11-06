@@ -21,6 +21,20 @@ export function monthLabelVi(key: string): string {
   return `tháng ${Number(m)}/${y}`;
 }
 
+// Ngày theo giờ VN, dạng "yyyy-MM-dd" — ngày áp dụng bảng giá, ngày tạo đơn.
+export function vnDateKey(d: Date = new Date()): string {
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+}
+export const isValidDateKey = (key: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+  const d = new Date(`${key}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === key;
+};
+// Lưu cột @db.Date (UTC 00:00 đúng ngày đó, không lệch múi giờ).
+export const dateKeyToDate = (key: string) => new Date(`${key}T00:00:00.000Z`);
+export const dateToDateKey = (d: Date | string) => new Date(d).toISOString().slice(0, 10);
+export const dateKeyLabelVi = (key: string) => key.slice(0, 10).split("-").reverse().join("/");
+
 // Nhãn bậc số lượng hợp lệ: "5-9", "200+", "1".
 export const TIER_RE = /^\s*(\d+)\s*(?:-\s*(\d+)|(\+))?\s*$/;
 export function tierRange(label: string): [number, number] | null {

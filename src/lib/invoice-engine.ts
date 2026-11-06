@@ -132,11 +132,12 @@ export function fmtMoney(v: number | null | undefined, cur: string) {
 // ───────────── Đầu vào ─────────────
 export type InvoiceMarket = { code: string; name: string; currency: string; derivedCurrency: string | null; invoiceCalcKind: string };
 export type InvoicePriceItem = { code: string; name: string; spec: string; prices: (number | null)[] };
-export type InvoicePriceList = { id: string; month: string; currency: string; tiers: string[]; items: InvoicePriceItem[] };
+export type InvoicePriceList = { id: string; month: string; effectiveFrom: string; currency: string; tiers: string[]; items: InvoicePriceItem[] };
 export type InvoiceRate = { vndPerUnit: number; perUsd: number | null };
 
-export type InvoiceLine = { key: string; qty: number; bag: number; manualPrice: number | null; shipCat: ShipCat | ""; shipRate: number | null };
-export type InvoiceManualLine = { code: string; desc: string; spec: string; qty: number; unit: number; shipRate: number | null };
+// orderKey (plantTypeId:stageCode) = dòng lấy từ đơn hàng đã tính giá — khoá mã + số lượng, giá tay sau khi duyệt ghi xuống đơn.
+export type InvoiceLine = { key: string; qty: number; bag: number; manualPrice: number | null; shipCat: ShipCat | ""; shipRate: number | null; orderKey?: string };
+export type InvoiceManualLine = { code: string; desc: string; spec: string; qty: number; unit: number; shipRate: number | null; orderKey?: string };
 export type InvoiceInput = {
   currency: string; // đơn vị tiền phiếu báo giá: Market.currency hoặc Market.derivedCurrency
   lines: InvoiceLine[];
@@ -316,6 +317,7 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
   for (const m of O.manual) {
     const qty = +m.qty || 0, unit = +m.unit || 0;
     if (!m.desc && !qty) continue;
+    if (m.orderKey && unit <= 0) res.blockers.push(`${m.code || m.desc}: mã này không có giá trong bảng giá của đơn — nhập đơn giá tay`);
     res.hasManualPrice = true;
     res.items.push({ manual: true, code: m.code || "—", name: m.desc || "Cây nhập tay", spec: m.spec || "Rooted / cutting", qty, unit, sur: 0, nBags: 0, amount: roundCur(qty * unit, cur), manualPrice: true, lineIndex: null });
   }
@@ -440,7 +442,8 @@ function shipEU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
 
 function shipAU({ ctx, O, res, fee, bags, conv }: ShipCtx) {
   const A = ctx.settings.au, o = O.au;
-  if (res.items.some((i) => i.manual)) res.blockers.push("Leafia chỉ ship cây mô sang Úc — không nhận cây rễ.");
+  // Dòng từ đơn hàng (orderKey) chỉ là cây mô chưa có giá trong bảng giá, không phải cây rễ.
+  if (O.manual.some((m) => !m.orderKey && (m.desc || +m.qty))) res.blockers.push("Leafia chỉ ship cây mô sang Úc — không nhận cây rễ.");
   if (o.state === "TAS" || o.state === "WA") { res.blockers.push(`Không ship tới ${o.state}.`); return; }
   if (!res.plants) { res.pending = true; return; }
   const plants5 = bags[5] * 5 + bags[10] * 10, n1 = bags[1];

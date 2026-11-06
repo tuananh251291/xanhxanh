@@ -17,7 +17,7 @@ export async function loadInvoiceFormData(user: { id: string; role: string | nul
       where: { status: { in: ["HELD", "DRAFT"] }, marketWarehouseId: null, ...(all ? {} : { saleId: user.id }) },
       orderBy: { createdAt: "desc" },
       take: 500,
-      select: { id: true, code: true, customerId: true, customerCode: true, items: { select: { quantity: true, neededQuantity: true } } },
+      select: { id: true, code: true, customerId: true, customerCode: true, pricedAt: true, salesMarketId: true, items: { select: { quantity: true, neededQuantity: true } } },
     }),
     prisma.companyProfile.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
   ]);
@@ -26,6 +26,7 @@ export async function loadInvoiceFormData(user: { id: string; role: string | nul
     customers: customers as InvoiceFormCustomer[],
     orders: orders.map((o): InvoiceFormOrder => ({
       id: o.id, code: o.code, customerId: o.customerId, customerCode: o.customerCode,
+      pricedMarketId: o.pricedAt ? o.salesMarketId : null,
       plants: o.items.reduce((a, i) => a + (i.neededQuantity ?? i.quantity), 0),
     })),
     profiles: profiles.map((p): InvoiceFormProfile => ({ id: p.id, name: p.name, address: p.address, email: p.email, phone: p.phone, taxCode: p.taxCode, bankInfo: p.bankInfo })),

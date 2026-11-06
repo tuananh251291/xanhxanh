@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
 import { canApproveInvoice, canCreateInvoice, invoiceSaveSchema, invoiceScopeFor } from "@/lib/invoice";
 import { saveInvoice } from "@/lib/invoice-save";
+import { clearOrderManualPrices, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
 
 async function findVisible(id: string, user: { id: string; role: string | null | undefined }) {
   return prisma.invoice.findFirst({
@@ -58,6 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
     if (done.count === 0) return NextResponse.json({ message: "Phiếu báo giá đã được xử lý hoặc vừa bị sửa — tải lại trang" }, { status: 409 });
+    if (body.action === "approve") await syncOrderPricesFromInvoice(id);
     await createAlert({
       type: "INVOICE_DECIDED",
       title: body.action === "approve" ? `Phiếu báo giá ${inv.invoiceNo} đã được duyệt giá` : `Phiếu báo giá ${inv.invoiceNo} bị từ chối`,
@@ -78,6 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (body.action === "cancel") {
     await prisma.invoice.update({ where: { id }, data: { status: "CANCELLED" } });
+    if (inv.orderId && inv.status === "APPROVED") await clearOrderManualPrices(inv.orderId);
     return NextResponse.json({ success: true });
   }
   const out = await saveInvoice(session.user, body.data, id);

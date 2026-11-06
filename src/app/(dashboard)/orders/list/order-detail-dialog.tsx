@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Eye, Printer } from "lucide-react";
 import { ORDER_STATUS_LABELS } from "@/types";
 import OrderDetailContent, { type OrderDetailItem } from "@/components/shared/order-detail-content";
+import type { OrderPriceSummary } from "@/lib/order-price-engine";
 
 export default function OrderDetailDialog({
-  id, code, customerCode, marketLabel, status, holdUntilLabel, createdAtLabel, notes, items,
+  id, code, customerCode, marketLabel, status, holdUntilLabel, createdAtLabel, notes, items, priceSummary,
 }: {
   id: string;
   code: string;
@@ -21,6 +22,7 @@ export default function OrderDetailDialog({
   createdAtLabel: string;
   notes: string | null;
   items: OrderDetailItem[];
+  priceSummary?: OrderPriceSummary | null;
 }) {
   return (
     <Dialog>
@@ -47,6 +49,7 @@ export default function OrderDetailDialog({
           createdAtLabel={createdAtLabel}
           notes={notes}
           items={items}
+          priceSummary={priceSummary}
         />
       </DialogContent>
     </Dialog>

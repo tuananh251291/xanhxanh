@@ -13,6 +13,7 @@ import { ensureExpiredOrdersCancelled } from "@/lib/order-lifecycle";
 import { notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
 import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
 import { normalizeExpectedShipAt } from "@/lib/order-ship-time";
+import { repriceOrder, resolveOrderPriceList } from "@/lib/order-pricing";
 
 // T10 (túi 10 cây) chỉ phát sinh trong Kho thành phẩm — xem cùng ghi chú ở api/orders/check/route.ts.
 const FINISHED_STAGE_CODES = new Set<string>(ALL_FINISHED_STAGE_CODES);
@@ -65,6 +66,8 @@ const createSchema = z.object({
         // 25), `neededQuantity` là phần thật cần cho đơn (VD 21); phần dư (quantity - neededQuantity)
         // chỉ quy đổi sang T01 lúc Xác nhận đơn (xem PATCH /api/orders/[id]).
         neededQuantity: z.number().int().min(0).optional(),
+        // Dòng bù từ quy cách khác (có neededQuantity): quy cách khách thật sự cần — tra giá theo quy cách này, không theo túi nguồn.
+        demandStageCode: z.string().optional(),
         // "Yêu cầu đặc biệt" — hiện dòng nhập tay (order-check-form.tsx) chưa có UI nhập field này, chỉ
         // luồng tải Excel (POST /api/orders/import-items) set giá trị; dùng ở phiếu in (xem /orders/[id]).
         notes: z.string().optional(),
@@ -91,7 +94,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
   for (const item of parsed.data.items) {
-    if (!FINISHED_STAGE_CODES.has(item.stageCode)) {
+    if (!FINISHED_STAGE_CODES.has(item.stageCode) || (item.demandStageCode && !FINISHED_STAGE_CODES.has(item.demandStageCode))) {
       return NextResponse.json({ message: `Quy cách "${item.stageCode}" không hợp lệ (T01/T05/T06/T10/T20/T25)` }, { status: 400 });
     }
   }
@@ -207,6 +210,10 @@ export async function POST(req: NextRequest) {
   const loadAvailability = await prepareAvailability(session.user.workplaceWarehouseId, [...plantTypeById.keys()], shipDate);
   const marketRoomIds = (await prisma.room.findMany({ where: { id: { in: roomIds }, type: "PHONG_THI_TRUONG" }, select: { id: true } })).map((r) => r.id);
 
+  // Chốt bảng giá đang áp dụng tại thời điểm tạo đơn (đọc trước transaction). Đơn Kho thị trường là gửi nội bộ, không tính giá.
+  const pricing = marketWarehouse ? null : await resolveOrderPriceList(salesMarketId);
+  let priceIssueCount = 0;
+
   let orderShortageTotal = 0;
   try {
     const order = await prisma.$transaction(
@@ -237,6 +244,7 @@ export async function POST(req: NextRequest) {
             notes,
             status: "HELD",
             holdUntil,
+            ...(pricing?.priced ? { pricedAt: new Date(), priceListId: pricing.id } : {}),
           },
         });
 
@@ -276,7 +284,7 @@ export async function POST(req: NextRequest) {
               continue;
             }
             await tx.orderItem.create({
-              data: { orderId: created.id, plantTypeId: item.plantTypeId, stageCode: lot.stageCode, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, notes: item.notes },
+              data: { orderId: created.id, plantTypeId: item.plantTypeId, stageCode: lot.stageCode, lotId: lot.id, quantity: item.quantity, neededQuantity: item.neededQuantity, priceStageCode: item.demandStageCode, notes: item.notes },
             });
             d.granted += item.quantity;
             continue;
@@ -318,6 +326,8 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        if (pricing?.priced) priceIssueCount = await repriceOrder(tx, created.id, { list: pricing.list });
+
         const missing = [...demandByKey.values()].filter((d) => d.needed > d.granted);
         if (missing.length === 0) return created;
         orderShortageTotal = missing.reduce((s, d) => s + d.needed - d.granted, 0);
@@ -346,7 +356,7 @@ export async function POST(req: NextRequest) {
       if (full) await applyOrderConfirmation(full);
     }
 
-    return NextResponse.json(order, { status: 201 });
+    return NextResponse.json({ ...order, priceIssueCount }, { status: 201 });
   } catch (err) {
     if (isSerializationFailure(err)) {
       return NextResponse.json(

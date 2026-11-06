@@ -20,6 +20,7 @@ import OrderDetailDialog from "./order-detail-dialog";
 import ShipAtEditCell from "./ship-at-edit-cell";
 import OrderEditDialog from "@/components/shared/order-edit-dialog";
 import { ORDER_ITEM_SPEC_FIELDS, withResolvedLot } from "@/lib/order-item-spec";
+import { buildOrderPriceSummary, canViewOrderPrice, ORDER_PRICE_ORDER_FIELDS, ORDER_PRICE_ITEM_FIELDS, type OrderPriceOrderSource } from "@/lib/order-price-engine";
 import type { Order, OrderItem, Lot, PlantType, OrderProcessingRequest, User, SupplierCheckStatus } from "@prisma/client";
 
 type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status" | "holdUntil" | "expectedShipAt" | "notes" | "createdAt"> & {
@@ -30,7 +31,9 @@ type OrderRow = Pick<Order, "id" | "code" | "customerCode" | "market" | "status"
   shortages: { quantity: number }[];
   supplierChecks: { items: { confirmedQuantity: number | null }[] }[];
   sale?: Pick<User, "code" | "name">;
-  items: (Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
+  pricedAt: OrderPriceOrderSource["pricedAt"];
+  priceList: OrderPriceOrderSource["priceList"];
+  items: (OrderPriceOrderSource["items"][number] & Pick<OrderItem, "id" | "quantity" | "notes" | "pickedQuantity1" | "pickedQuantity2" | "pickedQuantity3"> & {
     lot: Pick<Lot, "stageCode" | "plantTypeId"> & { plantType: Pick<PlantType, "name" | "code"> };
     processingRequest: Pick<OrderProcessingRequest, "status"> | null;
   })[];
@@ -53,7 +56,9 @@ function OrdersTable({
   canEditShipAt,
   showSale = false,
   editPlantTypes,
+  showPrices = false,
 }: {
+  showPrices?: boolean;
   title: string;
   description: string;
   orders: OrderRow[];
@@ -149,6 +154,7 @@ function OrdersTable({
                           holdUntilLabel={o.holdUntil ? format(o.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
                           createdAtLabel={format(o.createdAt, "HH:mm dd/MM/yyyy", { locale: vi })}
                           notes={o.notes}
+                          priceSummary={showPrices ? buildOrderPriceSummary(o) : null}
                           items={o.items.map((i) => ({
                             id: i.id,
                             plantTypeId: i.lot.plantTypeId,
@@ -209,9 +215,10 @@ export default async function OrdersListPage() {
       supplierChecks: { where: { status: { in: SUPPLIER_ANSWERED } }, select: { items: { select: { confirmedQuantity: true } } } },
       salesMarket: { select: { name: true } },
       assignedTo: { select: { id: true, name: true } },
+      ...ORDER_PRICE_ORDER_FIELDS,
       items: {
         select: {
-          id: true, quantity: true, notes: true, ...ORDER_ITEM_SPEC_FIELDS,
+          id: true, quantity: true, notes: true, ...ORDER_ITEM_SPEC_FIELDS, ...ORDER_PRICE_ITEM_FIELDS,
           pickedQuantity1: true, pickedQuantity2: true, pickedQuantity3: true,
           lot: { select: { stageCode: true, plantTypeId: true, plantType: { select: { name: true, code: true } } } },
           processingRequest: { select: { status: true } },
@@ -268,6 +275,7 @@ export default async function OrdersListPage() {
       </div>
 
       <OrdersTable
+        showPrices={canViewOrderPrice(role)}
         title="Đơn tạm giữ"
         description="Đang giữ chỗ tồn kho — bấm Khách đã cọc khi khách đặt cọc, hoặc xóa để trả lại tồn đạt tiêu chuẩn ngay."
         orders={heldOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
@@ -282,6 +290,7 @@ export default async function OrdersListPage() {
       />
 
       <OrdersTable
+        showPrices={canViewOrderPrice(role)}
         title="Đơn đã cọc"
         description="Khách đã cọc, chờ Kho thành phẩm xuất kho — không thể tự xóa/sửa ở bước này."
         orders={confirmedOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}

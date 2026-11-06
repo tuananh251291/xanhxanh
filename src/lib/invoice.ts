@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getEffectivePriceList, getEffectiveRates } from "@/lib/price-list";
-import { dateToMonthKey } from "@/lib/price-list-shared";
+import { dateToDateKey, dateToMonthKey } from "@/lib/price-list-shared";
 import {
   blankInvoiceInput, mergeInvoiceSettings, US_STATES, AU_STATES, SHIP_CATS,
   type InvoiceContext, type InvoiceInput, type InvoiceSettings, type ShipCat,
@@ -48,8 +48,9 @@ export async function saveInvoiceSettings(s: InvoiceSettings) {
   });
 }
 
-// Dữ liệu để tính 1 invoice: thị trường + bảng giá + tỉ giá áp dụng cho tháng của ngày invoice.
-export async function loadInvoiceContext(marketId: string, invoiceDate: string, settings?: InvoiceSettings): Promise<InvoiceContext | null> {
+// Dữ liệu để tính 1 invoice: thị trường + bảng giá + tỉ giá áp dụng cho tháng của ngày invoice. Phiếu gắn đơn đã tính giá
+// truyền orderPriceListId: dùng đúng bảng giá đơn đã chốt lúc tạo (null = lúc tạo đơn chưa có bảng giá), không theo ngày phiếu.
+export async function loadInvoiceContext(marketId: string, invoiceDate: string, settings?: InvoiceSettings, orderPriceListId?: string | null): Promise<InvoiceContext | null> {
   const market = await prisma.market.findUnique({
     where: { id: marketId },
     select: { code: true, name: true, currency: true, derivedCurrency: true, invoiceCalcKind: true },
@@ -57,14 +58,18 @@ export async function loadInvoiceContext(marketId: string, invoiceDate: string, 
   if (!market) return null;
   const monthKey = invoiceDate.slice(0, 7);
   const [pl, rateMap, s] = await Promise.all([
-    getEffectivePriceList(marketId, monthKey),
+    orderPriceListId === undefined
+      ? getEffectivePriceList(marketId, invoiceDate)
+      : orderPriceListId
+        ? prisma.priceList.findUnique({ where: { id: orderPriceListId }, include: { items: { orderBy: { rowNo: "asc" } } } })
+        : Promise.resolve(null),
     getEffectiveRates(monthKey),
     settings ? Promise.resolve(settings) : getInvoiceSettings(),
   ]);
   return {
     market, settings: s, monthKey,
     priceList: pl ? {
-      id: pl.id, month: dateToMonthKey(pl.month), currency: pl.currency, tiers: pl.tiers,
+      id: pl.id, month: dateToMonthKey(pl.month), effectiveFrom: dateToDateKey(pl.effectiveFrom), currency: pl.currency, tiers: pl.tiers,
       items: pl.items.map((i) => ({ code: i.code, name: i.name, spec: i.spec, prices: i.prices as (number | null)[] })),
     } : null,
     rates: Object.fromEntries([...rateMap.entries()].map(([c, r]) => [c, { vndPerUnit: r.vndPerUnit, perUsd: r.perUsd }])),
@@ -94,10 +99,10 @@ export const invoiceInputSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
   lines: z.array(z.object({
     key: z.string().max(300), qty: num.min(0), bag: num, manualPrice: nnum,
-    shipCat: z.union([z.enum(shipCats), z.literal("")]), shipRate: nnum,
+    shipCat: z.union([z.enum(shipCats), z.literal("")]), shipRate: nnum, orderKey: z.string().max(100).optional(),
   })).max(300),
   manual: z.array(z.object({
-    code: z.string().max(50), desc: z.string().max(300), spec: z.string().max(200), qty: num.min(0), unit: num.min(0), shipRate: nnum,
+    code: z.string().max(50), desc: z.string().max(300), spec: z.string().max(200), qty: num.min(0), unit: num.min(0), shipRate: nnum, orderKey: z.string().max(100).optional(),
   })).max(100),
   us: z.object({
     shipmentDate: z.string().max(10), state: z.enum(US_STATES as [string, ...string[]]), resale: z.boolean(), ups: z.boolean(),

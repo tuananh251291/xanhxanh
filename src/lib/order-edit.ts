@@ -4,6 +4,7 @@ import { createAlert } from "@/lib/inventory";
 import { isSerializationFailure } from "@/lib/prisma-errors";
 import { ORDER_ITEM_SPEC_FIELDS, orderItemSpec } from "@/lib/order-item-spec";
 import { ALL_FINISHED_STAGE_CODES } from "@/types";
+import { repriceOrder } from "@/lib/order-pricing";
 
 // QL Kho thành phẩm / Admin cấp cao SỬA đơn chưa xuất (HELD/CONFIRMED) — kể cả khi đã phân công và NV đã
 // nhặt hàng (nhặt hàng KHÔNG trừ tồn thực, xem OrderItem.pickedQuantity1-3, nên giảm số lượng không phải
@@ -221,6 +222,9 @@ export async function editOrderItems(params: {
             extra -= take;
           }
         }
+
+        // Số lượng đổi thì bậc giá có thể đổi — tính lại trên đúng bảng giá đơn đã chốt lúc tạo.
+        await repriceOrder(tx, order.id);
       },
       { isolationLevel: "Serializable", timeout: 30000, maxWait: 10000 }
     );

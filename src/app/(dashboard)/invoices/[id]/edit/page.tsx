@@ -29,6 +29,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
         {...data}
         today={vnToday()}
         presetOrderId={null}
+        canEditDate={role === "SUPER_ADMIN"}
         initial={{
           id: inv.id, invoiceNo: inv.invoiceNo, invoiceDate: inv.invoiceDate.toISOString().slice(0, 10), marketId: inv.marketId,
           customerId: inv.customerId, customerName: inv.customerName, customerAddress: inv.customerAddress, customerEmail: inv.customerEmail,

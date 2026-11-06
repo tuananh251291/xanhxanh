@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { createAlert } from "@/lib/inventory";
 import { canApprovePriceList, canViewPriceList, getEffectiveRates } from "@/lib/price-list";
-import { dateToMonthKey, diffPriceRows, monthLabelVi, type PriceRow } from "@/lib/price-list-shared";
+import { dateKeyLabelVi, dateToDateKey, dateToMonthKey, diffPriceRows, monthLabelVi, type PriceRow } from "@/lib/price-list-shared";
 
 const toRows = (items: { code: string; name: string; spec: string; prices: unknown }[]): PriceRow[] =>
   items.map((i) => ({ code: i.code, name: i.name, spec: i.spec, prices: i.prices as (number | null)[] }));
@@ -26,13 +26,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!list) return NextResponse.json({ message: "Không tìm thấy bảng giá" }, { status: 404 });
   const monthKey = dateToMonthKey(list.month);
 
-  // Bảng áp dụng ngay TRƯỚC bảng này (khác bảng này): APPROVED, month <= tháng này, duyệt trước nó.
+  // Bảng áp dụng ngay TRƯỚC bảng này (khác bảng này): APPROVED, ngày áp dụng <= ngày của bảng này, duyệt trước nó.
   const previous = await prisma.priceList.findFirst({
     where: {
-      marketId: list.marketId, status: "APPROVED", id: { not: list.id }, month: { lte: list.month },
-      ...(list.decidedAt ? { OR: [{ month: { lt: list.month } }, { decidedAt: { lt: list.decidedAt } }] } : {}),
+      marketId: list.marketId, status: "APPROVED", id: { not: list.id }, effectiveFrom: { lte: list.effectiveFrom },
+      ...(list.decidedAt ? { OR: [{ effectiveFrom: { lt: list.effectiveFrom } }, { decidedAt: { lt: list.decidedAt } }] } : {}),
     },
-    orderBy: [{ month: "desc" }, { decidedAt: "desc" }],
+    orderBy: [{ effectiveFrom: "desc" }, { decidedAt: "desc" }],
     include: { items: true },
   });
   const diff = previous ? diffPriceRows(previous.tiers, toRows(previous.items), list.tiers, toRows(list.items)) : null;
@@ -47,8 +47,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   return NextResponse.json({
-    ...list, month: monthKey,
-    previous: previous ? { id: previous.id, month: dateToMonthKey(previous.month) } : null,
+    ...list, month: monthKey, effectiveFrom: dateToDateKey(list.effectiveFrom),
+    previous: previous ? { id: previous.id, effectiveFrom: dateToDateKey(previous.effectiveFrom) } : null,
     diff,
     derived,
   });
@@ -69,12 +69,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: { status: action === "approve" ? "APPROVED" : "REJECTED", decidedById: session.user.id, decidedAt: new Date(), rejectionReason: action === "reject" ? reason || null : null },
   });
   if (done.count === 0) return NextResponse.json({ message: "Bảng giá đã được xử lý trước đó" }, { status: 400 });
-  const list = await prisma.priceList.findUniqueOrThrow({ where: { id }, select: { month: true, uploadedById: true, market: { select: { name: true } } } });
-  const label = `${list.market.name} ${monthLabelVi(dateToMonthKey(list.month))}`;
+  const list = await prisma.priceList.findUniqueOrThrow({ where: { id }, select: { effectiveFrom: true, uploadedById: true, market: { select: { name: true } } } });
+  const effective = dateKeyLabelVi(dateToDateKey(list.effectiveFrom));
+  const label = `${list.market.name} áp dụng từ ${effective}`;
   await createAlert({
     type: "PRICE_LIST_DECIDED",
     title: action === "approve" ? `Bảng giá ${label} đã được duyệt` : `Bảng giá ${label} bị từ chối`,
-    message: action === "approve" ? `Bảng giá ${label} có hiệu lực từ đầu tháng.` : `Lý do: ${reason || "(không ghi)"} — sửa file rồi tải lên lại.`,
+    message: action === "approve" ? `Đơn hàng tạo từ ngày ${effective} (và sau lúc duyệt) lấy giá theo bảng này.` : `Lý do: ${reason || "(không ghi)"} — sửa file rồi tải lên lại.`,
     userId: list.uploadedById,
     relatedId: id,
     relatedType: "PriceList",

@@ -6,6 +6,8 @@ import { createAlert } from "@/lib/inventory";
 import { computeInvoice, fmtMoney, type InvoiceResult } from "@/lib/invoice-engine";
 import { invoiceSaveSchema, loadInvoiceContext, nextInvoiceNo, canViewAllInvoices } from "@/lib/invoice";
 import { canSaleViewOrder } from "@/lib/customer-manager";
+import { dateToDateKey, vnDateKey } from "@/lib/price-list-shared";
+import { buildOrderInvoicePrefill, invoiceMatchesOrder, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
 
 type SaveData = z.infer<typeof invoiceSaveSchema>;
 type User = { id: string; role: string | null | undefined; name?: string | null };
@@ -15,6 +17,14 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
   const allCustomers = canViewAllInvoices(user.role);
 
   let marketId = data.marketId;
+  // Ngày báo giá quyết định bảng giá của phiếu độc lập — chỉ Admin cấp cao chọn được, còn lại tạo mới là hôm nay, sửa giữ ngày cũ.
+  let invoiceDate = data.invoiceDate;
+  if (user.role !== "SUPER_ADMIN") {
+    const existing = existingId ? await prisma.invoice.findUnique({ where: { id: existingId }, select: { invoiceDate: true } }) : null;
+    invoiceDate = existing ? dateToDateKey(existing.invoiceDate) : vnDateKey();
+  }
+  // undefined = phiếu theo bảng giá của ngày báo giá; có giá trị = phiếu gắn đơn dùng đúng bảng đơn đã chốt lúc tạo.
+  let orderPriceListId: string | null | undefined;
   if (data.customerId) {
     const c = await prisma.customer.findUnique({ where: { id: data.customerId }, select: { id: true, marketId: true, assignedToId: true } });
     if (!c) return { ok: false, status: 400, message: "Không tìm thấy khách hàng" };
@@ -22,16 +32,24 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
     marketId = c.marketId; // thị trường phiếu báo giá = thị trường của khách
   }
   if (data.orderId) {
-    const o = await prisma.order.findUnique({ where: { id: data.orderId }, select: { id: true, status: true, customerId: true, saleId: true } });
+    const o = await prisma.order.findUnique({ where: { id: data.orderId }, select: { id: true, status: true, customerId: true, saleId: true, pricedAt: true, priceListId: true, salesMarketId: true } });
     if (!o) return { ok: false, status: 400, message: "Không tìm thấy đơn hàng" };
     if (!allCustomers && o.saleId !== user.id && !(await canSaleViewOrder(user.id, o.id))) return { ok: false, status: 403, message: "Không có quyền với đơn hàng này" };
     if (o.status !== "HELD" && o.status !== "DRAFT") return { ok: false, status: 400, message: "Chỉ gắn phiếu báo giá cho đơn đang giữ (chưa xác nhận)" };
     if (o.customerId && data.customerId && o.customerId !== data.customerId) return { ok: false, status: 400, message: "Đơn hàng thuộc khách hàng khác" };
+    if (o.pricedAt && o.salesMarketId) {
+      marketId = o.salesMarketId;
+      orderPriceListId = o.priceListId;
+      const prefill = await buildOrderInvoicePrefill(o.id);
+      if (prefill && !invoiceMatchesOrder(data.input, prefill)) {
+        return { ok: false, status: 400, message: "Dòng hàng của phiếu không khớp đơn (đơn có thể vừa được sửa) — bấm \"Lấy lại dòng từ đơn\" rồi lưu lại" };
+      }
+    }
   }
   const profile = await prisma.companyProfile.findUnique({ where: { id: data.companyProfileId }, select: { isActive: true } });
   if (!profile?.isActive) return { ok: false, status: 400, message: "Thông tin công ty không hợp lệ" };
 
-  const ctx = await loadInvoiceContext(marketId, data.invoiceDate);
+  const ctx = await loadInvoiceContext(marketId, invoiceDate, undefined, orderPriceListId);
   if (!ctx) return { ok: false, status: 400, message: "Không tìm thấy thị trường" };
   const result: InvoiceResult = computeInvoice(ctx, data.input);
   if (result.blockers.length) return { ok: false, status: 400, message: "Phiếu báo giá còn lỗi — xử lý trước khi lưu", blockers: result.blockers };
@@ -39,7 +57,7 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
 
   const status = result.hasManualPrice ? "PENDING_APPROVAL" : "APPROVED";
   const common = {
-    invoiceDate: new Date(`${data.invoiceDate}T00:00:00.000Z`), marketId, currency: result.currency, priceListId: ctx.priceList?.id ?? null,
+    invoiceDate: new Date(`${invoiceDate}T00:00:00.000Z`), marketId, currency: result.currency, priceListId: ctx.priceList?.id ?? null,
     customerId: data.customerId, customerName: data.customerName, customerAddress: data.customerAddress || null, customerEmail: data.customerEmail || null,
     orderId: data.orderId, companyProfileId: data.companyProfileId, note: data.note || null,
     input: data.input as object, result: result as unknown as object, total: result.total, hasManualPrice: result.hasManualPrice,
@@ -74,5 +92,6 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
       relatedType: "Invoice",
     });
   }
+  if (status === "APPROVED") await syncOrderPricesFromInvoice(saved.id);
   return { ok: true, id: saved.id, status, invoiceNo: saved.invoiceNo };
 }

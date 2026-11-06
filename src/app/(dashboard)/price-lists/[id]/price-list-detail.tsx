@@ -9,17 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, Check, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
-import { monthLabelVi } from "@/lib/price-list-shared";
+import { dateKeyLabelVi } from "@/lib/price-list-shared";
 
 type Item = { id: string; code: string; name: string; spec: string; stageCode: string | null; prices: (number | null)[]; plantType: { code: string; name: string } | null };
 type Row = { code: string; name: string; spec: string; prices: (number | null)[] };
 type Detail = {
-  id: string; month: string; currency: string; tiers: string[]; status: "PENDING" | "APPROVED" | "REJECTED"; fileName: string | null; note: string | null;
+  id: string; month: string; effectiveFrom: string; currency: string; tiers: string[]; status: "PENDING" | "APPROVED" | "REJECTED"; fileName: string | null; note: string | null;
   rejectionReason: string | null; createdAt: string; decidedAt: string | null;
   market: { code: string; name: string; currency: string; derivedCurrency: string | null };
   uploadedBy: { name: string }; decidedBy: { name: string } | null;
   items: Item[];
-  previous: { id: string; month: string } | null;
+  previous: { id: string; effectiveFrom: string } | null;
   diff: { added: Row[]; removed: Row[]; changed: { row: Row; before: (number | null)[] }[] } | null;
   derived: { currency: string; rate: number | null; note: string } | null;
 };
@@ -73,7 +73,7 @@ export default function PriceListDetail({ id, canApprove }: { id: string; canApp
       <div>
         <Link href="/price-lists" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-foreground mb-2"><ArrowLeft className="w-4 h-4" /> Bảng giá tháng</Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-foreground">Bảng giá {d.market.name} — {monthLabelVi(d.month)}</h1>
+          <h1 className="text-2xl font-bold text-foreground">Bảng giá {d.market.name} — áp dụng từ {dateKeyLabelVi(d.effectiveFrom)}</h1>
           <div className="flex items-center gap-2">
             <Badge variant={STATUS[d.status].v}>{STATUS[d.status].label}</Badge>
             {canApprove && d.status === "PENDING" && (
@@ -99,7 +99,7 @@ export default function PriceListDetail({ id, canApprove }: { id: string; canApp
             <p className="text-text-muted">Bảng giá đầu tiên của thị trường — không có bảng trước để so.</p>
           ) : (
             <>
-              <p className="text-text-secondary">So với bảng {d.previous ? monthLabelVi(d.previous.month) : ""}:</p>
+              <p className="text-text-secondary">So với bảng {d.previous ? `áp dụng từ ${dateKeyLabelVi(d.previous.effectiveFrom)}` : ""}:</p>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="completed">+{d.diff.added.length} cây mới</Badge>
                 <Badge variant="overdue">−{d.diff.removed.length} cây bỏ</Badge>

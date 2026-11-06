@@ -9,23 +9,28 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxInputGroup, ComboboxItem, ComboboxList, ComboboxTrigger } from "@/components/ui/combobox";
-import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import InvoiceSheet, { type InvoiceSheetProfile } from "@/components/shared/invoice-sheet";
+import { dateKeyLabelVi } from "@/lib/price-list-shared";
 import {
   AU_STATES, SHIP_CATS, US_STATES, autoShipCat, euSettingsFor, blankInvoiceInput, computeInvoice, fmtMoney, isTcProduct, priceKey,
-  type InvoiceContext, type InvoiceInput, type InvoiceLine, type ShipCat,
+  type InvoiceContext, type InvoiceInput, type InvoiceLine, type InvoiceManualLine, type ShipCat,
 } from "@/lib/invoice-engine";
 
 type Opt = { value: string; label: string };
 export type InvoiceFormMarket = { id: string; code: string; name: string; currency: string; derivedCurrency: string | null };
 export type InvoiceFormCustomer = { id: string; code: string; name: string; marketId: string; email: string | null };
-export type InvoiceFormOrder = { id: string; code: string; customerId: string | null; customerCode: string; plants: number };
+// pricedMarketId có giá trị = đơn đã chốt giá lúc tạo: phiếu dùng đúng thị trường + bảng giá đó, dòng hàng lấy từ đơn.
+export type InvoiceFormOrder = { id: string; code: string; customerId: string | null; customerCode: string; plants: number; pricedMarketId: string | null };
 export type InvoiceFormProfile = InvoiceSheetProfile & { id: string };
 export type InvoiceFormInitial = {
   id: string; invoiceNo: string; invoiceDate: string; marketId: string; customerId: string | null; customerName: string;
   customerAddress: string | null; customerEmail: string | null; orderId: string | null; companyProfileId: string | null; note: string | null; input: InvoiceInput;
 };
+
+type OrderPrefill = { orderId: string; lines: InvoiceLine[]; manual: InvoiceManualLine[] };
+type FormContext = InvoiceContext & { orderPrefill?: OrderPrefill | null };
 
 const toNum = (v: string): number | null => { const t = v.trim().replace(/,/g, ""); if (!t) return null; const n = Number(t); return Number.isFinite(n) ? n : null; };
 const US_STATE_LABEL = (s: string) => (s === "OTHER" ? "Khác (AK, HI, DC…)" : s);
@@ -52,8 +57,9 @@ function NumInput({ value, onChange, placeholder, className }: { value: number |
 }
 
 export default function InvoiceForm({
-  markets, customers, orders, profiles, today, initial, presetOrderId,
+  markets, customers, orders, profiles, today, initial, presetOrderId, canEditDate,
 }: {
+  canEditDate: boolean;
   markets: InvoiceFormMarket[]; customers: InvoiceFormCustomer[]; orders: InvoiceFormOrder[]; profiles: InvoiceFormProfile[];
   today: string; initial: InvoiceFormInitial | null; presetOrderId: string | null;
 }) {
@@ -63,7 +69,7 @@ export default function InvoiceForm({
 
   const [invoiceDate, setInvoiceDate] = useState(initial?.invoiceDate ?? today);
   const [customerId, setCustomerId] = useState(initial?.customerId ?? presetCustomer?.id ?? "");
-  const [marketId, setMarketId] = useState(initial?.marketId ?? presetCustomer?.marketId ?? "");
+  const [marketId, setMarketId] = useState(initial?.marketId ?? presetCustomer?.marketId ?? presetOrder?.pricedMarketId ?? "");
   const [customerName, setCustomerName] = useState(initial?.customerName ?? presetCustomer?.name ?? "");
   const [customerAddress, setCustomerAddress] = useState(initial?.customerAddress ?? "");
   const [customerEmail, setCustomerEmail] = useState(initial?.customerEmail ?? presetCustomer?.email ?? "");
@@ -71,7 +77,9 @@ export default function InvoiceForm({
   const [profileId, setProfileId] = useState(initial?.companyProfileId ?? profiles[0]?.id ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [input, setInput] = useState<InvoiceInput>(() => initial?.input ?? blankInvoiceInput(markets.find((m) => m.id === marketId)?.currency ?? "USD"));
-  const [ctx, setCtx] = useState<InvoiceContext | null>(null);
+  const [ctx, setCtx] = useState<FormContext | null>(null);
+  // Đơn đã đổ dòng hàng vào phiếu — phiếu đang sửa giữ nguyên dòng đã lưu, muốn lấy lại thì bấm nút.
+  const [prefilledOrderId, setPrefilledOrderId] = useState(initial?.orderId ?? "");
   const [loadingCtx, setLoadingCtx] = useState(false);
   const [view, setView] = useState<"customer" | "internal">("customer");
   const [saving, setSaving] = useState(false);
@@ -85,11 +93,21 @@ export default function InvoiceForm({
     if (!marketId || !/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) { setCtx(null); return; }
     let alive = true;
     setLoadingCtx(true);
-    fetch(`/api/invoices/context?marketId=${marketId}&date=${invoiceDate}`)
+    fetch(`/api/invoices/context?marketId=${marketId}&date=${invoiceDate}${orderId ? `&orderId=${orderId}` : ""}`)
       .then(async (r) => { const j = await r.json(); if (!alive) return; if (!r.ok) { toast.error(j.message ?? "Không tải được bảng giá"); setCtx(null); } else setCtx(j); })
       .finally(() => alive && setLoadingCtx(false));
     return () => { alive = false; };
-  }, [marketId, invoiceDate]);
+  }, [marketId, invoiceDate, orderId]);
+
+  // Đơn đã chốt giá: lấy sẵn dòng hàng của đơn (về đơn vị tiền gốc vì giá trên đơn tính theo đơn vị đó).
+  const applyPrefill = (p: OrderPrefill) => {
+    setPrefilledOrderId(p.orderId);
+    setInput((v) => ({ ...v, currency: ctx?.market.currency ?? v.currency, lines: [...p.lines, ...v.lines.filter((l) => !l.orderKey)], manual: [...p.manual, ...v.manual.filter((m) => !m.orderKey)] }));
+  };
+  const prefill = ctx?.orderPrefill && ctx.orderPrefill.orderId === orderId ? ctx.orderPrefill : null;
+  useEffect(() => {
+    if (prefill && prefilledOrderId !== prefill.orderId) applyPrefill(prefill);
+  }, [prefill]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đổi thị trường: về đơn vị tiền gốc, giữ dòng nhập tay.
   const changeMarket = (id: string) => {
@@ -102,12 +120,20 @@ export default function InvoiceForm({
     setCustomerId(id);
     const c = customers.find((x) => x.id === id);
     if (c) { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); changeMarket(c.marketId); }
-    if (orderId && orders.find((o) => o.id === orderId)?.customerId !== id) setOrderId("");
+    if (orderId && orders.find((o) => o.id === orderId)?.customerId !== id) {
+      setOrderId("");
+      setPrefilledOrderId("");
+      setInput((v) => ({ ...v, lines: v.lines.filter((l) => !l.orderKey), manual: v.manual.filter((m) => !m.orderKey) }));
+    }
   };
   const onOrder = (id: string) => {
-    setOrderId(id);
     const o = orders.find((x) => x.id === id);
     if (o?.customerId && o.customerId !== customerId) onCustomer(o.customerId);
+    else if (o?.pricedMarketId) changeMarket(o.pricedMarketId);
+    // Đặt sau onCustomer vì onCustomer có thể bỏ gắn đơn cũ. Bỏ/đổi đơn thì dòng lấy từ đơn cũ không còn căn cứ.
+    setOrderId(id);
+    setPrefilledOrderId("");
+    setInput((v) => ({ ...v, lines: v.lines.filter((l) => !l.orderKey), manual: v.manual.filter((m) => !m.orderKey) }));
   };
 
   const products = useMemo(() => ctx?.priceList?.items ?? [], [ctx]);
@@ -185,7 +211,7 @@ export default function InvoiceForm({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Ngày báo giá</Label>
-              <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+              <Input type="date" value={invoiceDate} disabled={!canEditDate} onChange={(e) => setInvoiceDate(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Thông tin công ty *</Label>
@@ -206,7 +232,7 @@ export default function InvoiceForm({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-base">Sản phẩm</CardTitle>
               <span className="text-xs text-text-muted">
-                {loadingCtx ? "Đang tải bảng giá…" : ctx?.priceList ? `Bảng giá tháng ${ctx.priceList.month} · ${ctx.priceList.items.length} dòng` : marketId ? "Chưa có bảng giá đã duyệt" : ""}
+                {loadingCtx ? "Đang tải bảng giá…" : ctx?.priceList ? `Bảng giá áp dụng từ ${dateKeyLabelVi(ctx.priceList.effectiveFrom)}${prefill ? " (đã chốt lúc tạo đơn)" : ""} · ${ctx.priceList.items.length} dòng` : marketId ? (prefill ? "Lúc tạo đơn chưa có bảng giá đã duyệt — nhập giá tay" : "Chưa có bảng giá đã duyệt") : ""}
               </span>
             </div>
           </CardHeader>
@@ -220,12 +246,14 @@ export default function InvoiceForm({
                 <div key={i} className="rounded-lg border border-divider p-3 space-y-2">
                   <div className="flex gap-2 items-start">
                     <div className="flex-1 min-w-0">
-                      <Pick items={productOpts} value={l.key} onChange={(v) => setLine(i, { key: v, shipCat: "" })} placeholder="Gõ mã hoặc tên cây, VD AL062" empty="Không có trong bảng giá" />
+                      {l.orderKey
+                        ? <p className="text-sm px-1 py-2">{p ? `${p.code} — ${p.name} — ${p.spec}` : l.key} <Badge variant="info">Theo đơn</Badge></p>
+                        : <Pick items={productOpts} value={l.key} onChange={(v) => setLine(i, { key: v, shipCat: "" })} placeholder="Gõ mã hoặc tên cây, VD AL062" empty="Không có trong bảng giá" />}
                     </div>
-                    <Button variant="outline" size="sm" className="h-9" onClick={() => setInput((v) => ({ ...v, lines: v.lines.filter((_, k) => k !== i) }))}><Trash2 className="w-4 h-4" /></Button>
+                    {!l.orderKey && <Button variant="outline" size="sm" className="h-9" onClick={() => setInput((v) => ({ ...v, lines: v.lines.filter((_, k) => k !== i) }))}><Trash2 className="w-4 h-4" /></Button>}
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <label className="space-y-1"><span className="text-xs text-text-secondary block">Số cây</span><NumInput className="h-8 w-24" value={l.qty} onChange={(v) => setLine(i, { qty: v ?? 0 })} /></label>
+                    <label className="space-y-1"><span className="text-xs text-text-secondary block">Số cây</span>{l.orderKey ? <p className="h-8 w-24 text-sm font-medium py-1.5">{l.qty.toLocaleString("vi-VN")}</p> : <NumInput className="h-8 w-24" value={l.qty} onChange={(v) => setLine(i, { qty: v ?? 0 })} />}</label>
                     {tc && (
                       <label className="space-y-1"><span className="text-xs text-text-secondary block">Túi</span>
                         <select className="h-8 rounded-md border border-border bg-background px-2 text-sm" value={l.bag} onChange={(e) => setLine(i, { bag: Number(e.target.value), shipCat: "" })}>
@@ -259,6 +287,11 @@ export default function InvoiceForm({
               <Button size="sm" disabled={!ctx?.priceList} onClick={() => setInput((v) => ({ ...v, lines: [...v.lines, { key: "", qty: 10, bag: 10, manualPrice: null, shipCat: "", shipRate: null }] }))}>
                 <Plus className="w-4 h-4 mr-1" /> Thêm cây
               </Button>
+              {prefill && (
+                <Button size="sm" variant="outline" onClick={() => applyPrefill(prefill)}>
+                  <RefreshCw className="w-4 h-4 mr-1" /> Lấy lại dòng từ đơn
+                </Button>
+              )}
               {kind !== "AU" && (
                 <Button size="sm" variant="outline" disabled={!ctx} onClick={() => setInput((v) => ({ ...v, manual: [...v.manual, { code: "", desc: "", spec: "", qty: 1, unit: 0, shipRate: null }], us: { ...v.us, boxMode: "manual" } }))}>
                   <Plus className="w-4 h-4 mr-1" /> Dòng nhập tay (cây rễ/cành — cần duyệt)
@@ -269,13 +302,13 @@ export default function InvoiceForm({
               const setM = (patch: Partial<typeof m>) => setInput((v) => ({ ...v, manual: v.manual.map((x, k) => (k === i ? { ...x, ...patch } : x)) }));
               return (
                 <div key={`m${i}`} className="rounded-lg border border-dashed border-border p-3 flex flex-wrap gap-3 items-end">
-                  <label className="space-y-1 flex-1 min-w-48"><span className="text-xs text-text-secondary block">Mô tả (tên cây, cỡ)</span><Input className="h-8" value={m.desc} onChange={(e) => setM({ desc: e.target.value })} /></label>
-                  <label className="space-y-1"><span className="text-xs text-text-secondary block">Mã</span><Input className="h-8 w-24" value={m.code} onChange={(e) => setM({ code: e.target.value })} /></label>
-                  <label className="space-y-1"><span className="text-xs text-text-secondary block">Quy cách</span><Input className="h-8 w-32" value={m.spec} placeholder="Rooted / cutting" onChange={(e) => setM({ spec: e.target.value })} /></label>
-                  <label className="space-y-1"><span className="text-xs text-text-secondary block">Số cây</span><NumInput className="h-8 w-20" value={m.qty} onChange={(v) => setM({ qty: v ?? 0 })} /></label>
+                  <label className="space-y-1 flex-1 min-w-48"><span className="text-xs text-text-secondary block">Mô tả (tên cây, cỡ)</span><Input className="h-8" value={m.desc} disabled={!!m.orderKey} onChange={(e) => setM({ desc: e.target.value })} /></label>
+                  <label className="space-y-1"><span className="text-xs text-text-secondary block">Mã</span><Input className="h-8 w-24" value={m.code} disabled={!!m.orderKey} onChange={(e) => setM({ code: e.target.value })} /></label>
+                  <label className="space-y-1"><span className="text-xs text-text-secondary block">Quy cách</span><Input className="h-8 w-32" value={m.spec} disabled={!!m.orderKey} placeholder="Rooted / cutting" onChange={(e) => setM({ spec: e.target.value })} /></label>
+                  <label className="space-y-1"><span className="text-xs text-text-secondary block">Số cây</span>{m.orderKey ? <p className="h-8 w-20 text-sm font-medium py-1.5">{m.qty.toLocaleString("vi-VN")}</p> : <NumInput className="h-8 w-20" value={m.qty} onChange={(v) => setM({ qty: v ?? 0 })} />}</label>
                   <label className="space-y-1"><span className="text-xs text-text-secondary block">Đơn giá</span><NumInput className="h-8 w-24" value={m.unit} onChange={(v) => setM({ unit: v ?? 0 })} /></label>
                   {kind === "SEA" && <label className="space-y-1"><span className="text-xs text-text-secondary block">Ship/cây</span><NumInput className="h-8 w-20" value={m.shipRate} onChange={(v) => setM({ shipRate: v })} /></label>}
-                  <Button variant="outline" size="sm" className="h-8" onClick={() => setInput((v) => ({ ...v, manual: v.manual.filter((_, k) => k !== i) }))}><Trash2 className="w-4 h-4" /></Button>
+                  {!m.orderKey && <Button variant="outline" size="sm" className="h-8" onClick={() => setInput((v) => ({ ...v, manual: v.manual.filter((_, k) => k !== i) }))}><Trash2 className="w-4 h-4" /></Button>}
                 </div>
               );
             })}

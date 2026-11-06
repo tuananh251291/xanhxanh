@@ -201,6 +201,11 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   if (!order.marketWarehouseId && (deposit.depositAmount === undefined || !deposit.depositedAt)) {
     return NextResponse.json({ message: "Cần nhập số tiền và ngày khách cọc" }, { status: 400 });
   }
+  // Dòng chưa có giá (không có trong bảng giá, dưới tối thiểu...) — giữ hàng được nhưng phải có giá tay Admin cấp cao đã duyệt
+  // mới xác nhận được, không thuộc diện miễn invoice tạm thời ở dưới. Giá tay ghi xuống dòng đơn lúc phiếu được duyệt.
+  if (!order.marketWarehouseId && (await prisma.orderItem.count({ where: { orderId, priceIssue: { not: null } } })) > 0) {
+    return NextResponse.json({ message: "Đơn còn dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá tay và chờ Admin cấp cao duyệt trước khi xác nhận" }, { status: 400 });
+  }
   // Đơn bán cho khách (không phải gửi Kho thị trường) tạo từ INVOICE_REQUIRED_FROM phải có invoice đã duyệt gắn đơn.
   // Miễn tạm thời: mọi vai trò tới ALL_INVOICE_EXEMPT_UNTIL, Quản lý kho TP xác nhận hộ tới QLK_INVOICE_EXEMPT_UNTIL.
   if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM && !isInvoiceExemptForConfirm(user.role)) {
@@ -465,6 +470,8 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
             marketWarehouseId: order.marketWarehouseId,
             market: order.market,
             salesMarketId: order.salesMarketId,
+            pricedAt: order.pricedAt,
+            priceListId: order.priceListId,
             expectedShipAt: order.expectedShipAt,
             confirmedAt: order.confirmedAt,
             shippedAt: new Date(),
@@ -480,7 +487,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
           if (done === 0) continue;
           for (const part of parts) {
             await tx.orderItem.create({
-              data: { orderId: shipped.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes, pickedQuantity1: part.quantity },
+              data: { orderId: shipped.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes, pickedQuantity1: part.quantity, unitPrice: item.unitPrice, priceTier: item.priceTier, priceIssue: item.priceIssue, priceManual: item.priceManual, priceStageCode: item.priceStageCode },
             });
           }
           if (done < item.quantity) {
@@ -503,7 +510,7 @@ async function shipOrder(orderId: string, user: { id: string; role: string | nul
           const parts = allocations.filter((a) => a.itemId === item.id);
           for (const [index, part] of parts.entries()) {
             if (index === 0) await tx.orderItem.update({ where: { id: item.id }, data: { lotId: part.lotId, quantity: part.quantity } });
-            else await tx.orderItem.create({ data: { orderId: order.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes } });
+            else await tx.orderItem.create({ data: { orderId: order.id, plantTypeId: item.lot.plantTypeId, stageCode: item.lot.stageCode, lotId: part.lotId, quantity: part.quantity, notes: item.notes, unitPrice: item.unitPrice, priceTier: item.priceTier, priceIssue: item.priceIssue, priceManual: item.priceManual, priceStageCode: item.priceStageCode } });
           }
         }
 

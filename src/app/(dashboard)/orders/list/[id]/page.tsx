@@ -14,6 +14,7 @@ import OrderDetailContent from "@/components/shared/order-detail-content";
 import OrderFeedbackForm from "@/components/shared/order-feedback-form";
 import OrderFeedbackDetail from "@/components/shared/order-feedback-detail";
 import { ORDER_ITEM_SPEC_FIELDS, withResolvedLot } from "@/lib/order-item-spec";
+import { buildOrderPriceSummary, canViewOrderPrice, ORDER_PRICE_ORDER_FIELDS, ORDER_PRICE_ITEM_FIELDS } from "@/lib/order-price-engine";
 import { canExplainDefect } from "@/lib/order-feedback";
 
 // Trang chi tiết đơn hàng (thay cho popup OrderDetailDialog ở mục "Đơn đã xác nhận" — nội dung nhiều
@@ -32,7 +33,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     where: { id },
     select: {
       id: true, code: true, customerCode: true, market: true, salesMarket: { select: { name: true } }, status: true, holdUntil: true,
-      notes: true, createdAt: true, saleId: true,
+      notes: true, createdAt: true, saleId: true, ...ORDER_PRICE_ORDER_FIELDS,
       feedback: {
         select: {
           id: true, rating: true, content: true, videoUrl: true, photoUrls: true, createdAt: true, cause: true, causeExplanation: true, causeAt: true,
@@ -41,7 +42,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       },
       items: {
         select: {
-          id: true, quantity: true, notes: true, ...ORDER_ITEM_SPEC_FIELDS,
+          id: true, quantity: true, notes: true, ...ORDER_ITEM_SPEC_FIELDS, ...ORDER_PRICE_ITEM_FIELDS,
           lot: { select: { stageCode: true, plantTypeId: true, plantType: { select: { name: true, code: true } } } },
           processingRequest: { select: { status: true } },
         },
@@ -81,6 +82,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             holdUntilLabel={order.holdUntil ? format(order.holdUntil, "HH:mm dd/MM/yyyy", { locale: vi }) : "—"}
             createdAtLabel={format(order.createdAt, "HH:mm dd/MM/yyyy", { locale: vi })}
             notes={order.notes}
+            priceSummary={canViewOrderPrice(role) ? buildOrderPriceSummary(order) : null}
             items={order.items.map(withResolvedLot).map((i) => ({
               id: i.id,
               plantTypeId: i.lot.plantTypeId,

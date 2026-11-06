@@ -5,6 +5,7 @@ import { createPlannedGoodsReceipt } from "@/lib/goods-receipt";
 import { getShipCutoffKey, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { notifySupplier, notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
 import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
+import { repriceOrder } from "@/lib/order-pricing";
 import type { Prisma, UserRole } from "@prisma/client";
 
 // Đơn thiếu hàng: phần thiếu lưu ở OrderShortage (không giữ chỗ tồn). QL Kho TP gửi Đơn kiểm tra cho NCC → NCC báo số đáp
@@ -177,6 +178,7 @@ export async function placeSupplierCheck(checkId: string, user: { id: string; co
     await tx.orderItem.createMany({
       data: lines.map((i) => ({ orderId: check.orderId, plantTypeId: i.plantTypeId, stageCode: i.stageCode, quantity: i.confirmedQuantity! })),
     });
+    await repriceOrder(tx, check.orderId);
     await tx.supplierCheck.update({ where: { id: check.id }, data: { status: "PLACED", placedAt: new Date(), goodsReceiptId: receipt.id } });
   }, { timeout: 30000, maxWait: 10000 });
   await notifySupplier(

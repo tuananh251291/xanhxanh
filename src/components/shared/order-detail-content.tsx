@@ -1,6 +1,8 @@
 import { Fragment } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from "@/types";
+import OrderPriceTable from "@/components/shared/order-price-table";
+import type { OrderPriceSummary } from "@/lib/order-price-engine";
 
 export type OrderDetailItem = {
   id: string;
@@ -94,7 +96,7 @@ function StageRow({
 // /orders/list/[id] (trang riêng, đơn đã xác nhận — nội dung có thể dài nên không phù hợp popup nữa) bọc
 // trong Card. Tách riêng để không lặp lại groupByPlantType/StageRow ở 2 nơi.
 export default function OrderDetailContent({
-  customerCode, marketLabel, status, holdUntilLabel, createdAtLabel, notes, items,
+  customerCode, marketLabel, status, holdUntilLabel, createdAtLabel, notes, items, priceSummary,
 }: {
   customerCode: string;
   marketLabel: string;
@@ -103,6 +105,7 @@ export default function OrderDetailContent({
   createdAtLabel: string;
   notes: string | null;
   items: OrderDetailItem[];
+  priceSummary?: OrderPriceSummary | null;
 }) {
   const groups = groupByPlantType(items);
   const grandTotal = groups.reduce((s, g) => s + g.totalQuantity, 0);
@@ -148,6 +151,7 @@ export default function OrderDetailContent({
           </tfoot>
         </table>
       </div>
+      {priceSummary && <OrderPriceTable summary={priceSummary} />}
     </div>
   );
 }

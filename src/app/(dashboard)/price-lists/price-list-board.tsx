@@ -10,15 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, Eye, Loader2, Upload, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { monthLabelVi } from "@/lib/price-list-shared";
+import { dateKeyLabelVi, monthLabelVi, vnDateKey } from "@/lib/price-list-shared";
 
 type ListRow = {
-  id: string; month: string; currency: string; status: "PENDING" | "APPROVED" | "REJECTED"; fileName: string | null; createdAt: string; decidedAt: string | null;
+  id: string; month: string; effectiveFrom: string; currency: string; status: "PENDING" | "APPROVED" | "REJECTED"; fileName: string | null; createdAt: string; decidedAt: string | null;
   rejectionReason: string | null; rows: number; uploadedBy: { name: string }; decidedBy: { name: string } | null;
 };
 type MarketRow = {
   id: string; code: string; name: string; currency: string; derivedCurrency: string | null; invoiceCalcKind: string; priceListEnabled: boolean;
-  current: { id: string; month: string; rows: number } | null;
+  current: { id: string; effectiveFrom: string; rows: number } | null;
   nextStatus: "APPROVED" | "PENDING" | "REJECTED" | "MISSING";
   lists: ListRow[];
 };
@@ -90,7 +90,7 @@ export default function PriceListBoard({ canUpload, canApprove }: { canUpload: b
                     <td className="px-4 py-3">
                       {m.current ? (
                         <Link href={`/price-lists/${m.current.id}`} className="text-info-foreground underline underline-offset-2">
-                          Bảng {monthLabelVi(m.current.month)} · {m.current.rows} dòng
+                          Từ {dateKeyLabelVi(m.current.effectiveFrom)} · {m.current.rows} dòng
                         </Link>
                       ) : <span className="text-text-muted">Chưa có</span>}
                     </td>
@@ -120,7 +120,7 @@ export default function PriceListBoard({ canUpload, canApprove }: { canUpload: b
             {pending.map((l) => (
               <div key={l.id} className="flex flex-wrap items-center justify-between gap-2 border border-divider rounded-lg px-3 py-2">
                 <div className="text-sm">
-                  <b>{l.market.name}</b> · {monthLabelVi(l.month)} · {l.rows} dòng · {l.uploadedBy.name} lúc {fmtDate(l.createdAt)}
+                  <b>{l.market.name}</b> · áp dụng từ {dateKeyLabelVi(l.effectiveFrom)} · {l.rows} dòng · {l.uploadedBy.name} lúc {fmtDate(l.createdAt)}
                 </div>
                 <Link href={`/price-lists/${l.id}`}>
                   <Button size="sm" className="h-8"><Eye className="w-3.5 h-3.5 mr-1.5" /> {canApprove ? "Xem & duyệt" : "Xem"}</Button>
@@ -142,7 +142,7 @@ export default function PriceListBoard({ canUpload, canApprove }: { canUpload: b
                 <thead>
                   <tr className="bg-primary-light">
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Thị trường</th>
-                    <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Tháng</th>
+                    <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Ngày áp dụng</th>
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Trạng thái</th>
                     <th className="text-left px-4 py-2 text-base text-primary-strong font-bold">Người tải / thời gian</th>
                     <th className="px-4 py-2"></th>
@@ -152,7 +152,7 @@ export default function PriceListBoard({ canUpload, canApprove }: { canUpload: b
                   {history.map((l) => (
                     <tr key={l.id} className="border-b last:border-0 even:bg-primary-light/30">
                       <td className="px-4 py-2">{l.market.name}</td>
-                      <td className="px-4 py-2">{monthLabelVi(l.month)} · {l.rows} dòng</td>
+                      <td className="px-4 py-2">{dateKeyLabelVi(l.effectiveFrom)} · {l.rows} dòng</td>
                       <td className="px-4 py-2">
                         <Badge variant={STATUS[l.status].variant}>{STATUS[l.status].label}</Badge>
                         {l.rejectionReason && <div className="text-xs text-destructive mt-0.5">{l.rejectionReason}</div>}
@@ -168,13 +168,13 @@ export default function PriceListBoard({ canUpload, canApprove }: { canUpload: b
         </CardContent>
       </Card>
 
-      {uploadFor && <UploadDialog market={uploadFor} defaultMonth={data.nextMonth} onClose={() => setUploadFor(null)} onDone={() => { setUploadFor(null); load(); }} />}
+      {uploadFor && <UploadDialog market={uploadFor} defaultDate={`${data.nextMonth}-01`} onClose={() => setUploadFor(null)} onDone={() => { setUploadFor(null); load(); }} />}
     </div>
   );
 }
 
-function UploadDialog({ market, defaultMonth, onClose, onDone }: { market: MarketRow; defaultMonth: string; onClose: () => void; onDone: () => void }) {
-  const [month, setMonth] = useState(defaultMonth);
+function UploadDialog({ market, defaultDate, onClose, onDone }: { market: MarketRow; defaultDate: string; onClose: () => void; onDone: () => void }) {
+  const [effectiveFrom, setEffectiveFrom] = useState(defaultDate);
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -183,12 +183,13 @@ function UploadDialog({ market, defaultMonth, onClose, onDone }: { market: Marke
 
   const submit = async () => {
     if (!file) { toast.error("Chọn file Excel"); return; }
+    if (!effectiveFrom) { toast.error("Điền ngày áp dụng"); return; }
     setBusy(true);
     setErrors([]);
     try {
       const fd = new FormData();
       fd.append("marketId", market.id);
-      fd.append("month", month);
+      fd.append("effectiveFrom", effectiveFrom);
       fd.append("note", note);
       fd.append("file", file);
       const res = await fetch("/api/price-lists", { method: "POST", body: fd });
@@ -215,8 +216,9 @@ function UploadDialog({ market, defaultMonth, onClose, onDone }: { market: Marke
         <DialogHeader><DialogTitle>Tải bảng giá — {market.name} ({market.currency})</DialogTitle></DialogHeader>
         <div className="space-y-3 text-sm">
           <div className="space-y-1">
-            <Label className="text-xs">Tháng áp dụng</Label>
-            <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-44" />
+            <Label className="text-xs">Ngày áp dụng *</Label>
+            <Input type="date" min={vnDateKey()} value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className="w-44" />
+            <p className="text-xs text-text-muted">Đơn hàng lấy giá theo bảng đang áp dụng tại thời điểm tạo đơn. Bảng cần được duyệt mới có hiệu lực; đơn tạo trước khi duyệt giữ giá cũ.</p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">File Excel (theo file mẫu)</Label>
@@ -243,7 +245,7 @@ function UploadDialog({ market, defaultMonth, onClose, onDone }: { market: Marke
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>Huỷ</Button>
-          <Button onClick={submit} disabled={busy || !file}>{busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Tải lên</Button>
+          <Button onClick={submit} disabled={busy || !file || !effectiveFrom}>{busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Tải lên</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseInvoiceText } from "@/lib/price-check";
 import { getEffectivePriceList, getEffectiveRates } from "@/lib/price-list";
-import { mapPriceCode, vnMonthKey } from "@/lib/price-list-shared";
+import { mapPriceCode, vnDateKey, vnMonthKey } from "@/lib/price-list-shared";
 import { lookupPrice, roundCur } from "@/lib/invoice-engine";
 import { PDFParse } from "pdf-parse";
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const monthKey = vnMonthKey();
-  const list = await getEffectivePriceList(market.id, monthKey);
+  const list = await getEffectivePriceList(market.id, vnDateKey());
   if (!list) return NextResponse.json({ message: `Thị trường ${market.name} chưa có bảng giá đã duyệt` }, { status: 400 });
 
   // Đơn vị tiền so sánh: gốc của bảng giá, hoặc đơn vị tự tạo (VD Thái Lan USD) đổi qua tỉ giá VND của tháng.

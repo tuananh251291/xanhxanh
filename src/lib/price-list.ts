@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { cellText } from "@/lib/excel-import";
-import { TIER_RE, monthKeyToDate, type PriceRow } from "@/lib/price-list-shared";
+import { TIER_RE, dateKeyToDate, monthKeyToDate, type PriceRow } from "@/lib/price-list-shared";
 
 // Bảng giá tháng theo thị trường (PriceList) — thay "Bảng giá sản phẩm" + báo giá PDF của Invoice Desk.
 // NV Trợ lý / Admin cấp cao tải Excel (mỗi thị trường 1 file), Admin cấp cao duyệt. Xem prisma/schema.prisma.
@@ -13,11 +13,12 @@ export const canViewPriceList = (role: string | null | undefined) =>
 export const canEditExchangeRate = (role: string | null | undefined) => role === "KE_TOAN" || role === "SUPER_ADMIN";
 export const canViewExchangeRate = (role: string | null | undefined) => canEditExchangeRate(role) || role === "ADMIN" || role === "TRO_LY";
 
-// Bảng giá đang áp dụng cho 1 tháng = bảng APPROVED có month lớn nhất <= tháng đó (cùng tháng thì bảng duyệt sau cùng).
-export async function getEffectivePriceList(marketId: string, monthKey: string) {
+// Bảng giá đang áp dụng tại 1 ngày (yyyy-MM-dd) = bảng APPROVED có ngày áp dụng lớn nhất <= ngày đó (trùng ngày thì
+// bảng duyệt sau cùng). Bảng chưa duyệt không được tính — bảng cũ vẫn áp dụng tới khi bảng mới được duyệt.
+export async function getEffectivePriceList(marketId: string, dateKey: string) {
   return prisma.priceList.findFirst({
-    where: { marketId, status: "APPROVED", month: { lte: monthKeyToDate(monthKey) } },
-    orderBy: [{ month: "desc" }, { decidedAt: "desc" }],
+    where: { marketId, status: "APPROVED", effectiveFrom: { lte: dateKeyToDate(dateKey) } },
+    orderBy: [{ effectiveFrom: "desc" }, { decidedAt: "desc" }],
     include: { items: { orderBy: { rowNo: "asc" } } },
   });
 }
@@ -111,7 +112,7 @@ export async function buildPriceListTemplate(params: { marketName: string; curre
     "Mã: mã cây theo báo giá (VD AL62, MT001T10) — hệ thống tự đối chiếu sang mã cây hệ thống (AL62 → AL062).",
     "Quy cách: Tissue culture (TC, mọi loại túi) / Tissue bag 10 plant / Tissue bag 1 plant / Size pot 1.7 inch (→ chậu S) / Size pot 2.8 inch (→ chậu M)…",
     "Ô giá để trống = không bán ở bậc đó. Số thập phân dùng dấu chấm (VD 12.5), không dùng dấu chấm ngăn cách hàng nghìn.",
-    "Tải lên xong, bảng giá chờ Admin cấp cao duyệt mới có hiệu lực từ đầu tháng áp dụng.",
+    "Tải lên xong, bảng giá chờ Admin cấp cao duyệt mới có hiệu lực, tính từ ngày áp dụng đã điền lúc tải lên. Đơn hàng lấy giá theo bảng đang áp dụng tại thời điểm tạo đơn.",
   ]) guide.addRow([line]);
   return wb.xlsx.writeBuffer();
 }

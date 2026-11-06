@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { buildPriceListTemplate, canViewPriceList, getEffectivePriceList } from "@/lib/price-list";
-import { vnMonthKey } from "@/lib/price-list-shared";
+import { vnDateKey, vnMonthKey } from "@/lib/price-list-shared";
 
 // File mẫu Excel bảng giá của 1 thị trường — điền sẵn bảng đang áp dụng cho tháng chọn (để chỉ cần sửa giá).
 export async function GET(req: NextRequest) {
@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
   const month = searchParams.get("month") ?? vnMonthKey();
   const market = await prisma.market.findUnique({ where: { id: marketId }, select: { id: true, code: true, name: true, currency: true } });
   if (!market) return NextResponse.json({ message: "Không tìm thấy thị trường" }, { status: 404 });
-  const current = await getEffectivePriceList(market.id, /^\d{4}-\d{2}$/.test(month) ? month : vnMonthKey());
+  // Tháng sau trở đi thì lấy đầu tháng đó (gồm cả bảng đã duyệt đang chờ tới ngày áp dụng), còn lại lấy hôm nay.
+  const today = vnDateKey();
+  const current = await getEffectivePriceList(market.id, /^\d{4}-\d{2}$/.test(month) && `${month}-01` > today ? `${month}-01` : today);
   const buf = await buildPriceListTemplate({
     marketName: market.name,
     currency: market.currency,

@@ -24,6 +24,8 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CUSTOMER_GROUP_LABELS, FINISHED_SPEC_BAG_SIZE, type CustomerGroup } from "@/types";
 import ShipAtInput from "@/components/shared/ship-at-input";
+import OrderPriceTable from "@/components/shared/order-price-table";
+import type { OrderPriceSummary } from "@/lib/order-price-engine";
 
 
 type PlantType = { id: string; code: string; name: string };
@@ -126,7 +128,7 @@ type MarketOpt = { id: string; code: string; name: string };
 type MarketWarehouse = { id: string; code: string; name: string };
 type SalesUser = { id: string; code: string; name: string; holdDays: number };
 
-type HoldItem = { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; notes?: string };
+type HoldItem = { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number; demandStageCode?: string; notes?: string };
 
 export default function OrderCheckForm({
   plantTypes, customers, markets, salesUsers, isActingForSale, marketWarehouseIds,
@@ -328,6 +330,9 @@ export default function OrderCheckForm({
         : `giữ trong ${selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON" ? "5 tháng" : `${holdDays} ngày`}`;
       setShortages(null);
       toast.success(acceptShortage ? `Đã tạo đơn ${json.code} — phần thiếu đã gửi Quản lý kho thành phẩm kiểm tra NCC` : `Đã tạo đơn ${json.code} — ${holdLabel}`);
+      if (json.priceIssueCount > 0) {
+        toast.warning(`Đơn ${json.code} có ${json.priceIssueCount} dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá tay và chờ Admin cấp cao duyệt trước khi xác nhận`, { duration: 10000 });
+      }
       setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
       setResults(null);
       setExcelItems([]);
@@ -344,10 +349,9 @@ export default function OrderCheckForm({
     }
   };
 
-  const onHoldManual = () => {
-    if (!results) return;
-    const items: { plantTypeId: string; stageCode: string; quantity: number; neededQuantity?: number }[] = [];
-    for (const r of results) {
+  const buildManualItems = (source: CheckResult[]): HoldItem[] => {
+    const items: HoldItem[] = [];
+    for (const r of source) {
       if (r.fulfilledAtStage > 0) items.push({ plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: r.fulfilledAtStage });
       for (const a of r.alternatives) {
         if (!a.accepted) continue;
@@ -361,14 +365,37 @@ export default function OrderCheckForm({
           stageCode: a.stageCode,
           quantity: a.suggestedQty + a.surplusQuantity,
           neededQuantity: a.requiresProcessing ? a.suggestedQty : undefined,
+          demandStageCode: a.requiresProcessing ? r.stageCode : undefined,
         });
       }
       // Phần chưa đáp ứng vẫn gửi lên: server báo thiếu, Sale chọn gửi Quản lý kho thành phẩm kiểm tra NCC.
       const missing = r.quantityDemand - acceptedTotalFor(r);
       if (missing > 0) items.push({ plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: missing });
     }
-    submitHold(items);
+    return items;
   };
+
+  const onHoldManual = () => {
+    if (results) submitHold(buildManualItems(results));
+  };
+
+  // Xem trước giá theo bảng giá đang áp dụng của thị trường — giá thật chốt ở server lúc bấm Tạm giữ.
+  const [previewResult, setPreviewResult] = useState<{ key: string; summary: OrderPriceSummary | null } | null>(null);
+  const previewItems = sendToMarketWarehouse || !effectiveMarketId
+    ? null
+    : mode === "manual"
+      ? (results ? buildManualItems(results) : null)
+      : excelItems.filter((i) => isValidQty(i.quantityInput)).map((i) => ({ plantTypeId: i.plantTypeId, stageCode: i.stageCode, quantity: Number(i.quantityInput) }));
+  const previewKey = previewItems && previewItems.length > 0 ? JSON.stringify({ marketId: effectiveMarketId, items: previewItems }) : "";
+  useEffect(() => {
+    if (!previewKey) return;
+    let alive = true;
+    fetch("/api/orders/price-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: previewKey })
+      .then(async (r) => { const j = await r.json().catch(() => null); if (alive) setPreviewResult({ key: previewKey, summary: r.ok ? j : null }); })
+      .catch(() => { if (alive) setPreviewResult({ key: previewKey, summary: null }); });
+    return () => { alive = false; };
+  }, [previewKey]);
+  const pricePreview = previewResult?.key === previewKey ? previewResult.summary : null;
 
   // Bỏ qua bước Check/alternatives hoàn toàn — items lấy từ Excel (đã validate mã cây/quy cách ở
   // POST /api/orders/import-items), không thay thế quy cách/làm tròn túi.
@@ -856,6 +883,7 @@ export default function OrderCheckForm({
                 <Input value={exportCode} onChange={(e) => setExportCode(e.target.value)} placeholder="Tuỳ chọn — hiện trên phiếu in" />
               </div>
             </div>
+            {pricePreview && <OrderPriceTable summary={pricePreview} preview />}
             <Button
               className="w-full bg-primary hover:bg-primary-hover"
               disabled={holding || (sendToMarketWarehouse ? !marketWarehouseId : !holdDays)}
