@@ -154,6 +154,7 @@ async function loadSupply(roomId: string, warehouseId: string, now: Date, plantT
 // có lô cũng là đơn đang giữ chỗ nên vẫn tính (hiện chỉ có 1 Kho thành phẩm thật nên không cần lọc theo kho).
 async function loadDemand(
   roomId: string,
+  warehouseId: string,
   todayKey: string,
   client: Client,
   opts: { plantTypeIds?: string[]; excludeOrderId?: string } = {}
@@ -170,7 +171,8 @@ async function loadDemand(
         ...(plantTypeIds ? { plantTypeId: { in: plantTypeIds } } : {}),
         // Dòng đã xử lý xong: tồn thực đã trừ thật, không trừ đôi — cùng điều kiện với getQualifiedLots.
         AND: [
-          { OR: [{ lotId: null }, { lot: { roomId } }] },
+          // Dòng chưa gắn lô chưa có phòng: tính theo kho làm việc của NV bán hàng, để đơn kho này không trừ tồn dự kiến kho khác.
+          { OR: [{ lot: { roomId } }, { lotId: null, order: { sale: { OR: [{ workplaceWarehouseId: warehouseId }, { workplaceWarehouseId: null }] } } }] },
           { OR: [{ processingRequest: null }, { processingRequest: { status: { not: "COMPLETED" } } }] },
         ],
       },
@@ -216,7 +218,7 @@ export async function computeFinishedForecast(warehouseId: string, dateKey: stri
   if (!roomId) return { ratePct: await getForecastRatePct(), roomFound: false, rows: [], lateSupplierPlans: [], uploadedMonths };
 
   const supply = await loadSupply(roomId, warehouseId, now);
-  const demand = await loadDemand(roomId, supply.todayKey, prisma);
+  const demand = await loadDemand(roomId, warehouseId, supply.todayKey, prisma);
   const rows = computeForecastRows({ ...supply, ...demand }, dateKey);
   const plantTypes = await prisma.plantType.findMany({
     where: { id: { in: rows.map((r) => r.plantTypeId) } },
@@ -252,7 +254,7 @@ export async function getDepositedOrderShortfalls(warehouseId: string): Promise<
   const roomId = await getDatRoomId(warehouseId);
   if (!roomId) return [];
   const supply = await loadSupply(roomId, warehouseId, new Date());
-  const demand = await loadDemand(roomId, supply.todayKey, prisma);
+  const demand = await loadDemand(roomId, warehouseId, supply.todayKey, prisma);
   const deposited = demand.orders
     .filter((o) => o.depositedAt)
     .sort((a, b) => a.depositedAt!.getTime() - b.depositedAt!.getTime() || a.orderId.localeCompare(b.orderId));
@@ -313,8 +315,8 @@ export async function prepareAvailability(warehouseId: string | null, plantTypeI
   const supply = roomId && warehouseId ? await loadSupply(roomId, warehouseId, new Date(), plantTypeIds) : null;
 
   return async (client: Client = prisma) => {
-    if (!roomId || !supply) return (): LineAvailability => ({ exact: 0, withRegistered: 0 });
-    const demand = await loadDemand(roomId, supply.todayKey, client, { plantTypeIds, excludeOrderId: opts.excludeOrderId });
+    if (!roomId || !supply || !warehouseId) return (): LineAvailability => ({ exact: 0, withRegistered: 0 });
+    const demand = await loadDemand(roomId, warehouseId, supply.todayKey, client, { plantTypeIds, excludeOrderId: opts.excludeOrderId });
     const input: ForecastInput = { ...supply, ...demand };
     const events = buildForecastEvents(input);
     return (plantTypeId: string, stageCode: string): LineAvailability => lineAvailability(input, events, plantTypeId, stageCode, dateKey);

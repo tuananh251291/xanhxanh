@@ -57,8 +57,9 @@ export default async function AllInventoryPage() {
     plantType: { select: { name: true, code: true } },
   } as const;
 
+  // Kho TEST chứa bản sao tồn Đông Dư để kiểm thử, không tính vào tồn kho tổng.
   const warehouses = await prisma.warehouse.findMany({
-    where: { isActive: true },
+    where: { isActive: true, code: { not: "KTP-TEST" } },
     include: {
       rooms: {
         where: { isActive: true },
