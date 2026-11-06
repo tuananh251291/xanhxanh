@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,11 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ClipboardCheck, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
+import { PrintButton } from "@/components/shared/print-button";
+import ProbationEvaluationPrint from "./probation-evaluation-print";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 type Row = { id: string; label: string; type: "MANUAL" | "SPEED" | "CONTAMINATION"; selfScore: number | null; managerScore: number | null };
-type Evaluation = {
+export type Evaluation = {
   id: string; code: string; weekNumber: number; weekStart: string; weekEnd: string;
   status: "PENDING_SELF" | "PENDING_MANAGER" | "COMPLETED";
   sectionTitle: string;
@@ -35,10 +37,11 @@ const RESULT_BADGE: Record<string, string> = {
 };
 
 export default function ProbationEvaluationForm({
-  evaluationId, viewerRole,
+  evaluationId, viewerRole, autoPrint,
 }: {
   evaluationId: string;
   viewerRole: string | null;
+  autoPrint: boolean;
 }) {
   const router = useRouter();
   const [data, setData] = useState<Evaluation | null>(null);
@@ -60,6 +63,17 @@ export default function ProbationEvaluationForm({
   }, [evaluationId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Đúng các vai trò chấm điểm mới in phiếu, và chỉ khi đã chấm xong.
+  const canPrint = data?.status === "COMPLETED" && (viewerRole === "KY_THUAT" || viewerRole === "ADMIN" || viewerRole === "SUPER_ADMIN" || viewerRole === "ADMIN_KY_THUAT");
+
+  // Bấm "In" ở danh sách mở trang này kèm ?print=1 — mở hộp thoại in ngay khi tải xong, 1 lần.
+  const autoPrinted = useRef(false);
+  useEffect(() => {
+    if (!autoPrint || !canPrint || autoPrinted.current) return;
+    autoPrinted.current = true;
+    window.print();
+  }, [autoPrint, canPrint]);
 
   if (loading || !data) {
     return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-text-muted" /></div>;
@@ -109,7 +123,9 @@ export default function ProbationEvaluationForm({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <>
+    {canPrint && <ProbationEvaluationPrint data={data} />}
+    <div className="max-w-4xl mx-auto space-y-6 print:hidden">
       <div className="flex items-center gap-3">
         <Link href="/probation-evaluations">
           <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4" /></Button>
@@ -123,6 +139,7 @@ export default function ProbationEvaluationForm({
             {format(new Date(data.weekStart), "dd/MM", { locale: vi })} – {format(new Date(data.weekEnd), "dd/MM/yyyy", { locale: vi })}
           </p>
         </div>
+        {canPrint && <div className="ml-auto"><PrintButton /></div>}
       </div>
 
       <Card>
@@ -269,5 +286,6 @@ export default function ProbationEvaluationForm({
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

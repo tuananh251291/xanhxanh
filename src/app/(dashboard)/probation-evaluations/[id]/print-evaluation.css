@@ -1,0 +1,140 @@
+/* Phiếu đánh giá thử việc — chỉ hiện khi in, khổ A4, tối ưu mực đen/xám */
+
+/* Trang tên riêng: phiếu chỉ định sản xuất khai báo @page A5 không tên, CSS đó có thể còn nạp khi chuyển trang. */
+@page pe-a4 {
+  size: A4 portrait;
+  margin: 14mm;
+}
+
+.pe-sheet {
+  display: none;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  /* Ẩn phần tử nổi của layout (VD Trợ lý AI), bỏ giới hạn cuộn để phiếu dài sang được trang 2. */
+  body * {
+    visibility: hidden;
+  }
+  main {
+    overflow: visible !important;
+  }
+  .pe-sheet {
+    page: pe-a4;
+    display: block;
+    color: #1a1a1a;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11pt;
+    line-height: 1.35;
+  }
+  .pe-sheet,
+  .pe-sheet * {
+    visibility: visible;
+  }
+}
+
+.pe-header {
+  text-align: center;
+  border-bottom: 1.5px solid #1a1a1a;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.pe-title {
+  font-size: 18pt;
+  font-weight: 700;
+  margin: 0;
+}
+.pe-subtitle {
+  font-size: 12pt;
+  font-weight: 700;
+  margin: 3px 0 0;
+}
+.pe-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 16px;
+  margin-bottom: 10px;
+}
+.pe-info b {
+  font-weight: 700;
+}
+.pe-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+  font-size: 10pt;
+}
+.pe-table th,
+.pe-table td {
+  border: 0.75px solid #666;
+  padding: 4px 6px;
+  vertical-align: top;
+}
+.pe-table th {
+  font-weight: 700;
+  font-size: 12pt;
+  text-align: left;
+  background: #eee;
+}
+.pe-table .pe-num {
+  text-align: right;
+  white-space: nowrap;
+}
+.pe-table tr {
+  break-inside: avoid;
+}
+.pe-table .pe-total td {
+  font-weight: 700;
+}
+.pe-block {
+  margin-bottom: 8px;
+  break-inside: avoid;
+}
+.pe-block-title {
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+.pe-block-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pe-result {
+  border: 1.5px solid #1a1a1a;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  font-size: 12pt;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  break-inside: avoid;
+}
+.pe-legend {
+  font-size: 9pt;
+  color: #444;
+  margin: 0 0 14px;
+}
+.pe-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  text-align: center;
+  break-inside: avoid;
+}
+.pe-signatures p {
+  margin: 0;
+}
+.pe-sign-title {
+  font-weight: 700;
+}
+.pe-sign-note {
+  font-size: 9pt;
+  font-style: italic;
+  color: #444;
+}
+.pe-sign-name {
+  margin-top: 60px !important;
+  font-weight: 700;
+}

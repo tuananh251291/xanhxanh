@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, ClipboardCheck, AlertTriangle } from "lucide-react";
+import { Loader2, ClipboardCheck, AlertTriangle, Printer } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -41,7 +41,7 @@ const RESULT_BADGE: Record<string, string> = {
 };
 const RESULT_LABEL: Record<string, string> = { DAT: "Đạt", CAN_CAI_THIEN: "Cần cải thiện", KHONG_DAT: "Không đạt" };
 
-export default function ProbationEvaluationBoard() {
+export default function ProbationEvaluationBoard({ canPrint }: { canPrint: boolean }) {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -98,6 +98,11 @@ export default function ProbationEvaluationBoard() {
                   <span className="text-sm font-bold text-foreground">{e.managerPercent}%</span>
                   <Badge className={RESULT_BADGE[e.result]}>{RESULT_LABEL[e.result]}</Badge>
                 </>
+              )}
+              {canPrint && e.status === "COMPLETED" && (
+                <Link href={`/probation-evaluations/${e.id}?print=1`}>
+                  <Button size="sm" variant="outline" className="h-8"><Printer className="w-4 h-4 mr-1.5" /> In</Button>
+                </Link>
               )}
               <Link href={`/probation-evaluations/${e.id}`}>
                 <Button size="sm" className="h-8 bg-primary hover:bg-primary-hover">

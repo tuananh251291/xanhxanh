@@ -24,7 +24,7 @@ export default async function ProbationEvaluationsPage() {
             : "Chấm điểm lại các phiếu NV cấy mô thử việc đã tự chấm, đúng khu sản xuất bạn phụ trách."}
         </p>
       </div>
-      <ProbationEvaluationBoard />
+      <ProbationEvaluationBoard canPrint={role !== "CAY_MO"} />
     </div>
   );
 }
