@@ -71,7 +71,7 @@ export default function InvoiceList({ canApprove }: { canApprove: boolean }) {
                       <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmtMoney(r.total, r.currency)}</td>
                       <td className="px-3 py-2">
                         <Badge variant={INVOICE_STATUS[r.status]?.variant ?? "outline"}>{INVOICE_STATUS[r.status]?.label ?? r.status}</Badge>
-                        {r.hasManualPrice && r.status === "APPROVED" && <span className="block text-xs text-text-muted">có giá tay</span>}
+                        {r.hasManualPrice && r.status === "APPROVED" && <span className="block text-xs text-text-muted">có giá đề xuất thay đổi</span>}
                       </td>
                       <td className="px-3 py-2 text-text-secondary">{r.createdBy.name}</td>
                     </tr>

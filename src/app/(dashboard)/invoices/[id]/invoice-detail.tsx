@@ -64,7 +64,7 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
           {inv.decidedBy && ` · ${inv.status === "REJECTED" ? "Từ chối" : "Duyệt"} bởi ${inv.decidedBy}${inv.decidedAt ? " · " + new Date(inv.decidedAt).toLocaleString("vi-VN") : ""}`}
           {inv.note && ` · Ghi chú: ${inv.note}`}
         </p>
-        {inv.status === "PENDING_APPROVAL" && <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Phiếu báo giá có giá nhập tay — chờ Admin cấp cao duyệt mới xuất PDF / xác nhận đơn được.</p>}
+        {inv.status === "PENDING_APPROVAL" && <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Phiếu báo giá có giá đề xuất thay đổi — chờ Admin cấp cao duyệt mới xuất PDF / xác nhận đơn được.</p>}
         {inv.status === "REJECTED" && <p className="rounded-md bg-danger-light text-destructive text-sm px-4 py-2">Bị từ chối: {inv.rejectionReason ?? "(không ghi lý do)"} — sửa rồi lưu để gửi duyệt lại.</p>}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={view === "customer" ? "default" : "outline"} onClick={() => setView("customer")}>Bản gửi khách</Button>
@@ -94,7 +94,7 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit }: { i
         />
       </div>
       {inv.hasManualPrice && view === "internal" && (
-        <p className="text-xs text-text-muted print:hidden">Dòng giá tay: {inv.result.items.filter((i) => i.manualPrice).map((i) => `${i.code} ${i.unit}`).join(", ")}</p>
+        <p className="text-xs text-text-muted print:hidden">Dòng giá đề xuất thay đổi: {inv.result.items.filter((i) => i.manualPrice).map((i) => `${i.code} ${i.unit}`).join(", ")}</p>
       )}
 
       <Dialog open={rejecting} onOpenChange={(o) => !busy && setRejecting(o)}>

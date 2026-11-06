@@ -85,7 +85,7 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
   if (status === "PENDING_APPROVAL") {
     await createAlert({
       type: "INVOICE_APPROVAL_NEEDED",
-      title: `Phiếu báo giá ${saved.invoiceNo} có giá nhập tay chờ duyệt`,
+      title: `Phiếu báo giá ${saved.invoiceNo} có giá đề xuất thay đổi chờ duyệt`,
       message: `${user.name ?? "NV bán hàng"} lập phiếu báo giá cho ${data.customerName} — tổng ${fmtMoney(result.total, result.currency)}.`,
       targetRole: "SUPER_ADMIN",
       relatedId: saved.id,

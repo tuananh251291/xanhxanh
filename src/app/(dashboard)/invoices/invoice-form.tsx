@@ -158,7 +158,7 @@ export default function InvoiceForm({
         : await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(j.message ?? "Có lỗi xảy ra"); if (j.blockers) setServerBlockers(j.blockers); return; }
-      toast.success(j.status === "PENDING_APPROVAL" ? `Đã lưu ${j.invoiceNo} — chờ Admin cấp cao duyệt giá nhập tay` : `Đã lưu ${j.invoiceNo}`);
+      toast.success(j.status === "PENDING_APPROVAL" ? `Đã lưu ${j.invoiceNo} — chờ Admin cấp cao duyệt giá đề xuất thay đổi` : `Đã lưu ${j.invoiceNo}`);
       router.push(`/invoices/${j.id}`);
       router.refresh();
     } finally { setSaving(false); }
@@ -232,7 +232,7 @@ export default function InvoiceForm({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-base">Sản phẩm</CardTitle>
               <span className="text-xs text-text-muted">
-                {loadingCtx ? "Đang tải bảng giá…" : ctx?.priceList ? `Bảng giá áp dụng từ ${dateKeyLabelVi(ctx.priceList.effectiveFrom)}${prefill ? " (đã chốt lúc tạo đơn)" : ""} · ${ctx.priceList.items.length} dòng` : marketId ? (prefill ? "Lúc tạo đơn chưa có bảng giá đã duyệt — nhập giá tay" : "Chưa có bảng giá đã duyệt") : ""}
+                {loadingCtx ? "Đang tải bảng giá…" : ctx?.priceList ? `Bảng giá áp dụng từ ${dateKeyLabelVi(ctx.priceList.effectiveFrom)}${prefill ? " (đã chốt lúc tạo đơn)" : ""} · ${ctx.priceList.items.length} dòng` : marketId ? (prefill ? "Lúc tạo đơn chưa có bảng giá đã duyệt — nhập giá đề xuất thay đổi" : "Chưa có bảng giá đã duyệt") : ""}
               </span>
             </div>
           </CardHeader>
@@ -459,7 +459,7 @@ export default function InvoiceForm({
           </div>
         )}
         {result?.hasManualPrice && (
-          <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Phiếu báo giá có giá nhập tay → sau khi lưu sẽ chờ Admin cấp cao duyệt mới in PDF / xác nhận đơn được.</p>
+          <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Phiếu báo giá có giá đề xuất thay đổi → sau khi lưu sẽ chờ Admin cấp cao duyệt mới in PDF / xác nhận đơn được.</p>
         )}
         <Button className="w-full" onClick={save} disabled={saving || !result || blockers.length > 0 || !customerName.trim() || !profileId}>
           {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}

@@ -280,12 +280,12 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
     let manualPrice = false;
     if (l.manualPrice != null && l.manualPrice > 0) {
       unit = l.manualPrice; manualPrice = true; res.hasManualPrice = true;
-      pills.push({ tone: "warn", text: `Giá nhập tay ${fmtMoney(unit, cur)}/cây — cần Admin cấp cao duyệt` });
+      pills.push({ tone: "warn", text: `Giá đề xuất thay đổi ${fmtMoney(unit, cur)}/cây — cần Admin cấp cao duyệt` });
     } else {
       const lp = lookupPrice(q!.tiers, p.prices, agg.get(l.key) ?? qty);
       if (lp.err === "moq") { pills.push({ tone: "bad", text: `Dưới số lượng tối thiểu — tối thiểu ${lp.moq} cây (đang ${agg.get(l.key)})` }); res.blockers.push(`${p.name}: dưới số lượng tối thiểu ${lp.moq} cây`); return; }
       if (lp.err === "notier") {
-        pills.push({ tone: "bad", text: `Không có giá bậc ${lp.tier}.${lp.suggest != null ? ` Bậc gần nhất ${lp.suggestTier}: ${fmtMoney(roundCur(conv(lp.suggest), cur), cur)}` : ""} — nhập giá tay nếu muốn dùng` });
+        pills.push({ tone: "bad", text: `Không có giá bậc ${lp.tier}.${lp.suggest != null ? ` Bậc gần nhất ${lp.suggestTier}: ${fmtMoney(roundCur(conv(lp.suggest), cur), cur)}` : ""} — nhập giá đề xuất thay đổi nếu muốn dùng` });
         res.blockers.push(`${p.name}: không có giá bậc ${lp.tier}`); return;
       }
       unit = roundCur(conv(lp.price), cur);
@@ -317,7 +317,7 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
   for (const m of O.manual) {
     const qty = +m.qty || 0, unit = +m.unit || 0;
     if (!m.desc && !qty) continue;
-    if (m.orderKey && unit <= 0) res.blockers.push(`${m.code || m.desc}: mã này không có giá trong bảng giá của đơn — nhập đơn giá tay`);
+    if (m.orderKey && unit <= 0) res.blockers.push(`${m.code || m.desc}: mã này không có giá trong bảng giá của đơn — nhập giá đề xuất thay đổi`);
     res.hasManualPrice = true;
     res.items.push({ manual: true, code: m.code || "—", name: m.desc || "Cây nhập tay", spec: m.spec || "Rooted / cutting", qty, unit, sur: 0, nBags: 0, amount: roundCur(qty * unit, cur), manualPrice: true, lineIndex: null });
   }

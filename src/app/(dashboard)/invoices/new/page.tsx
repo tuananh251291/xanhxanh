@@ -18,7 +18,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
       <div>
         <Link href="/invoices" className="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-foreground"><ArrowLeft className="w-4 h-4" /> Danh sách phiếu báo giá</Link>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mt-1"><Wallet className="w-6 h-6 text-primary-strong" /> Lập phiếu báo giá</h1>
-        <p className="text-text-secondary text-sm mt-1">Giá lấy theo bảng giá tháng đã duyệt của thị trường; phí ship/thuế theo Cài đặt phiếu báo giá. Giá nhập tay cần Admin cấp cao duyệt.</p>
+        <p className="text-text-secondary text-sm mt-1">Giá lấy theo bảng giá tháng đã duyệt của thị trường; phí ship/thuế theo Cài đặt phiếu báo giá. Giá đề xuất thay đổi cần Admin cấp cao duyệt.</p>
       </div>
       <InvoiceForm {...data} today={vnToday()} initial={null} presetOrderId={orderId ?? null} canEditDate={role === "SUPER_ADMIN"} />
     </div>

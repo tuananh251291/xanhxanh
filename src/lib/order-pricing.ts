@@ -153,7 +153,7 @@ export async function syncOrderPricesFromInvoice(invoiceId: string) {
   if (base !== inv.currency && manualByKey.size > 0) {
     const rates = await getEffectiveRates(inv.invoiceDate.toISOString().slice(0, 7));
     const from = rates.get(inv.currency), to = rates.get(base);
-    if (!from || !to) throw new Error(`Chưa có tỉ giá ${inv.currency}/${base} để ghi giá tay xuống đơn`);
+    if (!from || !to) throw new Error(`Chưa có tỉ giá ${inv.currency}/${base} để ghi giá đề xuất thay đổi xuống đơn`);
     fx = from.vndPerUnit / to.vndPerUnit;
   }
 

@@ -32,9 +32,9 @@ export default function OrderPriceTable({ summary, preview = false }: { summary:
                 <td className="px-3 py-1.5" title={l.plantTypeName}><span className="font-mono">{l.plantTypeCode}</span></td>
                 <td className="px-3 py-1.5">{l.stageCode}</td>
                 <td className="px-3 py-1.5 text-right">{l.quantity.toLocaleString("vi-VN")}</td>
-                <td className="px-3 py-1.5 text-text-secondary">{l.manual ? "Giá tay đã duyệt" : l.tier ?? "—"}</td>
+                <td className="px-3 py-1.5 text-text-secondary">{l.manual ? "Giá đề xuất thay đổi đã duyệt" : l.tier ?? "—"}</td>
                 {l.issue ? (
-                  <td className="px-3 py-1.5 text-right" colSpan={2}><Badge variant="overdue">{ORDER_PRICE_ISSUE_LABELS[l.issue]} — cần giá tay</Badge></td>
+                  <td className="px-3 py-1.5 text-right" colSpan={2}><Badge variant="overdue">{ORDER_PRICE_ISSUE_LABELS[l.issue]} — cần giá đề xuất thay đổi</Badge></td>
                 ) : (
                   <>
                     <td className="px-3 py-1.5 text-right">{fmtMoney(l.unitPrice, cur)}</td>
@@ -52,7 +52,7 @@ export default function OrderPriceTable({ summary, preview = false }: { summary:
       </div>
       {summary.issueCount > 0 && (
         <p className="text-xs text-warning-foreground bg-warning-light rounded-md px-3 py-2">
-          Vẫn giữ hàng được. Dòng chưa có giá cần nhập giá tay ở Phiếu báo giá gắn đơn và được Admin cấp cao duyệt thì mới xác nhận đơn được.
+          Vẫn giữ hàng được. Dòng chưa có giá cần nhập giá đề xuất thay đổi ở Phiếu báo giá gắn đơn và được Admin cấp cao duyệt thì mới xác nhận đơn được.
         </p>
       )}
     </div>

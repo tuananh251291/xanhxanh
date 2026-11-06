@@ -331,7 +331,7 @@ export default function OrderCheckForm({
       setShortages(null);
       toast.success(acceptShortage ? `Đã tạo đơn ${json.code} — phần thiếu đã gửi Quản lý kho thành phẩm kiểm tra NCC` : `Đã tạo đơn ${json.code} — ${holdLabel}`);
       if (json.priceIssueCount > 0) {
-        toast.warning(`Đơn ${json.code} có ${json.priceIssueCount} dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá tay và chờ Admin cấp cao duyệt trước khi xác nhận`, { duration: 10000 });
+        toast.warning(`Đơn ${json.code} có ${json.priceIssueCount} dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá đề xuất thay đổi và chờ Admin cấp cao duyệt trước khi xác nhận`, { duration: 10000 });
       }
       setRows(Array.from({ length: DEFAULT_ROW_COUNT }, newRow));
       setResults(null);

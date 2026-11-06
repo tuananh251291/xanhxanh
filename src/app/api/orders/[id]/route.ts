@@ -204,7 +204,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   // Dòng chưa có giá (không có trong bảng giá, dưới tối thiểu...) — giữ hàng được nhưng phải có giá tay Admin cấp cao đã duyệt
   // mới xác nhận được, không thuộc diện miễn invoice tạm thời ở dưới. Giá tay ghi xuống dòng đơn lúc phiếu được duyệt.
   if (!order.marketWarehouseId && (await prisma.orderItem.count({ where: { orderId, priceIssue: { not: null } } })) > 0) {
-    return NextResponse.json({ message: "Đơn còn dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá tay và chờ Admin cấp cao duyệt trước khi xác nhận" }, { status: 400 });
+    return NextResponse.json({ message: "Đơn còn dòng chưa có giá — lập phiếu báo giá gắn đơn, nhập giá đề xuất thay đổi và chờ Admin cấp cao duyệt trước khi xác nhận" }, { status: 400 });
   }
   // Đơn bán cho khách (không phải gửi Kho thị trường) tạo từ INVOICE_REQUIRED_FROM phải có invoice đã duyệt gắn đơn.
   // Miễn tạm thời: mọi vai trò tới ALL_INVOICE_EXEMPT_UNTIL, Quản lý kho TP xác nhận hộ tới QLK_INVOICE_EXEMPT_UNTIL.
