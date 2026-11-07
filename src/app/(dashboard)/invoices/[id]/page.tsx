@@ -57,6 +57,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       canApprove={canApprove}
       canEdit={lock.canEdit && canChange}
       canCancel={lock.canCancel && canChange}
+      cancelsOrder={lock.cancelsOrder}
       canSend={lock.canSend && (role === "QUAN_LY_KHO_THANH_PHAM" || role === "SALE")}
       lockNotice={lock.notice}
     />

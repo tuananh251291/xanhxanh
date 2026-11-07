@@ -26,8 +26,8 @@ type Inv = {
   customerCode: string | null; shipDate: string | null;
 };
 
-export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, canCancel, canSend, lockNotice, approvalSummary }: {
-  invoice: Inv; canApprove: boolean; canEdit: boolean; canCancel: boolean; canSend: boolean; lockNotice: string | null; approvalSummary: InvoiceApprovalSummary | null;
+export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, canCancel, cancelsOrder, canSend, lockNotice, approvalSummary }: {
+  invoice: Inv; canApprove: boolean; canEdit: boolean; canCancel: boolean; cancelsOrder: boolean; canSend: boolean; lockNotice: string | null; approvalSummary: InvoiceApprovalSummary | null;
 }) {
   const router = useRouter();
   const [view, setView] = useState<"customer" | "internal">("customer");
@@ -79,12 +79,17 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, canCa
           <span className="flex-1" />
           {canEdit && <Link href={`/invoices/${inv.id}/edit`}><Button size="sm" variant="outline"><PenLine className="w-4 h-4 mr-1" /> Sửa</Button></Link>}
           {canCancel && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (confirm(`Huỷ phiếu báo giá ${inv.invoiceNo}?`)) act({ action: "cancel" }, "Đã huỷ phiếu báo giá"); }}>
-              <Ban className="w-4 h-4 mr-1" /> Huỷ
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => {
+              const question = cancelsOrder
+                ? `Huỷ đơn ${inv.order?.code} và phiếu báo giá ${inv.invoiceNo}? Chỗ giữ hàng và Đơn kiểm tra NCC chưa đặt hàng sẽ huỷ theo, không khôi phục được.`
+                : `Huỷ phiếu báo giá ${inv.invoiceNo}?`;
+              if (confirm(question)) act({ action: "cancel" }, cancelsOrder ? "Đã huỷ đơn và phiếu báo giá" : "Đã huỷ phiếu báo giá");
+            }}>
+              <Ban className="w-4 h-4 mr-1" /> {cancelsOrder ? "Huỷ đơn" : "Huỷ"}
             </Button>
           )}
           {canSend && (
-            <Button size="sm" disabled={busy} onClick={() => { if (confirm("Chuyển Đã xác nhận / Chưa cọc và gửi đơn cho QL Kho TP? Sau khi chuyển sẽ không sửa hoặc huỷ phiếu được.")) act({ action: "send-to-manager" }, "Đã gửi đơn cho QL Kho TP"); }}>
+            <Button size="sm" disabled={busy} onClick={() => { if (confirm("Chuyển Đã xác nhận / Chưa cọc và gửi đơn cho QL Kho TP? Sau khi chuyển sẽ không sửa hoặc huỷ được cho tới khi QL Kho TP phản hồi.")) act({ action: "send-to-manager" }, "Đã gửi đơn cho QL Kho TP"); }}>
               <Send className="w-4 h-4 mr-1" /> Đã xác nhận / Chưa cọc
             </Button>
           )}

@@ -71,8 +71,10 @@ function OrdersTable({
   showSale = false,
   editPlantTypes,
   showPrices = false,
+  isActingForSale = false,
 }: {
   showPrices?: boolean;
+  isActingForSale?: boolean;
   title: string;
   description: string;
   orders: OrderRow[];
@@ -180,7 +182,7 @@ function OrdersTable({
                         <>
                           <OrderInvoiceLink orderId={o.id} invoice={o.invoices?.[0] ?? null} />
                           {o.supplyResultSentAt && <ConfirmOrderButton orderId={o.id} />}
-                          <CancelOrderButton orderId={o.id} orderCode={o.code} />
+                          {(isActingForSale || !o.customerConfirmedAt || o.supplyResultSentAt) && <CancelOrderButton orderId={o.id} orderCode={o.code} sentToManager={!!o.customerConfirmedAt} />}
                         </>
                       )}
                     </div>
@@ -285,13 +287,14 @@ export default async function OrdersListPage() {
       <OrdersTable
         showPrices={canViewOrderPrice(role)}
         title="Đơn tạm giữ"
-        description="Đang giữ chỗ tồn kho. Chưa chuyển Đã xác nhận / Chưa cọc thì đơn tự huỷ khi hết hạn; sau khi chuyển, hạn giữ tính từ khi QL Kho TP phản hồi. Xóa đơn để trả lại tồn đạt tiêu chuẩn ngay."
+        description="Đang giữ chỗ tồn kho. Chưa chuyển Đã xác nhận / Chưa cọc thì đơn tự huỷ khi hết hạn; sau khi chuyển, hạn giữ tính từ khi QL Kho TP phản hồi. Xóa đơn để trả lại tồn đạt tiêu chuẩn ngay; đơn đang chờ QL phản hồi thì chưa xóa được."
         orders={heldOrders.map((o) => ({ ...o, items: o.items.map(withResolvedLot) }))}
         showHoldUntil
         showQuantity
         showExpectedShipAt
         showStatus={false}
         showActions
+        isActingForSale={isActingForSale}
         linkToDetailPage={false}
         canEditShipAt={isActingForSale}
         editPlantTypes={editPlantTypes}

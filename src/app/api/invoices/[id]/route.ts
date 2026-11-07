@@ -8,6 +8,7 @@ import { saveInvoice } from "@/lib/invoice-save";
 import { buildOrderInvoicePrefill, clearOrderManualPrices, invoiceMatchesOrder, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
 import { getInvoiceLock } from "@/lib/invoice-lock";
 import { notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
+import { cancelOrderRecords, notifyManagersSaleCancelled } from "@/lib/order-cancel";
 import type { InvoiceInput } from "@/lib/invoice-engine";
 
 async function findVisible(id: string, user: { id: string; role: string | null | undefined }) {
@@ -15,7 +16,7 @@ async function findVisible(id: string, user: { id: string; role: string | null |
     where: { id, ...(await invoiceScopeFor(user)) },
     include: {
       market: { select: { id: true, code: true, name: true, currency: true, derivedCurrency: true, invoiceCalcKind: true } },
-      order: { select: { id: true, code: true, status: true } },
+      order: { select: { id: true, code: true, status: true, saleId: true, sale: { select: { workplaceWarehouseId: true } } } },
       companyProfile: true,
       createdBy: { select: { id: true, name: true } },
       decidedBy: { select: { name: true } },
@@ -42,7 +43,7 @@ const actionSchema = z.discriminatedUnion("action", [
 
 // update: người lập sửa (khoá theo getInvoiceLock) — tính lại, có giá tay thì chờ duyệt lại.
 // send-to-manager: "Đã xác nhận / Chưa cọc": đơn sang QL Kho TP kiểm tra đáp ứng (src/lib/supplier-check.ts), phiếu khoá.
-// approve/reject: Admin cấp cao duyệt giá nhập tay. cancel: người lập / Admin cấp cao huỷ (đơn đã xác nhận thì khoá).
+// approve/reject: Admin cấp cao duyệt giá nhập tay. cancel: người lập / Admin cấp cao huỷ; đơn đã chuyển thì khoá tới khi QL phản hồi, sau đó huỷ phiếu là huỷ luôn đơn.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ message: "Chưa đăng nhập" }, { status: 401 });
@@ -112,6 +113,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: lock.notice ?? "Phiếu báo giá đã khoá — không sửa/huỷ được nữa" }, { status: 400 });
   }
 
+  if (body.action === "cancel" && lock.cancelsOrder && inv.order) {
+    if (session.user.role === "SALE" && inv.order.saleId !== session.user.id) {
+      return NextResponse.json({ message: "Chỉ được huỷ đơn hàng của chính mình" }, { status: 403 });
+    }
+    await cancelOrderRecords(inv.order.id, session.user.id, { cancelInvoices: true });
+    await notifyManagersSaleCancelled(inv.order, inv.order.sale.workplaceWarehouseId);
+    return NextResponse.json({ success: true });
+  }
   if (body.action === "cancel") {
     await prisma.invoice.update({ where: { id }, data: { status: "CANCELLED" } });
     if (inv.orderId && inv.status === "APPROVED") await clearOrderManualPrices(inv.orderId);

@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function CancelOrderButton({ orderId, orderCode }: { orderId: string; orderCode: string }) {
+export default function CancelOrderButton({ orderId, orderCode, sentToManager }: { orderId: string; orderCode: string; sentToManager: boolean }) {
   const [cancelling, setCancelling] = useState(false);
   const router = useRouter();
 
   const cancel = async () => {
-    if (!window.confirm(`Xóa đơn ${orderCode}? Toàn bộ số lượng đang tạm giữ sẽ trả lại tồn đạt tiêu chuẩn ngay.`)) return;
+    if (!window.confirm(`Xóa đơn ${orderCode}? Toàn bộ số lượng đang tạm giữ sẽ trả lại tồn đạt tiêu chuẩn ngay.${sentToManager ? " Đơn kiểm tra NCC chưa đặt hàng và phiếu báo giá cũng huỷ theo." : ""}`)) return;
 
     setCancelling(true);
     try {

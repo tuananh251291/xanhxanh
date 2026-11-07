@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { releaseGardenAllocationsForOrders } from "@/lib/garden-inventory";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { generateTransferCode } from "@/lib/codes";
@@ -9,7 +8,7 @@ import { z } from "zod";
 import { canEditShipTime } from "@/lib/order-ship-time";
 import { orderItemSpec, ORDER_ITEM_SPEC_FIELDS } from "@/lib/order-item-spec";
 import { addMonths } from "date-fns";
-import { cancelOpenSupplierChecks } from "@/lib/supplier-check-notify";
+import { cancelOrderRecords, notifyManagersSaleCancelled } from "@/lib/order-cancel";
 import { getShipCutoffKey, prepareAvailability, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
 import { canEditOrderItems } from "@/lib/order-edit";
@@ -82,12 +81,7 @@ async function rescheduleOrder(
     if (order.items.some((i) => i.processingRequest?.status === "COMPLETED")) {
       return NextResponse.json({ message: "Đơn đã có dòng hoàn thành xử lý cây — không huỷ được" }, { status: 400 });
     }
-    await prisma.$transaction([
-      prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } }),
-      prisma.orderProcessingRequest.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "CANCELLED" } }),
-    ]);
-    await cancelOpenSupplierChecks([order.id]);
-    await releaseGardenAllocationsForOrders([order.id], user.id);
+    await cancelOrderRecords(order.id, user.id);
     await createAlert({
       type: "ORDER_EDITED",
       title: `Đơn ${order.code} đã huỷ do dời ngày xuất quá 1 tháng`,
@@ -244,12 +238,16 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, code: true, saleId: true, status: true, items: { select: { processingRequest: { select: { status: true } } } } },
+    select: { id: true, code: true, saleId: true, status: true, customerConfirmedAt: true, supplyResultSentAt: true, sale: { select: { workplaceWarehouseId: true } }, items: { select: { processingRequest: { select: { status: true } } } } },
   });
   if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
   // Quản lý kho thành phẩm hủy HỘ được mọi đơn — cùng lý do với confirmOrder ở trên.
   if (user.role === "SALE" && order.saleId !== user.id) {
     return NextResponse.json({ message: "Chỉ được xóa đơn hàng của chính mình" }, { status: 403 });
+  }
+  // Đã chuyển Đã xác nhận / Chưa cọc: QL đang kiểm tra đáp ứng, có thể đang hỏi NCC — Sale chờ QL phản hồi rồi mới huỷ được.
+  if (user.role === "SALE" && order.status === "HELD" && order.customerConfirmedAt && !order.supplyResultSentAt) {
+    return NextResponse.json({ message: "Đơn đang chờ Quản lý kho thành phẩm phản hồi — chưa huỷ được" }, { status: 400 });
   }
   // Đơn đã cọc chỉ QL Kho TP huỷ được (VD đến ngày xuất mà hàng NCC chưa về).
   const isDeposited = order.status === "CONFIRMED";
@@ -260,10 +258,9 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
     return NextResponse.json({ message: "Đơn đã có dòng hoàn thành xử lý cây — không huỷ được" }, { status: 400 });
   }
 
-  await prisma.$transaction([
-    prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED", cancelledAt: new Date() } }),
-    prisma.orderProcessingRequest.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "CANCELLED" } }),
-  ]);
+  const sentToManager = order.status === "HELD" && !!order.customerConfirmedAt;
+  await cancelOrderRecords(order.id, user.id, { cancelInvoices: sentToManager });
+  if (sentToManager && user.role === "SALE") await notifyManagersSaleCancelled(order, order.sale.workplaceWarehouseId);
   if (isDeposited) {
     await createAlert({
       type: "ORDER_EDITED",
@@ -274,9 +271,6 @@ async function cancelOrder(orderId: string, user: { id: string; role: string | n
       relatedType: "Order",
     });
   }
-  await cancelOpenSupplierChecks([order.id]);
-  // Phân bổ cây Vườn sản xuất của đơn — tự giải phóng phần chưa xuất về kho nguồn, báo Quản lý vườn dừng đóng gói.
-  await releaseGardenAllocationsForOrders([order.id], user.id);
 
   return NextResponse.json({ success: true });
 }
