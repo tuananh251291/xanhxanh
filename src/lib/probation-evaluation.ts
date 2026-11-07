@@ -293,7 +293,7 @@ export async function computeDarkRoomContaminationStats(staffId: string, weekSta
     orderBy: { createdAt: "asc" },
     select: { code: true, createdAt: true, items: { select: { initialQuantity: true, contaminatedQuantity: true } } },
   });
-  const dm = (d: Date) => d.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit" });
+  const dm = (d: Date) => { const v = new Date(d.getTime() + 7 * 3600000); return `${String(v.getUTCDate()).padStart(2, "0")}/${String(v.getUTCMonth() + 1).padStart(2, "0")}`; };
   const details: ContaminationTransfer[] = inspections.map((i) => ({
     code: `${dm(i.createdAt)} – lô ${i.code}`,
     kind: "SELF_CHECK",
