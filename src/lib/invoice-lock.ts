@@ -33,7 +33,7 @@ export async function getInvoiceLock(inv: { status: string; orderId: string | nu
   const replied = { ...LOCKED, canCancel: true, cancelsOrder: true };
   const prefill = await buildOrderInvoicePrefill(order.id);
   if (prefill && !invoiceMatchesOrder(inv.input as InvoiceInput, prefill)) {
-    return { ...replied, canEdit: true, notice: `QL Kho TP đã phản hồi: số đáp ứng của đơn ${order.code} không còn khớp phiếu. Khách đồng ý thì bấm Sửa → Lấy lại dòng từ đơn rồi lưu trước khi ghi nhận cọc; khách không đồng ý thì huỷ đơn.` };
+    return { ...replied, canEdit: true, notice: `QL Kho TP đã phản hồi: số đáp ứng của đơn ${order.code} không còn khớp phiếu. Bấm Sửa → Lấy lại dòng từ đơn rồi lưu để phiếu đúng số; khách không đồng ý thì huỷ đơn.` };
   }
   return { ...replied, notice: `QL Kho TP đã phản hồi đơn ${order.code}: phiếu không sửa được. Khách không đồng ý thì huỷ đơn, chỗ giữ và Đơn kiểm tra NCC huỷ theo.` };
 }

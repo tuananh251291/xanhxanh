@@ -5,7 +5,7 @@ import { isSerializationFailure } from "@/lib/prisma-errors";
 import { ORDER_ITEM_SPEC_FIELDS, orderItemSpec } from "@/lib/order-item-spec";
 import { ALL_FINISHED_STAGE_CODES } from "@/types";
 import { repriceOrder } from "@/lib/order-pricing";
-import { syncInvoiceFromOrder } from "@/lib/invoice-save";
+import { invoiceBlockersAfterDecrease, syncInvoiceFromOrder } from "@/lib/invoice-save";
 
 // QL Kho thành phẩm / Admin cấp cao SỬA đơn chưa xuất (HELD/CONFIRMED) — kể cả khi đã phân công và NV đã
 // nhặt hàng (nhặt hàng KHÔNG trừ tồn thực, xem OrderItem.pickedQuantity1-3, nên giảm số lượng không phải
@@ -18,7 +18,8 @@ import { syncInvoiceFromOrder } from "@/lib/invoice-save";
 // - Dòng thường: gộp theo (mã cây, quy cách), sửa số lượng/thêm/xoá. Tăng thì phải đủ tồn đạt tiêu chuẩn
 //   ĐÚNG quy cách ở Phòng đạt tiêu chuẩn của kho (không tự sinh yêu cầu tách túi), thiếu thì chặn.
 // Mỗi lần sửa báo NV bán hàng (trước/sau) và NV Kho TP đang được giao đơn (kèm cảnh báo nhặt dư).
-// QL đã phản hồi Sale (supplyResultSentAt): chỉ giữ hoặc giảm, không tăng/thêm; phiếu báo giá tự theo số mới và bậc giá mới.
+// QL đã phản hồi Sale (supplyResultSentAt): chỉ giữ hoặc giảm, không tăng/thêm; số mới làm phiếu báo giá lỗi (VD dưới số lượng tối
+// thiểu) thì không cho lưu; phiếu tự theo số mới và bậc giá mới.
 
 export const ORDER_EDIT_STAGE_CODES: readonly string[] = ALL_FINISHED_STAGE_CODES;
 
@@ -47,7 +48,7 @@ async function loadOrder(orderId: string) {
       items: {
         orderBy: { id: "asc" },
         select: {
-          id: true, lotId: true, quantity: true, neededQuantity: true, ...ORDER_ITEM_SPEC_FIELDS,
+          id: true, lotId: true, quantity: true, neededQuantity: true, priceStageCode: true, ...ORDER_ITEM_SPEC_FIELDS,
           pickedQuantity1: true, pickedQuantity2: true, pickedQuantity3: true,
           lot: { select: { id: true, roomId: true, stageCode: true, plantTypeId: true, plantType: { select: { code: true, name: true } }, room: { select: { warehouseId: true, type: true } } } },
           processingRequest: { select: { id: true, code: true, status: true, mediumOrder: { select: { id: true, code: true, status: true } } } },
@@ -169,6 +170,19 @@ export async function editOrderItems(params: {
     throw new OrderEditError(`QL đã phản hồi đáp ứng cho NV bán hàng — chỉ được giữ nguyên hoặc giảm số lượng: ${increased.map((c) => `${c.label} đang ${c.before}, không tăng lên ${c.after}`).join("; ")}`);
   }
 
+  // Đơn đã xuất một phần: dòng đơn chỉ còn phần chưa xuất, phiếu vẫn giữ đủ số đã báo khách nên không so với phiếu.
+  const followsInvoice = !!order.supplyResultSentAt && order._count.partialShipments === 0;
+  if (followsInvoice) {
+    const blockers = await invoiceBlockersAfterDecrease(order.id, [
+      ...[...new Set([...currentByKey.keys(), ...desiredByKey.keys()])].map((key) => ({
+        key,
+        delta: (desiredByKey.get(key)?.quantity ?? 0) - (currentByKey.get(key) ?? []).reduce((sum, i) => sum + i.quantity, 0),
+      })),
+      ...removedProcessing.map((i) => ({ key: groupKey(orderItemSpec(i).plantTypeId, i.priceStageCode ?? orderItemSpec(i).stageCode), delta: -(i.neededQuantity ?? i.quantity) })),
+    ]);
+    if (blockers.length > 0) throw new OrderEditError(`Không lưu được: ${blockers.join("; ")}`);
+  }
+
   const pickWarnings: string[] = [];
   try {
     await prisma.$transaction(
@@ -240,13 +254,12 @@ export async function editOrderItems(params: {
     throw err;
   }
 
-  // Đơn đã xuất một phần thì dòng đơn chỉ còn phần chưa xuất, phiếu vẫn phải giữ đủ số đã báo khách.
-  const invoiceSync = order.supplyResultSentAt && order._count.partialShipments === 0 ? await syncInvoiceFromOrder(order.id) : null;
+  const invoiceSync = followsInvoice ? await syncInvoiceFromOrder(order.id) : null;
   const invoiceText = !invoiceSync
     ? ""
     : invoiceSync.ok
       ? ` Phiếu báo giá ${invoiceSync.invoiceNo} đã tự cập nhật theo số mới: tổng ${invoiceSync.before} → ${invoiceSync.after}. Gửi lại phiếu cho khách nếu khách đã nhận phiếu cũ.`
-      : ` Phiếu báo giá ${invoiceSync.invoiceNo} chưa tự cập nhật được (${invoiceSync.reason}). ${order.status === "HELD" ? "Mở phiếu, bấm Sửa → Lấy lại dòng từ đơn và xử lý trước khi ghi nhận cọc." : "Báo Admin cấp cao xử lý vì đơn đã cọc."}`;
+      : ` Phiếu báo giá ${invoiceSync.invoiceNo} chưa tự cập nhật được (${invoiceSync.reason}). ${order.status === "HELD" ? "Mở phiếu, bấm Sửa → Lấy lại dòng từ đơn rồi lưu." : "Báo Admin cấp cao xử lý vì đơn đã cọc."}`;
 
   // Thông báo
   const changeText = [

@@ -14,8 +14,7 @@ import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm
 import { canEditOrderItems } from "@/lib/order-edit";
 import { generateOrderCode } from "@/lib/codes";
 import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
-import { buildOrderInvoicePrefill, invoiceMatchesOrder } from "@/lib/order-pricing";
-import type { InvoiceInput } from "@/lib/invoice-engine";
+import { buildOrderInvoicePrefill } from "@/lib/order-pricing";
 
 const patchSchema = z.object({
   action: z.enum(["confirm", "ship", "cancel", "assign", "ack", "reschedule"]),
@@ -209,14 +208,14 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   // Đơn bán cho khách (không phải gửi Kho thị trường) tạo từ INVOICE_REQUIRED_FROM phải có invoice đã duyệt gắn đơn.
   // Miễn tạm thời: mọi vai trò tới ALL_INVOICE_EXEMPT_UNTIL, Quản lý kho TP xác nhận hộ tới QLK_INVOICE_EXEMPT_UNTIL.
   if (!order.marketWarehouseId && order.createdAt >= INVOICE_REQUIRED_FROM && !isInvoiceExemptForConfirm(user.role)) {
-    const approved = await prisma.invoice.findFirst({ where: { orderId, status: "APPROVED" }, orderBy: { createdAt: "desc" }, select: { input: true } });
+    const approved = await prisma.invoice.findFirst({ where: { orderId, status: "APPROVED" }, select: { id: true } });
     if (!approved) {
       return NextResponse.json({ message: "Đơn cần có phiếu báo giá đã duyệt trước khi xác nhận — lập phiếu báo giá gắn đơn này ở mục Phiếu báo giá" }, { status: 400 });
     }
-    // Phiếu phải khớp số đáp ứng cuối cùng: gồm phần NCC đáp ứng và số QL đã sửa.
+    // QL đã phản hồi thì không bắt phiếu khớp số đáp ứng; chỉ chặn khi đơn không còn cây nào (NCC không đáp ứng, hết hàng).
     const prefill = await buildOrderInvoicePrefill(orderId);
-    if (prefill && !invoiceMatchesOrder(approved.input as unknown as InvoiceInput, prefill)) {
-      return NextResponse.json({ message: "Phiếu báo giá chưa khớp số đáp ứng — mở phiếu, bấm Lấy lại dòng từ đơn rồi lưu lại trước khi ghi nhận cọc" }, { status: 400 });
+    if (prefill && Object.keys(prefill.quantities).length === 0) {
+      return NextResponse.json({ message: "Đơn không còn cây nào đáp ứng — không ghi nhận cọc được, hãy huỷ đơn" }, { status: 400 });
     }
   }
 
