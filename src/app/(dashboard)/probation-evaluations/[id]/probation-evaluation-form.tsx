@@ -15,7 +15,7 @@ import ProbationEvaluationPrint from "./probation-evaluation-print";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
-type Row = { id: string; label: string; type: "MANUAL" | "SPEED" | "CONTAMINATION"; selfScore: number | null; managerScore: number | null };
+type Row = { id: string; label: string; type: "MANUAL" | "SPEED" | "CONTAMINATION"; note: string | null; selfScore: number | null; managerScore: number | null };
 export type WeekSummary = {
   weekNumber: number; sectionTitle: string; weekStart: string | null; weekEnd: string | null;
   status: Evaluation["status"] | null; managerPercent: number | null; result: Evaluation["result"];
@@ -214,6 +214,7 @@ export default function ProbationEvaluationForm({
                       <td className="px-3 py-2.5 align-top text-foreground">
                         {row.label}
                         {row.type !== "MANUAL" && <Badge className="ml-2 bg-info-light text-info-foreground align-middle">Tự động</Badge>}
+                        {row.note && <p className="mt-1 text-xs text-text-secondary">{row.note}</p>}
                       </td>
                       <td className="px-3 py-2.5 align-top text-right">
                         {selfEditable ? (

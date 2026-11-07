@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
-import { getWeekTemplate, computeAutoScores, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
+import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,14 +35,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const itemByRowId = new Map(evaluation.items.map((i) => [i.rowId, i]));
   const autoScores = evaluation.status === "COMPLETED" ? {} : await computeAutoScores(evaluation.staffId, template, evaluation.weekStart, evaluation.weekEnd);
+  const speedStats = template.rows.some((r) => r.type === "SPEED")
+    ? await computeSpeedStats(evaluation.staffId, evaluation.weekStart, evaluation.weekEnd)
+    : null;
 
   const rows = template.rows.map((row) => {
     const saved = itemByRowId.get(row.id);
     const auto = row.type !== "MANUAL" ? (saved?.selfScore ?? autoScores[row.id] ?? 0) : undefined;
+    // Điểm đã lưu lúc tự chấm, nhật ký sửa sau đó có thể làm số hiện tại lệch — lệch thì không hiện diễn giải để khỏi mâu thuẫn với điểm.
+    const note = row.type === "SPEED" && speedStats && scoreForSpeedRow(row, speedStats.avgSpeed) === auto ? speedScoreNote(row, speedStats) : null;
     return {
       id: row.id,
       label: row.label,
       type: row.type,
+      note,
       selfScore: row.type === "MANUAL" ? (saved?.selfScore ?? null) : auto,
       managerScore: row.type === "MANUAL" ? (saved?.managerScore ?? null) : auto,
     };

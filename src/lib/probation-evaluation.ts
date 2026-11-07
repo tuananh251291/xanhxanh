@@ -195,14 +195,30 @@ function endOfWeekExclusive(weekEnd: Date): Date {
 // Tốc độ trung bình của tuần (chồi/ngày) = tổng quantityCreated của MỌI giai đoạn (mẫu mẹ + thành phẩm —
 // NV thử việc tuần nào cũng có thể được giao cấy mẫu mẹ, chỉ đếm thành phẩm thì ra 0 oan) trong khoảng tuần
 // ÷ số ngày (recordDate, phân biệt theo ngày) NV THẬT SỰ có ít nhất 1 DailyRecord trong tuần đó.
-export async function computeAvgSpeed(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
+export type SpeedStats = { total: number; days: number; avgSpeed: number };
+
+export async function computeSpeedStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<SpeedStats> {
   const records = await prisma.dailyRecord.findMany({
     where: { staffId, recordDate: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } },
     select: { recordDate: true, items: { select: { quantityCreated: true } } },
   });
   const days = new Set(records.map((r) => r.recordDate.toISOString().slice(0, 10)));
   const total = records.reduce((sum, r) => sum + r.items.reduce((s, i) => s + i.quantityCreated, 0), 0);
-  return days.size > 0 ? total / days.size : 0;
+  return { total, days: days.size, avgSpeed: days.size > 0 ? total / days.size : 0 };
+}
+
+export async function computeAvgSpeed(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
+  return (await computeSpeedStats(staffId, weekStart, weekEnd)).avgSpeed;
+}
+
+// Diễn giải điểm tốc độ bằng số thật của tuần, VD: "Cấy 3.500 chồi trong 5 ngày thì tốc độ là 700 chồi/ngày, điểm = 700 ÷ 725 × 9 = 8,69, làm tròn thành 9 điểm."
+export function speedScoreNote(row: SpeedRow, stats: SpeedStats): string {
+  const fmt = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+  if (stats.days === 0) return "Tuần này chưa có nhật ký cấy nên tốc độ là 0 chồi/ngày, được 0 điểm.";
+  const raw = (stats.avgSpeed / row.target) * 9;
+  const score = scoreForSpeedRow(row, stats.avgSpeed);
+  const ending = raw > 10 ? `vượt mức tối đa nên được ${score} điểm` : raw === score ? `được ${score} điểm` : `làm tròn thành ${score} điểm`;
+  return `Cấy ${fmt(stats.total)} chồi trong ${stats.days} ngày thì tốc độ là ${fmt(stats.avgSpeed)} chồi/ngày, điểm = ${fmt(stats.avgSpeed)} ÷ ${row.target} × 9 = ${fmt(raw)}, ${ending}.`;
 }
 
 // Tỉ lệ nhiễm (%) của các lô ĐƯỢC CẤY (Lot.enteredAt = ngày nhập phòng tối) trong khoảng tuần — quy về
