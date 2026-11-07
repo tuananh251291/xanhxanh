@@ -65,7 +65,10 @@ export default function ProbationEvaluationPrint({ data }: { data: Evaluation })
           {data.rows.map((row) => (
             <tr key={row.id}>
               <td>{row.id}</td>
-              <td>{row.label}</td>
+              <td>
+                {row.label}
+                {row.note && <p className="pe-row-note">{row.note}</p>}
+              </td>
               <td className="pe-num">{row.selfScore ?? "—"}</td>
               <td className="pe-num">{row.managerScore ?? "—"}</td>
             </tr>

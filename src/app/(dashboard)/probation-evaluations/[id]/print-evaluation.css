@@ -99,6 +99,11 @@
 .pe-table tr {
   break-inside: avoid;
 }
+.pe-row-note {
+  margin: 1px 0 0;
+  font-size: 8.5pt;
+  font-style: italic;
+}
 .pe-table .pe-total td {
   font-weight: 700;
 }

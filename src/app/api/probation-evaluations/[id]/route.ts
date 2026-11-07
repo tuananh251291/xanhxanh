@@ -41,16 +41,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const rows = template.rows.map((row) => {
     const saved = itemByRowId.get(row.id);
-    const auto = row.type !== "MANUAL" ? (saved?.selfScore ?? autoScores[row.id] ?? 0) : undefined;
-    // Điểm đã lưu lúc tự chấm, nhật ký sửa sau đó có thể làm số hiện tại lệch — lệch thì không hiện diễn giải để khỏi mâu thuẫn với điểm.
-    const note = row.type === "SPEED" && speedStats && scoreForSpeedRow(row, speedStats.avgSpeed) === auto ? speedScoreNote(row, speedStats) : null;
+    // Dòng tự động: mỗi cột hiện đúng điểm đã lưu của cột đó (lúc tự chấm và lúc NV kỹ thuật chấm hệ thống đều tính lại nên có thể khác nhau), chưa chấm thì tính theo số hiện tại.
+    const autoSelf = saved?.selfScore ?? autoScores[row.id] ?? 0;
+    const autoManager = saved?.managerScore ?? autoScores[row.id] ?? autoSelf;
+    // Nhật ký sửa sau khi chấm có thể làm số hiện tại lệch điểm đã lưu — lệch thì không hiện diễn giải để khỏi mâu thuẫn với điểm.
+    const shownScore = evaluation.status === "PENDING_SELF" ? autoSelf : autoManager;
+    const note = row.type === "SPEED" && speedStats && scoreForSpeedRow(row, speedStats.avgSpeed) === shownScore ? speedScoreNote(row, speedStats) : null;
     return {
       id: row.id,
       label: row.label,
       type: row.type,
       note,
-      selfScore: row.type === "MANUAL" ? (saved?.selfScore ?? null) : auto,
-      managerScore: row.type === "MANUAL" ? (saved?.managerScore ?? null) : auto,
+      selfScore: row.type === "MANUAL" ? (saved?.selfScore ?? null) : autoSelf,
+      managerScore: row.type === "MANUAL" ? (saved?.managerScore ?? null) : autoManager,
     };
   });
 
