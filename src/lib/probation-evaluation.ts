@@ -27,7 +27,9 @@ export function isEvaluationOverdue(weekEnd: Date, now: Date = new Date()): bool
 //   CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay.
 export type ManualRow = { id: string; label: string; type: "MANUAL" };
 export type SpeedRow = { id: string; label: string; type: "SPEED"; target: number };
-export type ContaminationRow = { id: string; label: string; type: "CONTAMINATION"; threshold: 5 | 10 };
+// source: DARK_ROOM = nhiễm sau ủ tối (NV cấy mô tự kiểm tra lô đủ ngày ủ tối, LotInspection); HANDOVER = số Kho mô ghi lúc
+// nhận phiếu bàn giao Phòng tối → kho sáng (TransferInspection).
+export type ContaminationRow = { id: string; label: string; type: "CONTAMINATION"; threshold: 5 | 10; source: "DARK_ROOM" | "HANDOVER" };
 export type EvaluationRow = ManualRow | SpeedRow | ContaminationRow;
 export type ProbationEvaluationWeekTemplate = { week: number; sectionTitle: string; rows: EvaluationRow[] };
 
@@ -59,7 +61,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("6", "Không để mẫu hoặc miệng túi ra ngoài vùng vô trùng"),
       manual("7", "Không cắt đồng thời từ hai túi môi trường trở lên"),
       { id: "8", label: "Đạt năng suất 650 chồi/ngày (Điểm = Tốc độ trung bình của tuần /650 *9)", type: "SPEED", target: 650 },
-      { id: "9", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "9", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -74,7 +76,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("6", "Thực hiện đúng kỹ thuật cấy cây sản xuất"),
       manual("7", "Tuân thủ nguyên tắc vô trùng và khử trùng"),
       manual("8", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
-      { id: "9", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "9", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -90,7 +92,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("7", "Xử lý đúng các tình huống thông thường"),
       manual("8", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
       { id: "9", label: "Đạt tối thiểu 450 chồi/ngày (Điểm = Tốc độ trung bình của tuần /450 *9)", type: "SPEED", target: 450 },
-      { id: "10", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "10", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -103,7 +105,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("4", "Không phát sinh lỗi nghiêm trọng khi tăng tốc"),
       manual("5", "Năng suất tăng đều khoảng 15 chồi/ngày"),
       { id: "6", label: "Đạt mức 450–525 chồi/ngày (Điểm = Tốc độ trung bình của tuần /488 *9)", type: "SPEED", target: 488 },
-      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -116,7 +118,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("4", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
       manual("5", "Tốc độ tăng ổn định, không làm ẩu"),
       { id: "6", label: "Đạt mức 540–615 chồi/ngày (Điểm = Tốc độ trung bình của tuần /578 *9)", type: "SPEED", target: 578 },
-      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -129,7 +131,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("4", "Không để tốc độ ảnh hưởng đến chất lượng cây"),
       manual("5", "Chủ động sắp xếp dụng cụ và thời gian làm việc"),
       { id: "6", label: "Đạt mức 630–705 chồi/ngày (Điểm = Tốc độ trung bình của tuần /668 *9)", type: "SPEED", target: 668 },
-      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -142,7 +144,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("4", "Cây sau cấy đạt tiêu chuẩn chất lượng"),
       manual("5", "Đạt năng suất tối thiểu 725 chồi/ngày"),
       { id: "6", label: "Duy trì mức 725 chồi/ngày ổn định (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", target: 725 },
-      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5 },
+      { id: "7", label: "Tỷ lệ nhiễm sau 7 ngày ≤5% (≤3%: 10 điểm, ≤5%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 5, source: "DARK_ROOM" },
     ],
   },
   {
@@ -156,7 +158,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("5", "Đọc hiểu đúng mã cây và chỉ định cấy"),
       manual("6", "Cây sau cấy đạt tiêu chuẩn chất lượng theo chỉ định cấy"),
       { id: "7", label: "Duy trì năng suất ≥725 chồi/ngày (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", target: 725 },
-      { id: "8", label: "Tỷ lệ nhiễm phòng sáng + tối ≤10% (≤8%: 10 điểm, ≤10%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 10 },
+      { id: "8", label: "Tỷ lệ nhiễm phòng sáng + tối ≤10% (≤8%: 10 điểm, ≤10%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 10, source: "HANDOVER" },
       manual("9", "Có ý thức trách nhiệm và phối hợp trong công việc"),
       manual("10", "Ý thức bảo quản tài sản, thiết bị"),
     ],
@@ -241,7 +243,7 @@ export function speedScoreNote(row: SpeedRow, stats: SpeedStats): string {
 // trước khi trừ nhiễm) — luồng Xanh (không qua kiểm tra) coi như không nhiễm. Phiếu còn PENDING (chưa
 // xác nhận/chưa kiểm tra) bị bỏ qua hoàn toàn — chưa có kết luận nên không tính vào cả tử lẫn mẫu.
 // Từng phiếu bàn giao góp vào tỉ lệ nhiễm — để diễn giải số nhiễm lấy từ đâu.
-export type ContaminationTransfer = { code: string; kind: "INSPECTED" | "NO_INSPECTION" | "PENDING"; handed: number; contaminated: number };
+export type ContaminationTransfer = { code: string; kind: "INSPECTED" | "NO_INSPECTION" | "PENDING" | "SELF_CHECK"; handed: number; contaminated: number };
 export type ContaminationStats = { transfers: number; handed: number; contaminated: number; ratePct: number; details: ContaminationTransfer[] };
 
 export async function computeContaminationStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
@@ -282,6 +284,33 @@ export async function computeContaminationStats(staffId: string, weekStart: Date
   return { transfers: transfers.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0, details };
 }
 
+// Nhiễm sau ủ tối (%) = số nhiễm NV cấy mô tự lọc ra ÷ số cây kiểm tra, cộng mọi lần tự kiểm tra (LotInspection) NV làm trong
+// tuần — theo NGÀY KIỂM TRA, cùng cách trang Báo cáo cá nhân (my-reports) và báo cáo "Nhiễm sau ủ tối" đang tính. Không cộng phần
+// Kho mô phát hiện thêm lúc nhận bàn giao (không thuộc trách nhiệm tự kiểm tra của NV).
+export async function computeDarkRoomContaminationStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
+  const inspections = await prisma.lotInspection.findMany({
+    where: { staffId, createdAt: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } },
+    orderBy: { createdAt: "asc" },
+    select: { code: true, createdAt: true, items: { select: { initialQuantity: true, contaminatedQuantity: true } } },
+  });
+  const dm = (d: Date) => d.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit" });
+  const details: ContaminationTransfer[] = inspections.map((i) => ({
+    code: `${dm(i.createdAt)} – lô ${i.code}`,
+    kind: "SELF_CHECK",
+    handed: i.items.reduce((s, it) => s + it.initialQuantity, 0),
+    contaminated: i.items.reduce((s, it) => s + it.contaminatedQuantity, 0),
+  }));
+  const handed = details.reduce((s, d) => s + d.handed, 0);
+  const contaminated = details.reduce((s, d) => s + d.contaminated, 0);
+  return { transfers: details.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0, details };
+}
+
+export function computeRowContaminationStats(row: ContaminationRow, staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
+  return row.source === "DARK_ROOM"
+    ? computeDarkRoomContaminationStats(staffId, weekStart, weekEnd)
+    : computeContaminationStats(staffId, weekStart, weekEnd);
+}
+
 export async function computeContaminationRate(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
   return (await computeContaminationStats(staffId, weekStart, weekEnd)).ratePct;
 }
@@ -295,6 +324,19 @@ export function contaminationScoreNote(row: ContaminationRow, stats: Contaminati
   const [hi, mid] = row.threshold === 5 ? [3, 5] : [8, 10];
   const band = stats.ratePct <= hi ? `≤${hi}%` : stats.ratePct <= mid ? `≤${mid}%` : `trên ${mid}%`;
   const scale = `(≤${hi}%: 10 điểm, ≤${mid}%: 9 điểm, trên ${mid}%: 0 điểm)`;
+  if (row.source === "DARK_ROOM") {
+    if (stats.details.length === 0) {
+      return `Tuần này NV chưa có lần tự kiểm tra nhiễm sau ủ tối nào nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`;
+    }
+    const lines = ["Số nhiễm lấy từ các lần NV tự kiểm tra lô sau ủ tối trong tuần:"];
+    for (const d of stats.details.slice(0, CONTAMINATION_NOTE_MAX_TRANSFERS)) {
+      lines.push(`• ${d.code}: kiểm tra ${fmt(d.handed)} cây, nhiễm ${fmt(d.contaminated)} cây`);
+    }
+    const more = stats.details.length - CONTAMINATION_NOTE_MAX_TRANSFERS;
+    if (more > 0) lines.push(`• … và ${more} lần kiểm tra khác`);
+    lines.push(`Tỉ lệ nhiễm = ${fmt(stats.contaminated)} ÷ ${fmt(stats.handed)} = ${fmt(stats.ratePct)}%, ${band} nên được ${score} điểm ${scale}.`);
+    return lines.join("\n");
+  }
   if (stats.details.length === 0) {
     return `Chưa có phiếu bàn giao Phòng tối → kho sáng nào của các lô cấy tuần này nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`;
   }
@@ -326,14 +368,14 @@ export async function computeAutoScores(
 ): Promise<Record<string, number | null>> {
   const scores: Record<string, number | null> = {};
   let speed: SpeedStats | undefined;
-  let contamination: ContaminationStats | undefined;
+  const contamination = new Map<string, ContaminationStats>();
   for (const row of template.rows) {
     if (row.type === "SPEED") {
       if (speed === undefined) speed = await computeSpeedStats(staffId, weekStart, weekEnd);
       scores[row.id] = speed.days > 0 ? scoreForSpeedRow(row, speed.avgSpeed) : null;
     } else if (row.type === "CONTAMINATION") {
-      if (contamination === undefined) contamination = await computeContaminationStats(staffId, weekStart, weekEnd);
-      scores[row.id] = scoreForContaminationRow(row, contamination.ratePct);
+      if (!contamination.has(row.source)) contamination.set(row.source, await computeRowContaminationStats(row, staffId, weekStart, weekEnd));
+      scores[row.id] = scoreForContaminationRow(row, contamination.get(row.source)!.ratePct);
     }
   }
   return scores;
