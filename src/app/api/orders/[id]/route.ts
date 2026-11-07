@@ -213,12 +213,10 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
     if (!approved) {
       return NextResponse.json({ message: "Đơn cần có phiếu báo giá đã duyệt trước khi xác nhận — lập phiếu báo giá gắn đơn này ở mục Phiếu báo giá" }, { status: 400 });
     }
-    // Đơn thiếu hàng: phiếu phải có cả phần NCC đáp ứng, phiếu lập trước khi có kết quả NCC thì chưa khớp.
-    if (shortageCount > 0) {
-      const prefill = await buildOrderInvoicePrefill(orderId);
-      if (prefill && !invoiceMatchesOrder(approved.input as unknown as InvoiceInput, prefill)) {
-        return NextResponse.json({ message: "Phiếu báo giá chưa khớp kết quả NCC — mở phiếu, bấm Lấy lại dòng từ đơn rồi lưu lại trước khi ghi nhận cọc" }, { status: 400 });
-      }
+    // Phiếu phải khớp số đáp ứng cuối cùng: gồm phần NCC đáp ứng và số QL đã sửa.
+    const prefill = await buildOrderInvoicePrefill(orderId);
+    if (prefill && !invoiceMatchesOrder(approved.input as unknown as InvoiceInput, prefill)) {
+      return NextResponse.json({ message: "Phiếu báo giá chưa khớp số đáp ứng — mở phiếu, bấm Lấy lại dòng từ đơn rồi lưu lại trước khi ghi nhận cọc" }, { status: 400 });
     }
   }
 

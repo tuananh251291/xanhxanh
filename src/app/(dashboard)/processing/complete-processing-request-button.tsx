@@ -77,7 +77,7 @@ export default function CompleteProcessingRequestButton({
             <Input type="number" min={0} className="h-9" value={actualOutput} onChange={(e) => setActualOutput(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Số cây dư, giữ nguyên quy cách {sourceStageCode} (kế hoạch {surplusQuantity.toLocaleString("vi-VN")})</Label>
+            <Label>Số cây dư, trả về T01 (kế hoạch {surplusQuantity.toLocaleString("vi-VN")})</Label>
             <Input type="number" min={0} className="h-9" value={actualSurplus} onChange={(e) => setActualSurplus(e.target.value)} />
           </div>
           <p className="text-xs text-text-secondary">

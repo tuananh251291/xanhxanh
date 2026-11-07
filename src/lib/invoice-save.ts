@@ -3,7 +3,7 @@
 import type { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
-import { computeInvoice, fmtMoney, type InvoiceResult } from "@/lib/invoice-engine";
+import { computeInvoice, fmtMoney, type InvoiceInput, type InvoiceResult } from "@/lib/invoice-engine";
 import { invoiceSaveSchema, loadInvoiceContext, nextInvoiceNo, canViewAllInvoices } from "@/lib/invoice";
 import { canSaleViewOrder } from "@/lib/customer-manager";
 import { dateToDateKey, vnDateKey } from "@/lib/price-list-shared";
@@ -12,6 +12,45 @@ import { buildOrderInvoicePrefill, invoiceMatchesOrder, syncOrderPricesFromInvoi
 type SaveData = z.infer<typeof invoiceSaveSchema>;
 type User = { id: string; role: string | null | undefined; name?: string | null };
 type Out = { ok: true; id: string; status: string; invoiceNo: string } | { ok: false; status: number; message: string; blockers?: string[] };
+
+// QL giảm số lượng sau khi đã phản hồi: phiếu của đơn tự theo số mới và tính lại bậc giá. Giữ nguyên trạng thái duyệt vì QL chỉ
+// giảm số, giá đề xuất đã duyệt vẫn áp dụng. Số mới làm phiếu có lỗi (VD dưới số lượng tối thiểu) thì để nguyên, người gọi báo Sale.
+export type InvoiceSyncResult = { ok: true; invoiceNo: string; before: string; after: string } | { ok: false; invoiceNo: string; reason: string };
+
+export async function syncInvoiceFromOrder(orderId: string): Promise<InvoiceSyncResult | null> {
+  const inv = await prisma.invoice.findFirst({
+    where: { orderId, status: { not: "CANCELLED" } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, invoiceNo: true, status: true, invoiceDate: true, marketId: true, total: true, currency: true, input: true, order: { select: { priceListId: true } } },
+  });
+  const prefill = inv ? await buildOrderInvoicePrefill(orderId) : null;
+  if (!inv || !prefill) return null;
+
+  const left = new Map(Object.entries(prefill.quantities));
+  const follow = <T extends { orderKey?: string; qty: number }>(rows: T[]): T[] => rows.flatMap((row) => {
+    if (!row.orderKey) return [row];
+    const qty = left.get(row.orderKey);
+    if (!qty) return [];
+    left.delete(row.orderKey);
+    return [{ ...row, qty }];
+  });
+  const old = inv.input as unknown as InvoiceInput;
+  const input: InvoiceInput = { ...old, lines: follow(old.lines), manual: follow(old.manual) };
+  if (left.size > 0) return { ok: false, invoiceNo: inv.invoiceNo, reason: "phiếu thiếu dòng so với đơn" };
+
+  const ctx = await loadInvoiceContext(inv.marketId, dateToDateKey(inv.invoiceDate), undefined, inv.order?.priceListId);
+  if (!ctx) return { ok: false, invoiceNo: inv.invoiceNo, reason: "không tìm thấy thị trường" };
+  const result = computeInvoice(ctx, input);
+  if (result.blockers.length > 0 || result.items.length === 0) {
+    return { ok: false, invoiceNo: inv.invoiceNo, reason: result.blockers[0] ?? "phiếu không còn dòng hàng nào" };
+  }
+  await prisma.invoice.update({
+    where: { id: inv.id },
+    data: { input: input as object, result: result as unknown as object, total: result.total, hasManualPrice: result.hasManualPrice },
+  });
+  if (inv.status === "APPROVED") await syncOrderPricesFromInvoice(inv.id);
+  return { ok: true, invoiceNo: inv.invoiceNo, before: fmtMoney(Number(inv.total), inv.currency), after: fmtMoney(result.total, result.currency) };
+}
 
 export async function saveInvoice(user: User, data: SaveData, existingId: string | null): Promise<Out> {
   const allCustomers = canViewAllInvoices(user.role);

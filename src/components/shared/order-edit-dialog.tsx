@@ -17,7 +17,7 @@ import { ALL_FINISHED_STAGE_CODES } from "@/types";
 type ComboOption = { value: string; label: string };
 type PlantTypeOption = { id: string; code: string; name: string };
 type EditData = {
-  order: { id: string; code: string; status: string };
+  order: { id: string; code: string; status: string; onlyDecrease: boolean };
   locked: { id: string; plantCode: string; plantName: string; stageCode: string; quantity: number; reason: string }[];
   processing: { id: string; plantCode: string; plantName: string; stageCode: string; quantity: number; prCode: string | null }[];
   regular: { plantTypeId: string; plantCode: string; plantName: string; stageCode: string; quantity: number; picked: number }[];
@@ -68,6 +68,7 @@ export default function OrderEditDialog({ orderId, orderCode, plantTypes }: { or
       if (!r.plantTypeId) { toast.error("Có dòng chưa chọn mã cây"); return; }
       const q = Number(r.quantity);
       if (!Number.isInteger(q) || q <= 0) { toast.error("Số lượng phải là số nguyên lớn hơn 0 (muốn bỏ dòng thì bấm xoá)"); return; }
+      if (data?.order.onlyDecrease && q > r.original) { toast.error("QL đã phản hồi NV bán hàng — chỉ được giữ nguyên hoặc giảm số lượng"); return; }
       lines.push({ plantTypeId: r.plantTypeId, stageCode: r.stageCode, quantity: q });
     }
     setSaving(true);
@@ -80,6 +81,7 @@ export default function OrderEditDialog({ orderId, orderCode, plantTypes }: { or
       const json = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(json.message ?? "Có lỗi xảy ra"); return; }
       toast.success(`Đã sửa đơn ${orderCode} — đã báo NV bán hàng`);
+      if (json.invoiceSync?.ok === false) toast.warning(`Phiếu báo giá ${json.invoiceSync.invoiceNo} chưa tự cập nhật được`, { description: json.invoiceSync.reason, duration: 15000 });
       if (Array.isArray(json.pickWarnings) && json.pickWarnings.length > 0) {
         toast.warning("Nhặt dư — cần trả cây về vị trí", { description: json.pickWarnings.join(" · "), duration: 15000 });
       }
@@ -212,9 +214,13 @@ export default function OrderEditDialog({ orderId, orderCode, plantTypes }: { or
                 </table>
               </div>
               <p className="text-xs text-text-muted">Đổi quy cách = xoá dòng cũ rồi thêm dòng mới với quy cách mới.</p>
-              <Button type="button" variant="outline" size="sm" onClick={addRow}>
-                <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm mã cây
-              </Button>
+              {data.order.onlyDecrease ? (
+                <p className="text-xs text-text-secondary bg-warning-light rounded-lg p-2">Đã phản hồi NV bán hàng: chỉ được giữ nguyên hoặc giảm số lượng. Phiếu báo giá tự cập nhật theo số mới và bậc giá mới.</p>
+              ) : (
+                <Button type="button" variant="outline" size="sm" onClick={addRow}>
+                  <Plus className="w-3.5 h-3.5 mr-1.5" /> Thêm mã cây
+                </Button>
+              )}
             </div>
           )}
           <DialogFooter>

@@ -5,6 +5,7 @@ import { isSerializationFailure } from "@/lib/prisma-errors";
 import { ORDER_ITEM_SPEC_FIELDS, orderItemSpec } from "@/lib/order-item-spec";
 import { ALL_FINISHED_STAGE_CODES } from "@/types";
 import { repriceOrder } from "@/lib/order-pricing";
+import { syncInvoiceFromOrder } from "@/lib/invoice-save";
 
 // QL Kho thành phẩm / Admin cấp cao SỬA đơn chưa xuất (HELD/CONFIRMED) — kể cả khi đã phân công và NV đã
 // nhặt hàng (nhặt hàng KHÔNG trừ tồn thực, xem OrderItem.pickedQuantity1-3, nên giảm số lượng không phải
@@ -17,6 +18,7 @@ import { repriceOrder } from "@/lib/order-pricing";
 // - Dòng thường: gộp theo (mã cây, quy cách), sửa số lượng/thêm/xoá. Tăng thì phải đủ tồn đạt tiêu chuẩn
 //   ĐÚNG quy cách ở Phòng đạt tiêu chuẩn của kho (không tự sinh yêu cầu tách túi), thiếu thì chặn.
 // Mỗi lần sửa báo NV bán hàng (trước/sau) và NV Kho TP đang được giao đơn (kèm cảnh báo nhặt dư).
+// QL đã phản hồi Sale (supplyResultSentAt): chỉ giữ hoặc giảm, không tăng/thêm; phiếu báo giá tự theo số mới và bậc giá mới.
 
 export const ORDER_EDIT_STAGE_CODES: readonly string[] = ALL_FINISHED_STAGE_CODES;
 
@@ -40,7 +42,8 @@ async function loadOrder(orderId: string) {
   return prisma.order.findUnique({
     where: { id: orderId },
     select: {
-      id: true, code: true, status: true, saleId: true, assignedToId: true, updatedAt: true,
+      id: true, code: true, status: true, saleId: true, assignedToId: true, updatedAt: true, supplyResultSentAt: true,
+      _count: { select: { partialShipments: true } },
       items: {
         orderBy: { id: "asc" },
         select: {
@@ -90,7 +93,7 @@ export async function getOrderEditData(orderId: string) {
       regular.set(key, g);
     }
   }
-  return { order: { id: order.id, code: order.code, status: order.status }, locked, processing, regular: [...regular.values()] };
+  return { order: { id: order.id, code: order.code, status: order.status, onlyDecrease: !!order.supplyResultSentAt }, locked, processing, regular: [...regular.values()] };
 }
 
 export async function editOrderItems(params: {
@@ -161,6 +164,10 @@ export async function editOrderItems(params: {
   }
   const removedProcessing = removeItemIds.map((id) => itemById.get(id)!);
   if (changes.length === 0 && removedProcessing.length === 0) throw new OrderEditError("Không có thay đổi nào");
+  const increased = order.supplyResultSentAt ? changes.filter((c) => c.after > c.before) : [];
+  if (increased.length > 0) {
+    throw new OrderEditError(`QL đã phản hồi đáp ứng cho NV bán hàng — chỉ được giữ nguyên hoặc giảm số lượng: ${increased.map((c) => `${c.label} đang ${c.before}, không tăng lên ${c.after}`).join("; ")}`);
+  }
 
   const pickWarnings: string[] = [];
   try {
@@ -233,6 +240,14 @@ export async function editOrderItems(params: {
     throw err;
   }
 
+  // Đơn đã xuất một phần thì dòng đơn chỉ còn phần chưa xuất, phiếu vẫn phải giữ đủ số đã báo khách.
+  const invoiceSync = order.supplyResultSentAt && order._count.partialShipments === 0 ? await syncInvoiceFromOrder(order.id) : null;
+  const invoiceText = !invoiceSync
+    ? ""
+    : invoiceSync.ok
+      ? ` Phiếu báo giá ${invoiceSync.invoiceNo} đã tự cập nhật theo số mới: tổng ${invoiceSync.before} → ${invoiceSync.after}. Gửi lại phiếu cho khách nếu khách đã nhận phiếu cũ.`
+      : ` Phiếu báo giá ${invoiceSync.invoiceNo} chưa tự cập nhật được (${invoiceSync.reason}). ${order.status === "HELD" ? "Mở phiếu, bấm Sửa → Lấy lại dòng từ đơn và xử lý trước khi ghi nhận cọc." : "Báo Admin cấp cao xử lý vì đơn đã cọc."}`;
+
   // Thông báo
   const changeText = [
     ...changes.map((c) => (c.before === 0 ? `thêm ${c.label}: ${c.after}` : c.after === 0 ? `xoá ${c.label} (${c.before})` : `${c.label}: ${c.before} → ${c.after}`)),
@@ -241,7 +256,7 @@ export async function editOrderItems(params: {
   await createAlert({
     type: "ORDER_EDITED",
     title: `Đơn ${order.code} đã được sửa`,
-    message: `${user.name} (Kho thành phẩm) đã sửa đơn ${order.code}: ${changeText}.`,
+    message: `${user.name} (Kho thành phẩm) đã sửa đơn ${order.code}: ${changeText}.${invoiceText}`,
     userId: order.saleId,
     relatedId: order.id,
     relatedType: "Order",
@@ -280,5 +295,5 @@ export async function editOrderItems(params: {
     }
   }
 
-  return { changes, removedProcessing: removedProcessing.length, pickWarnings };
+  return { changes, removedProcessing: removedProcessing.length, pickWarnings, invoiceSync };
 }

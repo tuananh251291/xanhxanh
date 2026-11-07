@@ -16,8 +16,7 @@ const patchSchema = z.object({
 // giữ đơn) sau khi đã mở túi (nguồn ở Phòng đạt tiêu chuẩn) hoặc chuyển xong từ Kho hàn túi/Theo dõi
 // (nguồn ở đó). Đây là điểm trừ tồn thực đầu tiên cho dòng này:
 // - sourceLot.quantity trừ đúng actualDeductQuantity (không phải deductQuantity kế hoạch nữa).
-// - actualSurplusQuantity (cây dư CHƯA xử lý, còn nguyên quy cách NGUỒN — khác surplusQuantity kế
-//   hoạch vốn luôn quy về T01) cộng trở lại 1 lô cùng sourceStageCode tại targetRoomId (Phòng đạt tiêu
+// - actualSurplusQuantity (cây dư sau khi mở túi) cộng vào lô T01 rời tại targetRoomId (Phòng đạt tiêu
 //   chuẩn đích nếu nguồn ở Kho hàn túi/Theo dõi, hoặc chính roomId nếu nguồn đã ở Phòng đạt tiêu chuẩn).
 // - actualOutputQuantity (số cây thực tế chuyển đổi thành công) KHÔNG tạo lô mới — coi như đã cam kết
 //   thẳng cho đơn hàng này (giống quy ước neededQuantity kế hoạch từ trước), chỉ dùng để so sánh với
@@ -80,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (actualSurplusQuantity > 0) {
       await upsertLot(
-        tx, surplusRoomId, request.plantTypeId, request.plantType.code, request.sourceStageCode,
+        tx, surplusRoomId, request.plantTypeId, request.plantType.code, "T01",
         actualSurplusQuantity, completingUser?.code ?? "000"
       );
     }
