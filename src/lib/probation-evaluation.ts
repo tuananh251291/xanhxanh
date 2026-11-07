@@ -240,7 +240,9 @@ export function speedScoreNote(row: SpeedRow, stats: SpeedStats): string {
 // đang dùng: nhiễm = TransferInspectionItem.contaminatedQuantity, mẫu số = handedOverQuantity (số GỐC
 // trước khi trừ nhiễm) — luồng Xanh (không qua kiểm tra) coi như không nhiễm. Phiếu còn PENDING (chưa
 // xác nhận/chưa kiểm tra) bị bỏ qua hoàn toàn — chưa có kết luận nên không tính vào cả tử lẫn mẫu.
-export async function computeContaminationRate(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
+export type ContaminationStats = { transfers: number; handed: number; contaminated: number; ratePct: number };
+
+export async function computeContaminationStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
   const transfers = await prisma.transfer.findMany({
     where: {
       fromUserId: staffId,
@@ -267,7 +269,23 @@ export async function computeContaminationRate(staffId: string, weekStart: Date,
       for (const it of t.items) handed += it.quantity;
     }
   }
-  return handed > 0 ? (contaminated / handed) * 100 : 0;
+  return { transfers: transfers.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0 };
+}
+
+export async function computeContaminationRate(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
+  return (await computeContaminationStats(staffId, weekStart, weekEnd)).ratePct;
+}
+
+// Diễn giải điểm tỉ lệ nhiễm bằng số thật của tuần, cùng kiểu speedScoreNote.
+export function contaminationScoreNote(row: ContaminationRow, stats: ContaminationStats): string {
+  const fmt = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+  const score = scoreForContaminationRow(row, stats.ratePct);
+  const [hi, mid] = row.threshold === 5 ? [3, 5] : [8, 10];
+  const band = stats.ratePct <= hi ? `≤${hi}%` : stats.ratePct <= mid ? `≤${mid}%` : `trên ${mid}%`;
+  if (stats.handed === 0) {
+    return `Chưa có phiếu bàn giao lô cấy tuần này được xác nhận/kiểm tra nên tỉ lệ nhiễm tính là 0%, được ${score} điểm.`;
+  }
+  return `Bàn giao ${fmt(stats.handed)} cây, nhiễm ${fmt(stats.contaminated)} cây thì tỉ lệ nhiễm = ${fmt(stats.contaminated)} ÷ ${fmt(stats.handed)} = ${fmt(stats.ratePct)}%, ${band} nên được ${score} điểm.`;
 }
 
 // Điểm tự tính (SPEED/CONTAMINATION) của 1 tuần cho 1 NV — dùng chung cho GET (xem trước lúc còn PENDING)
@@ -280,14 +298,14 @@ export async function computeAutoScores(
 ): Promise<Record<string, number | null>> {
   const scores: Record<string, number | null> = {};
   let speed: SpeedStats | undefined;
-  let contaminationRate: number | undefined;
+  let contamination: ContaminationStats | undefined;
   for (const row of template.rows) {
     if (row.type === "SPEED") {
       if (speed === undefined) speed = await computeSpeedStats(staffId, weekStart, weekEnd);
       scores[row.id] = speed.days > 0 ? scoreForSpeedRow(row, speed.avgSpeed) : null;
     } else if (row.type === "CONTAMINATION") {
-      if (contaminationRate === undefined) contaminationRate = await computeContaminationRate(staffId, weekStart, weekEnd);
-      scores[row.id] = scoreForContaminationRow(row, contaminationRate);
+      if (contamination === undefined) contamination = await computeContaminationStats(staffId, weekStart, weekEnd);
+      scores[row.id] = scoreForContaminationRow(row, contamination.ratePct);
     }
   }
   return scores;

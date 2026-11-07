@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
-import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, evaluationPercent, evaluationResult, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
+import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, computeContaminationStats, scoreForContaminationRow, contaminationScoreNote, evaluationPercent, evaluationResult, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -38,6 +38,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const speedStats = template.rows.some((r) => r.type === "SPEED")
     ? await computeSpeedStats(evaluation.staffId, evaluation.weekStart, evaluation.weekEnd)
     : null;
+  const contaminationStats = template.rows.some((r) => r.type === "CONTAMINATION")
+    ? await computeContaminationStats(evaluation.staffId, evaluation.weekStart, evaluation.weekEnd)
+    : null;
 
   const rows = template.rows.map((row) => {
     const saved = itemByRowId.get(row.id);
@@ -48,7 +51,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     // Nhật ký sửa sau khi chấm có thể làm số hiện tại lệch điểm đã lưu — lệch thì không hiện diễn giải để khỏi mâu thuẫn với điểm.
     const shownScore = evaluation.status === "PENDING_SELF" ? autoSelf : autoManager;
     const liveSpeedScore = row.type === "SPEED" && speedStats && speedStats.days > 0 ? scoreForSpeedRow(row, speedStats.avgSpeed) : null;
-    const note = row.type === "SPEED" && speedStats && liveSpeedScore === shownScore ? speedScoreNote(row, speedStats) : null;
+    const note = row.type === "SPEED" && speedStats && liveSpeedScore === shownScore
+      ? speedScoreNote(row, speedStats)
+      : row.type === "CONTAMINATION" && contaminationStats && scoreForContaminationRow(row, contaminationStats.ratePct) === shownScore
+        ? contaminationScoreNote(row, contaminationStats)
+        : null;
     return {
       id: row.id,
       label: row.label,
