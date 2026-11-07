@@ -240,7 +240,9 @@ export function speedScoreNote(row: SpeedRow, stats: SpeedStats): string {
 // đang dùng: nhiễm = TransferInspectionItem.contaminatedQuantity, mẫu số = handedOverQuantity (số GỐC
 // trước khi trừ nhiễm) — luồng Xanh (không qua kiểm tra) coi như không nhiễm. Phiếu còn PENDING (chưa
 // xác nhận/chưa kiểm tra) bị bỏ qua hoàn toàn — chưa có kết luận nên không tính vào cả tử lẫn mẫu.
-export type ContaminationStats = { transfers: number; handed: number; contaminated: number; ratePct: number };
+// Từng phiếu bàn giao góp vào tỉ lệ nhiễm — để diễn giải số nhiễm lấy từ đâu.
+export type ContaminationTransfer = { code: string; kind: "INSPECTED" | "NO_INSPECTION" | "PENDING"; handed: number; contaminated: number };
+export type ContaminationStats = { transfers: number; handed: number; contaminated: number; ratePct: number; details: ContaminationTransfer[] };
 
 export async function computeContaminationStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
   const transfers = await prisma.transfer.findMany({
@@ -250,7 +252,9 @@ export async function computeContaminationStats(staffId: string, weekStart: Date
       status: { not: "REJECTED" },
       items: { some: { lot: { enteredAt: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } } } },
     },
+    orderBy: { createdAt: "asc" },
     select: {
+      code: true,
       status: true,
       items: { select: { quantity: true } },
       inspection: { select: { items: { select: { handedOverQuantity: true, contaminatedQuantity: true } } } },
@@ -259,33 +263,57 @@ export async function computeContaminationStats(staffId: string, weekStart: Date
 
   let handed = 0;
   let contaminated = 0;
+  const details: ContaminationTransfer[] = [];
   for (const t of transfers) {
     if (t.inspection) {
-      for (const it of t.inspection.items) {
-        handed += it.handedOverQuantity;
-        contaminated += it.contaminatedQuantity;
-      }
+      const h = t.inspection.items.reduce((s, it) => s + it.handedOverQuantity, 0);
+      const c = t.inspection.items.reduce((s, it) => s + it.contaminatedQuantity, 0);
+      handed += h;
+      contaminated += c;
+      details.push({ code: t.code, kind: "INSPECTED", handed: h, contaminated: c });
     } else if (t.status === "CONFIRMED") {
-      for (const it of t.items) handed += it.quantity;
+      const h = t.items.reduce((s, it) => s + it.quantity, 0);
+      handed += h;
+      details.push({ code: t.code, kind: "NO_INSPECTION", handed: h, contaminated: 0 });
+    } else {
+      details.push({ code: t.code, kind: "PENDING", handed: t.items.reduce((s, it) => s + it.quantity, 0), contaminated: 0 });
     }
   }
-  return { transfers: transfers.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0 };
+  return { transfers: transfers.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0, details };
 }
 
 export async function computeContaminationRate(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
   return (await computeContaminationStats(staffId, weekStart, weekEnd)).ratePct;
 }
 
-// Diễn giải điểm tỉ lệ nhiễm bằng số thật của tuần, cùng kiểu speedScoreNote.
+const CONTAMINATION_NOTE_MAX_TRANSFERS = 8;
+
+// Diễn giải điểm tỉ lệ nhiễm bằng số thật của tuần (nhiều dòng, nối bằng xuống dòng): số nhiễm của từng phiếu bàn giao → tỉ lệ % → điểm.
 export function contaminationScoreNote(row: ContaminationRow, stats: ContaminationStats): string {
   const fmt = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
   const score = scoreForContaminationRow(row, stats.ratePct);
   const [hi, mid] = row.threshold === 5 ? [3, 5] : [8, 10];
   const band = stats.ratePct <= hi ? `≤${hi}%` : stats.ratePct <= mid ? `≤${mid}%` : `trên ${mid}%`;
-  if (stats.handed === 0) {
-    return `Chưa có phiếu bàn giao lô cấy tuần này được xác nhận/kiểm tra nên tỉ lệ nhiễm tính là 0%, được ${score} điểm.`;
+  const scale = `(≤${hi}%: 10 điểm, ≤${mid}%: 9 điểm, trên ${mid}%: 0 điểm)`;
+  if (stats.details.length === 0) {
+    return `Chưa có phiếu bàn giao Phòng tối → kho sáng nào của các lô cấy tuần này nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`;
   }
-  return `Bàn giao ${fmt(stats.handed)} cây, nhiễm ${fmt(stats.contaminated)} cây thì tỉ lệ nhiễm = ${fmt(stats.contaminated)} ÷ ${fmt(stats.handed)} = ${fmt(stats.ratePct)}%, ${band} nên được ${score} điểm.`;
+  const lines = ["Số nhiễm lấy từ phiếu bàn giao Phòng tối → kho sáng của các lô cấy tuần này:"];
+  for (const d of stats.details.slice(0, CONTAMINATION_NOTE_MAX_TRANSFERS)) {
+    lines.push(
+      d.kind === "INSPECTED" ? `• ${d.code}: bàn giao ${fmt(d.handed)} cây, nhiễm ${fmt(d.contaminated)} cây (Kho mô kiểm tra)`
+        : d.kind === "NO_INSPECTION" ? `• ${d.code}: bàn giao ${fmt(d.handed)} cây, không qua kiểm tra nên tính nhiễm 0 cây`
+          : `• ${d.code}: ${fmt(d.handed)} cây, chưa xác nhận nên chưa tính`
+    );
+  }
+  const more = stats.details.length - CONTAMINATION_NOTE_MAX_TRANSFERS;
+  if (more > 0) lines.push(`• … và ${more} phiếu khác`);
+  if (stats.handed === 0) {
+    lines.push(`Chưa có phiếu nào được xác nhận nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`);
+  } else {
+    lines.push(`Tỉ lệ nhiễm = ${fmt(stats.contaminated)} ÷ ${fmt(stats.handed)} = ${fmt(stats.ratePct)}%, ${band} nên được ${score} điểm ${scale}.`);
+  }
+  return lines.join("\n");
 }
 
 // Điểm tự tính (SPEED/CONTAMINATION) của 1 tuần cho 1 NV — dùng chung cho GET (xem trước lúc còn PENDING)

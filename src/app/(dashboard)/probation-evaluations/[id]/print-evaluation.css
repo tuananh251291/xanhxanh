@@ -103,6 +103,7 @@
   margin: 1px 0 0;
   font-size: 8.5pt;
   font-style: italic;
+  white-space: pre-line;
 }
 .pe-table .pe-total td {
   font-weight: 700;
