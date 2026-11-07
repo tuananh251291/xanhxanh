@@ -136,12 +136,16 @@ export type InvoicePriceList = { id: string; month: string; effectiveFrom: strin
 export type InvoiceRate = { vndPerUnit: number; perUsd: number | null };
 
 // orderKey (plantTypeId:stageCode) = dòng lấy từ đơn hàng đã tính giá — khoá mã + số lượng, giá tay sau khi duyệt ghi xuống đơn.
-export type InvoiceLine = { key: string; qty: number; bag: number; manualPrice: number | null; shipCat: ShipCat | ""; shipRate: number | null; orderKey?: string };
-export type InvoiceManualLine = { code: string; desc: string; spec: string; qty: number; unit: number; shipRate: number | null; orderKey?: string };
+// demandQty = số khách đặt, chỉ có khi số đáp ứng (qty) thấp hơn; giá tính theo qty.
+export type InvoiceLine = { key: string; qty: number; bag: number; manualPrice: number | null; shipCat: ShipCat | ""; shipRate: number | null; orderKey?: string; demandQty?: number };
+export type InvoiceManualLine = { code: string; desc: string; spec: string; qty: number; unit: number; shipRate: number | null; orderKey?: string; demandQty?: number };
+// Mã khách đặt mà không đáp ứng được cây nào: không tính tiền, chỉ hiện trên phiếu.
+export type InvoiceUnmetLine = { orderKey: string; code: string; name: string; spec: string; demandQty: number };
 export type InvoiceInput = {
   currency: string; // đơn vị tiền phiếu báo giá: Market.currency hoặc Market.derivedCurrency
   lines: InvoiceLine[];
   manual: InvoiceManualLine[];
+  unmet?: InvoiceUnmetLine[];
   us: { shipmentDate: string; state: string; resale: boolean; ups: boolean; boxMode: "auto" | "manual"; boxes: { boxId: string; count: number }[] };
   eu: { nl: boolean; lastMile: number | null; insurance: boolean; tcBoxes: number | null; cutBoxes: number };
   au: { state: string; boxMode: "auto" | "manual"; boxes: { idx: number; count: number }[] };
@@ -200,12 +204,12 @@ export function lookupPrice(tiers: string[], prices: (number | null)[], qty: num
 
 // ───────────── Kết quả ─────────────
 export type InvoiceFee = { label: string; amount: number; group: "ship" | "fee" | "tax" | "pay" | "other"; detail?: string; inTotal?: boolean };
-export type InvoiceItem = { manual: boolean; code: string; name: string; spec: string; qty: number; unit: number; sur: number; nBags: number; amount: number; manualPrice: boolean; lineIndex: number | null };
+export type InvoiceItem = { manual: boolean; code: string; name: string; spec: string; qty: number; unit: number; sur: number; nBags: number; amount: number; manualPrice: boolean; lineIndex: number | null; demandQty?: number };
 export type LinePill = { tone: "ok" | "warn" | "bad" | ""; text: string };
 export type InvoiceResult = {
   currency: string; items: InvoiceItem[]; fees: InvoiceFee[]; warnings: string[]; blockers: string[];
   linePills: LinePill[][]; goods: number; total: number; pending: boolean; boxNote: string | null;
-  plants: number; hasManualPrice: boolean; combineShip: boolean;
+  plants: number; hasManualPrice: boolean; combineShip: boolean; unmet?: InvoiceUnmetLine[];
 };
 
 // Dữ liệu Admin cấp cao xem khi duyệt giá đề xuất: giá gốc tra từ bảng giá của phiếu (không lưu trong kết quả phiếu).
@@ -300,7 +304,7 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
   const cur = O.currency === M.derivedCurrency && M.derivedCurrency ? M.derivedCurrency : base;
   const res: InvoiceResult = {
     currency: cur, items: [], fees: [], warnings: [], blockers: [], linePills: O.lines.map(() => []),
-    goods: 0, total: 0, pending: false, boxNote: null, plants: 0, hasManualPrice: false, combineShip: false,
+    goods: 0, total: 0, pending: false, boxNote: null, plants: 0, hasManualPrice: false, combineShip: false, unmet: O.unmet,
   };
   const fee = (label: string, amount: number, group: InvoiceFee["group"], extra: Partial<InvoiceFee> = {}) =>
     res.fees.push({ label, amount: roundCur(amount, cur), group, ...extra });
@@ -365,7 +369,7 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
     const item: InvoiceItem = {
       manual: false, code: p.code, name: p.name,
       spec: tc ? `TC bag of ${bag} plant${bag > 1 ? "s" : ""}` : p.spec,
-      qty, unit, sur: tc && bag === 1 ? sur : 0, nBags, amount, manualPrice, lineIndex: idx,
+      qty, unit, sur: tc && bag === 1 ? sur : 0, nBags, amount, manualPrice, lineIndex: idx, demandQty: l.demandQty,
     };
     res.items.push(item);
     tcByLine[idx] = { ...item, bag, tc, p };
@@ -375,7 +379,7 @@ export function computeInvoice(ctx: InvoiceContext, O: InvoiceInput): InvoiceRes
     if (!m.desc && !qty) continue;
     if (m.orderKey && unit <= 0) res.blockers.push(`${m.code || m.desc}: mã này không có giá trong bảng giá của đơn — nhập giá đề xuất thay đổi`);
     res.hasManualPrice = true;
-    res.items.push({ manual: true, code: m.code || "—", name: m.desc || "Cây nhập tay", spec: m.spec || "Rooted / cutting", qty, unit, sur: 0, nBags: 0, amount: roundCur(qty * unit, cur), manualPrice: true, lineIndex: null });
+    res.items.push({ manual: true, code: m.code || "—", name: m.desc || "Cây nhập tay", spec: m.spec || "Rooted / cutting", qty, unit, sur: 0, nBags: 0, amount: roundCur(qty * unit, cur), manualPrice: true, lineIndex: null, demandQty: m.demandQty });
   }
   res.goods = roundCur(res.items.reduce((a, i) => a + i.amount, 0), cur);
 

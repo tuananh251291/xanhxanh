@@ -99,11 +99,12 @@ export const invoiceInputSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
   lines: z.array(z.object({
     key: z.string().max(300), qty: num.min(0), bag: num, manualPrice: nnum,
-    shipCat: z.union([z.enum(shipCats), z.literal("")]), shipRate: nnum, orderKey: z.string().max(100).optional(),
+    shipCat: z.union([z.enum(shipCats), z.literal("")]), shipRate: nnum, orderKey: z.string().max(100).optional(), demandQty: num.optional(),
   })).max(300),
   manual: z.array(z.object({
-    code: z.string().max(50), desc: z.string().max(300), spec: z.string().max(200), qty: num.min(0), unit: num.min(0), shipRate: nnum, orderKey: z.string().max(100).optional(),
+    code: z.string().max(50), desc: z.string().max(300), spec: z.string().max(200), qty: num.min(0), unit: num.min(0), shipRate: nnum, orderKey: z.string().max(100).optional(), demandQty: num.optional(),
   })).max(100),
+  unmet: z.array(z.object({ orderKey: z.string().max(100), code: z.string().max(50), name: z.string().max(300), spec: z.string().max(200), demandQty: num })).max(300).optional(),
   us: z.object({
     shipmentDate: z.string().max(10), state: z.enum(US_STATES as [string, ...string[]]), resale: z.boolean(), ups: z.boolean(),
     boxMode: z.enum(["auto", "manual"]), boxes: z.array(z.object({ boxId: z.string(), count: num.min(0) })).max(30),

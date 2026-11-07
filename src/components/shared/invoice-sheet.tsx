@@ -13,6 +13,9 @@ export default function InvoiceSheet({
 }) {
   const r = result, cur = r.currency;
   const feeRows = view === "customer" ? customerFeeRows(r, kind) : r.fees;
+  // Số đáp ứng thấp hơn số khách đặt: thêm cột số đặt, đơn giá tính theo số đáp ứng.
+  const unmet = r.unmet ?? [];
+  const showDemand = unmet.length > 0 || r.items.some((i) => i.demandQty != null);
   return (
     <div className="invoice-sheet bg-card text-foreground text-sm border border-divider rounded-lg print:border-0 print:rounded-none">
       <div className="flex flex-wrap items-start justify-between gap-4 p-5 border-b border-divider">
@@ -44,14 +47,15 @@ export default function InvoiceSheet({
               <tr className="border-b border-border">
                 <th className="text-left py-2 pr-2 text-base font-bold">Code</th>
                 <th className="text-left py-2 pr-2 text-base font-bold">Product</th>
-                <th className="text-right py-2 pr-2 text-base font-bold">Qty</th>
+                {showDemand && <th className="text-right py-2 pr-2 text-base font-bold">Requested</th>}
+                <th className="text-right py-2 pr-2 text-base font-bold">{showDemand ? "Confirmed" : "Qty"}</th>
                 <th className="text-right py-2 pr-2 text-base font-bold">Unit price</th>
                 <th className="text-right py-2 text-base font-bold">Amount</th>
               </tr>
             </thead>
             <tbody>
               {r.items.length === 0 ? (
-                <tr><td colSpan={5} className="py-3 text-text-muted">No valid products yet.</td></tr>
+                <tr><td colSpan={showDemand ? 6 : 5} className="py-3 text-text-muted">No valid products yet.</td></tr>
               ) : r.items.map((i, k) => (
                 <tr key={k} className="border-b border-divider align-top">
                   <td className="py-2 pr-2 font-mono text-xs">{i.code}</td>
@@ -59,9 +63,20 @@ export default function InvoiceSheet({
                     {i.name}
                     <div className="text-xs text-text-muted">{i.spec}{i.sur ? ` · bag-1 surcharge ${fmtMoney(i.sur, cur)} × ${i.nBags}` : ""}</div>
                   </td>
+                  {showDemand && <td className="py-2 pr-2 text-right tabular-nums">{(i.demandQty ?? i.qty).toLocaleString("en-US")}</td>}
                   <td className="py-2 pr-2 text-right tabular-nums">{i.qty.toLocaleString("en-US")}</td>
                   <td className="py-2 pr-2 text-right tabular-nums">{fmtMoney(i.unit, cur)}</td>
                   <td className="py-2 text-right tabular-nums">{fmtMoney(i.amount, cur)}</td>
+                </tr>
+              ))}
+              {unmet.map((u) => (
+                <tr key={u.orderKey} className="border-b border-divider align-top text-text-muted">
+                  <td className="py-2 pr-2 font-mono text-xs">{u.code}</td>
+                  <td className="py-2 pr-2">{u.name}<div className="text-xs">{u.spec}</div></td>
+                  <td className="py-2 pr-2 text-right tabular-nums">{u.demandQty.toLocaleString("en-US")}</td>
+                  <td className="py-2 pr-2 text-right tabular-nums">0</td>
+                  <td className="py-2 pr-2 text-right">—</td>
+                  <td className="py-2 text-right tabular-nums">{fmtMoney(0, cur)}</td>
                 </tr>
               ))}
             </tbody>

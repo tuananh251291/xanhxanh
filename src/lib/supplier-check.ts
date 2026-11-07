@@ -6,6 +6,7 @@ import { getShipCutoffKey, toVnDateKey } from "@/lib/finished-stock-forecast";
 import { notifySupplier, notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
 import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm";
 import { repriceOrder, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
+import { syncInvoiceFromOrder } from "@/lib/invoice-save";
 import type { Prisma, UserRole } from "@prisma/client";
 
 // Sale bấm "Đã xác nhận / Chưa cọc" trên phiếu báo giá → đơn sang QL Kho TP kiểm tra đáp ứng. Đơn thiếu hàng: phần thiếu lưu ở OrderShortage
@@ -263,10 +264,16 @@ export async function sendSupplyResult(orderId: string) {
     if (full) await applyOrderConfirmation(full);
   }
   const missing = shortage - confirmed;
+  const invoiceSync = order.marketWarehouseId ? null : await syncInvoiceFromOrder(order.id);
+  const invoiceText = !invoiceSync
+    ? ""
+    : invoiceSync.ok
+      ? ` Phiếu báo giá ${invoiceSync.invoiceNo} đã tự theo số đáp ứng: tổng ${invoiceSync.before} → ${invoiceSync.after}.`
+      : ` Phiếu báo giá ${invoiceSync.invoiceNo} chưa tự cập nhật được (${invoiceSync.reason}): mở phiếu để sửa, hoặc huỷ đơn nếu khách không đồng ý.`;
   await createAlert({
     type: "ORDER_EDITED",
     title: `Đơn ${order.code}: QL Kho TP đã phản hồi đáp ứng`,
-    message: `${shortage > 0 ? `NCC đáp ứng ${confirmed.toLocaleString("vi-VN")}/${shortage.toLocaleString("vi-VN")} cây còn thiếu${missing > 0 ? `, vẫn thiếu ${missing.toLocaleString("vi-VN")} cây` : ""}` : "Đơn đủ hàng"}. ${missing > 0 ? " NCC không đáp ứng đủ: cập nhật phiếu báo giá (Sửa → Lấy lại dòng từ đơn)." : ""} Xác nhận lại với khách; đơn được giữ tới khi hết hạn — bấm Khách đã cọc khi khách đặt cọc.`,
+    message: `${shortage > 0 ? `NCC đáp ứng ${confirmed.toLocaleString("vi-VN")}/${shortage.toLocaleString("vi-VN")} cây còn thiếu${missing > 0 ? `, vẫn thiếu ${missing.toLocaleString("vi-VN")} cây` : ""}` : "Đơn đủ hàng"}. ${invoiceText} Xác nhận lại với khách; đơn được giữ tới khi hết hạn — bấm Khách đã cọc khi khách đặt cọc.`,
     userId: order.saleId,
     relatedId: order.id,
     relatedType: "Order",

@@ -3,7 +3,7 @@
 import type { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createAlert } from "@/lib/inventory";
-import { computeInvoice, fmtMoney, type InvoiceInput, type InvoiceResult } from "@/lib/invoice-engine";
+import { computeInvoice, fmtMoney, type InvoiceInput, type InvoiceItem, type InvoiceResult } from "@/lib/invoice-engine";
 import { invoiceSaveSchema, loadInvoiceContext, nextInvoiceNo, canViewAllInvoices } from "@/lib/invoice";
 import { canSaleViewOrder } from "@/lib/customer-manager";
 import { dateToDateKey, vnDateKey } from "@/lib/price-list-shared";
@@ -28,7 +28,32 @@ function inputWithQuantities(old: InvoiceInput, quantities: Record<string, numbe
   return left.size > 0 ? null : input;
 }
 
-const orderInvoiceFields = { id: true, invoiceNo: true, status: true, invoiceDate: true, marketId: true, total: true, currency: true, input: true, order: { select: { priceListId: true } } } as const;
+// Sau khi QL phản hồi, phiếu giữ số khách đặt của phiếu trước: dòng còn số thấp hơn ghi demandQty, dòng về 0 chuyển sang unmet.
+function carryDemand(old: InvoiceInput, oldItems: InvoiceItem[], next: InvoiceInput): InvoiceInput {
+  const before = new Map<string, { demand: number; code: string; name: string; spec: string }>();
+  old.lines.forEach((l, index) => {
+    if (!l.orderKey) return;
+    const item = oldItems.find((i) => i.lineIndex === index);
+    before.set(l.orderKey, { demand: l.demandQty ?? l.qty, code: item?.code ?? l.key, name: item?.name ?? l.key, spec: item?.spec ?? "" });
+  });
+  for (const m of old.manual) if (m.orderKey) before.set(m.orderKey, { demand: m.demandQty ?? m.qty, code: m.code, name: m.desc, spec: m.spec });
+
+  const mark = <T extends { orderKey?: string; qty: number; demandQty?: number }>(row: T): T => {
+    const copy = { ...row };
+    delete copy.demandQty;
+    const demand = row.orderKey ? before.get(row.orderKey)?.demand : undefined;
+    return demand != null && demand > row.qty ? { ...copy, demandQty: demand } : copy;
+  };
+  const lines = next.lines.map(mark), manual = next.manual.map(mark);
+  const kept = new Set([...lines, ...manual].map((r) => r.orderKey));
+  const unmet = [
+    ...(old.unmet ?? []).filter((u) => !kept.has(u.orderKey)),
+    ...[...before].filter(([key]) => !kept.has(key)).map(([orderKey, b]) => ({ orderKey, code: b.code, name: b.name, spec: b.spec, demandQty: b.demand })),
+  ];
+  return { ...next, lines, manual, unmet: unmet.length > 0 ? unmet : undefined };
+}
+
+const orderInvoiceFields = { id: true, invoiceNo: true, status: true, invoiceDate: true, marketId: true, total: true, currency: true, input: true, result: true, order: { select: { priceListId: true } } } as const;
 
 // Lỗi mới phát sinh nếu đơn đổi số theo `deltas` (VD dưới số lượng tối thiểu, không có giá bậc). Lỗi có sẵn trên phiếu không tính.
 export async function invoiceBlockersAfterDecrease(orderId: string, deltas: { key: string; delta: number }[]): Promise<string[]> {
@@ -47,8 +72,9 @@ export async function invoiceBlockersAfterDecrease(orderId: string, deltas: { ke
   return computeInvoice(ctx, input).blockers.filter((b) => !existing.has(b));
 }
 
-// QL giảm số lượng sau khi đã phản hồi: phiếu của đơn tự theo số mới và tính lại bậc giá. Giữ nguyên trạng thái duyệt vì QL chỉ
-// giảm số, giá đề xuất đã duyệt vẫn áp dụng. Phiếu còn lỗi có sẵn thì để nguyên, người gọi báo Sale.
+// QL gửi kết quả hoặc giảm số sau khi đã phản hồi: phiếu của đơn tự theo số đáp ứng và tính lại bậc giá, giữ số khách đặt để hiện cột
+// Nhu cầu. Giữ nguyên trạng thái duyệt, giá đề xuất đã duyệt vẫn áp dụng. Phiếu có lỗi với số mới thì để nguyên, người gọi báo Sale.
+// Phiếu đã khớp đơn thì không làm gì, trả null.
 export type InvoiceSyncResult = { ok: true; invoiceNo: string; before: string; after: string } | { ok: false; invoiceNo: string; reason: string };
 
 export async function syncInvoiceFromOrder(orderId: string): Promise<InvoiceSyncResult | null> {
@@ -56,8 +82,11 @@ export async function syncInvoiceFromOrder(orderId: string): Promise<InvoiceSync
   const prefill = inv ? await buildOrderInvoicePrefill(orderId) : null;
   if (!inv || !prefill) return null;
 
-  const input = inputWithQuantities(inv.input as unknown as InvoiceInput, prefill.quantities);
-  if (!input) return { ok: false, invoiceNo: inv.invoiceNo, reason: "phiếu thiếu dòng so với đơn" };
+  const old = inv.input as unknown as InvoiceInput;
+  if (invoiceMatchesOrder(old, prefill)) return null;
+  const followed = inputWithQuantities(old, prefill.quantities);
+  if (!followed) return { ok: false, invoiceNo: inv.invoiceNo, reason: "phiếu thiếu dòng so với đơn" };
+  const input = carryDemand(old, (inv.result as unknown as InvoiceResult).items, followed);
 
   const ctx = await loadInvoiceContext(inv.marketId, dateToDateKey(inv.invoiceDate), undefined, inv.order?.priceListId);
   if (!ctx) return { ok: false, invoiceNo: inv.invoiceNo, reason: "không tìm thấy thị trường" };
@@ -109,12 +138,19 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
       }
     }
   }
+  let invoiceInput: InvoiceInput = data.input;
+  if (existingId && data.orderId) {
+    const replied = await prisma.order.findUnique({ where: { id: data.orderId }, select: { supplyResultSentAt: true } });
+    const existing = replied?.supplyResultSentAt ? await prisma.invoice.findUnique({ where: { id: existingId }, select: { input: true, result: true } }) : null;
+    if (existing) invoiceInput = carryDemand(existing.input as unknown as InvoiceInput, (existing.result as unknown as InvoiceResult).items, data.input);
+  }
+
   const profile = await prisma.companyProfile.findUnique({ where: { id: data.companyProfileId }, select: { isActive: true } });
   if (!profile?.isActive) return { ok: false, status: 400, message: "Thông tin công ty không hợp lệ" };
 
   const ctx = await loadInvoiceContext(marketId, invoiceDate, undefined, orderPriceListId);
   if (!ctx) return { ok: false, status: 400, message: "Không tìm thấy thị trường" };
-  const result: InvoiceResult = computeInvoice(ctx, data.input);
+  const result: InvoiceResult = computeInvoice(ctx, invoiceInput);
   if (result.blockers.length) return { ok: false, status: 400, message: "Phiếu báo giá còn lỗi — xử lý trước khi lưu", blockers: result.blockers };
   if (!result.items.length) return { ok: false, status: 400, message: "Phiếu báo giá chưa có dòng hàng nào" };
 
@@ -123,7 +159,7 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
     invoiceDate: new Date(`${invoiceDate}T00:00:00.000Z`), marketId, currency: result.currency, priceListId: ctx.priceList?.id ?? null,
     customerId: data.customerId, customerName: data.customerName, customerAddress: data.customerAddress || null, customerEmail: data.customerEmail || null,
     orderId: data.orderId, companyProfileId: data.companyProfileId, note: data.note || null,
-    input: data.input as object, result: result as unknown as object, total: result.total, hasManualPrice: result.hasManualPrice,
+    input: invoiceInput as object, result: result as unknown as object, total: result.total, hasManualPrice: result.hasManualPrice,
     status: status as "PENDING_APPROVAL" | "APPROVED",
     rejectionReason: null,
     decidedById: null, decidedAt: null,
