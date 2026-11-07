@@ -32,11 +32,14 @@ export async function saveInvoice(user: User, data: SaveData, existingId: string
     marketId = c.marketId; // thị trường phiếu báo giá = thị trường của khách
   }
   if (data.orderId) {
-    const o = await prisma.order.findUnique({ where: { id: data.orderId }, select: { id: true, status: true, customerId: true, saleId: true, pricedAt: true, priceListId: true, salesMarketId: true } });
+    const o = await prisma.order.findUnique({ where: { id: data.orderId }, select: { id: true, status: true, customerId: true, saleId: true, pricedAt: true, priceListId: true, salesMarketId: true, customerConfirmedAt: true } });
     if (!o) return { ok: false, status: 400, message: "Không tìm thấy đơn hàng" };
     if (!allCustomers && o.saleId !== user.id && !(await canSaleViewOrder(user.id, o.id))) return { ok: false, status: 403, message: "Không có quyền với đơn hàng này" };
     if (o.status !== "HELD" && o.status !== "DRAFT") return { ok: false, status: 400, message: "Chỉ gắn phiếu báo giá cho đơn đang giữ (chưa xác nhận)" };
     if (o.customerId && data.customerId && o.customerId !== data.customerId) return { ok: false, status: 400, message: "Đơn hàng thuộc khách hàng khác" };
+    if (!existingId && o.customerConfirmedAt && (await prisma.invoice.count({ where: { orderId: o.id, status: { not: "CANCELLED" } } })) > 0) {
+      return { ok: false, status: 400, message: "Đơn đã chuyển Đã xác nhận / Chưa cọc và đã có phiếu báo giá — không lập thêm phiếu được" };
+    }
     if (o.pricedAt && o.salesMarketId) {
       marketId = o.salesMarketId;
       orderPriceListId = o.priceListId;

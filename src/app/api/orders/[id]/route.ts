@@ -16,11 +16,10 @@ import { canEditOrderItems } from "@/lib/order-edit";
 import { generateOrderCode } from "@/lib/codes";
 import { INVOICE_REQUIRED_FROM, isInvoiceExemptForConfirm } from "@/lib/invoice";
 import { buildOrderInvoicePrefill, invoiceMatchesOrder } from "@/lib/order-pricing";
-import { notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
 import type { InvoiceInput } from "@/lib/invoice-engine";
 
 const patchSchema = z.object({
-  action: z.enum(["customer-confirm", "confirm", "ship", "cancel", "assign", "ack", "reschedule"]),
+  action: z.enum(["confirm", "ship", "cancel", "assign", "ack", "reschedule"]),
   // action="confirm" — "Khách đã cọc": số tiền + ngày cọc (yyyy-MM-dd), đơn Kho thị trường không cần.
   depositAmount: z.number().min(0).optional(),
   depositedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -200,7 +199,7 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
   }
   const shortageCount = await prisma.orderShortage.count({ where: { orderId } });
   if (!order.marketWarehouseId && !order.customerConfirmedAt) {
-    return NextResponse.json({ message: "Cần bấm Khách xác nhận / Chưa cọc để gửi đơn cho Quản lý kho thành phẩm kiểm tra đáp ứng trước" }, { status: 400 });
+    return NextResponse.json({ message: "Cần lập phiếu báo giá và bấm Đã xác nhận / Chưa cọc trên phiếu để gửi đơn cho Quản lý kho thành phẩm trước" }, { status: 400 });
   }
   if (!order.supplyResultSentAt && (!order.marketWarehouseId || shortageCount > 0)) {
     return NextResponse.json({ message: "Đơn đang chờ Quản lý kho thành phẩm phản hồi đáp ứng — chưa ghi nhận cọc được" }, { status: 400 });
@@ -231,29 +230,6 @@ async function confirmOrder(orderId: string, user: { id: string; role: string | 
 
   const processingRequestCount = await applyOrderConfirmation(order, deposit);
   return NextResponse.json({ success: true, processingRequestCount });
-}
-
-// "Khách xác nhận / Chưa cọc": khách đồng ý mua, đơn chuyển sang Quản lý kho thành phẩm kiểm tra đáp ứng (src/lib/supplier-check.ts).
-async function customerConfirmOrder(orderId: string, user: { id: string; role: string | null }) {
-  if (!canActAsSale(user.role)) return NextResponse.json({ message: "Chỉ NV bán hàng mới dùng được chức năng này" }, { status: 403 });
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: { id: true, code: true, status: true, saleId: true, holdUntil: true, customerConfirmedAt: true, sale: { select: { workplaceWarehouseId: true } }, _count: { select: { shortages: true } } },
-  });
-  if (!order) return NextResponse.json({ message: "Không tìm thấy đơn hàng" }, { status: 404 });
-  if (user.role === "SALE" && order.saleId !== user.id) return NextResponse.json({ message: "Chỉ được thao tác đơn hàng của chính mình" }, { status: 403 });
-  if (order.status !== "HELD") return NextResponse.json({ message: "Đơn hàng không ở trạng thái Đang giữ" }, { status: 400 });
-  if (order.customerConfirmedAt) return NextResponse.json({ message: "Đơn đã gửi Quản lý kho thành phẩm" }, { status: 400 });
-  if (order.holdUntil && order.holdUntil < new Date()) return NextResponse.json({ message: "Đơn đã quá hạn xác nhận và bị huỷ — tạo lại đơn" }, { status: 400 });
-  await prisma.order.update({ where: { id: order.id }, data: { customerConfirmedAt: new Date(), holdUntil: null } });
-  await notifySupplierCheckManagers(
-    `Đơn ${order.code}: khách xác nhận, chưa cọc`,
-    `${order._count.shortages > 0 ? "Đơn thiếu hàng — cần gửi Đơn kiểm tra cho NCC" : "Đơn đủ hàng — kiểm tra lại"} rồi gửi kết quả cho NV bán hàng trong 1 ngày làm việc, xem trang Kiểm tra NCC`,
-    order.id,
-    "Order",
-    order.sale.workplaceWarehouseId
-  );
-  return NextResponse.json({ success: true });
 }
 
 // "Xóa đơn tạm giữ" — Sale tự huỷ đơn của mình khi còn HELD (VD khách đổi ý trước khi xác nhận), xử lý
@@ -626,7 +602,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) return NextResponse.json({ message: "Dữ liệu không hợp lệ" }, { status: 400 });
 
   try {
-    if (parsed.data.action === "customer-confirm") return await customerConfirmOrder(id, session.user);
     if (parsed.data.action === "confirm") return await confirmOrder(id, session.user, parsed.data);
     if (parsed.data.action === "cancel") return await cancelOrder(id, session.user);
     if (parsed.data.action === "assign") return await assignOrder(id, session.user, parsed.data.assignedToId);

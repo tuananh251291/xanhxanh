@@ -8,7 +8,7 @@ import { applyOrderConfirmation, loadOrderForConfirm } from "@/lib/order-confirm
 import { repriceOrder, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
 import type { Prisma, UserRole } from "@prisma/client";
 
-// Sale bấm "Khách xác nhận / Chưa cọc" → đơn sang QL Kho TP kiểm tra đáp ứng. Đơn thiếu hàng: phần thiếu lưu ở OrderShortage
+// Sale bấm "Đã xác nhận / Chưa cọc" trên phiếu báo giá → đơn sang QL Kho TP kiểm tra đáp ứng. Đơn thiếu hàng: phần thiếu lưu ở OrderShortage
 // (không giữ chỗ tồn), QL gửi Đơn kiểm tra cho NCC → NCC báo số đáp ứng + giữ hàng. QL gửi kết quả cho Sale (hạn giữ đơn bắt
 // đầu từ đây, mọi đơn đều qua bước này) → khách đồng ý và cọc → QL đổi thành Đặt hàng: tạo Phiếu
 // dự kiến nhập (A3) + dòng đơn chưa có lô (A4) cùng lúc, nên tồn dự kiến không bị âm giả → NCC giao theo phiếu, số thực
@@ -266,7 +266,7 @@ export async function sendSupplyResult(orderId: string) {
   await createAlert({
     type: "ORDER_EDITED",
     title: `Đơn ${order.code}: QL Kho TP đã phản hồi đáp ứng`,
-    message: `${shortage > 0 ? `NCC đáp ứng ${confirmed.toLocaleString("vi-VN")}/${shortage.toLocaleString("vi-VN")} cây còn thiếu${missing > 0 ? `, vẫn thiếu ${missing.toLocaleString("vi-VN")} cây` : ""}` : "Đơn đủ hàng"}. Xác nhận lại với khách; đơn được giữ tới khi hết hạn — bấm Khách đã cọc khi khách đặt cọc.`,
+    message: `${shortage > 0 ? `NCC đáp ứng ${confirmed.toLocaleString("vi-VN")}/${shortage.toLocaleString("vi-VN")} cây còn thiếu${missing > 0 ? `, vẫn thiếu ${missing.toLocaleString("vi-VN")} cây` : ""}` : "Đơn đủ hàng"}. ${missing > 0 ? " NCC không đáp ứng đủ: cập nhật phiếu báo giá (Sửa → Lấy lại dòng từ đơn)." : ""} Xác nhận lại với khách; đơn được giữ tới khi hết hạn — bấm Khách đã cọc khi khách đặt cọc.`,
     userId: order.saleId,
     relatedId: order.id,
     relatedType: "Order",

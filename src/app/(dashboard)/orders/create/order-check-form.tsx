@@ -327,7 +327,7 @@ export default function OrderCheckForm({
       }
       const holdLabel = sendToMarketWarehouse
         ? "đã gửi Kho thị trường"
-        : `bấm Khách xác nhận / Chưa cọc trong ${holdDays} ngày, quá hạn đơn tự huỷ`;
+        : `lập phiếu báo giá và bấm Đã xác nhận / Chưa cọc trong ${holdDays} ngày, quá hạn đơn tự huỷ`;
       setShortages(null);
       toast.success(acceptShortage && sendToMarketWarehouse ? `Đã tạo đơn ${json.code} — phần thiếu đã gửi Quản lý kho thành phẩm kiểm tra NCC` : `Đã tạo đơn ${json.code} — ${holdLabel}`);
       if (json.priceIssueCount > 0) {
@@ -768,8 +768,8 @@ export default function OrderCheckForm({
             {holdDays && (
               <p className="text-xs text-text-secondary">
                 {selectedCustomer?.customerGroup === "KHACH_CONG_TY_LON"
-                  ? `Cần bấm Khách xác nhận / Chưa cọc trong ${holdDays} ngày, quá hạn đơn tự huỷ. Khách công ty lớn: hạn giữ 5 tháng tính từ khi QL Kho TP phản hồi đáp ứng.`
-                  : `Cần bấm Khách xác nhận / Chưa cọc trong ${holdDays} ngày, quá hạn đơn tự huỷ. Hạn giữ ${holdDays} ngày tính từ khi QL Kho TP phản hồi đáp ứng.`}
+                  ? `Cần lập phiếu báo giá và bấm Đã xác nhận / Chưa cọc trong ${holdDays} ngày, quá hạn đơn tự huỷ. Khách công ty lớn: hạn giữ 5 tháng tính từ khi QL Kho TP phản hồi đáp ứng.`
+                  : `Cần lập phiếu báo giá và bấm Đã xác nhận / Chưa cọc trong ${holdDays} ngày, quá hạn đơn tự huỷ. Hạn giữ ${holdDays} ngày tính từ khi QL Kho TP phản hồi đáp ứng.`}
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

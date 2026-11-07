@@ -5,7 +5,10 @@ import { auth } from "@/lib/auth";
 import { createAlert } from "@/lib/inventory";
 import { canApproveInvoice, canCreateInvoice, invoiceSaveSchema, invoiceScopeFor } from "@/lib/invoice";
 import { saveInvoice } from "@/lib/invoice-save";
-import { clearOrderManualPrices, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
+import { buildOrderInvoicePrefill, clearOrderManualPrices, invoiceMatchesOrder, syncOrderPricesFromInvoice } from "@/lib/order-pricing";
+import { getInvoiceLock } from "@/lib/invoice-lock";
+import { notifySupplierCheckManagers } from "@/lib/supplier-check-notify";
+import type { InvoiceInput } from "@/lib/invoice-engine";
 
 async function findVisible(id: string, user: { id: string; role: string | null | undefined }) {
   return prisma.invoice.findFirst({
@@ -34,9 +37,11 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("approve") }),
   z.object({ action: z.literal("reject"), reason: z.string().trim().min(1, "Nhập lý do từ chối").max(500) }),
   z.object({ action: z.literal("cancel") }),
+  z.object({ action: z.literal("send-to-manager") }),
 ]);
 
-// update: người lập sửa (invoice gắn đơn đã xác nhận thì khoá) — tính lại, có giá tay thì chờ duyệt lại.
+// update: người lập sửa (khoá theo getInvoiceLock) — tính lại, có giá tay thì chờ duyệt lại.
+// send-to-manager: "Đã xác nhận / Chưa cọc": đơn sang QL Kho TP kiểm tra đáp ứng (src/lib/supplier-check.ts), phiếu khoá.
 // approve/reject: Admin cấp cao duyệt giá nhập tay. cancel: người lập / Admin cấp cao huỷ (đơn đã xác nhận thì khoá).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -47,7 +52,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const inv = await findVisible(id, session.user);
   if (!inv) return NextResponse.json({ message: "Không tìm thấy phiếu báo giá" }, { status: 404 });
   const body = parsed.data;
-  const orderLocked = !!inv.order && inv.order.status !== "HELD" && inv.order.status !== "DRAFT" && inv.order.status !== "CANCELLED";
 
   if (body.action === "approve" || body.action === "reject") {
     if (!canApproveInvoice(session.user.role)) return NextResponse.json({ message: "Chỉ Admin cấp cao được duyệt" }, { status: 403 });
@@ -72,11 +76,41 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const isOwner = inv.createdBy.id === session.user.id;
+  const lock = await getInvoiceLock(inv);
+
+  if (body.action === "send-to-manager") {
+    const order = inv.orderId
+      ? await prisma.order.findUnique({ where: { id: inv.orderId }, select: { id: true, code: true, saleId: true, holdUntil: true, sale: { select: { workplaceWarehouseId: true } }, _count: { select: { shortages: true } } } })
+      : null;
+    const role = session.user.role;
+    const allowed = role === "QUAN_LY_KHO_THANH_PHAM" || (role === "SALE" && (isOwner || order?.saleId === session.user.id));
+    if (!allowed) return NextResponse.json({ message: "Chỉ NV bán hàng của đơn hoặc QL Kho TP được chuyển trạng thái" }, { status: 403 });
+    if (!order) return NextResponse.json({ message: "Phiếu chưa gắn đơn — tạo đơn hàng rồi lập phiếu từ đơn" }, { status: 400 });
+    if (!lock.canSend) return NextResponse.json({ message: lock.notice ?? "Phiếu không chuyển trạng thái được" }, { status: 400 });
+    if (order.holdUntil && order.holdUntil < new Date()) return NextResponse.json({ message: "Đơn đã quá hạn xác nhận và bị huỷ — tạo lại đơn" }, { status: 400 });
+    const prefill = await buildOrderInvoicePrefill(order.id);
+    if (prefill && !invoiceMatchesOrder(inv.input as unknown as InvoiceInput, prefill)) {
+      return NextResponse.json({ message: "Phiếu không khớp đơn (đơn có thể vừa được sửa) — bấm Sửa → Lấy lại dòng từ đơn rồi lưu lại" }, { status: 400 });
+    }
+    const done = await prisma.order.updateMany({ where: { id: order.id, status: "HELD", customerConfirmedAt: null }, data: { customerConfirmedAt: new Date(), holdUntil: null } });
+    if (done.count === 0) return NextResponse.json({ message: "Đơn đã được chuyển trạng thái — tải lại trang" }, { status: 409 });
+    await notifySupplierCheckManagers(
+      `Đơn ${order.code}: đã xác nhận, chưa cọc`,
+      `${order._count.shortages > 0 ? "Đơn thiếu hàng — cần gửi Đơn kiểm tra cho NCC" : "Đơn đủ hàng — kiểm tra lại"} rồi gửi kết quả cho NV bán hàng trong 1 ngày làm việc, xem trang Kiểm tra NCC`,
+      order.id,
+      "Order",
+      order.sale.workplaceWarehouseId
+    );
+    return NextResponse.json({ success: true });
+  }
+
   if (!(isOwner && canCreateInvoice(session.user.role)) && session.user.role !== "SUPER_ADMIN") {
     return NextResponse.json({ message: "Chỉ người lập phiếu báo giá được sửa/huỷ" }, { status: 403 });
   }
-  if (orderLocked) return NextResponse.json({ message: `Đơn ${inv.order!.code} đã xác nhận — không sửa/huỷ phiếu báo giá được nữa` }, { status: 400 });
   if (inv.status === "CANCELLED") return NextResponse.json({ message: "Phiếu báo giá đã huỷ" }, { status: 400 });
+  if (!(body.action === "cancel" ? lock.canCancel : lock.canEdit)) {
+    return NextResponse.json({ message: lock.notice ?? "Phiếu báo giá đã khoá — không sửa/huỷ được nữa" }, { status: 400 });
+  }
 
   if (body.action === "cancel") {
     await prisma.invoice.update({ where: { id }, data: { status: "CANCELLED" } });

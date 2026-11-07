@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { canApproveInvoice, canCreateInvoice, canViewAllInvoices, invoiceScopeFor, loadInvoiceContext } from "@/lib/invoice";
 import { invoiceApprovalSummary, type InvoiceInput, type InvoiceResult } from "@/lib/invoice-engine";
+import { getInvoiceLock } from "@/lib/invoice-lock";
 import InvoiceDetail from "./invoice-detail";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -22,8 +23,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     },
   });
   if (!inv) notFound();
-  const orderLocked = !!inv.order && !["HELD", "DRAFT", "CANCELLED"].includes(inv.order.status);
+  const lock = await getInvoiceLock(inv);
   const isOwner = inv.createdBy.id === session.user.id;
+  const canChange = (isOwner && canCreateInvoice(role)) || role === "SUPER_ADMIN";
   const invoiceDate = inv.invoiceDate.toISOString().slice(0, 10);
   const input = inv.input as unknown as InvoiceInput;
   const result = inv.result as unknown as InvoiceResult;
@@ -53,7 +55,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       }}
       approvalSummary={approvalSummary}
       canApprove={canApprove}
-      canEdit={!orderLocked && inv.status !== "CANCELLED" && ((isOwner && canCreateInvoice(role)) || role === "SUPER_ADMIN")}
+      canEdit={lock.canEdit && canChange}
+      canCancel={lock.canCancel && canChange}
+      canSend={lock.canSend && (role === "QUAN_LY_KHO_THANH_PHAM" || role === "SALE")}
+      lockNotice={lock.notice}
     />
   );
 }

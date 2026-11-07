@@ -35,7 +35,7 @@ export async function ensureExpiredOrdersCancelled(): Promise<void> {
 
 const HOLD_REMINDER_MS = 24 * 60 * 60 * 1000;
 
-// Đơn chưa bấm "Khách xác nhận / Chưa cọc": báo Sale trước 1 ngày, mỗi đơn 1 lần. Chạy định kì ở src/instrumentation-node.ts.
+// Đơn chưa chuyển "Đã xác nhận / Chưa cọc": báo Sale trước 1 ngày, mỗi đơn 1 lần. Chạy định kì ở src/instrumentation-node.ts.
 export async function sendOrderHoldReminders(now: Date = new Date()): Promise<void> {
   const expiring = await prisma.order.findMany({
     where: { status: "HELD", customerConfirmedAt: null, holdUntil: { gt: now, lte: new Date(now.getTime() + HOLD_REMINDER_MS) } },

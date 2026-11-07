@@ -93,7 +93,10 @@ export async function buildOrderInvoicePrefill(orderId: string): Promise<OrderIn
     where: { id: orderId },
     select: {
       pricedAt: true, priceListId: true,
-      // Phần NCC đã xác nhận nhưng chưa đặt hàng chưa nằm trong dòng đơn — phiếu vẫn phải có, khách cọc theo tổng sẽ nhận.
+      // Phần thiếu chưa nằm trong dòng đơn. Trước khi QL phản hồi: báo giá đủ số khách đặt. Sau đó: theo số NCC đã xác nhận mà chưa
+      // đặt hàng (đã đặt thì đã thành dòng đơn), khách cọc theo tổng sẽ nhận.
+      supplyResultSentAt: true,
+      shortages: { select: { plantTypeId: true, stageCode: true, quantity: true, plantType: { select: { code: true, name: true } } } },
       supplierChecks: { where: { status: "CONFIRMED" }, select: { items: { select: { plantTypeId: true, stageCode: true, confirmedQuantity: true, plantType: { select: { code: true, name: true } } } } } },
       items: { select: { ...ITEM_FIELDS, plantType: { select: { code: true, name: true } }, lot: { select: { plantTypeId: true, stageCode: true, plantType: { select: { code: true, name: true } } } } } },
     },
@@ -115,8 +118,11 @@ export async function buildOrderInvoicePrefill(orderId: string): Promise<OrderIn
     });
   }
 
-  for (const item of order.supplierChecks.flatMap((c) => c.items)) {
-    const quantity = item.confirmedQuantity ?? 0;
+  const outsideItems = order.supplyResultSentAt
+    ? order.supplierChecks.flatMap((c) => c.items).map((i) => ({ ...i, quantity: i.confirmedQuantity ?? 0 }))
+    : order.shortages;
+  for (const item of outsideItems) {
+    const quantity = item.quantity;
     if (quantity <= 0) continue;
     const key = orderLineKey(item);
     const prev = groups.get(key);

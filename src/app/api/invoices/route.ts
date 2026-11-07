@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   const status = sp.get("status");
   const month = sp.get("month");
   const where: Record<string, unknown> = { ...(await invoiceScopeFor(session.user)) };
-  if (status && ["PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"].includes(status)) where.status = status;
+  if (status === "SENT") where.order = { customerConfirmedAt: { not: null } };
+  else if (status && ["PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"].includes(status)) where.status = status;
   if (month && /^\d{4}-\d{2}$/.test(month)) {
     const [y, m] = month.split("-").map(Number);
     where.invoiceDate = { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
       id: true, invoiceNo: true, invoiceDate: true, currency: true, total: true, status: true, hasManualPrice: true,
       customerName: true, createdAt: true, rejectionReason: true,
       market: { select: { code: true, name: true } },
-      order: { select: { id: true, code: true, status: true } },
+      order: { select: { id: true, code: true, status: true, customerConfirmedAt: true } },
       createdBy: { select: { name: true } },
     },
   });

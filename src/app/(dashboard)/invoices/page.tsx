@@ -17,7 +17,7 @@ export default async function InvoicesPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Wallet className="w-6 h-6 text-primary-strong" /> Phiếu báo giá</h1>
-          <p className="text-text-secondary text-sm mt-1">Báo giá độc lập hoặc gắn đơn đang giữ. Đơn hàng cần phiếu báo giá đã duyệt mới xác nhận được.</p>
+          <p className="text-text-secondary text-sm mt-1">Phiếu chưa chuyển trạng thái sửa và huỷ được. Phiếu lập từ đơn: khi khách đồng ý, mở phiếu bấm Đã xác nhận / Chưa cọc để gửi QL Kho TP, sau đó phiếu khoá.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {shipments && (

@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
     salesMarketId = m.id;
   }
 
-  // Chờ Sale bấm Khách xác nhận / Chưa cọc: quá số ngày giữ của NV bán hàng phụ trách đơn thì tự huỷ. Bấm xong hạn này bỏ, hạn
+  // Chờ Sale bấm Đã xác nhận / Chưa cọc (trên phiếu báo giá): quá số ngày giữ của NV bán hàng phụ trách đơn thì tự huỷ. Bấm xong hạn này bỏ, hạn
   // giữ mới tính từ khi Quản lý kho thành phẩm phản hồi (sendSupplyResult). Đơn Kho thị trường không có bước này.
   const orderSaleId = customer ? customer.assignedToId! : freeCustomer ? freeCustomer.saleId : session.user.id;
   const saleHoldDays = marketWarehouse ? null : (await prisma.user.findUnique({ where: { id: orderSaleId }, select: { holdDays: true } }))?.holdDays;
@@ -324,7 +324,7 @@ export async function POST(req: NextRequest) {
       { isolationLevel: "Serializable", timeout: 30000, maxWait: 10000 }
     );
 
-    // Đơn khách hàng chỉ sang Quản lý kho thành phẩm khi Sale bấm Khách xác nhận / Chưa cọc; đơn Kho thị trường không có bước đó.
+    // Đơn khách hàng chỉ sang Quản lý kho thành phẩm khi Sale bấm Đã xác nhận / Chưa cọc trên phiếu báo giá; đơn Kho thị trường không có bước đó.
     if (marketWarehouse && orderShortageTotal > 0) {
       await notifySupplierCheckManagers(
         `Đơn ${order.code} thiếu ${orderShortageTotal.toLocaleString("vi-VN")} cây`,

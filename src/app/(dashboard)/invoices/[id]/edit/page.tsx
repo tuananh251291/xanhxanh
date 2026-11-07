@@ -5,6 +5,7 @@ import { ArrowLeft, Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { canCreateInvoice, invoiceScopeFor } from "@/lib/invoice";
 import type { InvoiceInput } from "@/lib/invoice-engine";
+import { getInvoiceLock } from "@/lib/invoice-lock";
 import InvoiceForm from "../../invoice-form";
 import { loadInvoiceFormData, vnToday } from "../../form-data";
 
@@ -13,10 +14,10 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
   const role = session?.user?.role ?? null;
   if (!session?.user || !(canCreateInvoice(role))) redirect("/dashboard");
   const { id } = await params;
-  const inv = await prisma.invoice.findFirst({ where: { id, ...(await invoiceScopeFor(session.user)) }, include: { order: { select: { status: true } } } });
+  const inv = await prisma.invoice.findFirst({ where: { id, ...(await invoiceScopeFor(session.user)) }, });
   if (!inv) notFound();
-  const locked = inv.status === "CANCELLED" || (inv.order && !["HELD", "DRAFT", "CANCELLED"].includes(inv.order.status));
-  if (locked || (inv.createdById !== session.user.id && role !== "SUPER_ADMIN")) redirect(`/invoices/${id}`);
+  const { canEdit } = await getInvoiceLock(inv);
+  if (!canEdit || (inv.createdById !== session.user.id && role !== "SUPER_ADMIN")) redirect(`/invoices/${id}`);
   const data = await loadInvoiceFormData(session.user);
   // Đơn đang gắn có thể không còn trong danh sách đơn đang giữ của người sửa — vẫn giữ để không mất liên kết.
   return (

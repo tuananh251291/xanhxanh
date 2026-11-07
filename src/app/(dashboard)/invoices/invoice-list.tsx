@@ -12,7 +12,7 @@ import { fmtMoney } from "@/lib/invoice-engine";
 type Row = {
   id: string; invoiceNo: string; invoiceDate: string; currency: string; total: number; status: string; hasManualPrice: boolean;
   customerName: string; rejectionReason: string | null;
-  market: { code: string; name: string }; order: { id: string; code: string; status: string } | null; createdBy: { name: string };
+  market: { code: string; name: string }; order: { id: string; code: string; status: string; customerConfirmedAt: string | null } | null; createdBy: { name: string };
 };
 export const INVOICE_STATUS: Record<string, { label: string; variant: "completed" | "in-progress" | "overdue" | "outline" }> = {
   APPROVED: { label: "Đã duyệt", variant: "completed" },
@@ -39,7 +39,7 @@ export default function InvoiceList({ canApprove }: { canApprove: boolean }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center">
-        {[["", "Tất cả"], ["PENDING_APPROVAL", "Chờ duyệt giá"], ["APPROVED", "Đã duyệt"], ["REJECTED", "Bị từ chối"], ["CANCELLED", "Đã huỷ"]].map(([v, l]) => (
+        {[["", "Tất cả"], ["PENDING_APPROVAL", "Chờ duyệt giá"], ["APPROVED", "Đã duyệt"], ["SENT", "Đã xác nhận / Chưa cọc"], ["REJECTED", "Bị từ chối"], ["CANCELLED", "Đã huỷ"]].map(([v, l]) => (
           <button key={v} type="button" onClick={() => setStatus(v)}
             className={`rounded-full px-3 py-1 text-sm border ${status === v ? "bg-primary-light text-primary-strong border-primary-light font-bold" : "border-border text-text-secondary"}`}>{l}</button>
         ))}
@@ -72,6 +72,8 @@ export default function InvoiceList({ canApprove }: { canApprove: boolean }) {
                       <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmtMoney(r.total, r.currency)}</td>
                       <td className="px-3 py-2">
                         <Badge variant={INVOICE_STATUS[r.status]?.variant ?? "outline"}>{INVOICE_STATUS[r.status]?.label ?? r.status}</Badge>
+                        {r.order?.customerConfirmedAt && r.order.status === "HELD" && r.status !== "CANCELLED" && <Badge variant="info" className="block w-fit mt-1">Đã xác nhận / Chưa cọc</Badge>}
+                        {r.order?.status === "CONFIRMED" && r.status !== "CANCELLED" && <Badge variant="completed" className="block w-fit mt-1">Khách đã cọc</Badge>}
                         {r.hasManualPrice && r.status === "APPROVED" && <span className="block text-xs text-text-muted">có giá đề xuất thay đổi</span>}
                         {canApprove && r.status === "PENDING_APPROVAL" && (
                           <Link href={`/invoices/${r.id}`} className="block mt-1"><Button size="sm" className="h-7">Xem chi tiết & duyệt</Button></Link>

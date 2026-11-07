@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Check, FileDown, Loader2, PenLine, X, Ban } from "lucide-react";
+import { ArrowLeft, Check, FileDown, Loader2, PenLine, X, Ban, Send } from "lucide-react";
 import { toast } from "sonner";
 import InvoiceSheet, { type InvoiceSheetProfile } from "@/components/shared/invoice-sheet";
 import type { InvoiceApprovalSummary, InvoiceResult } from "@/lib/invoice-engine";
@@ -26,8 +26,8 @@ type Inv = {
   customerCode: string | null; shipDate: string | null;
 };
 
-export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, approvalSummary }: {
-  invoice: Inv; canApprove: boolean; canEdit: boolean; approvalSummary: InvoiceApprovalSummary | null;
+export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, canCancel, canSend, lockNotice, approvalSummary }: {
+  invoice: Inv; canApprove: boolean; canEdit: boolean; canCancel: boolean; canSend: boolean; lockNotice: string | null; approvalSummary: InvoiceApprovalSummary | null;
 }) {
   const router = useRouter();
   const [view, setView] = useState<"customer" | "internal">("customer");
@@ -70,6 +70,7 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, appro
           {inv.decidedBy && ` · ${inv.status === "REJECTED" ? "Từ chối" : "Duyệt"} bởi ${inv.decidedBy}${inv.decidedAt ? " · " + new Date(inv.decidedAt).toLocaleString("vi-VN") : ""}`}
           {inv.note && ` · Ghi chú: ${inv.note}`}
         </p>
+        {lockNotice && <p className="rounded-md bg-info-light text-info-foreground text-sm px-4 py-2">{lockNotice}</p>}
         {inv.status === "PENDING_APPROVAL" && <p className="rounded-md bg-warning-light text-warning-foreground text-sm px-4 py-2">Phiếu báo giá có giá đề xuất thay đổi — chờ Admin cấp cao duyệt mới xuất PDF / xác nhận đơn được.</p>}
         {inv.status === "REJECTED" && <p className="rounded-md bg-danger-light text-destructive text-sm px-4 py-2">Bị từ chối: {inv.rejectionReason ?? "(không ghi lý do)"} — sửa rồi lưu để gửi duyệt lại.</p>}
         <div className="flex flex-wrap gap-2">
@@ -77,9 +78,14 @@ export default function InvoiceDetail({ invoice: inv, canApprove, canEdit, appro
           <Button size="sm" variant={view === "internal" ? "default" : "outline"} onClick={() => setView("internal")}>Bản nội bộ</Button>
           <span className="flex-1" />
           {canEdit && <Link href={`/invoices/${inv.id}/edit`}><Button size="sm" variant="outline"><PenLine className="w-4 h-4 mr-1" /> Sửa</Button></Link>}
-          {canEdit && (
+          {canCancel && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (confirm(`Huỷ phiếu báo giá ${inv.invoiceNo}?`)) act({ action: "cancel" }, "Đã huỷ phiếu báo giá"); }}>
               <Ban className="w-4 h-4 mr-1" /> Huỷ
+            </Button>
+          )}
+          {canSend && (
+            <Button size="sm" disabled={busy} onClick={() => { if (confirm("Chuyển Đã xác nhận / Chưa cọc và gửi đơn cho QL Kho TP? Sau khi chuyển sẽ không sửa hoặc huỷ phiếu được.")) act({ action: "send-to-manager" }, "Đã gửi đơn cho QL Kho TP"); }}>
+              <Send className="w-4 h-4 mr-1" /> Đã xác nhận / Chưa cọc
             </Button>
           )}
           <Button size="sm" disabled={!approved} onClick={exportPdf} title={approved ? "" : "Chỉ xuất PDF khi phiếu báo giá đã duyệt"}><FileDown className="w-4 h-4 mr-1" /> Xuất PDF</Button>

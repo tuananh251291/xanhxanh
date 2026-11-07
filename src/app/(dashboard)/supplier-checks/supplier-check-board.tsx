@@ -153,7 +153,7 @@ function OrderCard({ order, suppliers }: { order: BoardOrder; suppliers: { id: s
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           {order.code}
-          <Badge variant={order.status === "CONFIRMED" ? "completed" : "in-progress"}>{order.status === "CONFIRMED" ? "Khách đã cọc" : order.resultSent ? "Chờ khách cọc" : "Khách xác nhận / Chưa cọc"}</Badge>
+          <Badge variant={order.status === "CONFIRMED" ? "completed" : "in-progress"}>{order.status === "CONFIRMED" ? "Khách đã cọc" : order.resultSent ? "Chờ khách cọc" : "Đã xác nhận / Chưa cọc"}</Badge>
         </CardTitle>
         <p className="text-sm text-text-secondary">
           {order.customerCode} · {order.saleName} · Xuất {fmtDate(order.shipKey)}
