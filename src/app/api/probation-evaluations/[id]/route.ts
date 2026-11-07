@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
-import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, computeRowContaminationStats, scoreForContaminationRow, contaminationScoreNote, evaluationPercent, evaluationResult, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
+import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, computeRowContaminationStats, contaminationRowScore, contaminationScoreNote, evaluationPercent, evaluationResult, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,7 +45,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const rows = template.rows.map((row) => {
     const saved = itemByRowId.get(row.id);
-    // Dòng tự động: cột đã chấm hiện đúng điểm đã lưu (null = tuần không có nhật ký, không tính điểm), cột chưa chấm tính theo số hiện tại.
+    // Dòng tự động: cột đã chấm hiện đúng điểm đã lưu (null = tuần không có số liệu, không tính điểm), cột chưa chấm tính theo số hiện tại.
     const live = autoScores[row.id] ?? null;
     const autoSelf = evaluation.status === "PENDING_SELF" ? live : (saved?.selfScore ?? null);
     const autoManager = evaluation.status === "COMPLETED" ? (saved?.managerScore ?? null) : live;
@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const liveSpeedScore = row.type === "SPEED" && speedStats && speedStats.days > 0 ? scoreForSpeedRow(row, speedStats.avgSpeed) : null;
     const note = row.type === "SPEED" && speedStats && liveSpeedScore === shownScore
       ? speedScoreNote(row, speedStats)
-      : row.type === "CONTAMINATION" && contaminationStatsByRow.has(row.id) && scoreForContaminationRow(row, contaminationStatsByRow.get(row.id)!.ratePct) === shownScore
+      : row.type === "CONTAMINATION" && contaminationStatsByRow.has(row.id) && contaminationRowScore(row, contaminationStatsByRow.get(row.id)!) === shownScore
         ? contaminationScoreNote(row, contaminationStatsByRow.get(row.id)!)
         : null;
     return {

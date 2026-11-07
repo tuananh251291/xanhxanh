@@ -302,8 +302,10 @@ export async function computePayrollForPeriod(monthParam?: string | null, wareho
   const evalScoreByStaff = new Map<string, { score: number; max: number }>();
   for (const ev of probationEvaluations) {
     const e = evalScoreByStaff.get(ev.staffId) ?? { score: 0, max: 0 };
-    e.score += ev.items.reduce((sum, it) => sum + (it.managerScore ?? 0), 0);
-    e.max += ev.items.length * 10;
+    // Mục tự động để trống (tuần không có số liệu, xem probation-evaluation.ts) không tính vào cả điểm lẫn điểm tối đa.
+    const scored = ev.items.filter((it) => it.managerScore !== null);
+    e.score += scored.reduce((sum, it) => sum + (it.managerScore ?? 0), 0);
+    e.max += scored.length * 10;
     evalScoreByStaff.set(ev.staffId, e);
   }
 

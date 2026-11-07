@@ -23,13 +23,12 @@ export function isEvaluationOverdue(weekEnd: Date, now: Date = new Date()): bool
 // - SPEED: điểm tự tính từ "Tốc độ trung bình của tuần" (tổng chồi tạo ra mọi giai đoạn ÷ số ngày NV thật sự có nhật ký
 //   cấy trong tuần, xem computeAvgSpeed) — CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay. Tuần không có nhật ký cấy nào
 //   thì hệ thống không có số liệu: điểm để trống (null), dòng này không tính vào tổng điểm và % của phiếu.
-// - CONTAMINATION: điểm tự tính từ tỉ lệ nhiễm (xem computeContaminationRate) theo bảng ngưỡng riêng —
-//   CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay.
+// - CONTAMINATION: điểm tự tính từ tỉ lệ nhiễm (xem computeRowContaminationStats) theo bảng ngưỡng riêng —
+//   CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay. Không có số liệu thì để trống (null), không tính điểm như SPEED.
 export type ManualRow = { id: string; label: string; type: "MANUAL" };
 export type SpeedRow = { id: string; label: string; type: "SPEED"; target: number };
-// source: DARK_ROOM = nhiễm sau ủ tối (NV cấy mô tự kiểm tra lô đủ ngày ủ tối, LotInspection); HANDOVER = số Kho mô ghi lúc
-// nhận phiếu bàn giao Phòng tối → kho sáng (TransferInspection).
-export type ContaminationRow = { id: string; label: string; type: "CONTAMINATION"; threshold: 5 | 10; source: "DARK_ROOM" | "HANDOVER" };
+// source: DARK_ROOM = nhiễm sau ủ tối; DARK_AND_MOTHER = phòng tối (nhiễm sau ủ tối) + phòng sáng (nhiễm mẫu mẹ), xem computeRowContaminationStats.
+export type ContaminationRow = { id: string; label: string; type: "CONTAMINATION"; threshold: 5 | 10; source: "DARK_ROOM" | "DARK_AND_MOTHER" };
 export type EvaluationRow = ManualRow | SpeedRow | ContaminationRow;
 export type ProbationEvaluationWeekTemplate = { week: number; sectionTitle: string; rows: EvaluationRow[] };
 
@@ -158,7 +157,7 @@ export const PROBATION_EVALUATION_WEEKS: ProbationEvaluationWeekTemplate[] = [
       manual("5", "Đọc hiểu đúng mã cây và chỉ định cấy"),
       manual("6", "Cây sau cấy đạt tiêu chuẩn chất lượng theo chỉ định cấy"),
       { id: "7", label: "Duy trì năng suất ≥725 chồi/ngày (Điểm = Tốc độ trung bình của tuần /725 *9)", type: "SPEED", target: 725 },
-      { id: "8", label: "Tỷ lệ nhiễm phòng sáng + tối ≤10% (≤8%: 10 điểm, ≤10%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 10, source: "HANDOVER" },
+      { id: "8", label: "Tỷ lệ nhiễm phòng sáng + tối ≤10% (≤8%: 10 điểm, ≤10%: 9 điểm, còn lại 0 điểm)", type: "CONTAMINATION", threshold: 10, source: "DARK_AND_MOTHER" },
       manual("9", "Có ý thức trách nhiệm và phối hợp trong công việc"),
       manual("10", "Ý thức bảo quản tài sản, thiết bị"),
     ],
@@ -235,127 +234,99 @@ export function speedScoreNote(row: SpeedRow, stats: SpeedStats): string {
   return `Cấy ${fmt(stats.total)} chồi trong ${stats.days} ngày thì tốc độ là ${fmt(stats.avgSpeed)} chồi/ngày, điểm = ${fmt(stats.avgSpeed)} ÷ ${row.target} × 9 = ${fmt(raw)}, ${ending}.`;
 }
 
-// Tỉ lệ nhiễm (%) của các lô ĐƯỢC CẤY (Lot.enteredAt = ngày nhập phòng tối) trong khoảng tuần — quy về
-// đúng các phiếu "Bàn giao sản phẩm" (Phòng tối → kho sáng) của NV này có chứa ít nhất 1 lô nhập tuần đó
-// (1 phiếu hầu như luôn gộp đúng 1 ngày/1 mã, xem product-handover-board.tsx, nên gần như luôn thuộc
-// trọn 1 tuần). Công thức GIỮ NGUYÊN đúng cách handover-summary-report.ts/production-record-report.ts
-// đang dùng: nhiễm = TransferInspectionItem.contaminatedQuantity, mẫu số = handedOverQuantity (số GỐC
-// trước khi trừ nhiễm) — luồng Xanh (không qua kiểm tra) coi như không nhiễm. Phiếu còn PENDING (chưa
-// xác nhận/chưa kiểm tra) bị bỏ qua hoàn toàn — chưa có kết luận nên không tính vào cả tử lẫn mẫu.
-// Từng phiếu bàn giao góp vào tỉ lệ nhiễm — để diễn giải số nhiễm lấy từ đâu.
-export type ContaminationTransfer = { code: string; kind: "INSPECTED" | "NO_INSPECTION" | "PENDING" | "SELF_CHECK"; handed: number; contaminated: number };
-export type ContaminationStats = { transfers: number; handed: number; contaminated: number; ratePct: number; details: ContaminationTransfer[] };
+// Tỉ lệ nhiễm của mục đánh giá gồm 1 hoặc 2 phần, mỗi phần = tổng nhiễm ÷ tổng số kiểm tra trong tuần:
+// - Phòng tối (nhiễm sau ủ tối): NV cấy mô tự kiểm tra lô khi đủ ngày ủ tối (LotInspection), theo NGÀY KIỂM TRA — cùng cách trang
+//   Báo cáo cá nhân và báo cáo "Nhiễm sau ủ tối" đang tính. Không cộng phần Kho mô phát hiện thêm lúc nhận bàn giao.
+// - Phòng sáng (nhiễm mẫu mẹ): "MM nhiễm" ÷ "MM đã kiểm tra" NV ghi trong nhật ký cấy (DailyRecord) của tuần.
+// Mục "phòng sáng + tối" (tuần 9) = tỉ lệ phòng tối + tỉ lệ phòng sáng, tính riêng rồi cộng (cùng cách luồng kiểm tra,
+// xem inspection-lane.ts). Phần không có số liệu tính 0%; cả mục không có số liệu nào thì để trống, không tính điểm.
+export type ContaminationLine = { label: string; checked: number; contaminated: number };
+export type ContaminationPart = {
+  kind: "DARK_ROOM" | "MOTHER"; lines: ContaminationLine[]; checked: number; contaminated: number; ratePct: number;
+};
+export type ContaminationStats = { parts: ContaminationPart[]; ratePct: number; hasData: boolean };
 
-export async function computeContaminationStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
-  const transfers = await prisma.transfer.findMany({
-    where: {
-      fromUserId: staffId,
-      fromRoom: { type: "PHONG_TOI" },
-      status: { not: "REJECTED" },
-      items: { some: { lot: { enteredAt: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } } } },
-    },
-    orderBy: { createdAt: "asc" },
-    select: {
-      code: true,
-      status: true,
-      items: { select: { quantity: true } },
-      inspection: { select: { items: { select: { handedOverQuantity: true, contaminatedQuantity: true } } } },
-    },
-  });
+const dayMonth = (d: Date) => {
+  const v = new Date(d.getTime() + 7 * 3600000);
+  return `${String(v.getUTCDate()).padStart(2, "0")}/${String(v.getUTCMonth() + 1).padStart(2, "0")}`;
+};
 
-  let handed = 0;
-  let contaminated = 0;
-  const details: ContaminationTransfer[] = [];
-  for (const t of transfers) {
-    if (t.inspection) {
-      const h = t.inspection.items.reduce((s, it) => s + it.handedOverQuantity, 0);
-      const c = t.inspection.items.reduce((s, it) => s + it.contaminatedQuantity, 0);
-      handed += h;
-      contaminated += c;
-      details.push({ code: t.code, kind: "INSPECTED", handed: h, contaminated: c });
-    } else if (t.status === "CONFIRMED") {
-      const h = t.items.reduce((s, it) => s + it.quantity, 0);
-      handed += h;
-      details.push({ code: t.code, kind: "NO_INSPECTION", handed: h, contaminated: 0 });
-    } else {
-      details.push({ code: t.code, kind: "PENDING", handed: t.items.reduce((s, it) => s + it.quantity, 0), contaminated: 0 });
-    }
-  }
-  return { transfers: transfers.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0, details };
+function toPart(kind: ContaminationPart["kind"], lines: ContaminationLine[]): ContaminationPart {
+  const checked = lines.reduce((s, l) => s + l.checked, 0);
+  const contaminated = lines.reduce((s, l) => s + l.contaminated, 0);
+  return { kind, lines, checked, contaminated, ratePct: checked > 0 ? (contaminated / checked) * 100 : 0 };
 }
 
-// Nhiễm sau ủ tối (%) = số nhiễm NV cấy mô tự lọc ra ÷ số cây kiểm tra, cộng mọi lần tự kiểm tra (LotInspection) NV làm trong
-// tuần — theo NGÀY KIỂM TRA, cùng cách trang Báo cáo cá nhân (my-reports) và báo cáo "Nhiễm sau ủ tối" đang tính. Không cộng phần
-// Kho mô phát hiện thêm lúc nhận bàn giao (không thuộc trách nhiệm tự kiểm tra của NV).
-export async function computeDarkRoomContaminationStats(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
+async function darkRoomPart(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationPart> {
   const inspections = await prisma.lotInspection.findMany({
     where: { staffId, createdAt: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) } },
     orderBy: { createdAt: "asc" },
     select: { code: true, createdAt: true, items: { select: { initialQuantity: true, contaminatedQuantity: true } } },
   });
-  const dm = (d: Date) => { const v = new Date(d.getTime() + 7 * 3600000); return `${String(v.getUTCDate()).padStart(2, "0")}/${String(v.getUTCMonth() + 1).padStart(2, "0")}`; };
-  const details: ContaminationTransfer[] = inspections.map((i) => ({
-    code: `${dm(i.createdAt)} – lô ${i.code}`,
-    kind: "SELF_CHECK",
-    handed: i.items.reduce((s, it) => s + it.initialQuantity, 0),
+  return toPart("DARK_ROOM", inspections.map((i) => ({
+    label: `${dayMonth(i.createdAt)} – lô ${i.code}`,
+    checked: i.items.reduce((s, it) => s + it.initialQuantity, 0),
     contaminated: i.items.reduce((s, it) => s + it.contaminatedQuantity, 0),
-  }));
-  const handed = details.reduce((s, d) => s + d.handed, 0);
-  const contaminated = details.reduce((s, d) => s + d.contaminated, 0);
-  return { transfers: details.length, handed, contaminated, ratePct: handed > 0 ? (contaminated / handed) * 100 : 0, details };
+  })));
 }
 
-export function computeRowContaminationStats(row: ContaminationRow, staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
-  return row.source === "DARK_ROOM"
-    ? computeDarkRoomContaminationStats(staffId, weekStart, weekEnd)
-    : computeContaminationStats(staffId, weekStart, weekEnd);
+async function motherPart(staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationPart> {
+  const records = await prisma.dailyRecord.findMany({
+    where: { staffId, recordDate: { gte: weekStart, lt: endOfWeekExclusive(weekEnd) }, motherChecked: { gt: 0 } },
+    orderBy: { recordDate: "asc" },
+    select: { recordDate: true, motherChecked: true, motherContaminatedM05: true, instruction: { select: { code: true } } },
+  });
+  return toPart("MOTHER", records.map((r) => ({
+    label: `${dayMonth(r.recordDate)} – chỉ định ${r.instruction.code}`,
+    checked: r.motherChecked,
+    contaminated: r.motherContaminatedM05,
+  })));
 }
 
-export async function computeContaminationRate(staffId: string, weekStart: Date, weekEnd: Date): Promise<number> {
-  return (await computeContaminationStats(staffId, weekStart, weekEnd)).ratePct;
+export async function computeRowContaminationStats(row: ContaminationRow, staffId: string, weekStart: Date, weekEnd: Date): Promise<ContaminationStats> {
+  const parts = row.source === "DARK_ROOM"
+    ? [await darkRoomPart(staffId, weekStart, weekEnd)]
+    : [await darkRoomPart(staffId, weekStart, weekEnd), await motherPart(staffId, weekStart, weekEnd)];
+  return { parts, ratePct: parts.reduce((s, p) => s + p.ratePct, 0), hasData: parts.some((p) => p.checked > 0) };
 }
 
-const CONTAMINATION_NOTE_MAX_TRANSFERS = 8;
+export function contaminationRowScore(row: ContaminationRow, stats: ContaminationStats): number | null {
+  return stats.hasData ? scoreForContaminationRow(row, stats.ratePct) : null;
+}
 
-// Diễn giải điểm tỉ lệ nhiễm bằng số thật của tuần (nhiều dòng, nối bằng xuống dòng): số nhiễm của từng phiếu bàn giao → tỉ lệ % → điểm.
+const CONTAMINATION_NOTE_MAX_LINES = 8;
+
+// Diễn giải điểm tỉ lệ nhiễm bằng số thật của tuần (nhiều dòng): số nhiễm từng lần kiểm tra → tỉ lệ % → điểm.
 export function contaminationScoreNote(row: ContaminationRow, stats: ContaminationStats): string {
   const fmt = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
-  const score = scoreForContaminationRow(row, stats.ratePct);
   const [hi, mid] = row.threshold === 5 ? [3, 5] : [8, 10];
-  const band = stats.ratePct <= hi ? `≤${hi}%` : stats.ratePct <= mid ? `≤${mid}%` : `trên ${mid}%`;
   const scale = `(≤${hi}%: 10 điểm, ≤${mid}%: 9 điểm, trên ${mid}%: 0 điểm)`;
-  if (row.source === "DARK_ROOM") {
-    if (stats.details.length === 0) {
-      return `Tuần này NV chưa có lần tự kiểm tra nhiễm sau ủ tối nào nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`;
+  if (!stats.hasData) {
+    return row.source === "DARK_ROOM"
+      ? "Tuần này NV chưa có lần tự kiểm tra nhiễm sau ủ tối nào trên hệ thống nên mục này không tính điểm."
+      : "Tuần này chưa có số liệu kiểm tra nhiễm sau ủ tối và nhiễm mẫu mẹ trên hệ thống nên mục này không tính điểm.";
+  }
+  const score = scoreForContaminationRow(row, stats.ratePct);
+  const band = stats.ratePct <= hi ? `≤${hi}%` : stats.ratePct <= mid ? `≤${mid}%` : `trên ${mid}%`;
+  const out: string[] = [];
+  for (const p of stats.parts) {
+    out.push(p.kind === "DARK_ROOM"
+      ? (stats.parts.length > 1 ? "Phòng tối – nhiễm sau ủ tối (NV tự kiểm tra lô sau ủ tối):" : "Số nhiễm lấy từ các lần NV tự kiểm tra lô sau ủ tối trong tuần:")
+      : "Phòng sáng – nhiễm mẫu mẹ NV ghi khi cấy:");
+    if (p.checked === 0) { out.push("• Chưa có số liệu, tính 0%"); continue; }
+    const unit = p.kind === "DARK_ROOM" ? "cây" : "mẫu mẹ";
+    for (const l of p.lines.slice(0, CONTAMINATION_NOTE_MAX_LINES)) {
+      out.push(`• ${l.label}: kiểm tra ${fmt(l.checked)} ${unit}, nhiễm ${fmt(l.contaminated)} ${unit}`);
     }
-    const lines = ["Số nhiễm lấy từ các lần NV tự kiểm tra lô sau ủ tối trong tuần:"];
-    for (const d of stats.details.slice(0, CONTAMINATION_NOTE_MAX_TRANSFERS)) {
-      lines.push(`• ${d.code}: kiểm tra ${fmt(d.handed)} cây, nhiễm ${fmt(d.contaminated)} cây`);
-    }
-    const more = stats.details.length - CONTAMINATION_NOTE_MAX_TRANSFERS;
-    if (more > 0) lines.push(`• … và ${more} lần kiểm tra khác`);
-    lines.push(`Tỉ lệ nhiễm = ${fmt(stats.contaminated)} ÷ ${fmt(stats.handed)} = ${fmt(stats.ratePct)}%, ${band} nên được ${score} điểm ${scale}.`);
-    return lines.join("\n");
+    const more = p.lines.length - CONTAMINATION_NOTE_MAX_LINES;
+    if (more > 0) out.push(`• … và ${more} dòng khác`);
+    if (stats.parts.length > 1) out.push(`→ ${fmt(p.contaminated)} ÷ ${fmt(p.checked)} = ${fmt(p.ratePct)}%`);
   }
-  if (stats.details.length === 0) {
-    return `Chưa có phiếu bàn giao Phòng tối → kho sáng nào của các lô cấy tuần này nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`;
-  }
-  const lines = ["Số nhiễm lấy từ phiếu bàn giao Phòng tối → kho sáng của các lô cấy tuần này:"];
-  for (const d of stats.details.slice(0, CONTAMINATION_NOTE_MAX_TRANSFERS)) {
-    lines.push(
-      d.kind === "INSPECTED" ? `• ${d.code}: bàn giao ${fmt(d.handed)} cây, nhiễm ${fmt(d.contaminated)} cây (Kho mô kiểm tra)`
-        : d.kind === "NO_INSPECTION" ? `• ${d.code}: bàn giao ${fmt(d.handed)} cây, không qua kiểm tra nên tính nhiễm 0 cây`
-          : `• ${d.code}: ${fmt(d.handed)} cây, chưa xác nhận nên chưa tính`
-    );
-  }
-  const more = stats.details.length - CONTAMINATION_NOTE_MAX_TRANSFERS;
-  if (more > 0) lines.push(`• … và ${more} phiếu khác`);
-  if (stats.handed === 0) {
-    lines.push(`Chưa có phiếu nào được xác nhận nên tỉ lệ nhiễm tính là 0%, được ${score} điểm ${scale}.`);
-  } else {
-    lines.push(`Tỉ lệ nhiễm = ${fmt(stats.contaminated)} ÷ ${fmt(stats.handed)} = ${fmt(stats.ratePct)}%, ${band} nên được ${score} điểm ${scale}.`);
-  }
-  return lines.join("\n");
+  const formula = stats.parts.length > 1
+    ? `Tỉ lệ nhiễm phòng sáng + tối = ${[...stats.parts].reverse().map((p) => `${fmt(p.ratePct)}%`).join(" + ")} = ${fmt(stats.ratePct)}%`
+    : `Tỉ lệ nhiễm = ${fmt(stats.parts[0].contaminated)} ÷ ${fmt(stats.parts[0].checked)} = ${fmt(stats.ratePct)}%`;
+  out.push(`${formula}, ${band} nên được ${score} điểm ${scale}.`);
+  return out.join("\n");
 }
 
 // Điểm tự tính (SPEED/CONTAMINATION) của 1 tuần cho 1 NV — dùng chung cho GET (xem trước lúc còn PENDING)
@@ -375,7 +346,7 @@ export async function computeAutoScores(
       scores[row.id] = speed.days > 0 ? scoreForSpeedRow(row, speed.avgSpeed) : null;
     } else if (row.type === "CONTAMINATION") {
       if (!contamination.has(row.source)) contamination.set(row.source, await computeRowContaminationStats(row, staffId, weekStart, weekEnd));
-      scores[row.id] = scoreForContaminationRow(row, contamination.get(row.source)!.ratePct);
+      scores[row.id] = contaminationRowScore(row, contamination.get(row.source)!);
     }
   }
   return scores;
