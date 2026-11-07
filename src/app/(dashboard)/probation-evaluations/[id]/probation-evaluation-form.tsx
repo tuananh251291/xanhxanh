@@ -90,7 +90,10 @@ export default function ProbationEvaluationForm({
   const canEdit = isSelfTurn || isManagerTurn;
 
   const getScore = (row: Row) => {
-    if (row.type !== "MANUAL") return String((isSelfTurn ? row.selfScore : row.managerScore) ?? 0);
+    if (row.type !== "MANUAL") {
+      const auto = isSelfTurn ? row.selfScore : row.managerScore;
+      return auto === null ? "" : String(auto);
+    }
     const key = row.id;
     if (scores[key] !== undefined) return scores[key];
     const existing = isSelfTurn ? row.selfScore : row.managerScore;
@@ -102,7 +105,9 @@ export default function ProbationEvaluationForm({
     setScores((prev) => ({ ...prev, [rowId]: String(clamped) }));
   };
 
-  const totalMax = data.rows.length * 10;
+  // Dòng tự động để trống (tuần không có nhật ký cấy) không tính vào tổng điểm tối đa.
+  const countedRows = data.rows.filter((row) => row.type === "MANUAL" || (isSelfTurn ? row.selfScore : row.managerScore) !== null);
+  const totalMax = countedRows.length * 10;
   const totalNow = data.rows.reduce((s, row) => s + (Number(getScore(row)) || 0), 0);
   const pctNow = totalMax > 0 ? Math.round((totalNow / totalMax) * 1000) / 10 : 0;
 
@@ -204,10 +209,10 @@ export default function ProbationEvaluationForm({
                   const managerEditable = isManagerTurn && row.type === "MANUAL";
                   const selfValue = row.type === "MANUAL"
                     ? (isSelfTurn ? getScore(row) : (row.selfScore ?? "—"))
-                    : String(row.selfScore ?? 0);
+                    : (row.selfScore ?? "Không tính");
                   const managerValue = row.type === "MANUAL"
                     ? (isManagerTurn ? getScore(row) : (row.managerScore ?? "—"))
-                    : String(row.managerScore ?? 0);
+                    : (row.managerScore ?? "Không tính");
                   return (
                     <tr key={row.id} className="border-b last:border-0 even:bg-primary-light/30">
                       <td className="px-3 py-2.5 align-top text-text-secondary">{row.id}</td>

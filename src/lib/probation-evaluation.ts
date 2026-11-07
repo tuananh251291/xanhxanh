@@ -21,7 +21,8 @@ export function isEvaluationOverdue(weekEnd: Date, now: Date = new Date()): bool
 // 3 loại dòng:
 // - MANUAL: NV cấy mô tự chấm + NV Kỹ thuật chấm ĐỘC LẬP nhau, số nguyên 0-10.
 // - SPEED: điểm tự tính từ "Tốc độ trung bình của tuần" (tổng chồi tạo ra mọi giai đoạn ÷ số ngày NV thật sự có nhật ký
-//   cấy trong tuần, xem computeAvgSpeed) — CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay.
+//   cấy trong tuần, xem computeAvgSpeed) — CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay. Tuần không có nhật ký cấy nào
+//   thì hệ thống không có số liệu: điểm để trống (null), dòng này không tính vào tổng điểm và % của phiếu.
 // - CONTAMINATION: điểm tự tính từ tỉ lệ nhiễm (xem computeContaminationRate) theo bảng ngưỡng riêng —
 //   CHUNG 1 giá trị cho cả 2 cột, không cho nhập tay.
 export type ManualRow = { id: string; label: string; type: "MANUAL" };
@@ -175,6 +176,17 @@ export function scoreForSpeedRow(row: SpeedRow, avgSpeed: number): number {
   return Math.max(0, Math.min(10, Math.round((avgSpeed / row.target) * 9)));
 }
 
+// % của phiếu chỉ tính trên các dòng có điểm — dòng để trống (tuần không có nhật ký cấy) không kéo % xuống.
+export function evaluationPercent(scores: (number | null)[]): number {
+  const counted = scores.filter((s): s is number => s !== null);
+  if (counted.length === 0) return 0;
+  return Math.round((counted.reduce((a, b) => a + b, 0) / (counted.length * 10)) * 1000) / 10;
+}
+
+export function evaluationResult(percent: number): "DAT" | "CAN_CAI_THIEN" | "KHONG_DAT" {
+  return percent < 70 ? "KHONG_DAT" : percent < 90 ? "CAN_CAI_THIEN" : "DAT";
+}
+
 export function scoreForContaminationRow(row: ContaminationRow, ratePct: number): number {
   if (row.threshold === 5) {
     if (ratePct <= 3) return 10;
@@ -214,7 +226,7 @@ export async function computeAvgSpeed(staffId: string, weekStart: Date, weekEnd:
 // Diễn giải điểm tốc độ bằng số thật của tuần, VD: "Cấy 3.500 chồi trong 5 ngày thì tốc độ là 700 chồi/ngày, điểm = 700 ÷ 725 × 9 = 8,69, làm tròn thành 9 điểm."
 export function speedScoreNote(row: SpeedRow, stats: SpeedStats): string {
   const fmt = (n: number) => n.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
-  if (stats.days === 0) return "Tuần này chưa có nhật ký cấy nên tốc độ là 0 chồi/ngày, được 0 điểm.";
+  if (stats.days === 0) return "Tuần này chưa có nhật ký cấy trên hệ thống nên mục này không tính điểm.";
   const raw = (stats.avgSpeed / row.target) * 9;
   const score = scoreForSpeedRow(row, stats.avgSpeed);
   const ending = raw > 10 ? `vượt mức tối đa nên được ${score} điểm` : raw === score ? `được ${score} điểm` : `làm tròn thành ${score} điểm`;
@@ -265,14 +277,14 @@ export async function computeAutoScores(
   template: ProbationEvaluationWeekTemplate,
   weekStart: Date,
   weekEnd: Date
-): Promise<Record<string, number>> {
-  const scores: Record<string, number> = {};
-  let avgSpeed: number | undefined;
+): Promise<Record<string, number | null>> {
+  const scores: Record<string, number | null> = {};
+  let speed: SpeedStats | undefined;
   let contaminationRate: number | undefined;
   for (const row of template.rows) {
     if (row.type === "SPEED") {
-      if (avgSpeed === undefined) avgSpeed = await computeAvgSpeed(staffId, weekStart, weekEnd);
-      scores[row.id] = scoreForSpeedRow(row, avgSpeed);
+      if (speed === undefined) speed = await computeSpeedStats(staffId, weekStart, weekEnd);
+      scores[row.id] = speed.days > 0 ? scoreForSpeedRow(row, speed.avgSpeed) : null;
     } else if (row.type === "CONTAMINATION") {
       if (contaminationRate === undefined) contaminationRate = await computeContaminationRate(staffId, weekStart, weekEnd);
       scores[row.id] = scoreForContaminationRow(row, contaminationRate);

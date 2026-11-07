@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { isAdminRole } from "@/types";
 import { createAlert } from "@/lib/inventory";
-import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
+import { getWeekTemplate, computeAutoScores, computeSpeedStats, scoreForSpeedRow, speedScoreNote, evaluationPercent, evaluationResult, isFinalProbationWeek, PROBATION_EVALUATION_WEEKS } from "@/lib/probation-evaluation";
 import { z } from "zod";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -41,12 +41,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const rows = template.rows.map((row) => {
     const saved = itemByRowId.get(row.id);
-    // Dòng tự động: mỗi cột hiện đúng điểm đã lưu của cột đó (lúc tự chấm và lúc NV kỹ thuật chấm hệ thống đều tính lại nên có thể khác nhau), chưa chấm thì tính theo số hiện tại.
-    const autoSelf = saved?.selfScore ?? autoScores[row.id] ?? 0;
-    const autoManager = saved?.managerScore ?? autoScores[row.id] ?? autoSelf;
+    // Dòng tự động: cột đã chấm hiện đúng điểm đã lưu (null = tuần không có nhật ký, không tính điểm), cột chưa chấm tính theo số hiện tại.
+    const live = autoScores[row.id] ?? null;
+    const autoSelf = evaluation.status === "PENDING_SELF" ? live : (saved?.selfScore ?? null);
+    const autoManager = evaluation.status === "COMPLETED" ? (saved?.managerScore ?? null) : live;
     // Nhật ký sửa sau khi chấm có thể làm số hiện tại lệch điểm đã lưu — lệch thì không hiện diễn giải để khỏi mâu thuẫn với điểm.
     const shownScore = evaluation.status === "PENDING_SELF" ? autoSelf : autoManager;
-    const note = row.type === "SPEED" && speedStats && scoreForSpeedRow(row, speedStats.avgSpeed) === shownScore ? speedScoreNote(row, speedStats) : null;
+    const liveSpeedScore = row.type === "SPEED" && speedStats && speedStats.days > 0 ? scoreForSpeedRow(row, speedStats.avgSpeed) : null;
+    const note = row.type === "SPEED" && speedStats && liveSpeedScore === shownScore ? speedScoreNote(row, speedStats) : null;
     return {
       id: row.id,
       label: row.label,
@@ -187,17 +189,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    let totalScore = 0;
+    const rowScores: (number | null)[] = [];
     for (const row of template.rows) {
       const score = row.type === "MANUAL" ? (submittedByRowId.get(row.id) ?? 0) : autoScores[row.id];
-      totalScore += score;
+      rowScores.push(score);
       await tx.probationEvaluationItem.update({
         where: { evaluationId_rowId: { evaluationId: id, rowId: row.id } },
         data: { managerScore: score },
       });
     }
-    const percent = Math.round((totalScore / (template.rows.length * 10)) * 1000) / 10;
-    const resultLabel = percent < 70 ? "KHONG_DAT" : percent < 90 ? "CAN_CAI_THIEN" : "DAT";
+    const percent = evaluationPercent(rowScores);
+    const resultLabel = evaluationResult(percent);
     await tx.probationEvaluation.update({
       where: { id },
       data: {

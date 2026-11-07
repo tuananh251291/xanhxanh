@@ -69,12 +69,12 @@ export default function ProbationEvaluationPrint({ data }: { data: Evaluation })
                 {row.label}
                 {row.note && <p className="pe-row-note">{row.note}</p>}
               </td>
-              <td className="pe-num">{row.selfScore ?? "—"}</td>
-              <td className="pe-num">{row.managerScore ?? "—"}</td>
+              <td className="pe-num">{row.selfScore ?? "Không tính"}</td>
+              <td className="pe-num">{row.managerScore ?? "Không tính"}</td>
             </tr>
           ))}
           <tr className="pe-total">
-            <td colSpan={2}>Tổng điểm (tối đa {data.rows.length * 10})</td>
+            <td colSpan={2}>Tổng điểm (tối đa {data.rows.filter((r) => r.managerScore !== null).length * 10})</td>
             <td className="pe-num">{selfTotal}</td>
             <td className="pe-num">{managerTotal}</td>
           </tr>
